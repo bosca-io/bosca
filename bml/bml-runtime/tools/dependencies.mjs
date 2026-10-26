@@ -72,7 +72,7 @@ export function dependencyGraph(metafile, workingDirectory, packageRoots) {
     const graph = [...visited.values()].map((node) => [node.identity, node.digest,
       node.imports.map((it) => [it.original, it.kind, nodes.get(it.path).identity]).sort()])
       .sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)
-    result.set(entry.file, digest(JSON.stringify([esbuildVersion, "browser", "es2020", entry.identity, graph])))
+    result.set(entry.file, digest(JSON.stringify([esbuildVersion, "browser", "es2020", "consumer-environment", entry.identity, graph])))
   }
   return result
 }

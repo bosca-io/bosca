@@ -183,6 +183,7 @@ class BmlServer(
         val providerRegistrars: List<bosca.di.ProviderRegistrar> = pages.filterIsInstance<bosca.bml.render.BmlProviderPage>()
             .flatMap { it.providerRegistrars }.distinctBy { it::class },
         val packagedAssets: List<bosca.bml.library.BmlApplicationAssets> = pages.filterIsInstance<BmlBundledPage>().map { it.assets }.distinct(),
+        val packagedAssetBytes: ConcurrentHashMap<String, ByteArray> = ConcurrentHashMap(),
         val pagesByRoute: Map<String, BmlPageRenderer> = pages.associateBy { it.route },
         val componentTagsByPage: Map<String, Set<String>> = pages.associate { page ->
             page.route to BmlStyleAssets.closure(page.componentTags, componentsByTag).toSet()
@@ -610,8 +611,7 @@ class BmlServer(
             html = BmlClientAssets.injectUrl(html, BmlStyleAssets.GLOBAL_JS_URL, cacheToken)
         }
         if (current.productionPlan != null) {
-            // Production: one bundle per page — the bundler merged the page's own client
-            // code with its closure components' into `<slug>.page.js`; nothing else is injected.
+            // The entry imports this page's components and content-hashed shared modules.
             current.productionPlan.pageJsFile[page.route]?.let {
                 html = BmlClientAssets.inject(html, it, cacheToken)
             }
@@ -903,21 +903,15 @@ class BmlServer(
             val current = state.get()
             val mode = if (current.development) "dev" else "prod"
             val path = call.pathParameters["path"].orEmpty()
-            val bytes = current.packagedAssets.firstNotNullOfOrNull { it.read("$mode/$path") }
-            if (bytes == null) call.respond(bosca.server.HttpStatusCode.NotFound, "404 Not Found")
-            else respondPackagedAsset(call, assetCacheControl, bytes, bmlAssetContentType(path))
+            respondPackagedAsset(current, call, assetCacheControl, "$mode/$path", bmlAssetContentType(path))
         }
         router.get("/_bml/libraries/{key}/{path...}") {
             val current = state.get()
             val path = "libraries/${call.pathParameters["key"].orEmpty()}/${call.pathParameters["path"].orEmpty()}"
-            val bytes = current.packagedAssets.firstNotNullOfOrNull { it.read(path) }
-            if (bytes == null) call.respond(bosca.server.HttpStatusCode.NotFound, "404 Not Found")
-            else {
-                // CSS references and public resources may retain their URL across a same-version
-                // library rebuild. Only deployment-token URLs can use the immutable policy.
-                val versioned = !current.development && call.request.queryParameters["_ts"] == current.assetCacheToken
-                respondPackagedAsset(call, if (versioned) assetCacheControl else "no-cache", bytes, bmlAssetContentType(path))
-            }
+            // CSS references and public resources may retain their URL across a same-version
+            // library rebuild. Only deployment-token URLs can use the immutable policy.
+            val versioned = !current.development && call.request.queryParameters["_ts"] == current.assetCacheToken
+            respondPackagedAsset(current, call, if (versioned) assetCacheControl else "no-cache", path, bmlAssetContentType(path))
         }
         // Serve static assets (CSS, images, favicon) at the site root. Page routes are registered
         // above and take precedence; the static handler only resolves to existing files.
@@ -1582,19 +1576,32 @@ class BmlServer(
         }
     }
 
-    private fun respondPackagedAsset(
+    private suspend fun respondPackagedAsset(
+        current: RuntimeState,
         call: bosca.server.ServerCall,
         cacheControl: String?,
-        bytes: ByteArray,
+        path: String,
         type: ContentType,
     ) {
+        val indexed = current.packagedAssets.firstNotNullOfOrNull { source -> source.digest(path)?.let { source to it } }
+        if (indexed == null) {
+            call.respond(bosca.server.HttpStatusCode.NotFound, "404 Not Found")
+            return
+        }
         cacheControl?.let { call.response.header(HttpHeaders.CacheControl, it) }
-        val etag = etagForBody(bytes)
+        val etag = quotedDigest(indexed.second)
         call.response.header(HttpHeaders.ETag, etag)
         val condition = call.request.header(HttpHeaders.IfNoneMatch)
         if (condition != null && (condition == "*" || condition.split(",").any { it.trim() == etag })) {
             call.respond(bosca.server.HttpStatusCode.NotModified)
-        } else call.respondBytes(bytes, type)
+        } else {
+            val bytes = current.packagedAssetBytes[path] ?: kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                current.packagedAssetBytes.computeIfAbsent(path) {
+                    requireNotNull(indexed.first.read(it)) { "Missing indexed BML asset $it" }
+                }
+            }
+            call.respondBytes(bytes, type)
+        }
     }
 
     private fun inlineYaml(): String = """

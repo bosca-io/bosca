@@ -197,6 +197,12 @@ the standalone source viewer; the JSON route reaches only the structured editor.
 pages exclude both engines. The optional alias declaration stays in its
 own example page; normal pages use the single unaliased root import.
 
+The cold-page resource regression disables the browser cache and inspects actual JavaScript and
+CSS downloads on nine ordinary, editor and visualization routes in production and development.
+It includes shared modules and selected language grammars, and rejects optional engines or styles
+on pages that do not use them. Nested widgets count toward their containing page: the dashboard
+examples include charts. Reports are written to `build/reports/browser/catalog-<mode>-resources.json`.
+
 Build and verify:
 
 ```sh

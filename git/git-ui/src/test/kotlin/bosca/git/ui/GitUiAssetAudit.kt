@@ -50,10 +50,19 @@ internal class GitUiAssetAudit(
             assertEquals(styles.distinct(), styles, "$path repeats a stylesheet")
             assertEquals(1, scripts.count { it.path == "/_bml/app.js" }, path)
             assertEquals(1, scripts.count { it.path.endsWith(".page.js") }, path)
-            assertEquals(2, scripts.size, "$path loads only global authentication and its merged page bundle")
+            assertEquals(2, scripts.size, "$path declares global authentication and its page entry")
             assertTrue(styles.isNotEmpty(), path)
 
-            val js = scripts.joinToString("\n") { asset(it).decodeToString() }
+            val modules = linkedSetOf<URI>()
+            fun visit(uri: URI) {
+                if (!modules.add(uri)) return
+                // Esbuild emits these static import declarations; dynamic grammars load on demand.
+                Regex("""(?:import|from)\s*["']([^"']+)["']""").findAll(asset(uri).decodeToString()).forEach { match ->
+                    if (match.groupValues[1].startsWith(".")) visit(resolve(uri, match.groupValues[1]))
+                }
+            }
+            scripts.forEach(::visit)
+            val js = modules.joinToString("\n") { asset(it).decodeToString() }
             styles.forEach { asset(it) }
             for (key in listOf("@bosca/bml/island-runtime", "@bosca/bml/action-runtime")) {
                 assertEquals(1, Regex(Regex.escape(key)).findAll(js).count(), "$path duplicates $key")
@@ -68,7 +77,7 @@ internal class GitUiAssetAudit(
                 "$path must include at most one CodeMirror state implementation")
             if (engines.isNotEmpty()) {
                 val budget = if ("source" in engines) 380_000 else 360_000
-                assertTrue((scripts + styles).sumOf { gzipSize(asset(it)) } < budget,
+                assertTrue((modules + styles).sumOf { gzipSize(asset(it)) } < budget,
                     "$path exceeds its measured editor asset budget of $budget gzip bytes")
             }
 
@@ -90,10 +99,11 @@ internal class GitUiAssetAudit(
                 put("path", path)
                 put("engines", JsonArray(engines.map(::JsonPrimitive)))
                 put("scripts", paths(scripts))
+                put("modules", paths(modules.toList()))
                 put("stylesheets", paths(styles))
                 put("referencedFonts", paths(fonts))
-                put("jsRawBytes", scripts.sumOf { asset(it).size })
-                put("jsGzipBytes", scripts.sumOf { gzipSize(asset(it)) })
+                put("jsRawBytes", modules.sumOf { asset(it).size })
+                put("jsGzipBytes", modules.sumOf { gzipSize(asset(it)) })
                 put("cssRawBytes", styles.sumOf { asset(it).size })
                 put("cssGzipBytes", styles.sumOf { gzipSize(asset(it)) })
                 put("referencedFontRawBytes", fonts.sumOf { asset(it).size })
@@ -144,7 +154,8 @@ internal class GitUiAssetAudit(
             uri.path.endsWith(".woff2") -> assertEquals("font/woff2", type, uri.toString())
             else -> error("Unexpected asset $uri")
         }
-        assertTrue(response.body().isNotEmpty(), uri.toString())
+        // Tree-shaken shared ESM barrels can be empty; page entries, styles and fonts must have bytes.
+        assertTrue(response.body().isNotEmpty() || uri.path.startsWith("/_bml/js/chunks/"), uri.toString())
         response.body() to type
     }.first
 

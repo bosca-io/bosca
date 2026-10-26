@@ -202,9 +202,17 @@ class DesignLibraryAdoptionTest {
             font.path to kotlinx.serialization.json.JsonPrimitive(actual)
         }
         File(reports, "$mode-fonts.json").writeText(kotlinx.serialization.json.JsonObject(digests).toString())
-        for (script in Regex("""<script[^>]+src="([^"]+)"""").findAll(html)) {
-            val js = get(URI(base).resolve(script.groupValues[1].replace("&amp;", "&"))).decodeToString()
+        val modules = linkedSetOf<URI>()
+        fun verifyModule(uri: URI) {
+            if (!modules.add(uri)) return
+            val js = get(uri).decodeToString()
             assertFalse("cm-editor" in js || "jse-main" in js, "Preferences must exclude unused editor engines")
+            Regex("""(?:import|from)\s*["']([^"']+)["']""").findAll(js).forEach { match ->
+                if (match.groupValues[1].startsWith(".")) verifyModule(uri.resolve(match.groupValues[1]))
+            }
+        }
+        Regex("""<script[^>]+src="([^"]+)"""").findAll(html).forEach {
+            verifyModule(URI(base).resolve(it.groupValues[1].replace("&amp;", "&")))
         }
     }
 

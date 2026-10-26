@@ -1,50 +1,42 @@
-import { javascript, typescriptLanguage } from "@codemirror/lang-javascript";
-import { python } from "@codemirror/lang-python";
-import { java } from "@codemirror/lang-java";
-import { rust } from "@codemirror/lang-rust";
-import { go } from "@codemirror/lang-go";
-import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
-import { html } from "@codemirror/lang-html";
-import { css } from "@codemirror/lang-css";
-import { yaml } from "@codemirror/lang-yaml";
-import { sql } from "@codemirror/lang-sql";
 import { StreamLanguage } from "@codemirror/language";
-import { kotlin } from "@codemirror/legacy-modes/mode/clike";
+import type { Extension } from "@codemirror/state";
 
-const kotlinLanguage = StreamLanguage.define(kotlin);
+const kotlinLanguage = async () => StreamLanguage.define((await import("@codemirror/legacy-modes/mode/clike")).kotlin);
 
 /** BML permits self-closing components and Kotlin/TypeScript in explicitly scoped script blocks. */
-function bml() {
+async function bml() {
+  const [{ html }, { typescriptLanguage }, kotlin] = await Promise.all([
+    import("@codemirror/lang-html"), import("@codemirror/lang-javascript"), kotlinLanguage(),
+  ]);
   return html({
     selfClosingTags: true,
     nestedLanguages: [
-      { tag: "script", attrs: attributes => "server" in attributes, parser: kotlinLanguage.parser },
+      { tag: "script", attrs: attributes => "server" in attributes, parser: kotlin.parser },
       { tag: "script", attrs: attributes => "client" in attributes, parser: typescriptLanguage.parser },
     ],
   });
 }
 
-/** Infer the existing source language from a filename or an explicit language name. */
-export function codeLanguage(path: string, language = "") {
+/** Load only the requested grammar; ESM caches it across viewers and later language changes. */
+export async function codeLanguage(path: string, language = ""): Promise<Extension> {
   const name = language.toLowerCase();
   const aliases: Record<string, string> = { typescript: "ts", javascript: "js", kotlin: "kt", python: "py", rust: "rs", golang: "go", markdown: "md" };
   const ext = language ? (aliases[name] ?? name) : path.split(".").at(-1)?.toLowerCase();
   if (ext === "ts" || ext === "tsx")
-    return javascript({ typescript: true, jsx: ext === "tsx" });
+    return (await import("@codemirror/lang-javascript")).javascript({ typescript: true, jsx: ext === "tsx" });
   if (ext === "js" || ext === "jsx" || ext === "mjs")
-    return javascript({ jsx: ext === "jsx" });
-  if (ext === "kt" || ext === "kts") return kotlinLanguage;
-  if (ext === "py") return python();
-  if (ext === "java") return java();
-  if (ext === "rs") return rust();
-  if (ext === "go") return go();
-  if (ext === "json") return json();
-  if (ext === "md" || ext === "markdown") return markdown();
+    return (await import("@codemirror/lang-javascript")).javascript({ jsx: ext === "jsx" });
+  if (ext === "kt" || ext === "kts") return kotlinLanguage();
+  if (ext === "py") return (await import("@codemirror/lang-python")).python();
+  if (ext === "java") return (await import("@codemirror/lang-java")).java();
+  if (ext === "rs") return (await import("@codemirror/lang-rust")).rust();
+  if (ext === "go") return (await import("@codemirror/lang-go")).go();
+  if (ext === "json") return (await import("@codemirror/lang-json")).json();
+  if (ext === "md" || ext === "markdown") return (await import("@codemirror/lang-markdown")).markdown();
   if (ext === "bml") return bml();
-  if (ext === "html" || ext === "vue") return html();
-  if (ext === "css" || ext === "scss") return css();
-  if (ext === "yaml" || ext === "yml") return yaml();
-  if (ext === "sql") return sql();
+  if (ext === "html" || ext === "vue") return (await import("@codemirror/lang-html")).html();
+  if (ext === "css" || ext === "scss") return (await import("@codemirror/lang-css")).css();
+  if (ext === "yaml" || ext === "yml") return (await import("@codemirror/lang-yaml")).yaml();
+  if (ext === "sql") return (await import("@codemirror/lang-sql")).sql();
   return [];
 }

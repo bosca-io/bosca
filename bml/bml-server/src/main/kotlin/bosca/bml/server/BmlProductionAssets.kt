@@ -35,7 +35,7 @@ object BmlProductionAssets {
         val sharedCss: String,
         /** Route -> merged page CSS (routes with nothing beyond the shared set are absent). */
         val pageCss: Map<String, String>,
-        /** Route -> the page's single production bundle file name (routes with no client code are absent). */
+        /** Route -> production entry file; its relative imports load shared chunks. Static routes are absent. */
         val pageJsFile: Map<String, String>,
         /** Route -> served slug (routes needing neither page CSS nor page JS are absent). */
         val pageSlug: Map<String, String>,

@@ -113,7 +113,8 @@ class BmlLibraryAssetsTest {
                 assertTrue(".theme[data-bml-c=\\\"$buttonId\\\"]" in manifest, manifest)
                 val css = ((JsonSlurper().parseText(manifest) as Map<*, *>)["components"] as List<*>)
                     .map { (it as Map<*, *>)["styles"] as String }.joinToString("\n")
-                assertTrue("@media (min-width: 600px) {" in css && "@font-face {" in css, css)
+                assertTrue(Regex("""@media\s*\(min-width:\s*600px\)\s*\{""").containsMatchIn(css) &&
+                    Regex("""@font-face\s*\{""").containsMatchIn(css), css)
                 assertTrue(".responsive[data-bml-c=\"$buttonId\"]" in css && ".workspace[data-bml-c=\"$buttonId\"]" in css, css)
                 assertTrue(".embedded[data-bml-c=\"$buttonId\"]" in css, css)
                 assertFalse("@font-face[" in css || "600px)[" in css, css)

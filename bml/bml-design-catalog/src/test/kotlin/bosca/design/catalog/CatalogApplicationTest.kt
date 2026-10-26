@@ -80,6 +80,13 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `cold pages download only their optional engines and styles`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--resources", 60)
+        }
+    }
+
+    @Test
     fun `visualization engines stay isolated to consuming pages`() {
         for (development in listOf(false, true)) withServer(development) { base, client ->
             for (path in listOf("/foundation", "/flows", "/charts", "/components/visualization")) {
@@ -88,11 +95,18 @@ class CatalogApplicationTest {
                 val html = response.body()
                 val scripts = Regex("""<script\b[^>]*\bsrc="([^"]+)"""").findAll(html).map { it.groupValues[1] }.toList()
                 assertTrue(scripts.isNotEmpty(), path)
-                val source = scripts.joinToString("\n") { url ->
-                    val asset = request(client, base, url)
-                    assertEquals(200, asset.statusCode(), url)
-                    asset.body()
+                val modules = linkedMapOf<URI, String>()
+                fun visit(uri: URI) {
+                    if (uri in modules) return
+                    val asset = request(client, base, uri.toString())
+                    assertEquals(200, asset.statusCode(), uri.toString())
+                    val body = asset.body(); modules[uri] = body
+                    Regex("""(?:import|from)\s*["']([^"']+)["']""").findAll(body).forEach { match ->
+                        if (match.groupValues[1].startsWith(".")) visit(uri.resolve(match.groupValues[1]))
+                    }
                 }
+                scripts.forEach { visit(URI(base).resolve(it.replace("&amp;", "&"))) }
+                val source = modules.values.joinToString("\n")
                 assertEquals(path in listOf("/flows", "/components/visualization"), "data-flow-ready" in source, "$path VueFlow adapter")
                 assertEquals(path in listOf("/charts", "/components/visualization"), "data-chart-ready" in source, "$path Chart.js adapter")
                 assertEquals(path in listOf("/flows", "/components/visualization"), "vue-flow__node" in source, "$path VueFlow engine")
@@ -387,7 +401,7 @@ class CatalogApplicationTest {
     }
 
     private fun request(client: HttpClient, base: String, path: String, body: String? = null): HttpResponse<String> {
-        val builder = HttpRequest.newBuilder(URI(base + path)).timeout(Duration.ofSeconds(10))
+        val builder = HttpRequest.newBuilder(URI(base).resolve(path)).timeout(Duration.ofSeconds(10))
         if (body == null) builder.GET() else builder.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body))
         return try {
             client.send(builder.build(), HttpResponse.BodyHandlers.ofString())

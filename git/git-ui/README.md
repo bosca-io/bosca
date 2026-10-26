@@ -72,8 +72,8 @@ Public authentication routes are `/login`, `/auth/signup`, `/auth/forgot`, `/aut
 The client schema contains the fields used by the UI. Its contract test compares fields, arguments, inputs and enums with the owning domain schemas; update the subset alongside new operations. Local npm file dependencies use the workspace BML runtime and framework-free auth client. Gradle builds the production page bundles into the library jar so the UI server can serve them in JVM and native packages.
 
 The normal HTTP suite measures production assets for login, the repository list, a pull request,
-a pipeline, a source/editing page and orchestrator settings. It checks one merged page script beside
-global authentication, one copy of each BML runtime registry, editor-engine isolation, unique
+a pipeline, a source/editing page and orchestrator settings. It follows each page entry's shared modules beside
+global authentication, checks one copy of each BML runtime registry, editor-engine isolation, unique
 stylesheet/font links, anonymous same-origin resource responses and the font, icon, source-view
 and JSON-editor notices used by these pages.
 `build/reports/design-assets/git-page-assets.json` records per-page and per-asset raw/gzip sizes,

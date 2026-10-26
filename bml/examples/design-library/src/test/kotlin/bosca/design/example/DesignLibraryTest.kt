@@ -26,6 +26,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 
 class DesignLibraryTest {
     private val classpath = System.getProperty("design.fixture.classpath")
@@ -207,7 +211,13 @@ class DesignLibraryTest {
         JarFile(application).use { jar ->
             fun script(name: String): String {
                 val entry = jar.entries().asSequence().single { it.name.endsWith("/prod/$name.page.js") }
-                return jar.getInputStream(entry).reader().readText()
+                val prefix = entry.name.substringBeforeLast('/') + "/"
+                val imports = jar.getInputStream(jar.getJarEntry(prefix + "bml-imports.json")).reader().use {
+                    Json.decodeFromString(MapSerializer(String.serializer(), ListSerializer(String.serializer())), it.readText())
+                }
+                return imports.getValue("$name.page.js").joinToString("\n") { path ->
+                    jar.getInputStream(requireNotNull(jar.getJarEntry(prefix + path))).reader().use { it.readText() }
+                }
             }
             val basic = script("index")
             assertFalse("cm-editor" in basic || "source-keyword" in basic || "jse-main" in basic)

@@ -33,7 +33,7 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
       if(path==='/flows'||path==='/components/visualization')await until(`document.querySelector('[data-flow-ready]')`);
       if(path==='/charts'||path==='/components/visualization')await until(`document.querySelector('[data-chart-ready]')`);
       if(path==='/dashboards'||path==='/components/visualization')await until(`document.querySelector('[data-grid-ready]')`);
-      if(path==='/documents')await until(`document.querySelectorAll('[data-document-ready]').length===3`);
+      if(path==='/documents')await until(`document.querySelectorAll('[data-document-ready]').length===4`);
       if(path==='/selection'||path==='/choices')await until(`document.querySelector('select.enhanced')`);
       if(appearance==='light')await evaluate(`if(!document.querySelector('[data-catalog-light]').checked)document.querySelector('[data-catalog-light]').click()`);
       await evaluate(axe);

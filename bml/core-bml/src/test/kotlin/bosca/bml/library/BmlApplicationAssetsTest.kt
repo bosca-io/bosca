@@ -11,6 +11,25 @@ import kotlin.test.assertNull
 
 class BmlApplicationAssetsTest {
     @Test
+    fun `indexed validators require no resource body and each read still checks exact bytes`() {
+        var reads = 0
+        val body = "original".encodeToByteArray()
+        val digest = ContentDigest.sha256(body)
+        val manifest = Json.encodeToString(BmlClientManifest.serializer(), BmlClientManifest(files = listOf(BmlAssetFile("prod/page.js", digest))))
+        val assets = BmlApplicationAssets("app", emptyMap(), emptyMap()) { path ->
+            if (path.endsWith("client-manifest.json")) manifest.encodeToByteArray()
+            else { reads++; body.copyOf() }
+        }
+        assertEquals(digest, assets.digest("prod/page.js"))
+        assertNull(assets.digest("../prod/page.js"))
+        assertNull(assets.digest("unknown"))
+        assertEquals(0, reads)
+        assertContentEquals(body, assets.read("prod/page.js"))
+        assertEquals(1, reads)
+        body[0] = 0
+        assertFailsWith<IllegalArgumentException> { assets.read("prod/page.js") }
+    }
+    @Test
     fun `only indexed digest checked bytes can be read and every resource affects the revision`() {
         val bytes = byteArrayOf(0, 1, -1)
         fun reader(content: ByteArray): BmlApplicationAssets {

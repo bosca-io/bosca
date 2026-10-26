@@ -1,8 +1,10 @@
 import type { ClientContext, IslandUpdate } from "@bosca/bml";
-import { basicSetup } from "codemirror";
 import { Compartment, EditorState } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { EditorView, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection,
+  dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, keymap } from "@codemirror/view";
+import { HighlightStyle, syntaxHighlighting, defaultHighlightStyle, foldGutter, bracketMatching, foldKeymap } from "@codemirror/language";
+import { defaultKeymap } from "@codemirror/commands";
+import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { tags } from "@lezer/highlight";
 import { codeLanguage } from "./source-language";
 import "./source-view.css";
@@ -35,12 +37,17 @@ export function mountSourceView(ctx: ClientContext) {
   if (!content || !surface) return;
   const language = new Compartment(), wrapping = new Compartment();
   let previousLanguage = "", previousLine = 0, previousWrapped: boolean | undefined;
+  let disposed = false, languageRevision = 0;
   const view = new EditorView({
     parent: surface,
     state: EditorState.create({
       doc: content.value,
       extensions: [
-        basicSetup,
+        lineNumbers(), highlightActiveLineGutter(), highlightSpecialChars(), foldGutter(),
+        drawSelection(), dropCursor(), EditorState.allowMultipleSelections.of(true),
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }), bracketMatching(),
+        rectangularSelection(), crosshairCursor(), highlightActiveLine(), highlightSelectionMatches(),
+        keymap.of([...defaultKeymap, ...searchKeymap, ...foldKeymap]),
         syntaxHighlighting(highlight),
         language.of([]), wrapping.of([]),
         EditorState.readOnly.of(true), EditorView.editable.of(false),
@@ -53,8 +60,14 @@ export function mountSourceView(ctx: ClientContext) {
     const path = ctx.root.dataset.path ?? "", explicit = ctx.root.dataset.language ?? "";
     const nextLanguage = JSON.stringify([path, explicit]);
     if (nextLanguage !== previousLanguage) {
-      view.dispatch({ effects: language.reconfigure(codeLanguage(path, explicit)) });
       previousLanguage = nextLanguage;
+      const revision = ++languageRevision;
+      ctx.root.removeAttribute("data-source-ready");
+      void codeLanguage(path, explicit).then(extension => {
+        if (disposed || revision !== languageRevision) return;
+        view.dispatch({ effects: language.reconfigure(extension) });
+        ctx.root.setAttribute("data-source-ready", "");
+      });
     }
     const wrapped = ctx.root.hasAttribute("data-wrapped");
     if (wrapped !== previousWrapped) {
@@ -70,7 +83,6 @@ export function mountSourceView(ctx: ClientContext) {
       view.dispatch({ selection: { anchor }, effects: EditorView.scrollIntoView(anchor, { y: "center" }) });
     }
     previousLine = line;
-    ctx.root.setAttribute("data-source-ready", "");
     view.requestMeasure();
   };
   ctx.on<MouseEvent>(ctx.root, "click", event => {
@@ -84,7 +96,7 @@ export function mountSourceView(ctx: ClientContext) {
   ctx.on<CustomEvent<IslandUpdate>>(document, "bml:update", event => {
     if (event.detail.target.contains(ctx.root)) sync();
   });
-  ctx.onUnmount(() => { view.destroy(); ctx.root.removeAttribute("data-source-ready"); });
+  ctx.onUnmount(() => { disposed = true; view.destroy(); ctx.root.removeAttribute("data-source-ready"); });
   sync();
   ctx.ref("fallback")?.remove();
 }

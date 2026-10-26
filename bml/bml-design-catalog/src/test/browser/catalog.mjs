@@ -36,6 +36,7 @@ import { checkShell } from './shell-checks.mjs';
 import { checkVisualizations } from './visualizations.mjs';
 import { checkDashboards } from './dashboards.mjs';
 import { driverDiagnostics } from './driver-diagnostics.mjs';
+import { checkResources } from './resources.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -154,6 +155,8 @@ try {
       assert.ok(report.probes.paused.frames.some(frame=>frame.url==='bml-driver-busy-probe.js'));
     } else assert.equal(report.probes.renderer.result.value.ready,'complete');
     console.log(`Driver ${busy?'busy renderer':'pending promise'} evidence verified: ${path}`);
+  } else if(process.argv[4]==='--resources') {
+    await checkResources({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--deep-tree') {
     await checkDeepTrees({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--tree-accessibility') {

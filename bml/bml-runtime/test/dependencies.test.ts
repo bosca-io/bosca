@@ -17,18 +17,43 @@ const temporary = () => { const dir = mkdtempSync(join(tmpdir(), "bml-dependency
 function packages(root: string) {
   write(join(root, "node_modules/engine/package.json"), JSON.stringify({ name: "engine", version: "1.0.0", type: "module", main: "index.js" }))
   write(join(root, "node_modules/engine/index.js"), `import { token } from 'leaf';
+    import * as leafNamespace from 'leaf'; export const all = leafNamespace;
     globalThis.engineLoads = (globalThis.engineLoads ?? 0) + 1;
     export class Document { value = token() }
     export default Document;
     export const editorOnly = () => 'app-only-export';
     export const unused = () => 'UNUSED_DEPENDENCY_EXPORT';`)
   write(join(root, "node_modules/leaf/package.json"), JSON.stringify({ name: "leaf", version: "1.0.0", type: "module", main: "index.js" }))
-  write(join(root, "node_modules/leaf/index.js"), `import { label } from './cycle.js'; export const token = () => label(); export const base = 'leaf';`)
+  write(join(root, "node_modules/leaf/index.js"), `import { label } from './cycle.js'; export const token = () => label(); export const base = 'leaf'; export const namespaceOnly = 'UNUSED_NAMESPACE_MEMBER';`)
   write(join(root, "node_modules/leaf/cycle.js"), `import { base } from './index.js'; export const label = () => base;`)
 }
 async function fixture(mismatch = "") {
   const producer = temporary(), consumer = temporary()
   packages(producer); packages(consumer)
+  if (mismatch === "environment") for (const project of [producer, consumer]) {
+    const entry = join(project, "node_modules/engine/index.js")
+    write(entry, readFileSync(entry, "utf8") + `
+      export const environment = process.env.NODE_ENV;
+      if (process.env.NODE_ENV !== 'production') globalThis.developmentMarker = 'DEVELOPMENT_ONLY_MARKER';`)
+  }
+  const sample = "var pretend_exports = {};\n__export(pretend_exports, {\n  value: () => value\n});"
+  if (mismatch === "literal") for (const project of [producer, consumer]) {
+    const entry = join(project, "node_modules/engine/index.js")
+    write(entry, readFileSync(entry, "utf8") + `\nexport const codeSample = String.raw\`${sample}\`;`)
+  }
+  if (mismatch === "effects") for (const project of [producer, consumer]) {
+    const entry = join(project, "node_modules/engine/index.js")
+    write(entry, readFileSync(entry, "utf8") + `
+      var __defProp = (target, name, descriptor) => {
+        globalThis.namespaceEffects = (globalThis.namespaceEffects ?? 0) + 1;
+        Object.defineProperty(target, name, descriptor);
+      };
+      var __export = (target, all) => {
+        for (var name in all) __defProp(target, name, {get: all[name], enumerable: true});
+      };
+      var custom_exports = {};
+      __export(custom_exports, {value: () => 'custom'});`)
+  }
   const sourceRoot = join(producer, "src/bml"), clientDir = join(producer, "src/client")
   if (mismatch === "duplicate") {
     packages(join(clientDir, "nested"))
@@ -56,6 +81,8 @@ async function fixture(mismatch = "") {
   write(join(sourceRoot, "viewer.bml"), '<component tag="viewer"/>')
   write(join(inDir, "bml-origins.json"), JSON.stringify({ "Viewer.ts": "viewer.bml" }))
   write(join(inDir, "Viewer.ts"), (mismatch === "duplicate" ? `import '../client/nested/extra';` : '') +
+    (mismatch === "environment" ? `import { environment } from 'engine'; globalThis.viewerEnvironment = environment;` : '') +
+    (mismatch === "literal" ? `import { codeSample } from 'engine'; globalThis.viewerSample = codeSample;` : '') +
     `import Document from 'engine'; globalThis.viewerDocument = new Document();`)
   write(manifestPath, JSON.stringify({ library: "example:viewer", version: "1.0", components: [{ clientModule: "Viewer.js" }] }))
   await bundleLibraryAssets({ projectDir: producer, sourceRoot, clientDir, inDir, outdir, manifestPath,
@@ -66,7 +93,7 @@ async function fixture(mismatch = "") {
   cpSync(join(outdir, metadata.resourcePrefix), join(linkedDir, "libraries/viewer"), { recursive: true })
   write(join(linkedDir, "bml-client-dependencies.json"), JSON.stringify({ modules: metadata.dependencyModules.map((entry: any) => ({ ...entry, path: `./libraries/viewer/${entry.path}` })),
     entries: Object.fromEntries(Object.entries(metadata.sharedEntries).map(([path, shared]) => [`./libraries/viewer/${path}`, `./libraries/viewer/${shared}`])) }))
-  write(join(linkedDir, "Viewer.ts"), `import './libraries/viewer/${metadata.modules['Viewer.js'].path}';`)
+  write(join(linkedDir, "Viewer.ts"), `import ${JSON.stringify(`./libraries/viewer/${metadata.modules['Viewer.js'].path}`)}\n`)
   write(join(linkedDir, "Page.ts"), `import './Viewer'; import { Document, editorOnly } from 'engine';
     globalThis.result = { shared: globalThis.viewerDocument instanceof Document, value: editorOnly(), loads: globalThis.engineLoads,
       ...(globalThis.secondDocument ? { duplicateShared: globalThis.secondDocument instanceof Document } : {}) };`)
@@ -89,18 +116,82 @@ function evaluate(file: string) {
 }
 
 describe("compiled library dependency sharing", () => {
+  it.each(["production", "development"])("retains final-build environment semantics in %s", async (mode) => {
+    const { consumer, linkedDir } = await fixture("environment")
+    write(join(linkedDir, "Page.ts"), `import './Viewer'; import { Document, environment } from 'engine';
+      globalThis.result = { library: globalThis.viewerEnvironment, app: environment,
+        shared: globalThis.viewerDocument instanceof Document, development: Boolean(globalThis.developmentMarker) };`)
+    const outdir = join(consumer, mode)
+    if (mode === "production") await bundleProduction({ manifestPath: join(linkedDir, "manifest.tsv"), inDir: linkedDir, outdir })
+    else await bundleIslands({ entryPoints: [join(linkedDir, "Page.ts")], outdir, linkedDir, splitting: true })
+    const production = mode === "production"
+    expect(evaluate(join(outdir, production ? "index.page.js" : "Page.js"))).toEqual({
+      library: mode, app: mode, shared: true, development: !production,
+    })
+    if (production) {
+      const imports = JSON.parse(readFileSync(join(outdir, "bml-imports.json"), "utf8"))['index.page.js'] as string[]
+      expect(imports.map(path => readFileSync(join(outdir, path), "utf8")).join('')).not.toContain('DEVELOPMENT_ONLY_MARKER')
+    }
+  })
+
   it.each(["production", "development"])("preserves one class identity, side effects and app-only exports in %s", async (mode) => {
     const { consumer, linkedDir } = await fixture()
     const outdir = join(consumer, mode)
     if (mode === "production") {
       await bundleProduction({ manifestPath: join(linkedDir, 'manifest.tsv'), inDir: linkedDir, outdir })
       expect(readFileSync(join(outdir, 'index.page.js'), 'utf8')).not.toContain('UNUSED_DEPENDENCY_EXPORT')
+      const imports = JSON.parse(readFileSync(join(outdir, 'bml-imports.json'), 'utf8'))['index.page.js'] as string[]
+      expect(imports.map(path => readFileSync(join(outdir, path), 'utf8')).join('')).not.toContain('UNUSED_NAMESPACE_MEMBER')
       expect(evaluate(join(outdir, 'index.page.js'))).toEqual({ shared: true, value: 'app-only-export', loads: 1 })
     } else {
       await bundleIslands({ entryPoints: [join(linkedDir, 'Viewer.ts'), join(linkedDir, 'Page.ts')], outdir, linkedDir, splitting: true })
       write(join(outdir, 'check.js'), `import './Viewer.js'; import './Page.js';`)
       expect(evaluate(join(outdir, 'check.js'))).toEqual({ shared: true, value: 'app-only-export', loads: 1 })
     }
+  })
+
+  it("retains namespace exports when the application actually uses them", async () => {
+    const { consumer, linkedDir } = await fixture()
+    write(join(linkedDir, 'Page.ts'), `import './Viewer'; import { all, Document } from 'engine';
+      globalThis.result = { shared: globalThis.viewerDocument instanceof Document, namespace: all.namespaceOnly, token: all.token() };`)
+    const outdir = join(consumer, 'production')
+    await bundleProduction({ manifestPath: join(linkedDir, 'manifest.tsv'), inDir: linkedDir, outdir })
+    expect(evaluate(join(outdir, 'index.page.js'))).toEqual({ shared: true, namespace: 'UNUSED_NAMESPACE_MEMBER', token: 'leaf' })
+  })
+
+  it("keeps pages without application dependencies on the lean library graph", async () => {
+    const { consumer, linkedDir } = await fixture()
+    write(join(linkedDir, 'Simple.ts'), `Object.defineProperty(globalThis, 'result', {
+      get: () => ({ value: globalThis.viewerDocument.value, loads: globalThis.engineLoads }) });`)
+    write(join(linkedDir, 'manifest.tsv'), readFileSync(join(linkedDir, 'manifest.tsv'), 'utf8') +
+      'P\tSimple\t/simple\tSimple.js\tviewer\tViewer.js\n')
+    const outdir = join(consumer, 'production')
+    await bundleProduction({ manifestPath: join(linkedDir, 'manifest.tsv'), inDir: linkedDir, outdir })
+    const imports = JSON.parse(readFileSync(join(outdir, 'bml-imports.json'), 'utf8'))
+    const simple = imports['simple.page.js'].map((path: string) => readFileSync(join(outdir, path), 'utf8')).join('')
+    expect(simple).not.toContain('app-only-export')
+    expect(simple).not.toContain('UNUSED_NAMESPACE_MEMBER')
+    expect(evaluate(join(outdir, 'simple.page.js'))).toEqual({ value: 'leaf', loads: 1 })
+    expect(evaluate(join(outdir, 'index.page.js'))).toEqual({ shared: true, value: 'app-only-export', loads: 1 })
+  })
+
+  it("does not rewrite namespace-looking code samples inside tagged template strings", async () => {
+    const { consumer, linkedDir } = await fixture("literal")
+    write(join(linkedDir, 'Page.ts'), `import './Viewer'; import { Document } from 'engine';
+      globalThis.result = { shared: globalThis.viewerDocument instanceof Document, sample: globalThis.viewerSample };`)
+    const outdir = join(consumer, 'production')
+    await bundleProduction({ manifestPath: join(linkedDir, 'manifest.tsv'), inDir: linkedDir, outdir })
+    expect(evaluate(join(outdir, 'index.page.js'))).toEqual({ shared: true,
+      sample: "var pretend_exports = {};\n__export(pretend_exports, {\n  value: () => value\n});" })
+  })
+
+  it("retains effects in authored namespace helpers", async () => {
+    const { consumer, linkedDir } = await fixture("effects")
+    write(join(linkedDir, 'Page.ts'), `import './Viewer'; import { Document } from 'engine';
+      globalThis.result = { shared: globalThis.viewerDocument instanceof Document, effects: globalThis.namespaceEffects };`)
+    const outdir = join(consumer, 'production')
+    await bundleProduction({ manifestPath: join(linkedDir, 'manifest.tsv'), inDir: linkedDir, outdir })
+    expect(evaluate(join(outdir, 'index.page.js'))).toEqual({ shared: true, effects: 1 })
   })
 
   it.each(["version", "bytes", "transitive", "nested", "css", "dynamic", "commonjs"])("preserves separate implementations for a %s graph", async (mismatch) => {

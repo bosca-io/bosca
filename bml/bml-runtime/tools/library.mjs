@@ -1,4 +1,5 @@
-import { build } from "esbuild"
+import { build, transform } from "esbuild"
+import { parse } from "acorn"
 import { dependencyGraph, dependencyPlugin, installedPackageRoots } from "./dependencies.mjs"
 import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync, copyFileSync } from "node:fs"
@@ -24,6 +25,45 @@ function files(dir, ancestors = new Set()) {
 const readJson = (file) => JSON.parse(readFileSync(file, "utf8"))
 const write = (file, content) => { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, content) }
 const copy = (from, to) => { mkdirSync(dirname(to), { recursive: true }); copyFileSync(from, to) }
+
+// Keep generated namespace construction removable when the binary is bundled again. Its fresh
+// object and getter table have no outside effects; callers using that namespace retain the IIFE.
+function namespaceModule(code) {
+  const ast = code.includes("__export") ? parse(code, { ecmaVersion: "latest", sourceType: "module" }) : null
+  const helpers = new Set()
+  for (const statement of ast?.body ?? []) for (const declaration of statement.declarations ?? []) {
+    if (/^__export\d*$/.test(declaration.id.name) && declaration.init?.type === "ArrowFunctionExpression" &&
+      /^\(target, all\) => \{\s*for \(var name in all\)\s*__defProp\d*\(target, name, \{ get: all\[name\], enumerable: true \}\);\s*\}$/.test(code.slice(declaration.init.start, declaration.init.end)))
+      helpers.add(declaration.id.name)
+  }
+  const exports = new Set((ast?.body ?? []).flatMap(statement => statement.type === "ExportNamedDeclaration"
+    ? statement.specifiers.filter(specifier => helpers.has(specifier.local.name)).map(specifier => specifier.exported.name) : []))
+  return { code, ast, helpers, exports }
+}
+
+function pureNamespaces(module, path, modules) {
+  let { code } = module
+  const helpers = new Set(module.helpers), edits = []
+  const body = module.ast?.body ?? []
+  for (const statement of body) if (statement.type === "ImportDeclaration") {
+    const exports = modules.get(resolve(dirname(path), statement.source.value))?.exports
+    for (const binding of statement.specifiers) if (binding.type === "ImportSpecifier" && exports?.has(binding.imported.name)) helpers.add(binding.local.name)
+  }
+  for (let i = 0; i + 1 < body.length; i++) {
+    const statement = body[i], next = body[i + 1], declaration = statement.declarations?.[0]
+    const call = next.type === "ExpressionStatement" ? next.expression : null
+    if (statement.type !== "VariableDeclaration" || statement.kind !== "var" || statement.declarations.length !== 1 ||
+      declaration.id.type !== "Identifier" || declaration.init?.type !== "ObjectExpression" || declaration.init.properties.length ||
+      call?.type !== "CallExpression" || call.callee.type !== "Identifier" || !helpers.has(call.callee.name) || call.arguments.length !== 2 ||
+      call.arguments[0].type !== "Identifier" || call.arguments[0].name !== declaration.id.name || call.arguments[1].type !== "ObjectExpression" ||
+      !call.arguments[1].properties.every(property => property.type === "Property" && property.kind === "init" && !property.computed && property.value.type === "ArrowFunctionExpression")) continue
+    const name = declaration.id.name
+    edits.push({ start: statement.start, end: next.end,
+      code: `var ${name} = /* @__PURE__ */ (() => { ${code.slice(statement.start, next.end)} return ${name}; })();` })
+  }
+  for (const edit of edits.reverse()) code = code.slice(0, edit.start) + edit.code + code.slice(edit.end)
+  return code
+}
 
 /** Shared by the CSS preparation and module bundling stages; independent of a producer checkout. */
 export function libraryAssetNamespace(library, version) {
@@ -52,6 +92,9 @@ function options(library, version, publicDir, projectDir, inputs) {
   return {
     absWorkingDir: resolve(projectDir), bundle: true, write: false, metafile: true,
     platform: "browser", target: "es2020", format: "esm", splitting: false,
+    // The consuming build selects its environment; a reusable binary must retain both branches.
+    define: { "process.env.NODE_ENV": "process.env.NODE_ENV" },
+    minifySyntax: true, minifyWhitespace: true, minifyIdentifiers: true,
     sourcemap: false, logLevel: "silent", legalComments: "eof",
     external: ["@bosca/bml", "@bosca/bml/*"], loader: loaders,
     assetNames: "assets/[name]-[hash]", publicPath: publicPath(library, version),
@@ -155,6 +198,7 @@ export async function bundleLibraryAssets({ manifestPath, inDir, sourceRoot, cli
   const dependencyModules = [], sharedEntries = {}
   if (entryPoints.length > 0) {
     const buildOptions = { ...sharedOptions, entryPoints, outdir: root, splitting: true,
+      minifySyntax: false, minifyWhitespace: false, minifyIdentifiers: false,
       chunkNames: "chunks/[name]-[hash]", plugins: [...sharedOptions.plugins, originPlugin] }
     const ordinary = await build(buildOptions)
     const sharedRoot = join(root, "shared")
@@ -206,21 +250,28 @@ export async function bundleLibraryAssets({ manifestPath, inDir, sourceRoot, cli
     } else dependencyModules.splice(0)
     for (const { result } of outputs) {
       const outputMetadata = new Map(Object.entries(result.metafile.outputs).map(([path, info]) => [resolve(workingDirectory, path), info]))
+      const scripts = new Map()
+      for (const output of result.outputFiles.filter(file => file.path.endsWith(".js"))) {
+        let code = output.text
+        for (const imported of outputMetadata.get(output.path).imports.filter(it => !it.external && ["import-statement", "dynamic-import"].includes(it.kind))) {
+          const chunk = resolve(workingDirectory, imported.path)
+          const specifier = `${publicPath(library, version)}/${slash(relative(root, chunk))}`
+          const rel = slash(relative(dirname(output.path), chunk))
+          code = code.split(JSON.stringify(specifier)).join(JSON.stringify(rel.startsWith(".") ? rel : `./${rel}`))
+        }
+        scripts.set(output.path, namespaceModule(code))
+      }
       for (const output of result.outputFiles) {
         const info = outputMetadata.get(output.path)
         if (!info) throw new Error(`Missing esbuild output metadata for ${output.path}`)
         let content = output.contents
         if (output.path.endsWith(".js")) {
-          let code = output.text
-          // Asset URLs remain absolute, while ESM chunks use relative imports so a consumer can
-          // rebundle the archive on disk. These specifiers come from esbuild's output metadata.
-          for (const imported of info.imports.filter((it) => !it.external && ["import-statement", "dynamic-import"].includes(it.kind))) {
-            const chunk = resolve(workingDirectory, imported.path)
-            const specifier = `${publicPath(library, version)}/${slash(relative(root, chunk))}`
-            const rel = slash(relative(dirname(output.path), chunk))
-            code = code.split(JSON.stringify(specifier)).join(JSON.stringify(rel.startsWith(".") ? rel : `./${rel}`))
-          }
-          content = code
+          // Whitespace minification removes PURE annotations needed by the consuming bundle.
+          content = (await transform(pureNamespaces(scripts.get(output.path), output.path, scripts), { loader: "js", format: "esm", target: "es2020",
+            minifySyntax: true, minifyIdentifiers: true, minifyWhitespace: false,
+            legalComments: "eof", define: { "process.env.NODE_ENV": "process.env.NODE_ENV" } })).code
+        } else if (output.path.endsWith(".css")) {
+          content = (await transform(output.text, { loader: "css", minify: true, legalComments: "eof" })).code
         }
         write(output.path, content)
         const path = slash(relative(root, output.path))

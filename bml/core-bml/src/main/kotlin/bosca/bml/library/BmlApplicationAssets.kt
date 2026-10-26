@@ -21,7 +21,10 @@ class BmlApplicationAssets(
     }
 
     /** Includes every packaged JS, CSS, and binary resource in the deployment validator. */
-    val revision: String get() = manifestBytes?.let(ContentDigest::sha256).orEmpty()
+    val revision: String by lazy { manifestBytes?.let(ContentDigest::sha256).orEmpty() }
+
+    /** Returns the indexed content validator without loading a body; unsafe and unknown paths return null. */
+    fun digest(path: String): String? = if (isSafePath(path)) files[path]?.digest else null
 
     /** Reads an indexed relative path, or returns null for an unknown or unsafe request. */
     fun read(path: String): ByteArray? {

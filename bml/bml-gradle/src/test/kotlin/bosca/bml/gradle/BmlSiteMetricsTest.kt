@@ -8,6 +8,22 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class BmlSiteMetricsTest {
+    @Test
+    fun `production metrics include each shared module once per page and retain missing chunks`() {
+        val directory = kotlin.io.path.createTempDirectory("bml-chunk-metrics").toFile()
+        try {
+            val entry = directory.resolve("index.page.js").apply { writeText("import './chunks/engine.js'") }
+            val chunk = directory.resolve("chunks/engine.js").apply { parentFile.mkdirs(); writeText("engine".repeat(100)) }
+            directory.resolve("bml-imports.json").writeText("""{"index.page.js":["index.page.js","chunks/engine.js","chunks/engine.js","chunks/missing.js"]}""")
+            val pages = BmlSiteMetrics.parseManifest("bml-metrics\t1\nP\tHome\t/\tHome.js\t-\t-\n")
+            val report = BmlSiteMetrics.report(pages, null, null, emptyList(), directory)
+            assertEquals(entry.length() + chunk.length(), report.pages.single().rawBytes)
+            assertEquals(listOf("index.page.js", "chunks/engine.js"), report.pages.single().js.map { it.name })
+            assertEquals(listOf("chunks/missing.js"), report.missing)
+            directory.resolve("bml-imports.json").writeText("""{"index.page.js":["../outside.js"]}""")
+            assertFailsWith<IllegalArgumentException> { BmlSiteMetrics.report(pages, null, null, emptyList(), directory) }
+        } finally { directory.deleteRecursively() }
+    }
 
     private val manifest = """
         bml-metrics	1

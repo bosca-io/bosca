@@ -618,8 +618,9 @@ Without scripts, escaped source remains in a focusable, scrollable `pre` with th
 
 CodeMirror and its styles ship inside the ordinary compiled library dependency. Consuming apps
 need no CodeMirror npm installation. Its helper and CSS are reached through `source-view`, so pages
-using only ordinary controls do not load viewer JS/CSS. The current viewer includes the existing
-language set together; it does not claim loading one parser per file. The producer's private npm
+using only ordinary controls do not load viewer JS/CSS. Grammar modules load when their language is
+selected and remain cached across viewers. BML loads its HTML, Kotlin and TypeScript grammar dependencies.
+Pending grammar loads cannot update a removed viewer or override a newer language selection. The producer's private npm
 manifest and lockfile pin its dependencies, and bundled dependency notices are packaged at
 `META-INF/licenses/bml-design/source-view.txt`.
 
@@ -1037,7 +1038,8 @@ adds accepted connections and suppresses duplicates. The application owns node c
 validation, inspectors, automatic layout, persistence and pipeline execution.
 
 Fit and zoom use compact controls. The expandable node/connection list provides native selection and
-From/To controls for keyboard connections. Canvas arrow keys move selected editable nodes; Remove
+From/To controls for keyboard connections. The list honors per-node `selectable` and `connectable`
+flags, including when handling a choice that became unavailable. Canvas arrow keys move selected editable nodes; Remove
 selected performs explicit deletion, including edges attached to deleted nodes. Tab leaves the canvas.
 `readOnly` prevents editing while allowing selection and pan/zoom. `disabled` disables interaction and
 excludes the native form value; pending forms lock graph edits. Surrounding updates with the same
@@ -1045,6 +1047,8 @@ excludes the native form value; pending forms lock graph edits. Surrounding upda
 existing canvas; native reset restores the latest supplied value. Optional `viewport:{x,y,zoom}` is
 restored, and edits include the current viewport. Removing the component disposes its Vue app and
 VueFlow store. Without scripts its labelled JSON textarea remains available.
+Invalid graph structure reveals that field and blocks native form submission; supplying a valid
+replacement restores the canvas and form validation immediately.
 
 `chart` uses [Chart.js](https://www.chartjs.org/) directly. Supply a Kotlin `ChartConfiguration` with `type`,
 `ChartData`, `ChartDataset` values and optional structured Chart.js `options`. Bar, line, scatter, bubble, pie,
@@ -1057,7 +1061,7 @@ built-in scales. The component does not bundle a date adapter for time axes.
        :loading="analytics.loading" :error="analytics.error" preserveKey="daily-visits" />
 ```
 
-The component resolves CSS colors and typography into instance-local Chart.js options; explicit
+The component resolves CSS colors, including `oklch()` and `color-mix()`, and typography into instance-local Chart.js options; explicit
 dataset colors and axis/legend options take priority. Container resizing and appearance changes
 refresh the canvas without changing the application data. `--chart-height` controls the dedicated
 responsive container. Reduced-motion preferences disable animation. Chart options are Kotlin `ChartOptions` objects with typed settings; callbacks or plugins supplied as executable strings are not evaluated.

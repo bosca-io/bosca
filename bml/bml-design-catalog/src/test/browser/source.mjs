@@ -14,8 +14,22 @@ export async function checkSources({ navigate, evaluate, until: poll, key, call,
   await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await navigate('/source');
   await until(`document.querySelectorAll('[data-source-ready]').length===8&&document.querySelector('[data-source-refresh=dark]')?.dataset.bmlActionBound==='true'`);
+  const network = await evaluate(`performance.getEntriesByType('resource').filter(entry=>new URL(entry.name).pathname.startsWith('/_bml/')&&new URL(entry.name).pathname.endsWith('.js')).map(entry=>({path:new URL(entry.name).pathname,decodedBytes:entry.decodedBodySize,transferBytes:entry.transferSize}))`);
+  await writeFile(join(artifacts,`catalog-${mode}-source-network.json`),JSON.stringify({modules:network,decodedBytes:network.reduce((bytes,entry)=>bytes+entry.decodedBytes,0)},null,2));
   assert.equal(await evaluate(`document.querySelector('nav[aria-label="Design library"] a[aria-current=page]').getAttribute('href')`), '/source');
   assert.ok(await evaluate(`!window.catalogSourceExecuted&&!document.querySelector('[data-source-markup] script')&&document.querySelector('[data-source-markup] textarea').value.includes('<script>window.catalogSourceExecuted = true;</script>')`));
+  await evaluate(`(() => {
+    const root=${root('dark')};window.originalSourceLanguage=root.dataset.language;
+    for (const language of ['rust','sql','text']) {
+      root.dataset.language=language;
+      document.dispatchEvent(new CustomEvent('bml:update',{detail:{target:root,added:[],retained:[root]}}));
+    }
+  })()`);
+  await until(`${root('dark')}.hasAttribute('data-source-ready')&&!${root('dark')}.querySelector('.source-keyword')`);
+  await evaluate(`new Promise(resolve=>setTimeout(resolve,100))`);
+  assert.ok(await evaluate(`!${root('dark')}.querySelector('.source-keyword')`),'A pending grammar cannot override the newest language');
+  await evaluate(`(() => {const root=${root('dark')};root.dataset.language=window.originalSourceLanguage;document.dispatchEvent(new CustomEvent('bml:update',{detail:{target:root,added:[],retained:[root]}}));})()`);
+  await until(`${root('dark')}.hasAttribute('data-source-ready')&&${root('dark')}.querySelector('.source-keyword')`);
   assert.deepEqual(await evaluate(`['short','medium','long','compact-bare'].map(name=>document.querySelector('[data-source-'+name+']').getBoundingClientRect().height)`), [110, 180, 240, 110]);
   assert.ok(await evaluate(`document.querySelector('[data-source-compact-bare] .toolbar')===null&&document.querySelector('[data-source-markup] .toolbar')===null&&document.querySelector('[data-source-markup] .cm-lineWrapping')!==null&&document.querySelector('[data-source-empty] textarea').value===''&&document.querySelector('[data-source-empty] .cm-content').getAttribute('aria-label')==='Empty source'`));
   await evaluate(`${content('light')}.focus()`);

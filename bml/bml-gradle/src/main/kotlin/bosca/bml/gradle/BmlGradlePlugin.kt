@@ -327,7 +327,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             task.into(tsDir)
         }
         val jsDir = target.layout.buildDirectory.dir("generated/bml/js")
-        // Production bundles: one merged `<slug>.page.js` per page, built from the metrics
+        // Production entries and shared chunks are built from the metrics
         // manifest's page→module mapping. Production deployments serve THIS dir as clientDir.
         val jsProdDir = target.layout.buildDirectory.dir("generated/bml/js-prod")
         // Production-minified every-page assets from src/main/client. They become classpath

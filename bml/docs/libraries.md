@@ -112,8 +112,15 @@ can reuse the library's compiled modules. Reuse requires matching source bytes, 
 static dependency resolution and bundler version. Different versions or modified dependency graphs
 keep their own implementations. Libraries remain self-contained for consumers without those npm
 packages. Pages without matching application dependencies retain their ordinary library entries.
-Production still emits one merged client bundle per page; this adds no public helper imports or
-component props.
+Library binaries retain environment conditions until the consuming build selects development or
+production behavior. Production emits one entry per page with content-hashed shared modules, so
+common engines download once across pages. A page still loads only its reachable components;
+this adds no public helper imports or component props. `bmlMetrics` includes the entry's full static
+module closure in its first-load figures.
+
+Packaged asset responses use the indexed content digest for conditional requests before loading a
+body. Response bytes are verified and cached within the active application generation; a reload
+uses its new inventory and cache. Unknown paths remain unavailable.
 
 The Design Library's [CSS variables](../bml-design/css-tokens.md) let applications set colors,
 fonts, spacing, radii, focus and editor presentation in their own CSS, globally or on a themed

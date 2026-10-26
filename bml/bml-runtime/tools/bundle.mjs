@@ -1,7 +1,7 @@
 import { build } from "esbuild"
 import { bundleLibraryAssets } from "./library.mjs"
 import { dependencyGraph, dependencyPlugin, installedPackageRoots, linkedDependencies } from "./dependencies.mjs"
-import { readdirSync, readFileSync, existsSync, mkdirSync, rmSync, writeFileSync, cpSync } from "node:fs"
+import { readdirSync, readFileSync, existsSync, mkdirSync, rmSync, writeFileSync, cpSync, realpathSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { dirname, join, resolve, relative } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -10,16 +10,33 @@ function globalBootstrapPath() {
   return fileURLToPath(new URL("../src/identity-bootstrap.ts", import.meta.url))
 }
 
+async function applicationGraph(options) {
+  const scan = await build({ ...options, write: false, metafile: true })
+  const directory = options.absWorkingDir ?? process.cwd()
+  const inputs = (options.entryPoints ?? []).map((entry) => typeof entry === "string" ? entry : entry.in)
+  const roots = installedPackageRoots([directory, options.stdin?.resolveDir, ...inputs.map((it) => dirname(it)),
+    ...Object.keys(scan.metafile.inputs).map((input) => dirname(resolve(directory, input)))].filter(Boolean))
+  return dependencyGraph(scan.metafile, directory, roots)
+}
+
 async function buildApplication(options, linkedDir) {
   const linked = linkedDependencies(linkedDir)
   if (linked.modules.size === 0) return build(options)
-  const scan = await build({ ...options, write: false, metafile: true })
-  const directory = options.absWorkingDir ?? process.cwd()
-  const inputs = options.entryPoints ?? []
-  const roots = installedPackageRoots([directory, options.stdin?.resolveDir, ...inputs.map((it) => dirname(it)),
-    ...Object.keys(scan.metafile.inputs).map((input) => dirname(resolve(directory, input)))].filter(Boolean))
-  const graph = dependencyGraph(scan.metafile, directory, roots)
+  const graph = await applicationGraph(options)
   return build({ ...options, plugins: [...(options.plugins ?? []), dependencyPlugin(graph, linked.modules, linked.entries)] })
+}
+
+// Linker bridges contain only JSON-quoted side-effect imports. Inline those imports into the
+// virtual page so its selected library variant is independent of other pages in this build.
+function pageImports(entries, inDir, linked, shared) {
+  return entries.map((entry) => {
+    const source = readFileSync(join(inDir, `${entry}.ts`), "utf8")
+    const imports = source.trim().split(/\r?\n/).map(line => /^import ("(?:[^"\\]|\\["\\/bfnrt]|\\u[\da-fA-F]{4})*");?$/.exec(line))
+    if (imports.some(match => !match)) return `import ${JSON.stringify(`./${entry}`)}`
+    const paths = imports.map(match => resolve(inDir, JSON.parse(match[1])))
+    if (!paths.every(path => existsSync(path) && linked.entries.has(realpathSync(path)))) return `import ${JSON.stringify(`./${entry}`)}`
+    return paths.map(path => `import ${JSON.stringify(shared ? linked.entries.get(realpathSync(path)) : path)}`).join("\n")
+  }).join("\n")
 }
 
 /**
@@ -57,9 +74,9 @@ export function routeSlug(route) {
 }
 
 /**
- * Production bundling: ONE bundle per page — a synthesized entry importing the page's
- * client module plus every closure component's module, so a page downloads a single `<slug>.page.js`
- * (the runtime is inlined once per bundle). The page→module mapping comes from the compiler's
+ * Production bundling: one entry per page plus content-hashed shared ESM chunks. Each entry imports
+ * only its page's client module and closure components; common engines can be cached across pages.
+ * The page→module mapping comes from the compiler's
  * metrics manifest (`manifest.tsv`); output names use the same route-slug algorithm as
  * `BmlProductionAssets` in bml-server (uniqueness by sorted-route order with `-2`, `-3`… suffixes),
  * so server and build agree without a lookup file.
@@ -87,6 +104,8 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
   }
   const taken = new Set()
   const written = []
+  const pages = new Map()
+  const linked = linkedDependencies(inDir)
   for (const [index, [, , route, pageJs, , componentJs]] of lines.entries()) {
     const modules = []
     if (pageJs !== "-") modules.push(pageJs)
@@ -110,24 +129,56 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
       written.push(`${slug}.page.js`)
       continue
     }
-    await buildApplication({
-      stdin: {
-        contents: entries.map((m) => `import "./${m}"`).join("\n"),
-        resolveDir: resolve(inDir),
-        sourcefile: `${slug}.entry.ts`,
-        loader: "ts",
-      },
-      outfile,
+    let shared = false
+    if (linked.modules.size > 0) {
+      const graph = await applicationGraph({
+        absWorkingDir: resolve(inDir),
+        entryPoints: entries.map(entry => resolve(inDir, `${entry}.ts`)),
+        outdir: resolve(outdir), bundle: true, format: "esm", platform: "browser", target: "es2020", logLevel: "silent",
+        ...(runtime ? { alias: { "@bosca/bml": resolve(runtime) } } : {}),
+      })
+      shared = [...graph.values()].some(digest => linked.modules.has(digest))
+    }
+    pages.set(`bml-page:${slug}`, pageImports(entries, inDir, linked, shared))
+    written.push(`${slug}.page.js`)
+  }
+  if (pages.size > 0) {
+    const result = await buildApplication({
+      absWorkingDir: resolve(inDir),
+      entryPoints: [...pages.keys()].map((key) => ({ in: key, out: `${key.slice(9)}.page` })),
+      outdir: resolve(outdir),
       bundle: true,
-      splitting: false,
+      splitting: true,
+      chunkNames: "chunks/[name]-[hash]",
       format: "esm",
       platform: "browser",
       target: "es2020",
+      metafile: true,
       ...productionOptimization,
       logLevel: "silent",
+      plugins: [{ name: "bml-page-entries", setup(builder) {
+        builder.onResolve({ filter: /^bml-page:/ }, (args) => ({ path: args.path, namespace: "bml-page" }))
+        builder.onLoad({ filter: /.*/, namespace: "bml-page" }, (args) => ({
+          contents: pages.get(args.path), resolveDir: resolve(inDir), loader: "ts",
+        }))
+      } }],
       ...(runtime ? { alias: { "@bosca/bml": resolve(runtime) } } : {}),
     }, inDir)
-    written.push(`${slug}.page.js`)
+    // Metrics use the emitted graph, rather than treating a tiny entry as the whole page payload.
+    const outputs = result.metafile.outputs
+    const imports = {}
+    for (const name of written) {
+      const seen = new Set()
+      const visit = (path) => {
+        if (seen.has(path)) return
+        seen.add(path)
+        for (const child of outputs[path]?.imports ?? []) if (!child.external && child.kind === "import-statement") visit(child.path)
+      }
+      const entry = Object.keys(outputs).find((path) => resolve(inDir, path) === resolve(outdir, name))
+      if (entry) visit(entry)
+      imports[name] = entry ? [...seen].map((path) => relative(resolve(outdir), resolve(inDir, path)).replaceAll("\\", "/")) : [name]
+    }
+    writeFileSync(join(outdir, "bml-imports.json"), JSON.stringify(imports))
   }
   return written
 }

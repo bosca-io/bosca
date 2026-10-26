@@ -400,24 +400,26 @@ trend lines. The data comes from `build/generated/bml/metrics/` (a `manifest.tsv
 
 **`bosca bml audit <base-url> [-r /route]... [--json out.json]`** — measures a *running*
 site over HTTP: fetches each route's HTML, discovers the assets it declares (stylesheets,
-scripts, preloads, images), and records real transfer bytes (compressed, as served),
+scripts, preloads, images), follows static JavaScript imports and re-exports, and records real transfer bytes (compressed, as served),
 decoded bytes, and per-request timing. It is deliberately framework-agnostic — point it at
 a BML deployment and at the same pages on any other stack for a 1:1 comparison. Assets
 referenced from *inside* CSS (fonts, background images) are counted but not fetched, since
-browsers download only the subsets they need.
+browsers download only the subsets they need. Dynamic imports, such as the selected source grammar,
+need browser execution and are outside this static audit and `bmlMetrics` figures.
 
 ### The production asset shape
 
-In production (`BmlServer(dev = false)`), a page downloads at most **one page stylesheet and one
-page bundle** on top of **one global stylesheet and one global script**:
+In production (`BmlServer(dev = false)`), a page links **one page stylesheet and one JavaScript
+entry** on top of **one global stylesheet and one global script**:
 
 - `/_bml/app.css` — the site's global CSS **plus** the scoped styles of components rendered by
   every page (the normalized shared set).
 - `/_bml/css/<slug>.page.css` — the page's remaining component styles, merged in chunk-link order.
-- `/_bml/js/<slug>.page.js` — the page's client code and its closure components', bundled as one
-  file by `bundle.mjs --manifest … --prod-out …` (run automatically by `bmlBundleClient` into
-  `build/generated/bml/js-prod`). **Production deployments must pass that directory as
-  `BmlServer(clientDir = …)`** — the per-module dev files are no longer injected.
+- `/_bml/js/<slug>.page.js` — the entry for the page's client code and its reachable components.
+  Shared engines and runtime code use relative imports of content-hashed files under
+  `/_bml/js/chunks/`, allowing the browser to reuse them across pages. `bmlBundleClient` writes
+  this module graph into `build/generated/bml/js-prod` and packages it with the application.
+  An explicit `BmlServer(clientDir = …)` can serve that directory instead; include its chunks.
 
 Production HTML appends one deterministic deployment digest (for example `?_ts=9c48…`) to every
 generated CSS and JS URL. The digest covers the build ID, the project version, generated page and
@@ -441,4 +443,4 @@ minified into `build/generated/bml/client-assets`; CSS uses esbuild's CSS parser
 text-level whitespace removal.
 
 Dev mode keeps the per-component chunks and per-module JS so an edit invalidates one small file.
-`bmlMetrics` prices the production shape whenever the prod bundles exist.
+`bmlMetrics` prices each entry and its full static import closure whenever production bundles exist.

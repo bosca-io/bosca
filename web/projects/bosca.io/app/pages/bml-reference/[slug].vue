@@ -104,7 +104,7 @@ const docs = {
   },
   'design-library': {
     title: 'Bosca Design Library',
-    description: 'Use the 41 shared BML components with short tags, native semantics, application state, and consumer CSS.',
+    description: 'Use shared BML components with short tags, native semantics, application state, and consumer CSS.',
     source: designLibrary
   },
   'design-tokens': {

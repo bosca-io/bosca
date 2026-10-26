@@ -12,8 +12,31 @@ export function mountChart(ctx: ClientContext) {
   const canvas = ctx.ref<HTMLCanvasElement>("canvas"), state = ctx.ref<HTMLElement>("state");
   if (!canvas || !state) return;
   let chart: Chart | undefined, previous = "", palette = "", disposed = false, queued = false;
+  let colorContext: CanvasRenderingContext2D | null | undefined;
   const motion = matchMedia("(prefers-reduced-motion: reduce)");
   const appearance = matchMedia("(prefers-color-scheme: dark)");
+  // Chart.js' color helper accepts fewer CSS formats than the browser's canvas.
+  const resolveColor = (value: string) => {
+    if (chartColor(value).valid) return value;
+    if (!CSS.supports("color", value)) throw new Error(`Invalid chart color: ${value}`);
+    const probe = document.createElement("span");
+    probe.hidden = true;
+    probe.style.color = value;
+    ctx.root.append(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
+    if (colorContext === undefined) {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      colorContext = canvas.getContext("2d", { willReadFrequently: true });
+    }
+    if (!colorContext) throw new Error("Chart colors require a canvas context.");
+    colorContext.clearRect(0, 0, 1, 1);
+    colorContext.fillStyle = resolved;
+    colorContext.fillRect(0, 0, 1, 1);
+    const [red, green, blue, alpha] = colorContext.getImageData(0, 0, 1, 1).data;
+    return `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
+  };
   const display = (value: unknown): string => value === null ? "No value" : record(value)
     ? Object.entries(value).map(([key, item]) => `${key}: ${display(item)}`).join(", ")
     : Array.isArray(value) ? value.map(display).join(", ") : String(value);
@@ -44,18 +67,18 @@ export function mountChart(ctx: ClientContext) {
   };
   const sync = () => {
     if (disposed) return;
-    const css = getComputedStyle(ctx.root), color = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
-    const fg = color("--chart-fg", css.color), grid = color("--chart-grid", color("--line", "#68758e"));
-    const font = color("--font-sans", css.fontFamily);
-    const colors = ["--accent", "--ok", "--warn", "--info", "--err", "--fg-2"].map((fallback, i) => color(`--chart-series-${i + 1}`, color(fallback, fg)));
-    const nextPalette = JSON.stringify([fg, grid, font, colors, motion.matches]);
     const raw = ctx.root.dataset.config ?? "{}";
     const busy = ctx.root.hasAttribute("data-loading"), error = ctx.root.dataset.error ?? "";
     ctx.root.setAttribute("aria-busy", String(busy));
     ctx.root.querySelectorAll<HTMLButtonElement>("button[data-chart-dataset]").forEach(button => { button.disabled = busy || Boolean(error); });
     if (busy || error) { canvas.hidden = true; state.hidden = false; state.textContent = error || "Loading chart…"; return; }
-    if (raw === previous && nextPalette === palette && chart) { canvas.hidden = false; state.hidden = true; chart.resize(); return; }
     try {
+      const css = getComputedStyle(ctx.root), color = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
+      const fg = color("--chart-fg", css.color), grid = color("--chart-grid", color("--line", "#68758e"));
+      const font = color("--font-sans", css.fontFamily);
+      const colors = ["--accent", "--ok", "--warn", "--info", "--err", "--fg-2"].map((fallback, i) => resolveColor(color(`--chart-series-${i + 1}`, color(fallback, fg))));
+      const nextPalette = JSON.stringify([fg, grid, font, colors, motion.matches]);
+      if (raw === previous && nextPalette === palette && chart) { canvas.hidden = false; state.hidden = true; chart.resize(); return; }
       const config: unknown = JSON.parse(raw);
       if (!record(config) || !types.has(String(config.type)) || !record(config.data) || !Array.isArray(config.data.datasets))
         throw new Error("Supply a supported Chart.js type and data.datasets array.");
@@ -65,7 +88,7 @@ export function mountChart(ctx: ClientContext) {
         if (!record(dataset) || !Array.isArray(dataset.data)) throw new Error("Each dataset must contain a data array.");
         if (dataset.type !== undefined && !types.has(String(dataset.type))) throw new Error("Unsupported dataset chart type.");
       }
-      if (raw !== previous) updateTable(config.data as { datasets: Record<string, unknown>[] });
+      if (raw !== previous || !chart) updateTable(config.data as { datasets: Record<string, unknown>[] });
       if (!config.data.datasets.some(dataset => dataset.data.length)) {
         chart?.destroy(); chart = undefined; canvas.hidden = true; state.hidden = false; state.textContent = "No chart data.";
         previous = raw; palette = nextPalette;

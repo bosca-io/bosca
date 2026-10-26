@@ -49,10 +49,12 @@ export function mountFlowEditor(ctx: ClientContext) {
     field.setCustomValidity(invalid); ctx.root.setAttribute("aria-invalid", String(Boolean(feedback.textContent)));
   };
   const select = (kind: "node" | "edge", id: string) => {
+    const element = kind === "node" ? store.findNode(id) : store.findEdge(id);
+    if (!element || disabled.value || element.selectable === false) return;
     store.getSelectedNodes.value.forEach(node => { node.selected = false; });
     store.getSelectedEdges.value.forEach(edge => { edge.selected = false; });
-    const element = kind === "node" ? store.findNode(id) : store.findEdge(id);
-    if (element && !disabled.value) { element.selected = true; emit("flowselect", { kind, id, data: element.data }); }
+    element.selected = true;
+    emit("flowselect", { kind, id, data: element.data });
     updateOutline();
   };
   const updateOutline = () => {
@@ -66,7 +68,7 @@ export function mountFlowEditor(ctx: ClientContext) {
         const li = (existing.get(entry.id) ?? document.createElement("li")) as HTMLElement; li.dataset.id = entry.id; existing.delete(entry.id);
         let button = li.querySelector("button");
         if (!button) { button = document.createElement("button"); button.type = "button"; button.dataset.flowKind = kind === "nodes" ? "node" : "edge"; li.append(button); }
-        button.dataset.flowId = entry.id; button.disabled = disabled.value;
+        button.dataset.flowId = entry.id; button.disabled = disabled.value || entry.selectable === false;
         button.setAttribute("aria-pressed", String(entry.selected));
         button.textContent = kind === "nodes" ? String(entry.data?.label ?? entry.label ?? entry.id)
           : `${(entry as Edge).source}${(entry as Edge).sourceHandle ? ` · ${(entry as Edge).sourceHandle}` : ""} → ${(entry as Edge).target}${(entry as Edge).targetHandle ? ` · ${(entry as Edge).targetHandle}` : ""}`;
@@ -77,7 +79,7 @@ export function mountFlowEditor(ctx: ClientContext) {
     for (const [select, kind] of [[sources, "source"], [targets, "target"]] as const) {
       const old = select.value; const options: HTMLOptionElement[] = [];
       for (const node of store.getNodes.value) {
-        if (node.type === (kind === "source" ? "output" : "input") || node.type === "group") continue;
+        if (node.connectable === false || node.type === (kind === "source" ? "output" : "input") || node.type === "group") continue;
         const list = ports(node.data?.[kind === "source" ? "outputs" : "inputs"]) ?? [{ id: "" }];
         for (const port of list) options.push(new Option(`${String(node.data?.label ?? node.label ?? node.id)}${port.id ? ` · ${port.label ?? port.id}` : ""}`, JSON.stringify({ node: node.id, handle: port.id || null })));
       }
@@ -108,6 +110,8 @@ export function mountFlowEditor(ctx: ClientContext) {
   const schedule = () => { if (!queued) { queued = true; void nextTick(() => { queued = false; publish(); }); } };
   const connect = (connection: Connection) => {
     if (locked.value || invalid || !connection.source || !connection.target) return;
+    const source = store.findNode(connection.source), target = store.findNode(connection.target);
+    if (!source || !target || source.connectable === false || target.connectable === false) return;
     if (!emit("flowconnect", { connection }, true)) return;
     const duplicate = store.getEdges.value.some(edge => edge.source === connection.source && edge.target === connection.target
       && (edge.sourceHandle || null) === (connection.sourceHandle || null) && (edge.targetHandle || null) === (connection.targetHandle || null));
@@ -122,8 +126,8 @@ export function mountFlowEditor(ctx: ClientContext) {
     });
     store.onMoveEnd(schedule);
     store.onConnect(connect);
-    store.onNodeClick(({ node }) => { emit("flowselect", { kind: "node", id: node.id, data: node.data }); void nextTick(updateOutline); });
-    store.onEdgeClick(({ edge }) => { emit("flowselect", { kind: "edge", id: edge.id, data: edge.data }); void nextTick(updateOutline); });
+    store.onNodeClick(({ node }) => { if (!disabled.value && node.selectable !== false) emit("flowselect", { kind: "node", id: node.id, data: node.data }); void nextTick(updateOutline); });
+    store.onEdgeClick(({ edge }) => { if (!disabled.value && edge.selectable !== false) emit("flowselect", { kind: "edge", id: edge.id, data: edge.data }); void nextTick(updateOutline); });
     store.onNodesChange(changes => { if (changes.some(change => change.type === "position" || change.type === "remove" || change.type === "add")) schedule(); void nextTick(updateOutline); });
     store.onEdgesChange(changes => { if (changes.some(change => change.type !== "select")) schedule(); void nextTick(updateOutline); });
     return () => h(VueFlow as Component, { id: instanceId, nodeTypes: { card: markRaw(Card) }, minZoom: 0.2, maxZoom: 2,
@@ -177,10 +181,11 @@ export function mountFlowEditor(ctx: ClientContext) {
     if (field.form !== form) { observer.disconnect(); form = field.form; if (form) observer.observe(form, { attributes: true, attributeFilter: ["data-bml-action-pending"] }); }
     pending = Boolean(form?.hasAttribute("data-bml-action-pending"));
     disabled.value = ctx.root.hasAttribute("data-disabled");
-    locked.value = disabled.value || pending || ctx.root.hasAttribute("data-readonly") || Boolean(invalid);
-    field.name = ctx.root.dataset.name ?? "graph"; field.disabled = disabled.value; field.readOnly = locked.value;
     const value = ctx.root.dataset.value ?? "{\"nodes\":[],\"edges\":[]}";
-    if (value !== previous) { previous = value; load(value, false); locked.value = disabled.value || pending || ctx.root.hasAttribute("data-readonly") || Boolean(invalid); }
+    if (value !== previous) { previous = value; load(value, false); }
+    locked.value = disabled.value || pending || ctx.root.hasAttribute("data-readonly") || Boolean(invalid);
+    field.name = ctx.root.dataset.name ?? "graph"; field.disabled = disabled.value;
+    field.readOnly = disabled.value || pending || ctx.root.hasAttribute("data-readonly");
     for (const node of store.getNodes.value) {
       const original = base.nodes.find(item => item.id === node.id);
       node.draggable = !locked.value && original?.draggable !== false;

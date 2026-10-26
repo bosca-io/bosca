@@ -66,6 +66,73 @@ export async function checkVisualizations({ navigate, evaluate, until: poll, cal
     await key('Enter'); await evaluate(`${action('remove')}.click()`);
     await until(`JSON.parse(${field}.value).nodes.length===2&&JSON.parse(${field}.value).edges.length===0`);
     await evaluate(`${form}.reset()`); await until(`${field}.value===${JSON.stringify(savedGraph)}`);
+    await evaluate(`(() => {
+      const root=${root}, form=${form};
+      window.flowServerValue=root.dataset.value;
+      window.patchFlowValue=value=>{
+        root.dataset.value=value;
+        form.dispatchEvent(new CustomEvent('bml:update',{bubbles:true,detail:{target:form,added:[],retained:[root]}}));
+      };
+      const graph=JSON.parse(window.flowServerValue);
+      graph.edges=[];
+      Object.assign(graph.nodes.find(node=>node.id==='source'),{connectable:false,selectable:false});
+      window.patchFlowValue(JSON.stringify(graph));
+    })()`);
+    await until(`${root}.querySelector('[data-flow-id=source]').disabled`);
+    assert.ok(await evaluate(`[...${action('source')}.options].every(option=>JSON.parse(option.value).node!=='source')`),
+      'Non-connectable source nodes are omitted from keyboard connection choices');
+    await evaluate(`(() => {
+      const root=${root};window.flowSelections=0;
+      root.addEventListener('flowselect',()=>window.flowSelections++);
+      root.querySelector('[data-flow-kind=node][data-flow-id=process]').click();
+      const blocked=root.querySelector('[data-flow-kind=node][data-flow-id=source]');
+      blocked.disabled=false;blocked.click();blocked.disabled=true;
+      const source=${action('source')};
+      source.add(new Option('Stale source',JSON.stringify({node:'source',handle:'items'})));
+      source.value=JSON.stringify({node:'source',handle:'items'});
+      ${action('target')}.value=JSON.stringify({node:'output',handle:'result'});
+      ${action('connect')}.click();
+    })()`);
+    await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+    assert.ok(await evaluate(`window.flowSelections===1&&${root}.querySelector('[data-flow-id=source]').getAttribute('aria-pressed')==='false'&&${root}.querySelector('[data-flow-id=process]').getAttribute('aria-pressed')==='true'`),
+      'A non-selectable outline node cannot replace the current selection, even through a stale control');
+    assert.equal(await evaluate(`JSON.parse(${field}.value).edges.length`),0,'Connection handlers reject a stale blocked-source choice');
+    await evaluate(`(() => {
+      const graph=JSON.parse(window.flowServerValue);graph.edges=[];
+      graph.nodes.find(node=>node.id==='process').connectable=false;
+      window.patchFlowValue(JSON.stringify(graph));
+    })()`);
+    assert.ok(await evaluate(`[...${action('target')}.options].every(option=>JSON.parse(option.value).node!=='process')`),
+      'Non-connectable target nodes are omitted from keyboard connection choices');
+    await evaluate(`(() => {
+      const target=${action('target')};
+      target.add(new Option('Stale target',JSON.stringify({node:'process',handle:'items'})));
+      target.value=JSON.stringify({node:'process',handle:'items'});
+      ${action('source')}.value=JSON.stringify({node:'source',handle:'items'});
+      ${action('connect')}.click();
+    })()`);
+    await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+    assert.equal(await evaluate(`JSON.parse(${field}.value).edges.length`),0,'Connection handlers reject a stale blocked-target choice');
+    for (const invalid of [
+      {nodes:[{id:'duplicate',position:{x:0,y:0}},{id:'duplicate',position:{x:100,y:0}}],edges:[]},
+      {nodes:[],edges:[{id:'missing',source:'missing',target:'missing'}]},
+    ]) {
+      await evaluate(`window.patchFlowValue(${JSON.stringify(JSON.stringify(invalid))})`);
+      // A second patch also covers an editor mounted with an already-invalid value.
+      await evaluate(`window.patchFlowValue(${JSON.stringify(JSON.stringify(invalid))})`);
+      assert.ok(await evaluate(`!${field}.readOnly&&${field}.willValidate&&${field}.validity.customError&&!${field}.hidden&&!${form}.checkValidity()`),
+        'Invalid graph JSON remains subject to native validation after repeated patches');
+      assert.ok(await evaluate(`document.activeElement===${field}`),'Invalid graph feedback focuses its visible native field');
+      assert.equal(await evaluate(`(() => {
+        const form=${form};let submitted=0;
+        const prevent=event=>{submitted++;event.preventDefault();event.stopImmediatePropagation();};
+        form.addEventListener('submit',prevent,true);form.requestSubmit();form.removeEventListener('submit',prevent,true);
+        return submitted;
+      })()`),0,'Invalid graphs cannot reach the consuming form action');
+      await evaluate('window.patchFlowValue(window.flowServerValue)');
+      await until(`${root}.querySelectorAll('.vue-flow__node').length===3&&${field}.hidden`);
+      assert.ok(await evaluate(`!${field}.readOnly&&${form}.checkValidity()`),'A valid replacement immediately restores the editable form');
+    }
     await evaluate(`${state('replace')}.click()`); await until(`${root}.querySelectorAll('.vue-flow__node').length===1&&${field}.value.includes('replacement')`);
     assert.ok(await evaluate(`${root}===window.flowRoot`), 'Controlled graph replacement retains the canvas');
     for (let cycle=0;cycle<2;cycle++) {
@@ -93,6 +160,21 @@ export async function checkVisualizations({ navigate, evaluate, until: poll, cal
       await evaluate(`${chartExample}.querySelector('select[name=chartType]').value=${JSON.stringify(type)};${chartExample}.querySelector('form').requestSubmit()`);
       await until(`JSON.parse(${chart}.dataset.config).type===${JSON.stringify(type)}&&!${chart}.querySelector('canvas').hidden`);
       assert.ok(await evaluate(`${chart}.querySelector('canvas').width>0&&${chart}.querySelector('canvas')===window.chartCanvas`));
+      if (['line','radar'].includes(type)) {
+        for (const color of ['oklch(65% 0.25 330)','color-mix(in srgb, #ff00ff 75%, #0000ff)']) {
+          await evaluate(`${chart}.style.setProperty('--chart-series-1',${JSON.stringify(color)});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+          assert.ok(await evaluate(`!${chart}.querySelector('canvas').hidden&&${chart}.querySelector('[data-bml-ref=state]').hidden`),
+            `${type} renders a CSS ${color} palette without a color-conversion error`);
+          assert.ok(await evaluate(`(() => {const c=${chart}.querySelector('canvas'),p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let matches=0;for(let i=0;i<p.length;i+=4)if(p[i]>80&&p[i+1]<80&&p[i+2]>100&&p[i+3]===255)matches++;return matches>20;})()`),
+            'Modern CSS colors reach the rendered chart, including after a palette change');
+        }
+        await evaluate(`${chart}.style.setProperty('--chart-series-1','invalid-chart-color');new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+        assert.ok(await evaluate(`${chart}.querySelector('canvas').hidden&&${chart}.querySelector('[data-bml-ref=state]').textContent.includes('Invalid chart color')`),
+          'An invalid CSS palette produces component feedback');
+        await evaluate(`${chart}.style.removeProperty('--chart-series-1');new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+        assert.ok(await evaluate(`!${chart}.querySelector('canvas').hidden&&${chart}.querySelectorAll('tbody tr').length===3`),
+          'Repairing a CSS palette restores both the chart and its accessible data table');
+      }
     }
     await evaluate(`${chart}.style.setProperty('--chart-series-1','#ff00ff')`);
     await until(`(() => {const c=${chart}.querySelector('canvas'),pixels=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let matches=0;for(let i=0;i<pixels.length;i+=4)if(pixels[i]===255&&pixels[i+1]===0&&pixels[i+2]===255&&pixels[i+3]===255)matches++;return matches>50;})()`);

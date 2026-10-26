@@ -4,37 +4,26 @@ import { EditorState, Compartment, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { javascript } from "@codemirror/lang-javascript";
-import { python } from "@codemirror/lang-python";
-import { java } from "@codemirror/lang-java";
-import { rust } from "@codemirror/lang-rust";
-import { go } from "@codemirror/lang-go";
-import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
-import { html } from "@codemirror/lang-html";
-import { css } from "@codemirror/lang-css";
-import { yaml } from "@codemirror/lang-yaml";
-import { sql } from "@codemirror/lang-sql";
 import { StreamLanguage } from "@codemirror/language";
-import { kotlin } from "@codemirror/legacy-modes/mode/clike";
 
-export function codeLanguage(path: string) {
+/** Load the selected grammar without adding every language to a file editor's initial payload. */
+export async function codeLanguage(path: string) {
   const ext = path.split(".").at(-1)?.toLowerCase();
   if (ext === "ts" || ext === "tsx")
-    return javascript({ typescript: true, jsx: ext === "tsx" });
+    return (await import("@codemirror/lang-javascript")).javascript({ typescript: true, jsx: ext === "tsx" });
   if (ext === "js" || ext === "jsx" || ext === "mjs")
-    return javascript({ jsx: ext === "jsx" });
-  if (ext === "kt" || ext === "kts") return StreamLanguage.define(kotlin);
-  if (ext === "py") return python();
-  if (ext === "java") return java();
-  if (ext === "rs") return rust();
-  if (ext === "go") return go();
-  if (ext === "json") return json();
-  if (ext === "md" || ext === "markdown") return markdown();
-  if (ext === "html" || ext === "bml" || ext === "vue") return html();
-  if (ext === "css" || ext === "scss") return css();
-  if (ext === "yaml" || ext === "yml") return yaml();
-  if (ext === "sql") return sql();
+    return (await import("@codemirror/lang-javascript")).javascript({ jsx: ext === "jsx" });
+  if (ext === "kt" || ext === "kts") return StreamLanguage.define((await import("@codemirror/legacy-modes/mode/clike")).kotlin);
+  if (ext === "py") return (await import("@codemirror/lang-python")).python();
+  if (ext === "java") return (await import("@codemirror/lang-java")).java();
+  if (ext === "rs") return (await import("@codemirror/lang-rust")).rust();
+  if (ext === "go") return (await import("@codemirror/lang-go")).go();
+  if (ext === "json") return (await import("@codemirror/lang-json")).json();
+  if (ext === "md" || ext === "markdown") return (await import("@codemirror/lang-markdown")).markdown();
+  if (ext === "html" || ext === "bml" || ext === "vue") return (await import("@codemirror/lang-html")).html();
+  if (ext === "css" || ext === "scss") return (await import("@codemirror/lang-css")).css();
+  if (ext === "yaml" || ext === "yml") return (await import("@codemirror/lang-yaml")).yaml();
+  if (ext === "sql") return (await import("@codemirror/lang-sql")).sql();
   return [];
 }
 
@@ -60,6 +49,7 @@ export function mountCodeEditor(
   const palette = () => document.body.dataset.theme === "light" ? [] : oneDark;
   let dirty = false;
   let escape = false;
+  let disposed = false, languageRevision = 0;
   const view = new EditorView({
     parent: surface,
     state: EditorState.create({
@@ -67,7 +57,7 @@ export function mountCodeEditor(
       extensions: [
         basicSetup,
         appearance.of(palette()),
-        language.of(codeLanguage(container.dataset.path ?? "")),
+        language.of([]),
         EditorView.contentAttributes.of({
           tabindex: "0",
           "aria-readonly": "false",
@@ -127,6 +117,13 @@ export function mountCodeEditor(
       ],
     }),
   });
+  const configureLanguage = (path: string) => {
+    const revision = ++languageRevision;
+    void codeLanguage(path).then(extension => {
+      if (!disposed && revision === languageRevision) view.dispatch({ effects: language.reconfigure(extension) });
+    });
+  };
+  configureLanguage(container.dataset.path ?? "");
   const appearanceObserver = new MutationObserver(() => {
     view.dispatch({ effects: appearance.reconfigure(palette()) });
   });
@@ -186,9 +183,7 @@ export function mountCodeEditor(
     const path = ctx.ref<HTMLInputElement>("path");
     if (path && event.target === path) {
       dirty = true;
-      view.dispatch({
-        effects: language.reconfigure(codeLanguage(path.value)),
-      });
+      configureLanguage(path.value);
     }
   });
   const editorLabel = `Code editor for ${container.dataset.path || "new file"}`;
@@ -241,6 +236,7 @@ export function mountCodeEditor(
     }
   });
   ctx.onUnmount(() => {
+    disposed = true;
     previewRevision++;
     view.destroy();
   });
