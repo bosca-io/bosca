@@ -36,7 +36,7 @@ export async function checkDashboards({ navigate, evaluate, until: poll, call, k
       await until(`${item('visits')}.w===9`);
       assert.equal(await evaluate(`${item('notes')}.y`), 8, 'Displaced notes must clear the locked summary');
       assert.equal(await evaluate(`${item('summary')}.y`), 6);
-      assert.equal(await evaluate(`${item('visits')}.custom`), 'retained');
+      assert.equal(await evaluate(`${item('visits')}.h`), 6);
       assert.ok(await evaluate(`document.activeElement===${handle('visits','resize')}`));
       assert.ok(await evaluate(`window.widget===${widget('notes')}&&window.widgetCanvas===${root}.querySelector('canvas')&&window.note.value==='Unsent note'`));
       await evaluate(`${form}.reset()`); await until(`${layout}===${JSON.stringify(original)}`);
@@ -91,7 +91,7 @@ export async function checkDashboards({ navigate, evaluate, until: poll, call, k
     await evaluate(`${form}.reset()`); await until(`${layout}===${JSON.stringify(original)}`);
     await evaluate(`${state('reject')}.click()`); await until(`!${state('reject')}.hasAttribute('checked')`);
     await evaluate(`${form}.requestSubmit()`); await until(`document.querySelector('[data-dashboard-toast=${id}] [role=status]')?.textContent==='Layout saved.'`);
-    await evaluate(`${state('replace')}.click()`); await until(`${item('visits')}.custom==='replacement'`);
+    await evaluate(`${state('replace')}.click()`); await until(`${item('visits')}.w===6&&${item('visits')}.h===7`);
     assert.ok(await evaluate(`${root}===window.gridRoot&&${root}.querySelector('canvas')===window.widgetCanvas`));
     // Malformed or mismatched controlled input cannot submit an older layout.
     await evaluate(`window.gridValue=${root}.dataset.value;${root}.dataset.value='[{"id":"missing","x":0,"y":0,"w":1,"h":1}]';document.dispatchEvent(new CustomEvent('bml:update',{detail:{target:${root},added:[],retained:[]}}))`);

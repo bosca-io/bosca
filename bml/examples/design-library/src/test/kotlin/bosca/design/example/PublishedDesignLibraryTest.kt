@@ -28,7 +28,12 @@ class PublishedDesignLibraryTest {
             val repository = File(work, "repository")
             val artifacts = System.getProperty("design.fixture.artifacts").lineSequence().mapIndexed { index, line ->
                 val artifact = line.split('\t')
-                if (artifact[0] == "io.bosca") artifact else listOf("fixture.runtime", "artifact-$index", "1", "", artifact[4])
+                if (artifact[0] == "io.bosca") {
+                    // KMP workspace IDs use the base module; JVM POMs use the target artifact name.
+                    val suffix = "-${artifact[2]}${if (artifact[3].isEmpty()) "" else "-${artifact[3]}"}.jar"
+                    val publicationName = File(artifact[4]).name.removeSuffix(suffix)
+                    listOf(artifact[0], publicationName, artifact[2], artifact[3], artifact[4])
+                } else listOf("fixture.runtime", "artifact-$index", "1", "", artifact[4])
             }.toList()
             for ((group, name, version, classifier, path) in artifacts) {
                 val directory = File(repository, "${group.replace('.', '/')}/$name/$version").apply { mkdirs() }

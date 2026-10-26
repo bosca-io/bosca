@@ -1,46 +1,17 @@
 <component tag="git-search-link">
-  <a class="nav-search" href="/search" title="Search (⌘K)">
-    <span class="nav-search-icon"><icon name="search" :size="14" /></span>
-    <span class="nav-search-placeholder">Search…</span>
-    <kbd class="nav-search-kbd">⌘K</kbd>
+  <prop name="active" type="Boolean" default="false" />
+  <a href="/search" title="Search (⌘K)" :aria-current='if (active) "page" else "false"'>
+    <span class="search-icon"><icon name="search" :size="15" /></span>
+    Search
   </a>
   <style scoped>
-    .nav-search {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin: 14px 12px;
-      padding: 7px 10px;
-      border-radius: 9px;
-      border: 1px solid color-mix(in oklch, var(--line) 60%, transparent);
-      background: color-mix(in oklch, var(--bg-2) 55%, transparent);
-      color: var(--fg-3);
-      font-size: 12.5px;
-      text-decoration: none;
-      transition: background 0.15s, border-color 0.15s;
-    }
-    .nav-search:hover {
-      background: color-mix(in oklch, var(--bg-3) 70%, transparent);
-      border-color: color-mix(in oklch, var(--line) 90%, transparent);
-      text-decoration: none;
-    }
-    .nav-search-icon {
+    .search-icon {
       display: inline-flex;
+      flex: none;
+      color: var(--fg-3);
     }
-    .nav-search-placeholder {
-      flex: 1;
-    }
-    .nav-search-kbd {
-      padding: 1px 5px;
-      border-radius: 4px;
-      border: 1px solid color-mix(in oklch, var(--line) 60%, transparent);
-      font-family: var(--font-mono);
-      font-size: 10px;
-    }
-    @media (max-width: 700px) {
-      .nav-search {
-        display: none;
-      }
+    a[aria-current="page"] .search-icon {
+      color: var(--accent);
     }
   </style>
   <script client scoped>

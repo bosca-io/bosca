@@ -30,7 +30,7 @@ export async function checkVisualizations({ navigate, evaluate, until: poll, cal
     await until(`JSON.parse(${field}.value).nodes.find(node=>node.id==='source').position.x!==${before.nodes[0].position.x}`);
     // Wait for the native release gesture to finish before the next control action.
     await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
-    assert.equal(await evaluate(`JSON.parse(${field}.value).nodes[0].data.customValue`), 'retained');
+    assert.equal(await evaluate(`JSON.parse(${field}.value).nodes[0].data.payload.customValue`), 'retained');
     const oldZoom = await evaluate(`JSON.parse(${field}.value).viewport.zoom`);
     await evaluate(`${action('zoomIn')}.click()`);
     await until(`JSON.parse(${field}.value).viewport?.zoom!==${oldZoom}`);
@@ -61,6 +61,7 @@ export async function checkVisualizations({ navigate, evaluate, until: poll, cal
     await evaluate(`${state('reject')}.click()`); await until(`!${state('reject')}.hasAttribute('checked')`);
     await evaluate(`${form}.requestSubmit()`); await until(`document.querySelector('[data-flow-toast=${id}] [role=status]')?.textContent==='Graph saved.'`);
     const savedGraph = await evaluate(`${field}.value`);
+    assert.equal(JSON.parse(savedGraph).nodes[0].data.payload.customValue, 'retained');
     await evaluate(`${root}.querySelector('details').open=true;${root}.querySelector('[data-flow-kind=node][data-flow-id=source]').focus()`);
     await key('Enter'); await evaluate(`${action('remove')}.click()`);
     await until(`JSON.parse(${field}.value).nodes.length===2&&JSON.parse(${field}.value).edges.length===0`);

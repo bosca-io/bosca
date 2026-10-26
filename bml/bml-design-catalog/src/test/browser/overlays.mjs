@@ -139,6 +139,18 @@ export async function checkOverlays({ navigate, evaluate, until: poll, call, art
   const menu=`document.querySelector('[data-catalog-menu=dark]')`;
   await evaluate(`${trigger(menu)}.focus()`); await key('ArrowUp');
   await until(`${content(menu)}.matches(':popover-open')`);
+  const menuPresentation=await evaluate(`(() => {
+    const root=${menu};return {gap:getComputedStyle(root.querySelector('[role=menu]')).gap,
+      icons:[...root.querySelectorAll('[role=menuitem]')].map(item=>{
+        const icon=item.querySelector('svg'),box=icon.getBoundingClientRect();
+        return {width:box.width,height:box.height,left:box.left,color:getComputedStyle(icon).color,text:getComputedStyle(item).color};
+      })};
+  })()`);
+  assert.equal(menuPresentation.gap,'4px');
+  for(const icon of menuPresentation.icons) {
+    assert.equal(icon.width,16);assert.equal(icon.height,16);
+    assert.equal(icon.left,menuPresentation.icons[0].left);assert.equal(icon.color,icon.text);
+  }
   assert.equal(await evaluate('document.activeElement.textContent'),'Close menu');
   await key('Home'); assert.equal(await evaluate('document.activeElement.textContent'),'Read the authoring notes');
   await key('ArrowDown'); assert.equal(await evaluate('document.activeElement.textContent'),'Close menu');

@@ -73,12 +73,38 @@ class DesignLibraryTest {
             val manifest = BmlLibraryArtifacts.decode(jar.getInputStream(jar.getJarEntry(BmlLibraryArtifacts.MANIFEST_PATH)).reader().readText())
             assertEquals("io.bosca:bml-design", manifest.library)
             assertEquals("bosca.design.generated", manifest.generatedPackage)
-            assertEquals(setOf("alert", "app-header", "badge", "bosca-mark", "button", "card", "chart", "checkbox", "comment-editor", "confirm-dialog", "copy", "copy-field", "dashboard-grid", "dashboard-item", "dialog", "disclosure-heading",
-                "document-editor", "empty-state", "field", "flow-editor", "icon", "icon-button", "icon-link", "input", "json-editor", "loading-state", "page-heading", "page-shell", "panel", "popover",
-                "search-input", "select", "section", "section-heading", "segmented-control", "source-view", "spinner", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs"),
+            assertEquals(setOf("alert", "app-header", "app-shell", "badge", "bosca-mark", "button", "card", "chart", "checkbox", "comment-editor", "confirm-dialog", "copy", "copy-field", "dashboard-grid", "dashboard-item", "dialog", "disclosure-heading",
+                "document-editor", "empty-state", "field", "flow-editor", "fullscreen-button", "icon", "icon-button", "icon-link", "input", "json-editor", "loading-state", "page-heading", "page-shell", "panel", "popover", "profile", "profile-menu",
+                "search-input", "select", "section", "section-heading", "segmented-control", "source-view", "spinner", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs", "workspace"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
             assertTrue(manifest.requirements.isEmpty())
             assertTrue(manifest.providerRegistrars.isEmpty())
+            for ((tag, expected) in mapOf(
+                "segmented-control" to ("options" to "List<bosca.design.model.SegmentOption>"),
+                "view-tabs" to ("tabs" to "List<bosca.design.model.ViewTab>"),
+                "button" to ("size" to "String"),
+                "toast" to ("tone" to "String"),
+                "tooltip" to ("placement" to "String"),
+                "chart" to ("config" to "bosca.design.model.ChartConfiguration"),
+                "flow-editor" to ("value" to "bosca.design.model.FlowGraph"),
+                "dashboard-grid" to ("value" to "List<bosca.design.model.DashboardLayoutItem>"),
+                "document-editor" to ("value" to "kotlinx.serialization.json.JsonObject"),
+                "json-editor" to ("value" to "kotlinx.serialization.json.JsonElement"),
+            )) {
+                assertEquals(expected.second, manifest.components.single { it.tag == tag }.props.single { it.name == expected.first }.declaredType)
+            }
+            for ((tag, names) in mapOf(
+                "button" to listOf("size"), "spinner" to listOf("size"), "input" to listOf("size"),
+                "select" to listOf("size"), "icon-button" to listOf("size"), "dialog" to listOf("size", "triggerStyle"),
+                "confirm-dialog" to listOf("triggerStyle"), "alert" to listOf("tone"), "badge" to listOf("tone"),
+                "page-heading" to listOf("badgeTone"), "toast" to listOf("tone"), "tooltip" to listOf("placement"),
+                "json-editor" to listOf("mode"),
+            )) for (name in names) {
+                assertEquals("String", manifest.components.single { it.tag == tag }.props.single { it.name == name }.declaredType, "$tag.$name")
+            }
+            assertEquals("Set<String>", manifest.components.single { it.tag == "dashboard-grid" }.props.single { it.name == "lockedIds" }.declaredType)
+            assertEquals("String?", manifest.components.single { it.tag == "json-editor" }.props.single { it.name == "text" }.declaredType)
+            assertEquals("bosca.content.metadata.model.Document?", manifest.components.single { it.tag == "document-editor" }.props.single { it.name == "document" }.declaredType)
             val button = manifest.components.single { it.tag == "button" }
             assertEquals("Boolean", button.props.single { it.name == "loading" }.declaredType)
             assertEquals("Int", manifest.components.single { it.tag == "icon" }.props.single { it.name == "size" }.declaredType)
@@ -91,6 +117,9 @@ class DesignLibraryTest {
             assertTrue(listOf("tooltip", "icon-button", "icon-link", "dialog", "popover", "copy", "copy-field", "toast", "search-input", "segmented-control", "view-tabs", "tabs", "select", "tree", "comment-editor", "source-view", "json-editor", "document-editor", "chart", "flow-editor", "dashboard-grid").all { tag ->
                 manifest.components.single { it.tag == tag }.clientModule != null
             })
+            assertTrue(manifest.components.single { it.tag == "workspace" }.clientModule != null)
+            assertTrue(manifest.components.single { it.tag == "profile-menu" }.clientModule != null)
+            assertEquals("Boolean", manifest.components.single { it.tag == "source-view" }.props.single { it.name == "fill" }.declaredType)
             val toast = manifest.components.single { it.tag == "toast" }
             assertFalse(toast.hasDefaultSlot)
             assertEquals("Int", toast.props.single { it.name == "sequence" }.declaredType)
@@ -372,6 +401,66 @@ class DesignLibraryTest {
                 .redirectErrorStream(true).redirectOutput(log).start()
             try {
                 assertTrue(process.waitFor(90, TimeUnit.SECONDS), "Browser check timed out: ${log.readText()}")
+                assertEquals(0, process.exitValue(), log.readText())
+            } finally { process.destroyForcibly(); log.delete() }
+        }
+    }
+
+    @Test
+    fun `selected values and active panels survive availability changes`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            val log = File.createTempFile("design-typed-choices-", ".log")
+            val process = ProcessBuilder(System.getProperty("design.fixture.node"),
+                System.getProperty("design.fixture.browser"), base,
+                if (development) "development" else "production", "typed-choices")
+                .redirectErrorStream(true).redirectOutput(log).start()
+            try {
+                assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Choice check timed out: ${log.readText()}")
+                assertEquals(0, process.exitValue(), log.readText())
+            } finally { process.destroyForcibly(); log.delete() }
+        }
+    }
+
+    @Test
+    fun `structured Kotlin inputs retain editor drafts widgets and native values`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            val log = File.createTempFile("design-structured-", ".log")
+            val process = ProcessBuilder(System.getProperty("design.fixture.node"),
+                System.getProperty("design.fixture.browser"), base,
+                if (development) "development" else "production", "structured")
+                .redirectErrorStream(true).redirectOutput(log).start()
+            try {
+                assertTrue(process.waitFor(90, TimeUnit.SECONDS), "Structured input check timed out: ${log.readText()}")
+                assertEquals(0, process.exitValue(), log.readText())
+            } finally { process.destroyForcibly(); log.delete() }
+        }
+    }
+
+    @Test
+    fun `workspaces fill and expand from the linked library in an independent consumer`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            val log = File.createTempFile("design-workspaces-", ".log")
+            val process = ProcessBuilder(System.getProperty("design.fixture.node"),
+                System.getProperty("design.fixture.browser"), base,
+                if (development) "development" else "production", "workspace")
+                .redirectErrorStream(true).redirectOutput(log).start()
+            try {
+                assertTrue(process.waitFor(90, TimeUnit.SECONDS), "Workspace check timed out: ${log.readText()}")
+                assertEquals(0, process.exitValue(), log.readText())
+            } finally { process.destroyForcibly(); log.delete() }
+        }
+    }
+
+    @Test
+    fun `shell and profiles use shared presentation with consumer actions`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            val log = File.createTempFile("design-shell-", ".log")
+            val process = ProcessBuilder(System.getProperty("design.fixture.node"),
+                System.getProperty("design.fixture.browser"), base,
+                if (development) "development" else "production", "shell")
+                .redirectErrorStream(true).redirectOutput(log).start()
+            try {
+                assertTrue(process.waitFor(90, TimeUnit.SECONDS), "Shell check timed out: ${log.readText()}")
                 assertEquals(0, process.exitValue(), log.readText())
             } finally { process.destroyForcibly(); log.delete() }
         }

@@ -1,5 +1,7 @@
 package bosca.design.catalog
 
+import bosca.design.model.*
+import kotlinx.serialization.json.*
 import kotlinx.serialization.Serializable
 
 /** Deterministic chart data and local presentation states, without analytics queries. */
@@ -15,7 +17,7 @@ data class CatalogChart(
     var notice: String = "",
     var noticeSequence: Int = 0,
 ) {
-    val config: String get() = configuration(type, alternate, empty)
+    val config: ChartConfiguration get() = configuration(type, alternate, empty)
     val label: String get() = "${id.replaceFirstChar { it.titlecase() }} palette visits"
     fun chooseType(value: String) { require(value in types); type = value }
     fun replace() { alternate = !alternate }
@@ -28,15 +30,16 @@ data class CatalogChart(
 
     companion object {
         val types = listOf("bar", "line", "scatter", "bubble", "pie", "doughnut", "radar", "polarArea")
-        fun configuration(type: String, alternate: Boolean = false, empty: Boolean = false): String {
-            val values = when {
-                empty -> "[]"
-                type == "scatter" -> """[{"x":1,"y":4},{"x":2,"y":7},{"x":3,"y":5}]"""
-                type == "bubble" -> """[{"x":1,"y":4,"r":8},{"x":2,"y":7,"r":12},{"x":3,"y":5,"r":10}]"""
-                alternate -> "[8,3,12]"
-                else -> "[4,7,5]"
+        fun configuration(type: String, alternate: Boolean = false, empty: Boolean = false): ChartConfiguration {
+            val chartType = ChartType.fromValue(type)
+            val values: List<ChartValue> = when {
+                empty -> emptyList()
+                chartType == ChartType.SCATTER -> listOf(4, 7, 5).mapIndexed { index, y -> ChartValue.Scatter(index + 1.0, y.toDouble()) }
+                chartType == ChartType.BUBBLE -> listOf(4, 7, 5).mapIndexed { index, y -> ChartValue.Bubble(index + 1.0, y.toDouble(), listOf(8.0, 12.0, 10.0)[index]) }
+                else -> (if (alternate) listOf(8, 3, 12) else listOf(4, 7, 5)).map { ChartValue.Number(it.toDouble()) }
             }
-            return """{"type":"$type","data":{"labels":["Mon","Tue","Wed"],"datasets":[{"label":"Visits","data":$values}]},"options":{"plugins":{"legend":{"position":"bottom"}}}}"""
+            return ChartConfiguration(chartType, ChartData(listOf("Mon", "Tue", "Wed"), listOf(ChartDataset("Visits", values))),
+                options = ChartOptions(plugins = ChartPlugins(legend = ChartLegend(position = ChartLegendPosition.BOTTOM))))
         }
     }
 }

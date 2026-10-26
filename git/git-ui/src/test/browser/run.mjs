@@ -72,6 +72,9 @@ try {
     "search.mjs",
     "screens.mjs",
     "navigation.mjs",
+    "profile.mjs",
+    "dialogs.mjs",
+    "file-workspace.mjs",
     "source.mjs",
   ];
   const selected = process.env.GIT_UI_BROWSER_TESTS?.split(",") ?? available;

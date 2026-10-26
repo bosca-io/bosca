@@ -43,7 +43,7 @@ tasks.named("bmlBundleClient") {
 val typecheckClient by tasks.registering(Exec::class) {
     group = "verification"
     description = "Type-check the Git UI client and generated BML islands."
-    dependsOn("compileKotlin", "bmlInstallClientDependencies")
+    dependsOn("compileKotlin", "bmlPrepareClient", "bmlInstallClientDependencies")
     workingDir(projectDir)
     commandLine(bml.nodeExecutable.get(), layout.projectDirectory.file("node_modules/typescript/bin/tsc").asFile.absolutePath, "--noEmit")
 }

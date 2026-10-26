@@ -20,9 +20,7 @@
         <confirm-dialog
           title="Delete file?"
           :description='"A commit removing " + model.page.file + " will be added to " + model.page.ref + "."'
-          triggerLabel="Delete"
-          :triggerIconOnly="false"
-          triggerStyle="plain"
+          triggerLabel="Delete file"
         >
           <form class="modal-form" @submit="model.delete(true, ctx)">
             <footer class="modal-footer">

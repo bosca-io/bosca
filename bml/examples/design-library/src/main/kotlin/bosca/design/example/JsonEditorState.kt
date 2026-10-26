@@ -2,12 +2,16 @@ package bosca.design.example
 
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 
 /** Application-owned JSON validation, drafts, save outcomes and controlled editor options. */
 @Serializable
 class JsonEditorState(val id: String) {
-    var value: String = """{"greeting":"Hello <script>unsafe()</script>","count":2,"enabled":true,"empty":null}"""
+    var value: JsonElement = buildJsonObject {
+        put("greeting", "Hello <script>unsafe()</script>"); put("count", 2); put("enabled", true); put("empty", JsonNull)
+    }
+        private set
+    var text: String? = null
         private set
     var error: String = ""
         private set
@@ -28,9 +32,9 @@ class JsonEditorState(val id: String) {
 
     suspend fun save(draft: String) {
         delay(60)
-        value = draft
+        text = draft
         try {
-            Json.parseToJsonElement(draft)
+            value = Json.parseToJsonElement(draft)
             saved = draft
             saves++
             error = ""
@@ -40,7 +44,7 @@ class JsonEditorState(val id: String) {
     }
 
     fun update() { updates++ }
-    fun replace() { value = """{"replacement":${++updates}}"""; error = "" }
+    fun replace() { value = buildJsonObject { put("replacement", ++updates) }; text = null; error = "" }
     fun toggle() { mounted = !mounted }
     fun toggleReadOnly() { readOnly = !readOnly }
     fun toggleDisabled() { disabled = !disabled }

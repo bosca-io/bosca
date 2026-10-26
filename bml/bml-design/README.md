@@ -46,7 +46,7 @@ Pages and local components, including nested source directories, can then use:
 The containing page or component declares the application's state and island as usual. The example
 consumer in [examples/design-library](../examples/design-library/README.md) demonstrates this wiring.
 The [catalog application](../bml-design-catalog/README.md) provides references and rendered examples
-for all 46 exports, with its own navigation, local actions and CSS palettes.
+for all 51 exports, with its own navigation, local actions and CSS palettes.
 See [Migrating Git UI components](migration.md) for the complete tag mapping, caller changes,
 and ownership of styles and browser behavior.
 Use `<html:button>`, `<html:input>` and `<html:section>` for native elements after importing their library counterparts.
@@ -120,6 +120,11 @@ CSS, globally or on a themed container. Declaring the packaged faces does not fo
 | `table-scroll` | `label: String = "Scrollable table"` | Focusable, labelled region with forwarded attributes/classes and default table children. Horizontal overflow stays inside the region; keyboard focus uses the accent color. |
 | `bosca-mark` | No named props | The actual 22×22px Bosca SVG, labelled `Bosca`, with forwarded attributes/classes. `aria-hidden` can mark it decorative. No child content. |
 | `app-header` | Required `brand: String` and `href: String`; `product: String = ""` | Header with a brand link/mark and default navigation children. Extra attributes/classes target the header. A 224px sidebar becomes a wrapping header at 700px. Scoped client code reveals the active item in overflowing navigation on mount, resize and updates within the header. |
+| `app-shell` | No named props | Root div receives attributes/classes and projected app-header/content. Supplies the responsive Git shell layout and ambient gradients. Public shell-* classes style projected regions. |
+| `profile` | Required `name: String`; `subtitle: String = ""`; `avatar: String = ""`; `initials: String = ""`; `showAvatar: Boolean = true` | Identity display with a decorative image, initials or user icon. Text truncates within its available width. Root receives attributes/classes; no children. |
+| `profile-menu` | `label: String = "Profile"`; `name: String = "Profile"`; `subtitle: String = ""`; `icon: String = "users"`; `width: Int = 260`; `error: String = ""` | Root receives attributes/classes. Projects native menu-item links/buttons into the shared popover, with identity heading and optional error. Authentication, actions and persistence belong to the consumer. |
+| `workspace` | Required `label: String`; `framed: Boolean = false` | Labelled fill-height section with projected children and forwarded attributes/classes. Add a descendant `fullscreen-button` to expand it. |
+| `fullscreen-button` | `label: String = "Full screen"`; `exitLabel: String = "Exit full screen"` | Native icon button controls its nearest workspace, with forwarded attributes/classes. Enter/exit icons have accessible labels and tooltips; the 30×30px footprint stays fixed. Hidden until enhanced. |
 | `panel` | No named props | Native section with a surface, border, 20px padding and default children. Additional attributes/classes target the section. |
 | `section` | No named props | Native section with 16px vertical spacing, a bottom border and default children. Additional attributes/classes target the section. |
 | `page-heading` | Required `title: String`; `subtitle: String = ""`; `trail: List<NavigationItem> = emptyList()`; `crumb: String = ""`; `icon: String = ""`; `iconColor: String = "var(--accent)"`; `badge: String = ""`; `badgeTone: String = "neutral"`; `badgeColor: String = ""` | Header with breadcrumbs, title/icon, optional badge/subtitle and default action children. Additional attributes/classes target the header. The current crumb defaults to the title. |
@@ -135,21 +140,21 @@ CSS, globally or on a themed container. Declaring the packaged faces does not fo
 | `copy-field` | Required `value: String` and `label: String`; `copyLabel: String = "Copy value"` | Root div receives additional attributes/classes. A labelled readonly input and compact copy action display a single-line value. No child content. Focus selects the value; denied/unavailable clipboard access selects it and exposes manual-copy guidance. |
 | `toast` | Required `id: String`; `message: String = ""`; `sequence: Int = 0`; `tone: String = "info"` (`info`, `success`, `warning`, `error`); `duration: Int = 4000` (milliseconds) | Manual-popover root receives additional attributes/classes. `id` supplies its stable `data-bml-preserve` key, rather than a native DOM ID. No child content. The caller issues each nonempty notice with a new positive sequence while mounted; initial state, ordinary updates and same/older sequences do not replay it. |
 | `search-input` | `value: String = ""`; `name: String = "q"`; `placeholder: String = "Search…"`; `label: String = "Search"`; `preserveKey: String = ""`; `disabled: Boolean = false`; `autofocus: Boolean = true` | Search wrapper with decorative icon, clear action and default trailing action children. Additional attributes/classes/events target the native search input. The clear action emits one bubbling `input` event and returns focus to the query. |
-| `segmented-control` | Required `label: String`, `name: String`, `options: List<String>` and `value: String`; `values: List<String> = emptyList()`; `icons: List<String> = emptyList()`; `preserveKey: String = ""` | Radiogroup receives additional attributes/classes/events. A hidden native input supplies the selected form value. Buttons use indexed `values` or fall back to option labels; optional indexed icons are decorative. Emits bubbling `segmentchange` after updating its native value. No child content. |
-| `view-tabs` | Required `label: String`, `tabs: List<String>` and `selected: String` | Tablist receives additional attributes/classes/events. Emits bubbling `viewchange` with the selected label as its string detail. The application owns panels, IDs, accessible relationships and visibility. No child content. |
+| `segmented-control` | Required `label: String`, `name: String`, `options: List<SegmentOption>` and `value: String`; `preserveKey: String = ""` | Radiogroup receives additional attributes/classes/events. Each SegmentOption supplies its stable value, label, decorative icon and disabled state. A hidden native input supplies the selected form value. Emits bubbling `segmentchange` after updating its native value. No child content. |
+| `view-tabs` | Required `label: String`, `tabs: List<ViewTab>` and `selected: String` | Tablist receives additional attributes/classes/events. Each ViewTab supplies a stable value, label and disabled state. Emits bubbling `viewchange` with the selected value as its string detail. The application owns panels, IDs, accessible relationships and visibility. No child content. |
 | `tabs` | Required `label: String` and `items: List<NavigationItem>`; `header: Boolean = false` | Native nav receives additional attributes/classes and default trailing action children. Destinations remain native anchors with `aria-current="page"` on the current item. The scoped helper fits links around the current destination and a `More` overflow disclosure. |
 | `select` | `name: String = ""`; `ref: String = "native"`; `placeholder: String = "Select…"`; `label: String = "Selection"`; `icon: String = ""`; `searchable`, `async`, `multiple`, `allowCustom`, `disabled`, `loading`, `required`: `Boolean = false`; `size: String = "md"`; `maxTags: Int = 3`; `minQuery: Int = 0`; `debounce: Int = 250` (milliseconds); `preserveKey: String = ""` | Additional attributes/classes target the native select. Default children are caller-owned options/optgroups. The helper enhances it with a labelled combobox, listbox, optional search/pagination and selected tags; native values remain the form submission contract. |
 | `tree` | Required `label: String`; `heading: String = ""`; `local: Boolean = false`; `embedded: Boolean = false`; `preserveKey: String = ""` | Section receives additional attributes/classes and contains a labelled tree with default item children. `local` manages disclosure of already-rendered rows; otherwise caller actions own folder loading. |
 | `tree-item` | Required `path: String` and `label: String`; `href: String = ""`; `directory`, `expanded`, `selected`, `wrap`: `Boolean = false`; `depth: Int = 0` | Flat ARIA tree item. Additional attributes/classes target its native directory button or native file anchor; declarative actions bind to the item row. Paths identify hierarchy, depth controls indentation/ARIA level, and selected file links use `aria-current="page"`. No child content. |
 | `time` | Required `value: String`; `relative`, `ago`, `inheritTypography`: `Boolean = false`; `format: String = ""` | Native time receives additional attributes/classes, its original value as datetime/title and an English server-rendered label. No child content. Use `html:time` for a native timestamp after importing this component. |
 | `comment-editor` | Required `id: String` and `label: String`; `value`, `error`, `hint`, `describedBy`: `String = ""`; `submitDisabled: Boolean = false`; `submitLabel: String = "comment"`; `placeholder: String = "Write a comment…"`; `name: String = "body"` | Native required textarea receives additional attributes/classes, its ID and preservation key. Default children supply action controls. The caller owns its surrounding form, submission and error outcomes. |
-| `json-editor` | Required `name: String`; `value: String = "{}"`; `label: String = "JSON editor"`; `mode: String = "tree"` (`tree`, `text`, `table`); `readOnly: Boolean = false`; `disabled: Boolean = false`; `error: String = ""`; `preserveKey: String = ""` | Structured editor with a native textarea form value and escaped no-script fallback. Additional attributes/classes target its labelled group. Syntax and caller feedback appear in a live status. No child content. |
-| `flow-editor` | Required `id`, `label`: `String`; `name: String = "graph"`; `value: String = "{\"nodes\":[],\"edges\":[]}"`; `readOnly`, `disabled`: `Boolean = false`; `error`, `preserveKey`: `String = ""` | VueFlow canvas with native JSON form value, named ports, selection/connection/change events, view controls and text outline. Additional attributes/classes reach the root; default children follow the outline. |
-| `chart` | Required `id`, `label`, `config`: `String`; `loading: Boolean = false`; `error`, `preserveKey`: `String = ""` | Chart.js JSON configuration, CSS palette defaults, responsive named canvas and server-rendered data table. Additional attributes/classes reach the root; default children follow the table. |
-| `dashboard-grid` | Required `id`, `label`: `String`; `name: String = "layout"`; `value`, `lockedIds`: `String = "[]"`; `columns: Int = 12`; `cellHeight: Int = 60`; `stackBelow: Int = 480`; `readOnly`, `disabled`: `Boolean = false`; `error`, `preserveKey`: `String = ""` | Studio-style dashboard geometry, native JSON form value, pointer/keyboard movement and resizing, locked widgets and narrow-container stacking. Direct default children are dashboard items; extra attributes reach the root. |
+| `json-editor` | Required `name: String`; `value: JsonElement = JsonObject(emptyMap())`; `text: String? = null`; `label: String = "JSON editor"`; `mode: String = "tree"` (`tree`, `text`, `table`); `readOnly: Boolean = false`; `disabled: Boolean = false`; `error: String = ""`; `preserveKey: String = ""` | Structured editor with a native textarea form value and escaped no-script fallback. Additional attributes/classes target its labelled group. Syntax and caller feedback appear in a live status. No child content. |
+| `flow-editor` | Required `id`, `label`: `String`; `name: String = "graph"`; `value: FlowGraph = FlowGraph()`; `readOnly`, `disabled`: `Boolean = false`; `error`, `preserveKey`: `String = ""` | VueFlow canvas with native JSON form value, named ports, selection/connection/change events, view controls and text outline. Additional attributes/classes reach the root; default children follow the outline. |
+| `chart` | Required `id`, `label`: `String`; required `config: ChartConfiguration`; `loading: Boolean = false`; `error`, `preserveKey`: `String = ""` | Kotlin Chart.js configuration, CSS palette defaults, responsive named canvas and server-rendered data table. Additional attributes/classes reach the root; default children follow the table. |
+| `dashboard-grid` | Required `id`, `label`: `String`; `name: String = "layout"`; `value: List<DashboardLayoutItem> = emptyList()`; `lockedIds: Set<String> = emptySet()`; `columns: Int = 12`; `cellHeight: Int = 60`; `stackBelow: Int = 480`; `readOnly`, `disabled`: `Boolean = false`; `error`, `preserveKey`: `String = ""` | Studio-style dashboard geometry, native JSON form value, pointer/keyboard movement and resizing, locked widgets and narrow-container stacking. Direct default children are dashboard items; extra attributes reach the root. |
 | `dashboard-item` | Required `itemId`, `label`: `String` | Named widget and layout handles. Attributes reach the section; default children remain ordinary BML content in a scrolling body. |
-| `document-editor` | Required `id`, `label`: `String`; `name: String = "document"`; `value: String` (ProseMirror JSON, defaults to an empty document); `readOnly`, `disabled`, `required`: `Boolean = false`; `error`, `hint`, `preserveKey`: `String = ""`; `placeholder: String = "Start writing…"` | TipTap rich text with a native JSON form value. Additional attributes/classes reach the labelled root. The application owns forms, validation and persistence. No child content. |
-| `source-view` | Required `content: String`; `path`, `language`, `preserveKey`: `String = ""`; `label: String = "File source"`; `line: Int = 0`; `compact`, `bare`, `wrapped`: `Boolean = false` | Section receives additional attributes/classes and default toolbar action children. CodeMirror enhances escaped, focusable source markup into a read-only viewer. The application owns the content, requested line and surrounding layout. |
+| `document-editor` | Required `id`, `label`: `String`; `name: String = "document"`; `value: JsonObject = emptyDocument()` (ProseMirror content); `document: bosca.content.metadata.model.Document? = null`; `readOnly`, `disabled`, `required`: `Boolean = false`; `error`, `hint`, `preserveKey`: `String = ""`; `placeholder: String = "Start writing…"` | TipTap rich text with a native JSON form value. Additional attributes/classes reach the labelled root. The application owns forms, validation and persistence. No child content. |
+| `source-view` | Required `content: String`; `path`, `language`, `preserveKey`: `String = ""`; `label: String = "File source"`; `line: Int = 0`; `compact`, `bare`, `fill`, `wrapped`: `Boolean = false` | Section receives additional attributes/classes and default toolbar action children. CodeMirror enhances escaped, focusable source markup into a read-only viewer. The application owns the content, requested line and surrounding layout. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
 an 18px line and a 6px control gap. Buttons support the `ghost`, `danger`, `block`, and `icon-only`
@@ -200,6 +205,10 @@ consumer state: issue a new request to reopen after dismissal. Forms and failed-
 to the application. The `/overlays` fixture shows an error response retaining submitted values and
 reopening through `forceOpen`, plus a preserved dialog whose server-owned request/completion
 attributes update while its client-owned draft DOM stays intact through `data-bml-preserve`.
+Dialogs reset inherited text wrapping and alignment, including when their trigger lives in a
+single-line table row. Confirmation descriptions have 18px padding on all sides. They grow with
+wrapped text up to the dialog's viewport limit, then scroll vertically while the heading and
+projected action footer remain available.
 Use `<html:dialog>` when a native element is needed after importing the component.
 `ghost` selects the extra-small icon trigger when `triggerIconOnly` is true; `block` and `plain`
 control the text trigger presentation.
@@ -211,6 +220,24 @@ and enabled `role="menuitem"` entries support arrows and Home/End. Resize, scrol
 changes and nested island updates reposition the panel. Listeners and ResizeObservers are removed
 when the component unmounts. A nested popover consumes Escape and its projected cancel click before
 its containing modal.
+
+Popover menus use projected `role="menu"` containers and native buttons or links with
+`role="menuitem"`. The library supplies full-width rows, a 4px row gap, 16px icons and an 8px
+icon-to-label gap. Button `icon` props use that same menu sizing. For custom or changing icons,
+wrap each shared `icon` in `menu-icon`; its `hidden` attribute works without a consumer reset.
+An optional `menu-heading` before the menu supplies title/subtitle spacing and a divider.
+The `danger` class uses the local `--err` color. Triggers have no disclosure arrow. Applications
+keep their own labels, destinations, state and actions, and choose colors through ordinary CSS.
+
+```html
+<popover label="Account" icon="users" :width="260">
+  <div class="menu-heading"><strong>Account</strong><span>Appearance and session</span></div>
+  <div role="menu" aria-label="Account actions">
+    <button role="menuitem" icon="sun">Light mode</button>
+    <button role="menuitem" icon="log-out" class="danger">Sign out</button>
+  </div>
+</popover>
+```
 
 Preserve an enclosing container to keep a popover's native open state and child drafts through
 surrounding server updates. Preserved root attributes remain server-owned, so a container keeps
@@ -457,6 +484,110 @@ text; `--document-height` defaults to `320px` and `--document-max-height` to `64
 also apply. TipTap is bundled only on routes using this component; consumers need no npm dependency.
 Dependency notices ship in `META-INF/licenses/bml-design/document-editor.txt`.
 
+## Fill-height workspaces
+
+`workspace` fills the remaining height of a bounded flex column. Use `page-shell fill` for
+that page column, `workspace-fixed` for headers and footers, `workspace-content` for nested
+flexible containers or forms, and `workspace-scroll` for an internally scrolling preview.
+The library automatically fills a direct BML island inside a workspace. Supply a viewport-height
+application document or another explicitly sized parent; the components do not set the document height.
+
+```html
+<page-shell fill>
+  <page-heading title="README.md" class="workspace-fixed" />
+  <workspace label="README.md" framed>
+    <header class="workspace-fixed document-toolbar">
+      <strong>Source</strong>
+      <fullscreen-button />
+    </header>
+    <source-view :content="document.source" path="README.md" bare fill />
+  </workspace>
+</page-shell>
+```
+
+```css
+.document-page { height: 100dvh; margin: 0; display: flex; flex-direction: column; }
+.document-toolbar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+.document-toolbar [data-bml-fullscreen-button] { margin-left: auto; }
+```
+
+Apply `document-page` to the application's body. The source viewer's `fill` variant removes its
+usual minimum, maximum and snippet heights while retaining an internal CodeMirror scroller;
+it also works without a workspace when its parent supplies the available height. Default source
+viewers retain their existing sizing. A preview can instead use a labelled, focusable native
+`article` with `class="workspace-scroll"`. Applications own view switching and accessible tab/panel
+relationships, editing engines, forms, drafts and save actions.
+
+Add `fullscreen-button` anywhere inside a workspace. It controls the nearest workspace and supports
+custom `label` and `exitLabel` text for its accessible name and tooltip. Its expand icon changes to a
+contract icon while expanded, with the same 30×30px footprint. Native full screen is used when available; rejected or unsupported
+requests retain expansion inside the viewport. Exit full screen or Escape restores layout and focus.
+Projected dialogs and popovers receive Escape first. The mounted content and scroll positions survive
+expansion; background controls are inert until exit. Nested workspaces restore their outer workspace,
+and removal releases background state and listeners. Keep the workspace outside a changing action
+island to retain expansion through form updates, as Git and the independent consumer do. Removing
+and recreating the workspace starts a new, collapsed instance.
+
+The button stays hidden without scripts; source text and native content remain readable. A framed
+workspace inherits `--bg-1`, `--line` and `--r-sm`; `--workspace-bg` and `--workspace-radius` override
+the frame. `--workspace-fullscreen-bg` overrides the expanded surface, which defaults to `--bg-1`;
+choose an opaque color when the application's normal surfaces are translucent. `--workspace-z-index`
+defaults to 80. The icon control uses `--control-height-sm` for both dimensions.
+No theme registry or product adapter is required. The catalog's `/workspaces` page and
+`/components/layout` references show the unprefixed tags.
+
+## Application shell and profiles
+
+`app-shell` supplies the responsive sidebar layout and ambient gradients used by Git. Applications
+own their document, routes, account data and CSS palette. Use the short tags from the normal import:
+
+```html
+<app-shell>
+  <app-header brand="Bosca" product="Example" href="/">
+    <nav class="shell-navigation" aria-label="Example">
+      <div class="shell-group">
+        <span class="shell-label">Browse</span>
+        <a href="/" aria-current="page"><span class="shell-icon"><icon name="folder" /></span>Overview</a>
+      </div>
+    </nav>
+    <div class="shell-footer">
+      <profile-menu label="Account" name="Alex Example" subtitle="@alex">
+        <a role="menuitem" href="/account"><span class="menu-icon"><icon name="users" /></span>Profile</a>
+        <button role="menuitem" icon="moon" @click="account.changeAppearance">Dark appearance</button>
+      </profile-menu>
+    </div>
+  </app-header>
+  <div class="shell-main">
+    <page-shell><profile name="Alex Example" subtitle="@alex" initials="AE" /></page-shell>
+  </div>
+</app-shell>
+```
+
+The shell fills the viewport. `shell-main` gives its content a flexible scrolling region. At 700px
+and below, the shared header wraps and `shell-navigation` scrolls horizontally. `shell-subsystem`,
+`shell-subsystem-icon` and `shell-subsystem-text` supply the optional sidebar introduction.
+`shell-group`, `shell-label`, `shell-icon`, `shell-settings` and `shell-chevron` style native links
+and disclosures; `shell-footer` places profile controls at the sidebar bottom or header right.
+Set `aria-current="page"` on the current native destination. The application supplies its links.
+
+`--shell-background` selects the ambient base color, falling back to `--bg-0`. `--shell-accent`
+tints the neutral ambient layers and falls back to `--accent`; `--brand-accent` tints the purple
+layer. A light palette can use `--shell-accent: #cbd5e1` to soften the background independently
+of control and focus colors. Palette variables remain ordinary consumer CSS. Opaque overlay and
+editor surfaces can use their own palette values inside the shell.
+
+`profile` displays a name and optional subtitle, with an avatar image, initials or a decorative
+user icon. `showAvatar="false"` supplies text-only identity. Additional attributes target its root;
+`data-profile-name` and `data-profile-subtitle` mark the text fields for consumer-owned lazy loading.
+
+`profile-menu` composes `profile` and `popover`. Project `role="menuitem"` links or buttons; their
+forms, events, loading states and permissions stay in the application. The menu supports normal
+activation, right-click, ContextMenu, Shift+F10, arrows, Home/End and Escape with focus restoration.
+Without scripts it remains native details. It has no auth client, API dependency, theme store or
+built-in account actions. `data-profile-heading` scopes its identity display; `data-profile-error`
+marks its optional status paragraph. The normal popover preservation contract applies to updates.
+The catalog and independent consumer demonstrate real actions at `/shell`.
+
 ## Read-only source
 
 `source-view` displays supplied text. `path` infers the language and adds context to the accessible
@@ -574,8 +705,9 @@ library stylesheet because the node is
 created at runtime. Consumers do not copy colors into JavaScript or configure a theme service.
 
 Dialogs and popovers retain their owning DOM subtree in the top layer, so they use consumer colors
-without a copied palette. Their surfaces use `--bg-1`, `--fg-1`, `--line-2` and the shared accent;
-modal footers use `--bg-2`. `--r-sm` and `--r-lg` default to 9px and 16px. Shared `--shadow-color`
+without a copied palette. Their surfaces use `--bg-1`, `--fg-1` and the shared accent.
+Modal and popover frames use the softer `--line`. `--dialog-border` and `--popover-border` can
+override their respective frames without changing control borders. Modal footers use `--bg-2`. `--r-sm` and `--r-lg` default to 9px and 16px. Shared `--shadow-color`
 and `--backdrop-color` let local CSS change default elevation and dimming colors. Optional `--dialog-shadow`,
 `--dialog-backdrop` and `--popover-shadow` override the default shadows and backdrop color.
 
@@ -681,11 +813,114 @@ Build and validate the binary and original source archive from the workspace roo
 ./gradlew :bml:bml-design:bmlValidateLibrary :bml:examples:design-library:test
 ```
 
+## Structured component inputs
+
+Complex inputs are Kotlin objects. Presentation models live in `bosca.design.model`:
+`FlowGraph`, `FlowNode`, `FlowEdge`, `FlowPosition`, `FlowViewport`, `DashboardLayoutItem`, `ChartConfiguration`, `ChartData` and `ChartDataset`.
+Rich documents accept a `bosca.content.metadata.model.Document` through `document`, or a Kotlin
+`JsonObject` with the ProseMirror shape through `value`; arbitrary JSON values use
+`JsonElement`. These open trees preserve application-specific nodes, attributes and values.
+The component serializes its input at the HTML/browser boundary. Native form fields still submit
+JSON text; decode submissions with Kotlin serialization, for example
+`Json.decodeFromString(FlowGraph.serializer(), form.graph)` and
+`Json.decodeFromString(ListSerializer(DashboardLayoutItem.serializer()), form.layout)`.
+Ordinary models use generated Kotlin serializers, including when nested in application state.
+Only chart-point and flow-marker unions need custom serialization for their native JSON shapes.
+Applications retain form validation and persistence.
+
+```kotlin
+val chartConfig = ChartConfiguration(
+    type = ChartType.BAR,
+    data = ChartData(
+        labels = listOf("Mon", "Tue"),
+        datasets = listOf(ChartDataset("Visits", listOf(12, 18))),
+    ),
+    options = ChartOptions(
+        plugins = ChartPlugins(legend = ChartLegend(position = ChartLegendPosition.BOTTOM)),
+        scales = mapOf("y" to ChartScale(beginAtZero = true, title = ChartTitle("Visits"))),
+    ),
+)
+```
+
+Chart labels can use `JsonArray` for numeric or multiline labels. Dataset data uses `List<ChartValue>`:
+`ChartValue.Number`, `Scatter`, `Bubble` and `Gap` represent ordinary points, x/y points, x/y/r points
+and missing values. Numeric collections have a convenience constructor. `ChartValue.Custom` keeps
+application data for custom parsing keys and ranges. Common dataset styling is typed, including
+colors, borders, point radius, stack and axis IDs. `ChartOptions`, `ChartPlugins`, `ChartLegend`,
+`ChartTooltip`, `ChartScale`, `ChartTitle`, `ChartTicks` and `ChartGrid` cover common nested settings.
+Supported engine settings are ordinary model properties. Application node values belong in the
+explicit `FlowNodeData.payload` JSON object. Dashboard values are ordinary lists of geometry objects;
+widget data stays in the application. JSON editor `value` is structured;
+its optional `text` accepts a raw editable draft, including malformed or empty text, and takes
+priority when non-null. Return invalid submitted text there rather than encoding it as a JSON string.
+
+### Choices and local views
+
+Use `List<SegmentOption>` for segmented controls and `List<ViewTab>` for local tabs. Each item has
+an explicit stable `value` and display `label`; segmented options also have an optional `icon`.
+Both support `disabled`. Keyboard navigation skips disabled items. Labels can change or repeat;
+native form submissions and `viewchange` continue to carry the stable value. Retained groups update
+labels and disabled states. Change the preservation key when changing group membership or icons.
+
+```kotlin
+val categories = listOf(SegmentOption("all", "All", "list"), SegmentOption("active", "Active"))
+val views = listOf(ViewTab("preview", "Preview"), ViewTab("source", "Source"))
+```
+
+Simple presentation choices use strings: `size="sm"`, `tone="success"`, `placement="bottom"`,
+`mode="tree"` and `triggerStyle="ghost"`. Bind a caller-owned string when the value is dynamic,
+for example `:tone="notice.tone"`. Structured inputs such as charts, flows and option lists use
+Kotlin objects. Colors and other CSS values remain application-owned text.
+
+```html
+<icon-button icon="copy" label="Copy" size="sm" />
+```
+
+### Flow data
+
+`FlowNodeData` supplies typed `label`, `description`, `status`, `tone`, `inputs` and `outputs`.
+Ports use `FlowPort(id, label)`. A null port list uses the default handle; an empty list removes
+that side's handles. `FlowSide` chooses the connection side. Nodes have typed interaction flags;
+edges have typed `animated`, `label`, `FlowEdgeStyle` and `FlowMarker` values. Marker objects and
+application SVG marker references both round trip. Node/edge type names retain the native engine
+spelling. Application values belong in `data.payload`; generated node and edge deserialization
+ignores transient VueFlow fields such as selection and measured dimensions.
+
+### Shared document authoring
+
+Pass a loaded `bosca.content.metadata.model.Document` directly:
+
+```html
+<document-editor id="article" label="Article body" :document="article.document"
+                 name="document" preserveKey="article-draft" />
+```
+
+The editor reads `content.document` and encodes only that body for TipTap and its native form
+field. Its metadata ID, title, version and template references are not part of the editor value.
+A supplied record with null content or an empty document opens with an editable paragraph.
+`document` takes precedence when supplied; when it is null, `value` supplies the content. Use
+`value` for arbitrary ProseMirror JSON, including application-specific nodes and attributes.
+The component exposes the `core-content` document contract through its library dependency.
+
+Reuse `bosca.documents.Document`, `ParagraphNode`, `HeadingNode`, `TextNode` and the shared mark
+classes. `documentValue(document)` produces the editor's `JsonObject` from those existing models:
+
+```kotlin
+val content = documentValue(Document(content = listOf(
+    ParagraphNode(content = listOf(TextNode(text = "A document", marks = listOf(Bold())))),
+)))
+```
+
+The library exposes the shared document dependency. Submitted content and custom TipTap documents
+remain JSON trees: the shared sealed schema cannot represent every application extension. Retain
+those trees through saves instead of decoding them through a schema that could lose custom
+attributes or reject unknown nodes. The JSON editor continues to accept arbitrary `JsonElement`.
+
 ## Structured JSON
 
 ```html
 <form @submit="settings.save(form.configuration)">
-  <json-editor name="configuration" :value="settings.draft" label="Configuration"
+  <json-editor name="configuration" :value="settings.value" :text="settings.text" label="Configuration"
                :error="settings.error" preserveKey="configuration-editor" />
   <button type="submit">Save</button>
 </form>
@@ -733,17 +968,17 @@ pending states, repeated disposal, fallback forms and desktop/phone geometry.
 
 ## Dashboard layouts
 
-`dashboard-grid` uses Studio's `id`, `x`, `y`, `w`, `h` layout model with ordinary BML
+`dashboard-grid` takes a `List<DashboardLayoutItem>` using Studio's `id`, `x`, `y`, `w`, `h` geometry with ordinary BML
 widgets. Coordinates are whole cells in a 12-column grid by default; row height defaults to
 60px. Every layout ID must match one direct `dashboard-item` child, and widgets cannot overlap.
-Extra layout fields survive edits. The application owns widget content, data, adding/removing
+The application owns widget content, data, adding/removing
 widgets and saving. No extra npm dependency is needed by a consuming application.
 
 ```html
-<dashboard-grid id="overview" label="Overview" :value="dashboard.layoutJson"
-                :lockedIds="dashboard.lockedIdsJson" preserveKey="overview">
+<dashboard-grid id="overview" label="Overview" :value="dashboard.layout"
+                :lockedIds="dashboard.lockedIds" preserveKey="overview">
   <dashboard-item itemId="visits" label="Visits">
-    <chart id="visits-chart" label="Daily visits" :config="dashboard.chartJson" />
+    <chart id="visits-chart" label="Daily visits" :config="dashboard.chartConfig" />
   </dashboard-item>
   <dashboard-item itemId="summary" label="Summary">
     <p>{ dashboard.summary }</p>
@@ -751,8 +986,8 @@ widgets and saving. No extra npm dependency is needed by a consuming application
 </dashboard-grid>
 ```
 
-Supply layout JSON such as `[{"id":"visits","x":0,"y":0,"w":8,"h":6},
-{"id":"summary","x":8,"y":0,"w":4,"h":6}]`. `columns`, `cellHeight` and `stackBelow`
+Build the value with `listOf(DashboardLayoutItem("visits", 0, 0, 8, 6),
+DashboardLayoutItem("summary", 8, 0, 4, 6))`. `columns`, `cellHeight` and `stackBelow`
 configure geometry. Containers narrower than `stackBelow` (480px) stack widgets without changing
 the stored layout; `stackBelow=0` keeps the grid at any width. The saved array order is the reading
 and stacked order; moves change geometry without reordering the widget DOM.
@@ -780,16 +1015,16 @@ rejection; `/components/visualization` documents both tags.
 ## Flows and charts
 
 `flow-editor` uses the same VueFlow core version as Studio. Supply ordinary VueFlow nodes and edges
-as serialized JSON. Nodes need unique IDs and finite `{x,y}` positions; edges reference existing nodes.
+as a Kotlin `FlowGraph` containing `FlowNode` and `FlowEdge` objects. Nodes need unique IDs and finite `{x,y}` positions; edges reference existing nodes.
 The built-in `card` node reads `data.label`, `description`, `status`, `tone` and optional `inputs`/`outputs`
 arrays of `{id,label}` ports. Omit a port array for an anonymous handle; an empty array removes that
 side's handles. VueFlow `sourcePosition` and `targetPosition` choose the handle sides. Standard `default`, `input`, `output` and `group` nodes and VueFlow edge configuration
-are also available. Unknown consumer data is retained.
+are also available. Application data in `data.payload` is retained.
 
 ```html
 <form @submit="pipeline.save(form.graph)">
   <flow-editor id="pipeline-graph" label="Pipeline graph" name="graph"
-               :value="pipeline.graphJson" preserveKey="pipeline-graph" />
+               :value="pipeline.graph" preserveKey="pipeline-graph" />
   <button type="submit">Save</button>
 </form>
 ```
@@ -811,22 +1046,21 @@ existing canvas; native reset restores the latest supplied value. Optional `view
 restored, and edits include the current viewport. Removing the component disposes its Vue app and
 VueFlow store. Without scripts its labelled JSON textarea remains available.
 
-`chart` uses [Chart.js](https://www.chartjs.org/) directly. Supply JSON configuration with `type`,
-`data.labels`, `data.datasets` arrays and optional Chart.js `options`. Bar, line, scatter, bubble, pie,
+`chart` uses [Chart.js](https://www.chartjs.org/) directly. Supply a Kotlin `ChartConfiguration` with `type`,
+`ChartData`, `ChartDataset` values and optional structured Chart.js `options`. Bar, line, scatter, bubble, pie,
 doughnut, radar and polarArea charts are supported, including mixed dataset types, stacking and
 custom axes. Numeric and object points retain their values. Category and linear axes use the
 built-in scales. The component does not bundle a date adapter for time axes.
 
 ```html
-<chart id="daily-visits" label="Daily visits" :config="analytics.chartJson"
+<chart id="daily-visits" label="Daily visits" :config="analytics.chartConfig"
        :loading="analytics.loading" :error="analytics.error" preserveKey="daily-visits" />
 ```
 
 The component resolves CSS colors and typography into instance-local Chart.js options; explicit
 dataset colors and axis/legend options take priority. Container resizing and appearance changes
 refresh the canvas without changing the application data. `--chart-height` controls the dedicated
-responsive container. Reduced-motion preferences disable animation. Configuration remains JSON;
-callbacks or plugins supplied as executable strings are not evaluated.
+responsive container. Reduced-motion preferences disable animation. Chart options are Kotlin `ChartOptions` objects with typed settings; callbacks or plugins supplied as executable strings are not evaluated.
 
 A named canvas is accompanied by View data, a server-rendered table that remains readable without
 scripts. Point actions provide keyboard access to the same `chartselect` event as canvas clicks:

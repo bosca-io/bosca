@@ -22,6 +22,10 @@ export async function checkWidgets({ call, evaluate, until, base, mode, artifact
       const flow = `${root}.querySelector('[data-bml-flow-editor]')`;
       const grid = `${root}.querySelector('[data-bml-dashboard-grid]')`;
       const values = () => evaluate(`Object.fromEntries(new FormData(${form}))`);
+      const initialDocument = JSON.parse((await values()).document);
+      assert.deepEqual(Object.keys(initialDocument).sort(), ['content','type']);
+      assert.equal(initialDocument.content[0].content[0].text, 'Consumer document');
+      assert.ok(!(await values()).document.includes('Consumer article'), 'Only the record body reaches the native field');
       const sibling = `document.querySelector('[data-widget-form=${id==='light'?'purple':'light'}]')`;
       const siblingBefore = await evaluate(`Object.fromEntries(new FormData(${sibling}))`);
       await evaluate(`${editor}.focus()`);
@@ -51,7 +55,10 @@ export async function checkWidgets({ call, evaluate, until, base, mode, artifact
       await evaluate(`${form}.requestSubmit()`);
       await until(`${root}.querySelector('[data-widget-save]').textContent.includes('Save 1')`);
       for (const name of ['document', 'graph', 'layout']) {
-        assert.deepEqual(JSON.parse(await evaluate(`${root}.querySelector('[data-saved-${name}]').textContent`)), JSON.parse(retainedValues[name]), `Server receives current ${name}`);
+        const submitted = JSON.parse(retainedValues[name]);
+        // VueFlow's initialization flag is local to mounted nodes.
+        if (name === 'graph') for (const node of submitted.nodes) delete node.initialized;
+        assert.deepEqual(JSON.parse(await evaluate(`${root}.querySelector('[data-saved-${name}]').textContent`)), submitted, `Server saves current ${name} data`);
       }
       assert.deepEqual(await evaluate(`Object.fromEntries(new FormData(${sibling}))`), siblingBefore, 'Consumer instances remain independent');
       assert.ok(await evaluate(`document.documentElement.scrollWidth<=innerWidth&&${editor}.getBoundingClientRect().height>=180&&getComputedStyle(${grid}.querySelector('.dashboard-cells')).gap==='16px'`));

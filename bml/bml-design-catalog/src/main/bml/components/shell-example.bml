@@ -1,0 +1,56 @@
+<component tag="shell-example">
+  <prop name="id" type="String" default="main" />
+  <script server provides="state" scope="server-session">bosca.design.catalog.CatalogShell()</script>
+  <island name="shell-example" :key="id">
+    <app-shell :data-theme='if (state.light) "light" else "dark"' data-example-shell>
+      <app-header brand="Bosca" product="Examples" href="/">
+        <div class="shell-subsystem">
+          <span class="shell-subsystem-icon"><icon name="boxes" /></span>
+          <div class="shell-subsystem-text"><strong>Examples</strong><p>Application-owned destinations and actions</p></div>
+        </div>
+        <nav class="shell-navigation" aria-label="Example navigation">
+          <div class="shell-group">
+            <span class="shell-label">Library</span>
+            <a href="/shell" aria-current="page"><span class="shell-icon"><icon name="boxes" :size="15" /></span>Shell</a>
+            <a href="/workspaces"><span class="shell-icon"><icon name="code" :size="15" /></span>Workspaces</a>
+          </div>
+          <details class="shell-group shell-settings">
+            <summary class="shell-label">Settings<span class="shell-chevron"><icon name="chevron" :size="12" /></span></summary>
+            <a href="/foundation"><span class="shell-icon"><icon name="settings" :size="15" /></span>Foundation</a>
+          </details>
+        </nav>
+        <div class="shell-footer">
+          <profile-menu label="Account" :name="state.name" subtitle="@alex" data-shell-account>
+            <button role="menuitem" :icon='if (state.light) "moon" else "sun"' @click="state.appearance" data-shell-appearance>{ if (state.light) "Dark appearance" else "Light appearance" }</button>
+            <button role="menuitem" icon="users" @click="state.select" data-shell-select>Select profile</button>
+            <button role="menuitem" icon="edit" disabled>Unavailable</button>
+            <a role="menuitem" href="/workspaces"><span class="menu-icon"><icon name="code" /></span>Workspaces</a>
+          </profile-menu>
+        </div>
+      </app-header>
+      <div class="shell-main">
+        <page-shell>
+          <h1>Application shell</h1>
+          <p class="shell-example-description">The application supplies its navigation, profile data and account actions.</p>
+          <div class="shell-example-content">
+            <card title="Profile">
+              <div class="shell-example-content">
+                <profile :name="state.name" subtitle="@alex" initials="AE" data-shell-profile />
+                <form @submit="state.rename(form.name)" class="shell-example-content">
+                  <field label="Display name"><input name="name" :value="state.name" required /></field>
+                  <button type="submit" primary>Save name</button>
+                </form>
+                <profile-menu label="Member" name="Independent member" subtitle="@member" data-shell-member>
+                  <a role="menuitem" href="/workspaces"><span class="menu-icon"><icon name="code" /></span>Workspaces</a>
+                  <button role="menuitem" disabled>Unavailable</button>
+                </profile-menu>
+              </div>
+            </card>
+            <a href="/">All examples</a>
+          </div>
+        </page-shell>
+      </div>
+      <toast id="shell-example-notice" :message="state.notice" :sequence="state.sequence" tone="success" data-shell-notice />
+    </app-shell>
+  </island>
+</component>

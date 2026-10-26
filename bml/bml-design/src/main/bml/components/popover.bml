@@ -17,7 +17,7 @@
         { label }
       </if>
     </summary>
-    <div ref="content" class="popover-content" role="region" :aria-label="label">
+    <div ref="content" class="popover-content" role="region" :aria-label="label" data-bml-design-popover-content>
       <slot />
     </div>
   </details>
@@ -70,7 +70,7 @@
       max-height: calc(100vh - 24px);
       overflow: auto;
       padding: 12px;
-      border: 1px solid var(--line-2);
+      border: 1px solid var(--popover-border, var(--line));
       border-radius: var(--r-sm);
       background: var(--bg-1);
       box-shadow: var(--popover-shadow, 0 12px 30px color-mix(in srgb, var(--shadow-color) 40%, transparent));

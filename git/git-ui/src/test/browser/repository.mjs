@@ -374,7 +374,7 @@ await ev(
   'document.querySelector(".repository-controls summary[aria-label=\\"Clone repository\\"]").click()',
 );
 await until(
-  'document.querySelector(".popover-content").matches(":popover-open")',
+  'document.querySelector(".repository-controls .popover-content").matches(":popover-open")',
 );
 assert.equal(
   await ev('document.activeElement?.getAttribute("aria-label")'),
@@ -449,13 +449,13 @@ await ev(
   'document.dispatchEvent(new KeyboardEvent("keydown", {key:"Escape",bubbles:true}))',
 );
 await until(
-  '!document.querySelector(".popover-content").matches(":popover-open")',
+  '!document.querySelector(".repository-controls .popover-content").matches(":popover-open")',
 );
 
 const geometry = await ev(
   '({surface:document.querySelector(".file-surface").getBoundingClientRect().height,editor:document.querySelector(".cm-editor").getBoundingClientRect().height,radius:getComputedStyle(document.querySelector(".cm-editor")).borderRadius,overflow:document.documentElement.scrollWidth>innerWidth})',
 );
-assert.ok(geometry.editor >= 224 && geometry.editor <= 801, JSON.stringify(geometry));
+assert.ok(geometry.editor >= 224 && geometry.editor < geometry.surface, JSON.stringify(geometry));
 assert.equal(geometry.radius, "0px");
 assert.equal(
   await ev(
@@ -541,10 +541,18 @@ for (const width of [1440, 1024]) {
       'document.readyState==="complete" && document.querySelector(".cm-editor")',
     );
     const size = await ev(
-      '({height:document.querySelector(".cm-editor").getBoundingClientRect().height,surface:document.querySelector(".file-surface").getBoundingClientRect().height,gutters:document.querySelector(".cm-lineNumbers")!==null,scroll:document.querySelector(".cm-scroller").scrollHeight>document.querySelector(".cm-scroller").clientHeight,radius:getComputedStyle(document.querySelector(".cm-editor")).borderRadius})',
+      `(() => {
+        const surface=document.querySelector('.file-surface').getBoundingClientRect(),main=document.querySelector('main');
+        return {height:document.querySelector('.cm-editor').getBoundingClientRect().height,surface:surface.height,
+          bottom:surface.bottom,availableBottom:main.getBoundingClientRect().bottom-parseFloat(getComputedStyle(main).paddingBottom),
+          header:document.querySelector('.file-header').getBoundingClientRect().height,
+          gutters:document.querySelector('.cm-lineNumbers')!==null,
+          scroll:document.querySelector('.cm-scroller').scrollHeight>document.querySelector('.cm-scroller').clientHeight,
+          radius:getComputedStyle(document.querySelector('.cm-editor')).borderRadius};
+      })()`,
     );
-    assert.ok(size.height >= 224 && size.height <= 801, JSON.stringify(size));
-    if (file === "long.txt") assert.ok(size.height >= 799, JSON.stringify(size));
+    assert.ok(Math.abs(size.bottom-size.availableBottom)<=1, JSON.stringify(size));
+    assert.ok(Math.abs(size.height-(size.surface-size.header-2))<=1, JSON.stringify(size));
     assert.equal(size.gutters, true);
     assert.equal(size.radius, "0px");
     if (file === "long.txt") assert.equal(size.scroll, true);

@@ -2,10 +2,8 @@ package bosca.design.catalog
 
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.json.Json
 
-/** Application validation and submitted values for the catalog's two editable content examples. */
+/** Application validation and submitted values for the catalog's comment example. */
 @Serializable
 data class CatalogContent(
     val id: String,
@@ -24,18 +22,4 @@ data class CatalogContent(
         }
     }
 
-    suspend fun settings(draft: String) {
-        delay(150)
-        value = draft
-        error = try {
-            Json.parseToJsonElement(draft)
-            ""
-        } catch (_: SerializationException) {
-            "Enter valid JSON before saving."
-        }
-        if (error.isEmpty()) {
-            saved = draft
-            saves++
-        }
-    }
 }

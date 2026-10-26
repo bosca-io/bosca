@@ -2,6 +2,7 @@
   <prop name="title" type="String" required />
   <prop name="description" type="String" required />
   <prop name="current" type="String" required />
+  <prop name="fill" type="Boolean" default="false" />
   <script server provides="lightAppearance">
     currentRenderContext().cookies["bosca_catalog_appearance"] == "light"
   </script>
@@ -11,7 +12,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>{ title } · Bosca Design Library</title>
     </head>
-    <body class="catalog-document">
+    <body :class='"catalog-document" + (if (fill) " catalog-document-fill" else "")'>
       <a class="skip-link" href="#catalog-content">Skip to content</a>
       <app-header brand="Bosca" product="Design library" href="/" class="catalog-header">
         <nav class="catalog-nav" aria-label="Design library">
@@ -25,6 +26,8 @@
           <a href="/navigation" :aria-current='if (current == "/navigation") "page" else null'><icon name="list" />Navigation</a>
           <a href="/feedback" :aria-current='if (current == "/feedback") "page" else null'><icon name="info" />Feedback</a>
           <a href="/surfaces" :aria-current='if (current == "/surfaces") "page" else null'><icon name="boxes" />Surfaces</a>
+          <a href="/shell" :aria-current='if (current == "/shell") "page" else null'><icon name="users" />Shell and profiles</a>
+          <a href="/workspaces" :aria-current='if (current == "/workspaces") "page" else null'><icon name="code" />Workspaces</a>
           <a href="/source" :aria-current='if (current == "/source") "page" else null'><icon name="code" />Source</a>
           <a href="/json" :aria-current='if (current == "/json") "page" else null'><icon name="code" />JSON</a>
           <a href="/flows" :aria-current='if (current == "/flows") "page" else null'><icon name="boxes" />Flows</a>
@@ -39,15 +42,15 @@
           <switch label="Light appearance" name="lightAppearance" :checked="lightAppearance" data-catalog-light />
         </div>
       </app-header>
-      <page-shell class="catalog-main">
-        <div class="catalog-content" id="catalog-content" tabindex="-1">
-          <p class="eyebrow">Bosca Design Library</p>
-          <header class="catalog-title">
+      <page-shell class="catalog-main" :fill="fill">
+        <div :class='"catalog-content" + (if (fill) " workspace-content" else "")' id="catalog-content" tabindex="-1">
+          <p class="eyebrow workspace-fixed">Bosca Design Library</p>
+          <header class="catalog-title workspace-fixed">
             <h1>{ title }</h1>
             <p>{ description }</p>
           </header>
-          <div class="catalog-sections"><slot /></div>
-          <footer class="catalog-footer">Shared BML components. Application-owned styles and actions.</footer>
+          <div :class='"catalog-sections" + (if (fill) " workspace-content" else "")'><slot /></div>
+          <if !fill><footer class="catalog-footer">Shared BML components. Application-owned styles and actions.</footer></if>
         </div>
       </page-shell>
     </body>

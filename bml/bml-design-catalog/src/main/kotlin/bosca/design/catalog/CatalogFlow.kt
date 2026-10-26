@@ -2,14 +2,14 @@ package bosca.design.catalog
 
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
+import bosca.design.model.*
+import kotlinx.serialization.json.*
 
 /** Isolated example graphs and form outcomes, independent of pipeline services. */
 @Serializable
 data class CatalogFlow(
     val id: String,
-    var value: String = initial,
+    var value: FlowGraph = initial,
     var readOnly: Boolean = false,
     var disabled: Boolean = false,
     var reject: Boolean = false,
@@ -21,8 +21,8 @@ data class CatalogFlow(
 ) {
     suspend fun save(graph: String) {
         delay(150)
-        require(Json.parseToJsonElement(graph) is JsonObject) { "Expected graph JSON." }
-        if (!reject) value = graph
+        val submitted = Json.decodeFromString(FlowGraph.serializer(), graph)
+        if (!reject) value = submitted
         error = if (reject) "This example rejected the save. Your graph is retained." else ""
         notice = if (reject) "Graph save rejected." else "Graph saved."
         noticeSequence++
@@ -33,9 +33,27 @@ data class CatalogFlow(
     fun toggleRejection() { reject = !reject }
     fun toggleVisible() { visible = !visible }
     fun toggleConnections() { rejectConnections = !rejectConnections }
-    fun replace() { value = """{"nodes":[{"id":"replacement","type":"card","position":{"x":100,"y":100},"data":{"label":"Replacement","inputs":[],"outputs":[]}}],"edges":[]}"""; error = "" }
+    fun replace() {
+        value = FlowGraph(nodes = listOf(FlowNode("replacement", FlowPosition(100.0, 100.0), "card",
+            FlowNodeData(label = "Replacement", inputs = emptyList(), outputs = emptyList()))))
+        error = ""
+    }
 
     companion object {
-        val initial = """{"nodes":[{"id":"source","type":"card","sourcePosition":"bottom","position":{"x":60,"y":0},"data":{"label":"Source","description":"Application input","inputs":[],"outputs":[{"id":"items","label":"Items"}],"customValue":"retained"}},{"id":"process","type":"card","sourcePosition":"bottom","targetPosition":"top","position":{"x":60,"y":120},"data":{"label":"Transform","description":"Application action","inputs":[{"id":"items","label":"Items"}],"outputs":[{"id":"result","label":"Result"}]}},{"id":"output","type":"card","targetPosition":"top","position":{"x":60,"y":240},"data":{"label":"Output","status":"Ready","tone":"success","inputs":[{"id":"result","label":"Result"}],"outputs":[]}}],"edges":[{"id":"first","source":"source","sourceHandle":"items","target":"process","targetHandle":"items"}]}"""
+        val initial = FlowGraph(
+            nodes = listOf(
+                FlowNode("source", FlowPosition(60.0, 0.0), "card", FlowNodeData(
+                    label = "Source", description = "Application input", inputs = emptyList(), outputs = listOf(FlowPort("items", "Items")),
+                    payload = buildJsonObject { put("customValue", "retained") },
+                ), sourcePosition = FlowSide.BOTTOM),
+                FlowNode("process", FlowPosition(60.0, 120.0), "card", FlowNodeData(
+                    label = "Transform", description = "Application action", inputs = listOf(FlowPort("items", "Items")), outputs = listOf(FlowPort("result", "Result")),
+                ), sourcePosition = FlowSide.BOTTOM, targetPosition = FlowSide.TOP),
+                FlowNode("output", FlowPosition(60.0, 240.0), "card", FlowNodeData(
+                    label = "Output", status = "Ready", tone = "success", inputs = listOf(FlowPort("result", "Result")), outputs = emptyList(),
+                ), targetPosition = FlowSide.TOP),
+            ),
+            edges = listOf(FlowEdge("first", "source", "process", "items", "items")),
+        )
     }
 }

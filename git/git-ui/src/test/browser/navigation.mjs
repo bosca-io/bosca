@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
 const base = process.env.GIT_UI_BASE_URL;
 if (!base) throw Error("Set GIT_UI_BASE_URL to the isolated browser fixture.");
 const targets = await (
@@ -14,9 +15,11 @@ const ws = new WebSocket(
 await new Promise((r) => ws.addEventListener("open", r, { once: true }));
 let n = 0;
 const pending = new Map(),
-  errors = [];
+  errors = [],
+  heldRequests = [];
 ws.addEventListener("message", (e) => {
   const m = JSON.parse(e.data);
+  if (m.method === 'Fetch.requestPaused') heldRequests.push(m.params);
   if (m.method === "Runtime.exceptionThrown")
     errors.push(m.params.exceptionDetails);
   if (m.method === "Page.javascriptDialogOpening")
@@ -87,6 +90,7 @@ async function nav(path) {
   await new Promise((r) => setTimeout(r, 180));
 }
 await call("Runtime.enable");
+await call("Network.enable");
 await call("Page.enable");
 await call("Page.bringToFront");
 await call("Network.setCookie", {
@@ -124,6 +128,65 @@ async function openMenu() {
   await until(opened);
 }
 const prefix = `bml-${Buffer.from('io.bosca:bml-design').toString('hex')}-`;
+const sidebarMeasurements = [];
+async function sidebarGeometry() {
+  return ev(`(() => {
+    const box=selector=>{
+      const element=document.querySelector(selector),r=element.getBoundingClientRect();
+      return {top:r.top,left:r.left,width:r.width,height:r.height};
+    };
+    return {brand:box('.app-header .brand'),subsystem:box('.git-subsystem'),
+      icon:box('.subsystem-icon'),title:box('.subsystem-text strong'),description:box('.subsystem-text p'),
+      navigation:box('.git-navigation'),fontStatus:document.fonts.status};
+  })()`);
+}
+await call('Network.setCacheDisabled',{cacheDisabled:true});
+for (const width of [1920,1440,1024,768,390]) {
+  await viewport(width);
+  heldRequests.length=0;
+  await call('Fetch.enable',{patterns:[
+    {urlPattern:base+'/*.woff2',requestStage:'Request'},
+    {urlPattern:base+'/*',resourceType:'Script',requestStage:'Request'},
+  ]});
+  let initial, fontsLoaded, enhanced;
+  try {
+    await call('Page.navigate',{url:base+'/repositories/repo'});
+    await until(`location.pathname==='/repositories/repo'&&document.readyState!=='loading'&&document.querySelector('.git-navigation')&&getComputedStyle(document.querySelector('.git-navigation')).display==='flex'`);
+    await until(`document.fonts.status==='loading'`);
+    initial=await sidebarGeometry();
+    assert.ok(heldRequests.some(request=>request.resourceType==='Font'),'The cold-load check holds actual font requests');
+    for (const request of heldRequests.filter(request=>request.resourceType==='Font')) {
+      heldRequests.splice(heldRequests.indexOf(request),1);
+      await call('Fetch.continueRequest',{requestId:request.requestId});
+    }
+    await ev('document.fonts.ready');
+    fontsLoaded=await sidebarGeometry();
+  } finally {
+    for (const request of heldRequests.splice(0)) await call('Fetch.continueRequest',{requestId:request.requestId});
+    await call('Fetch.disable');
+  }
+  await until(`document.readyState==='complete'&&document.querySelector('[data-bml-ref=signout]')&&!document.querySelector('[data-bml-ref=signout]').disabled`);
+  enhanced=await sidebarGeometry();
+  sidebarMeasurements.push({width,initial,fontsLoaded,enhanced});
+  await writeFile(`${process.env.GIT_UI_ARTIFACT_DIR}/sidebar-geometry.json`,JSON.stringify(sidebarMeasurements,null,2));
+  for (const [state,geometry] of Object.entries({fontsLoaded,enhanced})) {
+    for (const name of ['brand','subsystem','icon','title','description','navigation']) {
+      assert.deepEqual(geometry[name],initial[name],`${name} remains stationary after ${state} at ${width}px`);
+    }
+  }
+  assert.equal(await ev("Boolean(document.querySelector('.nav-search'))"),false,'The redundant sidebar search box is removed');
+  const searchRow = await ev(`(() => {
+    const search=document.querySelector('.git-navigation a[href="/search"]');
+    const repositories=document.querySelector('.git-navigation a[href="/repositories"]');
+    const a=search.getBoundingClientRect(),b=repositories.getBoundingClientRect();
+    return {search:{left:a.left,height:a.height,padding:getComputedStyle(search).padding},
+      repositories:{left:b.left,height:b.height,padding:getComputedStyle(repositories).padding}};
+  })()`);
+  assert.equal(searchRow.search.height,searchRow.repositories.height,'Search uses the same row height as other navigation links');
+  assert.equal(searchRow.search.padding,searchRow.repositories.padding,'Search uses the same row padding as other navigation links');
+  if (width>700) assert.equal(searchRow.search.left,searchRow.repositories.left,'Search aligns with the other sidebar links');
+}
+await call('Network.setCacheDisabled',{cacheDisabled:false});
 for (const width of [1920,1440,1024,390]) {
   await viewport(width);
   await nav('/repositories/repo?file=README.md');

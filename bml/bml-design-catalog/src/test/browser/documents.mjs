@@ -16,7 +16,14 @@ export async function checkDocuments({ navigate, evaluate, until: poll, call, ar
       await call('Network.clearBrowserCookies');
       await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
       await navigate('/documents');
-      await until(`document.querySelectorAll('[data-document-ready]').length===3&&document.querySelector('[data-document-form=${id}]')?.dataset.bmlActionBound==='true'`);
+      await until(`document.querySelectorAll('[data-document-ready]').length===4&&document.querySelector('[data-document-form=${id}]')?.dataset.bmlActionBound==='true'`);
+      const metadata = await evaluate(`(() => {
+        const root=document.querySelector('[data-metadata-document]');
+        return {text:root.querySelector('.tiptap').textContent,
+          value:JSON.parse(new FormData(document.querySelector('[data-metadata-document-form]')).get('metadataBody'))};
+      })()`);
+      assert.equal(metadata.text, 'A document from Bosca content.');
+      assert.deepEqual(Object.keys(metadata.value).sort(), ['content','type']);
       const root = `document.querySelector('[data-catalog-document=${id}] [data-bml-document-editor]')`;
       const editor = `${root}.querySelector('.tiptap')`, field = `${root}.querySelector('textarea')`;
       const form = `document.querySelector('[data-document-form=${id}]')`;

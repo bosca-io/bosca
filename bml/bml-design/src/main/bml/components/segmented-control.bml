@@ -1,33 +1,36 @@
 <component tag="segmented-control">
   <prop name="label" type="String" required />
   <prop name="name" type="String" required />
-  <prop name="options" type="List<String>" required />
-  <prop name="values" type="List<String>" default="emptyList()" />
-  <prop name="icons" type="List<String>" default="emptyList()" />
+  <prop name="options" type="List<bosca.design.model.SegmentOption>" required />
   <prop name="value" type="String" required />
   <prop name="preserveKey" type="String" default="" />
+  <script server provides="optionMetadata">
+    kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(bosca.design.model.SegmentOption.serializer()), options)
+  </script>
   <div
     class="segmented-control"
     :data-value="value"
     :data-name="name"
+    :data-options="optionMetadata"
     {...attrs}
     role="radiogroup"
     :aria-label="label"
     :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)"
   >
     <html:input ref="value" type="hidden" :name="name" :value="value" />
-    <for index in options.indices>
+    <for option in options>
       <html:button
         type="button"
         role="radio"
-        :data-value="(values.getOrNull(index) ?: options[index])"
-        :aria-checked="((values.getOrNull(index) ?: options[index]) == value).toString()"
-        :tabindex="if ((values.getOrNull(index) ?: options[index]) == value) 0 else -1"
+        :data-value="option.value"
+        :disabled="option.disabled"
+        :aria-checked="(option.value == value).toString()"
+        :tabindex="if (!option.disabled && option.value == value) 0 else -1"
       >
-        <if icons.getOrNull(index).orEmpty().isNotBlank()>
-          <icon :name="icons[index]" :size="12" />
+        <if option.icon.isNotBlank()>
+          <icon :name="option.icon" :size="12" />
         </if>
-        { options[index] }
+        <span data-option-label>{ option.label }</span>
       </html:button>
     </for>
   </div>
@@ -71,6 +74,10 @@
     }
     button:hover {
       background: var(--bg-2);
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
     }
     button[aria-checked="true"] {
       background: var(--bg-3);

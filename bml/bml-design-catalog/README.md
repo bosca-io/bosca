@@ -28,6 +28,7 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/documents` | Independent TipTap documents, rich text formatting, native JSON form values, rejected saves, reset and readonly/disabled states |
 | `/source/languages` | Kotlin, TypeScript, JavaScript and BML syntax examples |
 | `/source` | Independent dark/light source viewers, requested lines, language/wrap changes, preserved state, content replacement and compact/bare/empty layouts |
+| `/workspaces` | A fill-height document workspace with source/preview, full screen, internal scrolling and appearance inheritance |
 | `/surfaces` | Panels, padded/unpadded/untitled cards, retained native disclosures, empty/loading/table views and long labels in two palettes |
 | `/feedback` | Independent copy outcomes, tooltip placements, repeated toast tones, long notifications and native selectable values |
 | `/navigation` | Native route destinations, retained overflow menus, projected actions, changing/current/long lists, clipping and header spacing in two palettes |
@@ -35,7 +36,7 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/views` | Search queries, native category values and caller-owned tab panels, retained drafts, rejected searches, changing tab lists and long/empty/readonly/disabled variants |
 | `/choices` | Local required/custom choices, multiple native values, tag limits, loading/disabled controls and controlled defaults in two palettes |
 | `/selection` | Server-filtered, offset-paged picker in independent dark/light roots, with failed-search retry, loading/disabled controls, native reset and toast saves |
-| `/components` | Linked index of all 46 exports and normal unprefixed authoring |
+| `/components` | Linked index of all 51 exports and normal unprefixed authoring |
 | `/components/controls` | Buttons, inputs, choices, search, segments, accessible local tabs, native selects and the paged picker's authoring source |
 | `/components/layout` | Surfaces, headings, native disclosure, application header and route tabs |
 | `/components/feedback` | Alerts, badges, empty/loading states, icons, mark, tooltips, copy controls, repeatable notifications and timestamps |
@@ -394,3 +395,18 @@ independent roots, CSS gaps, invalid input, repeated disposal and script-disable
 ```sh
 ./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.dashboard layouts*' --tests 'bosca.design.catalog.CatalogApplicationTest.dashboards pass*'
 ```
+
+The `/shell` page consumes `app-shell`, `profile` and `profile-menu` from the linked library. It
+supplies its own destinations, light/dark palettes and local display-name/account actions, without
+an auth or Git dependency. The shared components own gradient layout, sidebar/header spacing,
+identity presentation, context activation, menu keyboard navigation and focus restoration.
+
+Complex component inputs use Kotlin model objects and JSON trees. The catalog constructs chart
+configurations, graphs and dashboard layouts with `bosca.design.model` types, then binds them
+normally. Document and JSON values use Kotlin JSON builders. Native forms submit JSON text;
+their receiving actions decode it. JSON editor malformed/empty examples use the explicit `text`
+draft prop. See the [structured input contract](../bml-design/README.md#structured-component-inputs).
+
+The examples construct segmented options, local tabs, common chart settings/points and flow card data/ports as Kotlin objects. Standard document examples reuse `bosca.documents` through `documentValue`; custom/submitted content stays lossless JSON. API references show the simple string props and structured object contracts.
+
+The document page includes a directly bound `bosca.content.metadata.model.Document`; the editor extracts its ProseMirror body. The other examples retain open JSON drafts and caller-owned forms.

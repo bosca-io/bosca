@@ -93,6 +93,21 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `file views and editors reserve the page for the document`() {
+        for (path in listOf("file=README.md&line=1", "file=long.txt", "file=README.md&edit=true", "new=true")) {
+            val response = get("/repositories/repo?$path")
+            assertEquals(200, response.statusCode(), path)
+            val html = response.body()
+            assertTrue("repository-file-page" in html && "page-fill" in html, path)
+            assertTrue("file-workspace" in html && "data-bml-fullscreen-button" in html, path)
+            assertFalse("repository-summary" in html || "class=\"path-bar\"" in html, path)
+        }
+        val folder = get("/repositories/repo?path=docs").body()
+        assertTrue("repository-summary" in folder && "path-bar" in folder)
+        assertFalse("repository-file-page" in folder)
+    }
+
+    @Test
     fun `repository browsing preserves and encodes refs and file paths`() {
         val response = get("/repositories/repo?ref=feature%2Fone&path=docs")
         assertTrue("aria-label=\"Loading commits\"" in response.body(), response.body())
@@ -309,6 +324,23 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `appearance preferences are rendered before client scripts run`() {
+        for ((saved, expected) in listOf("light" to "light", "dark" to "dark", "invalid" to "dark")) {
+            val response = client.send(
+                HttpRequest.newBuilder(URI("http://localhost:$port/repositories/repo"))
+                    .header("Cookie", "_git_test=ui-test-token; git_ui_appearance=$saved")
+                    .GET().build(),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+            assertEquals(200, response.statusCode(), response.body())
+            for (tag in listOf("html", "body")) {
+                assertTrue(Regex("<$tag\\b[^>]*\\bdata-theme=\"$expected\"").containsMatchIn(response.body()), response.body())
+            }
+            assertTrue("Profile actions" in response.body(), response.body())
+        }
+    }
+
+    @Test
     fun `production design assets stay isolated to their consuming pages`() {
         GitUiAssetAudit(client, URI("http://localhost:$port")).verify()
     }
@@ -409,7 +441,7 @@ class GitUiRoutesTest {
     fun `migrated controls have no local registrations and use library client mounts`() {
         val migrated = listOf(
             "button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state",
-            "icon", "icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "confirm-dialog", "select", "search-input", "segmented-control", "section-heading", "table-scroll", "disclosure-heading", "empty-state", "time", "comment-editor", "toast", "app-header", "bosca-mark", "page-shell", "page-heading", "tabs", "view-tabs", "tree", "tree-item", "source-view", "json-editor",
+            "icon", "icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "confirm-dialog", "select", "search-input", "segmented-control", "section-heading", "table-scroll", "disclosure-heading", "empty-state", "time", "comment-editor", "toast", "app-header", "app-shell", "profile", "profile-menu", "bosca-mark", "page-shell", "page-heading", "tabs", "view-tabs", "tree", "tree-item", "source-view", "json-editor",
         )
         val registered = bml.generated.BmlComponents.all.map { it.tag }.toSet()
         for (tag in migrated) {
@@ -432,7 +464,8 @@ class GitUiRoutesTest {
             assertEquals(200, response.statusCode(), response.body())
             response.body()
         }
-        assertTrue("data-bml-component=\"git-search-link\"" in html, "Git search shortcut needs its own native link mount")
+        assertTrue("data-bml-component=\"git-search-link\"" in html, "The navigation search link owns its shortcut")
+        assertFalse("class=\"nav-search\"" in html, "The redundant sidebar search box is removed")
         for (tag in listOf("icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "select", "search-input", "segmented-control", "toast", "app-header", "tabs", "view-tabs", "tree", "source-view", "json-editor")) {
             val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
             assertTrue("data-bml-component=\"$id\"" in html, "Missing library mount for $tag")
@@ -1991,7 +2024,7 @@ class GitUiRoutesTest {
                 listOf("digitalocean", "", "nyc1", "small", "ubuntu", "[]", "[]", 5, 60, 120),
             )
         assertEquals(true, actionState(invalid)["failed"]?.jsonPrimitive?.boolean, invalid.body())
-        assertEquals("[]", actionState(invalid)["profiles"]?.jsonPrimitive?.content)
+        assertEquals("[]", actionState(invalid)["profilesText"]?.jsonPrimitive?.content)
     }
 
     @Test
@@ -2005,14 +2038,14 @@ class GitUiRoutesTest {
         val before = requests.count { it.operation == "GitUiConfigureOrchestrator" }
         val invalid = configure(draft = "{invalid: ")
         assertEquals(true, actionState(invalid)["failed"]?.jsonPrimitive?.boolean, invalid.body())
-        assertEquals("{invalid: ", actionState(invalid)["profiles"]?.jsonPrimitive?.content)
-        assertEquals(sinks, actionState(invalid)["sinks"]?.jsonPrimitive?.content)
+        assertEquals("{invalid: ", actionState(invalid)["profilesText"]?.jsonPrimitive?.content)
+        assertEquals(sinks, actionState(invalid)["sinksText"]?.jsonPrimitive?.content)
         assertEquals(before, requests.count { it.operation == "GitUiConfigureOrchestrator" })
         val rejected = configure(provider = "rejected-provider")
         assertEquals(true, actionState(rejected)["failed"]?.jsonPrimitive?.boolean, rejected.body())
         assertEquals("Configuration rejected", actionState(rejected)["message"]?.jsonPrimitive?.content)
-        assertEquals(profiles, actionState(rejected)["profiles"]?.jsonPrimitive?.content)
-        assertEquals(sinks, actionState(rejected)["sinks"]?.jsonPrimitive?.content)
+        assertEquals(Json.parseToJsonElement(profiles), actionState(rejected)["profiles"])
+        assertEquals(Json.parseToJsonElement(sinks), actionState(rejected)["sinks"])
         val saved = configure()
         assertEquals(false, actionState(saved)["failed"]?.jsonPrimitive?.boolean, saved.body())
         assertEquals("/ci-agents/orchestrator", actionState(saved)["nextHref"]?.jsonPrimitive?.content)
@@ -2037,6 +2070,7 @@ class GitUiRoutesTest {
         assertTrue("name=\"profiles\"" in html && "name=\"sinks\"" in html, html)
         assertTrue("aria-label=\"Runner profiles\"" in html && "aria-label=\"Alert sinks\"" in html, html)
         assertTrue("data-bml-preserve=\"json-profiles\"" in html && "data-bml-preserve=\"json-sinks\"" in html, html)
+        assertFalse("data-value=\"null\"" in html, "Structured settings must reach both editor inputs: $html")
         fun script(page: String): String = Regex("src=\"(/_bml/js/[^\"]+)\"").findAll(page)
             .joinToString("\n") { get(it.groupValues[1]).body() }
         val editorScript = script(html)
@@ -2244,7 +2278,10 @@ class GitUiRoutesTest {
         assertEquals(200, response.statusCode(), response.body())
         val html = response.body()
         assertTrue("file=README.md&amp;edit=true" in html || "file=README.md&edit=true" in html, html)
-        assertTrue(Regex(">\\s*Rename\\s*<").containsMatchIn(html) && Regex(">\\s*Edit\\s*<").containsMatchIn(html), html)
+        assertTrue("aria-label=\"Rename file\"" in html, html)
+        assertTrue("aria-label=\"Delete file\"" in html, html)
+        assertTrue("aria-label=\"Edit file\"" in html, html)
+        assertFalse(Regex(">\\s*(Rename|Edit)\\s*<").containsMatchIn(html), html)
         assertTrue("aria-label=\"Download file\"" in html, html)
         assertTrue("role=\"tablist\"" in html && "aria-label=\"Markdown view\"" in html, html)
         assertEquals(1, Regex("aria-label=\"File actions\"").findAll(html).count())
@@ -2269,22 +2306,38 @@ class GitUiRoutesTest {
 
     @Test
     fun `user mapping changes preserve identity labels and require removal confirmation`() {
+        val path = "/settings/github"
+        val shell = get(path).body()
+        val key = requireNotNull(Regex("data-bml-state-key=\"(git-github-users.model[^\"]*)\"").find(shell)).groupValues[1]
         val saved =
             action(
-                "/settings/github",
+                path,
                 "git-github-users.model",
                 "save",
                 listOf("alice", "principal"),
+                sourceHtml = shell,
             )
-        assertEquals(false, actionState(saved)["failed"]?.jsonPrimitive?.boolean)
+        val savedState = actionState(saved)
+        assertEquals(false, savedState["failed"]?.jsonPrimitive?.boolean)
+        assertEquals(1, savedState["noticeSequence"]?.jsonPrimitive?.int)
         assertTrue("@alice" in saved.body() && "alice@example.test" in saved.body(), saved.body())
+        assertTrue("github-user-mapping-notice" in saved.body(), saved.body())
+        assertFalse("status-message" in saved.body(), saved.body())
+        val refreshed = continueAction(path, key, "move", savedState, listOf(0L, 0L, "", ""))
+        val refreshedState = actionState(refreshed)
+        assertEquals(1, refreshedState["noticeSequence"]?.jsonPrimitive?.int)
+        assertEquals("", refreshedState["message"]?.jsonPrimitive?.content)
+        val repeated = continueAction(path, key, "save", refreshedState, listOf("alice", "principal"))
+        assertEquals(2, actionState(repeated)["noticeSequence"]?.jsonPrimitive?.int)
         val rejected =
-            action("/settings/github", "git-github-users.model", "remove", listOf(101L, false))
+            continueAction(path, key, "remove", actionState(repeated), listOf(101L, false))
         assertEquals(true, actionState(rejected)["failed"]?.jsonPrimitive?.boolean)
+        assertEquals(2, actionState(rejected)["noticeSequence"]?.jsonPrimitive?.int)
         assertEquals(1, userMappings.size)
         val removed =
-            action("/settings/github", "git-github-users.model", "remove", listOf(101L, true))
+            continueAction(path, key, "remove", actionState(rejected), listOf(101L, true))
         assertEquals(false, actionState(removed)["failed"]?.jsonPrimitive?.boolean)
+        assertEquals(3, actionState(removed)["noticeSequence"]?.jsonPrimitive?.int)
         assertTrue(userMappings.isEmpty())
     }
 
@@ -2351,6 +2404,9 @@ class GitUiRoutesTest {
             "The initial HTML reserves a labeled tile for every deferred statistic",
         )
         assertEquals(5, Regex("role=\"status\"").findAll(placeholderGrid).count())
+        for (label in listOf("commits", "branches", "tags", "contributors", "size")) {
+            assertTrue("aria-label=\"Loading $label\"" in shell.body(), shell.body())
+        }
         assertTrue(requests.drop(before).none { it.operation == "GitUiStats" })
         val payload = buildJsonObject {
             put("page", "/repositories/{id}")
@@ -3258,7 +3314,7 @@ class GitUiRoutesTest {
                         operation == "GetCurrentPrincipal" ->
                             """{"data":{"security":{"principals":{"current":{"id":"test-principal","verified":true,"primaryProfileId":null}}}}}"""
                         operation == "GetCurrentProfiles" ->
-                            """{"data":{"profiles":{"current":[]}}}"""
+                            """{"data":{"profiles":{"current":[{"id":"owner","name":"Alice","slug":"alice","isPrimary":true,"type":"GENERIC","visibility":"USER","created":"2026-10-09T00:00:00Z","attributes":[]}]}}}"""
                         operation == "SignOut" ->
                             """{"data":{"security":{"login":{"signOut":true}}}}"""
                         else -> """{"data":{"probe":true}}"""

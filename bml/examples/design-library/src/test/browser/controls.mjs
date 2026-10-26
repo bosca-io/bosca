@@ -10,6 +10,7 @@ import { checkOverlays } from './overlay-checks.mjs';
 import { checkClipboard } from './clipboard-checks.mjs';
 import { checkToasts } from './toast-checks.mjs';
 import { checkSelection } from './selection-checks.mjs';
+import { checkTypedChoices } from './typed-choice-checks.mjs';
 import { checkNavigation } from './navigation-checks.mjs';
 import { checkSelects } from './select-checks.mjs';
 import { checkComposition } from './composition-checks.mjs';
@@ -18,6 +19,8 @@ import { checkJson } from './json-checks.mjs';
 import { checkEmptyWidgets } from './empty-checks.mjs';
 import { checkThemes } from './theme-checks.mjs';
 import { checkWidgets } from './widget-checks.mjs';
+import { checkWorkspaces } from './workspace-checks.mjs';
+import { checkShell } from './shell-checks.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -115,6 +118,27 @@ try {
   await call('Network.enable');
   await call('Page.bringToFront');
   await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  if (process.argv[4] === 'shell') {
+    await checkShell({ call, evaluate, until, base, mode, artifacts });
+    console.log(`Shell ${mode} passed`);
+    assert.deepEqual(exceptions, []);
+    assert.deepEqual(consoleErrors, []);
+  } else if (process.argv[4] === 'typed-choices') {
+    await checkTypedChoices({ call, evaluate, until, base });
+    assert.deepEqual(exceptions, []);
+    assert.deepEqual(consoleErrors, []);
+  } else if (process.argv[4] === 'structured') {
+    await checkJson({ call, evaluate, until, base, mode, artifacts });
+    await checkWidgets({ call, evaluate, until, base, mode, artifacts });
+    assert.deepEqual(exceptions, []);
+    assert.deepEqual(consoleErrors, []);
+    console.log(`Structured input consumer checks passed (${mode}); artifacts: ${artifacts}`);
+  } else if (process.argv[4] === 'workspace') {
+    await checkWorkspaces({ call, evaluate, until, base, mode, artifacts });
+    assert.deepEqual(exceptions, []);
+    assert.deepEqual(consoleErrors, []);
+    console.log(`Independent workspace checks passed (${mode}); artifacts: ${artifacts}`);
+  } else {
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-save=light]")?.dataset.bmlActionBound === "true" || document.readyState === "complete" && document.querySelector("[data-form=light]")?.dataset.bmlActionBound === "true"');
   await evaluate(`Promise.all(['Geist', 'Geist Mono'].map(family => document.fonts.load('400 14px "' + family + '"', 'Bosca Ā Ж Ԁ Việt ┌')))`);
@@ -339,7 +363,7 @@ try {
   assert.ok(await evaluate(`(() => { const query=document.querySelector('[data-search-query=light]');
     query.value='Native query';const form=new FormData(document.querySelector('[data-selection-form=light]'));
     return query instanceof HTMLInputElement&&query.type==='search'&&!query.autofocus&&form.get('q')==='Native query'&&form.get('mode')==='paths'&&
-      document.querySelector('[data-views=light] [aria-selected=true]').textContent.trim()==='Source'; })()`), 'No-script search and initial segment form values remain native');
+      document.querySelector('[data-views=light] [aria-selected=true]').dataset.tab==='Source'&&document.querySelector('[data-views=light] [aria-selected=true]').textContent.trim()==='Updated source'; })()`), 'No-script search and initial segment form values remain native');
   await call('Page.navigate', { url: base + '/navigation' });
   await until('document.readyState === "complete" && document.querySelector("[data-routes=light]")');
   assert.ok(await evaluate(`(() => { const nav=document.querySelector('[data-routes=light]'),row=nav.querySelector('.tab-row');
@@ -382,6 +406,7 @@ try {
   await checkWidgets({ call, evaluate, until, base, mode, artifacts });
   assert.deepEqual(exceptions, []);
   console.log(`Design library browser checks passed (${mode}); screenshots: ${artifacts}`);
+  }
 } finally {
   ws?.close();
   browser.kill('SIGTERM');

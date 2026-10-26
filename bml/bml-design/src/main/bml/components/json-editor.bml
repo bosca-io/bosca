@@ -1,6 +1,8 @@
 <component tag="json-editor">
   <prop name="name" type="String" required />
-  <prop name="value" type="String" :default='"{}"' />
+  <prop name="value" type="kotlinx.serialization.json.JsonElement" :default="kotlinx.serialization.json.JsonObject(emptyMap())" />
+  <prop name="text" type="String?" :default="null" />
+  <script server provides="encodedValue">text ?: value.toString()</script>
   <prop name="label" type="String" default="JSON editor" />
   <prop name="mode" type="String" default="tree" />
   <prop name="readOnly" type="Boolean" default="false" />
@@ -8,9 +10,9 @@
   <prop name="error" type="String" default="" />
   <prop name="preserveKey" type="String" default="" />
   <div class="json-editor" data-bml-json-editor role="group" :aria-label="label"
-       :data-bml-preserve="preserveKey" :data-value="value" :data-mode="mode"
+       :data-bml-preserve="preserveKey" :data-value="encodedValue" :data-mode="mode"
        :data-label="label" :data-name="name" :data-readonly="readOnly" :data-disabled="disabled" :data-error="error" {...attrs}>
-    <textarea ref="value" :name="name" :aria-label="label" :readonly="readOnly" :disabled="disabled" spellcheck="false">{ value }</textarea>
+    <textarea ref="value" :name="name" :aria-label="label" :readonly="readOnly" :disabled="disabled" spellcheck="false">{ encodedValue }</textarea>
     <div ref="editor" class="json-surface" />
     <p ref="feedback" role="status" aria-live="polite" :hidden="error.isBlank()">{ error }</p>
   </div>

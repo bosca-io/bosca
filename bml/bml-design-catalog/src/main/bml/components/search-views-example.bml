@@ -10,8 +10,7 @@
                         :preserveKey='"views-query-" + views.id' :aria-describedby='"views-hint-" + views.id' />
           <p class="example-note" :id='"views-hint-" + views.id'>Search these local catalog examples. Category choices supply a native form value.</p>
           <segmented-control label="Example category" name="category"
-                             :options='listOf("All", "Controls", "Layout", "Overlays")'
-                             :values='listOf("all", "control", "layout", "overlay")' :icons='listOf("list", "code", "folder", "boxes")'
+                             :options='listOf(bosca.design.model.SegmentOption("all", "All", "list"), bosca.design.model.SegmentOption("control", "Controls", "code"), bosca.design.model.SegmentOption("layout", "Layout", "folder"), bosca.design.model.SegmentOption("overlay", "Overlays", "boxes"))'
                              :value="views.mode" :preserveKey='"views-category-" + views.id' :data-views-category="views.id" />
           <div class="example-actions"><button type="submit" primary :disabled="views.disabled" :data-views-submit="views.id">Search examples</button></div>
         </form>
@@ -19,15 +18,15 @@
           <view-tabs label="Search example view" :tabs="views.tabs()" :selected="views.selected"
                      :data-bml-preserve='"views-tabs-" + views.id + "-" + views.revision' :data-views-tabs="views.id" />
           <for view in views.tabs()>
-            <div role="tabpanel" tabindex="0" class="catalog-view-panel" :data-views-panel="views.id" :data-view="view" :hidden="views.selected != view"
-                 :data-bml-preserve='"views-panel-" + views.id + "-" + view + if (view == "Preview") "-" + views.resultQuery + "-" + views.resultMode else ""'>
-              <if view == "Preview">
+            <div role="tabpanel" tabindex="0" class="catalog-view-panel" :data-views-panel="views.id" :data-view="view.value" :hidden="views.selected != view.value"
+                 :data-bml-preserve='"views-panel-" + views.id + "-" + view.value + if (view.value == "Preview") "-" + views.resultQuery + "-" + views.resultMode else ""'>
+              <if view.value == "Preview">
                 <if views.results().isEmpty()><empty-state icon="search" title="No matching examples" message="Try another query or choose All categories." />
                 <else><ul class="catalog-result-list"><for choice in views.results()>
                   <li><a class="catalog-link" :href='"/components/" + (if (choice.label.endsWith("· layout")) "layout" else if (choice.label.endsWith("· overlay")) "overlays" else "controls") + "#ref-" + choice.value'>{ choice.label }</a></li>
                 </for></ul></if>
-              <else-if view == "Details"><p class="catalog-description">The application filters local examples when you submit. Editing a query or category keeps the previous results until the next accepted search.</p>
-              <else-if view == "Source"><a class="catalog-link" href="/components/controls#ref-search-input">Read the complete authoring example</a>
+              <else-if view.value == "Details"><p class="catalog-description">The application filters local examples when you submit. Editing a query or category keeps the previous results until the next accepted search.</p>
+              <else-if view.value == "Source"><a class="catalog-link" href="/components/controls#ref-search-input">Read the complete authoring example</a>
               <else><p class="catalog-description">This alternate view belongs to the application. Changing the tab list changes its preservation key.</p>
               </if>
             </div>

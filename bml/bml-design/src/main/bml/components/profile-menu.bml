@@ -1,0 +1,25 @@
+<component tag="profile-menu">
+  <prop name="label" type="String" default="Profile" />
+  <prop name="name" type="String" default="Profile" />
+  <prop name="subtitle" type="String" default="" />
+  <prop name="icon" type="String" default="users" />
+  <prop name="width" type="Int" default="260" />
+  <prop name="error" type="String" default="" />
+  <div class="profile-menu" data-bml-design-profile-menu {...attrs}>
+    <popover :label="label" :icon="icon" :width="width" class="profile-popover">
+      <div class="menu-heading" data-profile-heading>
+        <profile :name="name" :subtitle="subtitle" :showAvatar="false" />
+      </div>
+      <div class="profile-actions" role="menu" :aria-label='label + " actions"'><slot /></div>
+      <p class="profile-error" data-profile-error role="status" :hidden="error.isBlank()">{ error }</p>
+    </popover>
+  </div>
+  <style scoped>
+    .profile-menu { min-width: 0; width: 100%; }
+    .profile-error { margin: 8px 8px 0; font: 400 12px/18px var(--font-sans); color: var(--err); }
+  </style>
+  <script client scoped>
+    import { profileMenu } from "@client/helpers/profile-menu";
+    profileMenu(ctx);
+  </script>
+</component>

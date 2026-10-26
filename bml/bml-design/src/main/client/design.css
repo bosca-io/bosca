@@ -232,6 +232,93 @@
   cursor: default;
 }
 
+/* Projected menu entries cross component scopes and retain native actions and links. */
+[data-bml-design-popover-content] [role="menu"] {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+[data-bml-design-popover-content] [role="menu"] :is(button, a)[role="menuitem"] {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-height-md);
+  height: auto;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--fg-1);
+  font: 500 12.5px/18px var(--font-sans);
+  text-align: left;
+  text-decoration: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+[data-bml-design-popover-content] [role="menu"] [role="menuitem"]:hover:not(:disabled) {
+  background: var(--bg-2);
+}
+[data-bml-design-popover-content] [role="menu"] [role="menuitem"]:focus-visible {
+  outline: var(--focus-width) solid var(--accent);
+  outline-offset: 0;
+}
+[data-bml-design-popover-content] [role="menu"] [role="menuitem"]:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+[data-bml-design-popover-content] [role="menu"] [role="menuitem"].danger {
+  color: var(--err);
+}
+[data-bml-design-popover-content] [role="menu"] .button-content {
+  justify-content: flex-start;
+  gap: 8px;
+}
+[data-bml-design-popover-content] [role="menu"] :is(.menu-icon, .button-icon) {
+  display: inline-flex;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  color: inherit;
+}
+[data-bml-design-popover-content] [role="menu"] :is(.menu-icon, .button-icon) > svg {
+  width: 16px;
+  height: 16px;
+}
+[data-bml-design-popover-content] .menu-icon[hidden] {
+  display: none !important;
+}
+[data-bml-design-popover-content] .menu-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px 8px 12px;
+}
+[data-bml-design-popover-content] .menu-heading :is(strong, span) {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+[data-bml-design-popover-content] .menu-heading strong {
+  color: var(--fg-0);
+  font: 600 13px/18px var(--font-sans);
+}
+[data-bml-design-popover-content] .menu-heading span {
+  color: var(--fg-2);
+  font: 400 11.5px/16px var(--font-sans);
+}
+[data-bml-design-popover-content] .menu-heading + [role="menu"] {
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
 /* Projected modal forms cross component scopes and keep a scrolling body above a fixed footer. */
 [data-bml-design-dialog-panel] .modal-form {
   box-sizing: border-box;
@@ -239,6 +326,10 @@
   flex-direction: column;
   min-height: 0;
   margin: 0;
+}
+/* Footer-only wrappers retain their actions' intrinsic height beside a scrolling description. */
+[data-bml-design-dialog-panel] .modal-form:has(> .modal-footer:only-child) {
+  flex: none;
 }
 [data-bml-design-dialog-panel] .modal-fields {
   box-sizing: border-box;
@@ -308,3 +399,243 @@
 }
 [data-bml-design-select] .select-tag button:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
 [data-bml-design-select] .select-tag button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Public projected-content layout hooks, including caller-owned forms and islands. */
+.workspace-content,
+[data-bml-workspace] > [data-bml-island] {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.workspace-fixed { flex: none; min-width: 0; }
+.workspace-scroll { flex: 1; min-height: 0; min-width: 0; overflow: auto; }
+:is(.workspace-content, .workspace-fixed, .workspace-scroll, [data-bml-workspace], [data-bml-fullscreen-button])[hidden] {
+  display: none !important;
+}
+
+/* Responsive shell regions style projected application navigation and profile controls. */
+[data-bml-app-shell] .shell-subsystem {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  margin: 0 6px;
+  padding: 12px 33px 12px 9px;
+  border-radius: 10px;
+}
+[data-bml-app-shell] .shell-subsystem-icon {
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 18%, transparent);
+  border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent);
+}
+[data-bml-app-shell] .shell-subsystem-text {
+  min-width: 0;
+}
+[data-bml-app-shell] .shell-subsystem strong {
+  display: block;
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--fg-0);
+  letter-spacing: -0.005em;
+}
+[data-bml-app-shell] .shell-subsystem p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--fg-3);
+}
+
+[data-bml-app-shell] .shell-navigation {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0;
+  line-height: 16px;
+}
+/* Block flow lets adjacent item margins collapse, as Studio's nav buttons do. */
+[data-bml-app-shell] .shell-group {
+  display: block;
+  margin-bottom: 14px;
+}
+[data-bml-app-shell] .shell-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 16px 6px;
+  font-size: 10px;
+  line-height: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+[data-bml-app-shell] .shell-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--fg-3);
+}
+[data-bml-app-shell] .shell-settings summary {
+  cursor: pointer;
+  list-style: none;
+}
+[data-bml-app-shell] .shell-settings summary::-webkit-details-marker {
+  display: none;
+}
+[data-bml-app-shell] .shell-settings summary:hover {
+  color: var(--fg-1);
+}
+[data-bml-app-shell] .shell-chevron {
+  display: inline-flex;
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+}
+[data-bml-app-shell] .shell-settings[open] .shell-chevron {
+  transform: rotate(0deg);
+}
+[data-bml-app-shell] .shell-footer {
+  margin-top: auto;
+  padding: 16px 12px 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-bml-app-shell] .shell-chevron {
+    transition: none;
+  }
+}
+@media (max-width: 700px) {
+  [data-bml-app-shell] .shell-subsystem {
+    display: none;
+  }
+  [data-bml-app-shell] .shell-navigation {
+    flex-direction: row;
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    padding: 0 0 8px;
+    gap: 4px;
+  }
+  [data-bml-app-shell] .shell-group {
+    display: flex;
+    flex-direction: row;
+    flex: none;
+    gap: 4px;
+    margin: 0;
+  }
+  [data-bml-app-shell] .shell-settings[open] {
+    position: relative;
+  }
+  [data-bml-app-shell] .shell-label {
+    display: none;
+  }
+  [data-bml-app-shell] .shell-settings summary.shell-label {
+    display: flex;
+    padding: 7px 10px;
+    white-space: nowrap;
+  }
+  [data-bml-app-shell] .shell-footer {
+    margin: 0 0 0 auto;
+    padding: 0;
+  }
+}
+
+/* Navigation includes links rendered by projected child components. */
+[data-bml-app-shell] .shell-navigation a {
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 24px);
+  margin: 1px 12px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  color: var(--fg-2);
+  font-size: 13px;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+[data-bml-app-shell] .shell-navigation a:hover {
+  background: var(--bg-3);
+}
+[data-bml-app-shell] .shell-navigation a[aria-current="page"] {
+  color: var(--fg-0);
+  background: color-mix(in oklch, var(--accent) 16%, transparent);
+  font-weight: 500;
+}
+[data-bml-app-shell] .shell-navigation a[aria-current="page"] .shell-icon {
+  color: var(--accent);
+}
+[data-bml-app-shell] .shell-navigation a[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 5px;
+  bottom: 5px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+@media (max-width: 700px) {
+  [data-bml-app-shell] .app-header .brand {
+    flex: 0 0 120px;
+  }
+  [data-bml-app-shell] .shell-navigation a {
+    box-sizing: border-box;
+    width: auto;
+    margin: 0;
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: 7px 10px;
+  }
+  [data-bml-app-shell] .shell-navigation a[aria-current="page"]::before {
+    display: none;
+  }
+}
+
+[data-bml-app-shell] .shell-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  background: transparent;
+}
+[data-bml-app-shell] .shell-main > [data-bml-island] {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+[data-bml-design-profile-menu] > .profile-popover > summary {
+  width: 100%;
+  height: 42px;
+  gap: 10px;
+  border-color: transparent;
+  background: transparent;
+  line-height: 18px;
+}
+[data-bml-design-profile-menu] > .profile-popover > summary:hover {
+  background: var(--bg-2);
+}
+[data-bml-design-profile-menu] > .profile-popover > summary > svg {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  color: var(--fg-1);
+}

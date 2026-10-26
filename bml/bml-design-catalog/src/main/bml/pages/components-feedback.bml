@@ -64,7 +64,7 @@
       <div class="example-actions"><icon name="folder" /><icon name="code" :size="24" :strokeWidth="1.5" /><span>Icons have adjacent text labels.</span></div>
     </reference-entry>
     <reference-entry name="bosca-mark"
-      :api='"No named props."'
+      :api='""'
       :contract='"The actual 22×22px Bosca SVG, labelled Bosca, with forwarded attributes/classes. aria-hidden can mark it decorative. No child content."'
       :keyboard='"The original Bosca mark is labelled Bosca; pass aria-hidden when another adjacent label already names it."'
       :css='"Palette and typography inherit from the consuming application. Component hooks: --mark-left, --mark-right, --mark-top. Forward an application class only through the documented native target; generated scope markers are private."'

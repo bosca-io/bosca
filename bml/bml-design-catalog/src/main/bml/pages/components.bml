@@ -1,5 +1,5 @@
 <page route="/components">
-  <catalog-document title="Components" description="Public APIs and rendered examples for all 46 library exports." current="/components">
+  <catalog-document title="Components" description="Public APIs and rendered examples for all 51 library exports." current="/components">
     <p class="page-intro">Import the library once. Use short component names throughout your application, then set colors in your own CSS.</p>
     <pre class="code-sample" role="group" tabindex="0" aria-label="Library import"><code>&lt;import library="io.bosca:bml-design" /&gt;</code></pre>
     <div class="catalog-grid">
@@ -27,12 +27,17 @@
           <ul class="reference-index">
             <li><a href="/components/layout#ref-card" data-export-link="card"><code>card</code></a></li>
             <li><a href="/components/layout#ref-page-shell" data-export-link="page-shell"><code>page-shell</code></a></li>
+            <li><a href="/components/layout#ref-workspace" data-export-link="workspace"><code>workspace</code></a></li>
+            <li><a href="/components/layout#ref-fullscreen-button" data-export-link="fullscreen-button"><code>fullscreen-button</code></a></li>
             <li><a href="/components/layout#ref-panel" data-export-link="panel"><code>panel</code></a></li>
             <li><a href="/components/layout#ref-section" data-export-link="section"><code>section</code></a></li>
             <li><a href="/components/layout#ref-page-heading" data-export-link="page-heading"><code>page-heading</code></a></li>
             <li><a href="/components/layout#ref-section-heading" data-export-link="section-heading"><code>section-heading</code></a></li>
             <li><a href="/components/layout#ref-disclosure-heading" data-export-link="disclosure-heading"><code>disclosure-heading</code></a></li>
             <li><a href="/components/layout#ref-app-header" data-export-link="app-header"><code>app-header</code></a></li>
+            <li><a href="/components/layout#ref-app-shell" data-export-link="app-shell"><code>app-shell</code></a></li>
+            <li><a href="/components/layout#ref-profile" data-export-link="profile"><code>profile</code></a></li>
+            <li><a href="/components/layout#ref-profile-menu" data-export-link="profile-menu"><code>profile-menu</code></a></li>
             <li><a href="/components/layout#ref-tabs" data-export-link="tabs"><code>tabs</code></a></li>
           </ul>
         </div>

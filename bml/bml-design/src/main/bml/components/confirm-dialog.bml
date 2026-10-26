@@ -21,8 +21,11 @@
   </dialog>
   <style scoped>
     .confirmation-copy {
-      padding: 18px 18px 0;
+      padding: 18px;
       margin: 0;
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
       color: var(--fg-2);
       font-size: 13px;
       line-height: 1.6;

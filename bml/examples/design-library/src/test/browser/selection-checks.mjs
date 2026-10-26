@@ -41,6 +41,27 @@ export async function checkSelection({ call, evaluate, until, base, mode, artifa
       document.querySelector('[data-readonly-search]').readOnly && document.querySelector('[data-readonly-search]').closest('.search-input').querySelector('button').disabled &&
       !document.querySelector('[data-empty-segments] [role=radio]')&&!document.querySelector('[data-empty-views] [role=tab]') &&
       document.querySelector('[data-unmatched-segments] [role=radio]').tabIndex===0 && document.querySelector('[data-unmatched-views] [role=tab]').tabIndex===0; })()`));
+  await click('[data-selection-choices=light]');
+  await until(`document.querySelector('${group} [data-value=paths]').disabled && document.querySelector('${views} [data-tab=Source]').disabled`);
+  assert.equal(await evaluate(`document.querySelector('${group} input').value`),'content');
+  await click('[data-selection-choices=light]');
+  await until(`!document.querySelector('${group} [data-value=paths]').disabled && !document.querySelector('${views} [data-tab=Source]').disabled`);
+  // Duplicate labels still submit/emit stable values, and disabled choices are skipped.
+  await click('[data-typed-options] [data-value=last]');
+  assert.equal(await evaluate(`new FormData(document.querySelector('[data-typed-choices]')).get('typed-choice')`),'last');
+  await click('[data-typed-options] [data-value=disabled]');
+  assert.equal(await evaluate(`document.querySelector('[data-typed-options] input').value`),'last');
+  await evaluate(`document.querySelector('[data-typed-options] [data-value=first]').focus()`);
+  await key('ArrowRight');
+  assert.ok(await evaluate(`document.activeElement===document.querySelector('[data-typed-options] [data-value=last]')`));
+  await evaluate(`document.querySelector('[data-typed-tabs]').addEventListener('viewchange',event=>window.typedTabValue=event.detail);
+    document.querySelector('[data-typed-tabs] [data-tab=first]').focus()`);
+  await key('ArrowRight');
+  assert.equal(await evaluate('window.typedTabValue'),'last');
+  await click('[data-typed-tabs] [data-tab=disabled]');
+  assert.equal(await evaluate('window.typedTabValue'),'last');
+  await key('Home');
+  assert.equal(await evaluate('window.typedTabValue'),'first');
   await evaluate(`(() => { window.selectionEvents=[]; window.selectionEventController=new AbortController();
     for(const type of ['input','segmentchange','viewchange']) document.addEventListener(type,event=>{
       window.selectionEvents.push({type,detail:event.detail??null});
@@ -107,6 +128,7 @@ export async function checkSelection({ call, evaluate, until, base, mode, artifa
   await click('[data-selection-change=light]');
   await until(`document.querySelector('${query}').value==='Changed light' && document.querySelector('${views} [aria-selected=true]').dataset.tab==='Source'`);
   assert.ok(await evaluate(`document.querySelector('${query}').placeholder==='Changed placeholder' && document.querySelector('${query}').getAttribute('aria-label')==='Changed search label' && document.querySelector('${group} [aria-checked=true]').dataset.value==='paths' && document.querySelector('${group}')===window.selectionGroup && document.querySelector('${views}')===window.selectionViews`),'Changed controlled props update retained component state');
+  assert.ok(await evaluate(`document.querySelector('${views} [data-tab=Source]').textContent.trim()==='Updated source' && document.querySelector('${group} [data-value=content]').textContent.trim()==='Changed content'`),'Display labels can change while selected values and panels stay stable');
   assert.ok(await evaluate(`(() => { const tabs=[...document.querySelectorAll('[role=tab]')];const ids=tabs.filter(tab=>tab.id).map(tab=>tab.id);
     return ids.length===6&&new Set(ids).size===6&&tabs.filter(tab=>tab.id).every(tab=>document.getElementById(tab.getAttribute('aria-controls'))?.getAttribute('aria-labelledby')===tab.id); })()`),'Caller panel relationships survive patches without duplicate IDs');
   assert.deepEqual(await evaluate(`['light','purple'].map(palette=>{const input=document.querySelector('[data-search-query='+palette+']');const radio=document.querySelector('[data-mode='+palette+'] [aria-checked=true]');

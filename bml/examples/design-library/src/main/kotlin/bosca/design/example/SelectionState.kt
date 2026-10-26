@@ -21,6 +21,8 @@ class SelectionState(val id: String) {
         private set
     var disabled: Boolean = false
         private set
+    var choicesDisabled: Boolean = false
+        private set
     var mounted: Boolean = true
         private set
     var changed: Boolean = false
@@ -58,6 +60,8 @@ class SelectionState(val id: String) {
         mode = if (changed) "paths" else "content"
         selected = if (changed) "Source" else "Preview"
     }
+
+    fun toggleChoices() { choicesDisabled = !choicesDisabled }
 
     fun toggleDisabled() {
         disabled = !disabled

@@ -1,6 +1,7 @@
 package bosca.design.catalog
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -23,16 +24,16 @@ class CatalogContentTest {
 
     @Test
     fun `invalid JSON preserves draft and last saved value until corrected`() = runBlocking {
-        val settings = CatalogContent("settings")
-        settings.settings("{\"enabled\":true}")
-        settings.settings("{ broken ")
-        assertEquals("{ broken ", settings.value)
+        val settings = CatalogJson("settings")
+        settings.save("{\"enabled\":true}")
+        settings.save("{ broken ")
+        assertEquals("{ broken ", settings.text)
         assertTrue(settings.error.isNotEmpty())
-        assertEquals("{\"enabled\":true}", settings.saved)
+        assertEquals(Json.parseToJsonElement("{\"enabled\":true}"), settings.saved)
         assertEquals(1, settings.saves)
-        settings.settings("[1,2,3]")
+        settings.save("[1,2,3]")
         assertEquals("", settings.error)
-        assertEquals("[1,2,3]", settings.saved)
+        assertEquals(Json.parseToJsonElement("[1,2,3]"), settings.saved)
         assertEquals(2, settings.saves)
     }
 }

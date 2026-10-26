@@ -11,45 +11,53 @@
         page.listHref,
     )
   </script>
-  <island name="git-file-editor" :key="model.page.id + model.page.ref + model.page.file">
-    <form
-      class="code-widget"
-      :data-path="model.draftPath"
-      :data-repository="model.id"
-      :data-ref="model.ref"
-      :data-next-href="model.nextHref"
-      @submit="model.save(form.path, form.content, form.message, ctx)"
-    >
-      <div class="toolbar">
-        <field label="File path">
-          <input ref="path" name="path" :value="model.draftPath" required />
-        </field>
-        <button ref="preview" aria-pressed="false">Preview Markdown</button>
-        <button ref="wrap" aria-pressed="false">Wrap lines</button>
-        <a :href="model.page.href(path = model.page.path, file = model.page.file)">Cancel</a>
-      </div>
-      <if model.message.isNotBlank()>
-        <alert>{ model.message }</alert>
-      </if>
-      <textarea ref="content" name="content" hidden>{ model.draftContent }</textarea>
-      <div ref="editor" class="code-editor" data-bml-preserve="code-editor"></div>
-      <article ref="previewSurface" class="markdown draft-preview" hidden></article>
-      <p ref="previewStatus" role="status" hidden></p>
-      <div class="toolbar commit-controls">
-        <field label="Commit message">
-          <input name="message" :value="model.commitMessage" required />
-        </field>
-        <button type="submit">Commit to { model.page.ref }</button>
-        <span class="muted">
-          Author:
-          { model.page.authorName }
-          &lt;
-          { model.page.authorEmail }
-          &gt;
-        </span>
-      </div>
-    </form>
-  </island>
+  <div class="workspace-content">
+    <workspace label="File editor" class="file-workspace file-editor-workspace" framed>
+      <island name="git-file-editor" :key="model.page.id + model.page.ref + model.page.file">
+        <form
+          class="code-widget workspace-content"
+          :data-path="model.draftPath"
+          :data-repository="model.id"
+          :data-ref="model.ref"
+          :data-next-href="model.nextHref"
+          @submit="model.save(form.path, form.content, form.message, ctx)"
+        >
+          <div class="toolbar editor-toolbar">
+            <div class="editor-path">
+              <field label="File path">
+                <input ref="path" name="path" :value="model.draftPath" placeholder="path/to/file.ext" autocomplete="off" spellcheck="false" mono required />
+              </field>
+            </div>
+            <div class="editor-actions">
+              <button ref="preview" size="sm" icon="eye" aria-label="Preview Markdown" aria-pressed="false">Preview</button>
+              <icon-button ref="wrap" icon="wrap" label="Wrap lines" aria-pressed="false" />
+              <fullscreen-button />
+              <icon-link icon="close" label="Cancel editing" :href="model.page.href(path = model.page.path, file = model.page.file)" data-editor-cancel />
+            </div>
+          </div>
+          <if model.message.isNotBlank()>
+            <alert>{ model.message }</alert>
+          </if>
+          <textarea ref="content" name="content" hidden>{ model.draftContent }</textarea>
+          <div ref="editor" class="code-editor" data-bml-preserve="code-editor"></div>
+          <article ref="previewSurface" class="markdown draft-preview" hidden></article>
+          <p ref="previewStatus" role="status" hidden></p>
+          <div class="toolbar commit-controls">
+            <div class="commit-message">
+              <field label="Commit message">
+                <input name="message" :value="model.commitMessage" placeholder="Describe this change" required />
+              </field>
+            </div>
+            <div class="commit-author">
+              <icon name="users" :size="14" />
+              <span>Author: { model.page.authorName } &lt;{ model.page.authorEmail }&gt;</span>
+            </div>
+            <button type="submit" primary icon="commit" class="commit-submit" :title='"Commit to " + model.page.ref'><span>Commit to { model.page.ref }</span></button>
+          </div>
+        </form>
+      </island>
+    </workspace>
+  </div>
   <script client scoped>
     import { GitMarkdownPreview } from "./GitMarkdownPreview";
     import { mountCodeEditor } from "@client/editor";

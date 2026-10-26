@@ -2,22 +2,24 @@
   <prop name="id" type="String" required />
   <prop name="label" type="String" required />
   <prop name="name" type="String" default="layout" />
-  <prop name="value" type="String" default="[]" />
+  <prop name="value" type="List<bosca.design.model.DashboardLayoutItem>" default="emptyList()" />
+  <script server provides="encodedValue">kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(bosca.design.model.DashboardLayoutItem.serializer()), value)</script>
   <prop name="columns" type="Int" default="12" />
   <prop name="cellHeight" type="Int" default="60" />
   <prop name="stackBelow" type="Int" default="480" />
-  <prop name="lockedIds" type="String" default="[]" />
+  <prop name="lockedIds" type="Set<String>" default="emptySet()" />
+  <script server provides="encodedLockedIds">kotlinx.serialization.json.JsonArray(lockedIds.map { kotlinx.serialization.json.JsonPrimitive(it) }).toString()</script>
   <prop name="readOnly" type="Boolean" default="false" />
   <prop name="disabled" type="Boolean" default="false" />
   <prop name="error" type="String" default="" />
   <prop name="preserveKey" type="String" default="" />
   <div class="dashboard-grid" data-bml-dashboard-grid role="group" :aria-label="label"
-       :data-grid-id="id" :data-name="name" :data-value="value" :data-columns="columns" :data-cell-height="cellHeight"
-       :data-stack-below="stackBelow" :data-locked-ids="lockedIds" :data-readonly="readOnly" :data-disabled="disabled"
+       :data-grid-id="id" :data-name="name" :data-value="encodedValue" :data-columns="columns" :data-cell-height="cellHeight"
+       :data-stack-below="stackBelow" :data-locked-ids="encodedLockedIds" :data-readonly="readOnly" :data-disabled="disabled"
        :data-error="error" :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" {...attrs}>
     <p ref="instructions" :id='id + "-instructions"'>Use the Move and Resize buttons with arrow keys to arrange widgets. Drag their handles with a pointer. Escape cancels a drag. Narrow containers stack widgets without changing the saved layout.</p>
     <label class="layout-label" :for="id">{ label } layout JSON</label>
-    <textarea ref="value" :id="id" :name="name" :readonly="readOnly" :disabled="disabled" spellcheck="false">{ value }</textarea>
+    <textarea ref="value" :id="id" :name="name" :readonly="readOnly" :disabled="disabled" spellcheck="false">{ encodedValue }</textarea>
     <div class="dashboard-cells" ref="cells"><slot /></div>
     <p ref="feedback" class="dashboard-feedback" :hidden="error.isBlank()">{ error }</p>
   </div>

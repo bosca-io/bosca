@@ -162,7 +162,7 @@ async function checkFoundationPalette() {
     const dimensions = () => controls.map(e=>{const r=e.getBoundingClientRect();return [r.width,r.height]});
     const before = dimensions();
     const style = document.createElement('style');
-    style.textContent = '.git-document, .git-document dialog { --control-bg: #eaf2f5; --accent: #225566; --fg-0: #225566; --fg-2: #304858; --bg-1: #edf3f5; --bg-2: #d9e8ed; --fg-1: #16323c; --line-2: #557b88; }';
+    style.textContent = '.git-document, .git-document dialog { --control-bg: #eaf2f5; --accent: #225566; --fg-0: #225566; --fg-2: #304858; --bg-1: #edf3f5; --bg-2: #d9e8ed; --fg-1: #16323c; --dialog-border: #557b88; }';
     document.head.append(style);
     try {
       return {before, after:dimensions(), background:getComputedStyle(input).backgroundColor,
@@ -1692,7 +1692,7 @@ for (const width of [1920, 1440, 1024, 390]) {
         `document.querySelector('${mappings} dialog[open] .button.danger').click()`,
       );
       await until(
-        `document.querySelector('${mappings} .empty-state') && document.querySelector('${mappings} .status-message[role=status]')?.textContent.includes('Mapping removed')`,
+        `document.querySelector('${mappings} .empty-state') && document.querySelector('${mappings} [data-mapping-notice]:popover-open .toast-message')?.textContent.includes('Mapping removed')`,
       );
     }
     if (path === "/repositories/repo?file=README.md") {
@@ -1729,10 +1729,14 @@ for (const width of [1920, 1440, 1024, 390]) {
       );
       assert.ok(
         await ev(`(() => {
-          const labels = [...document.querySelectorAll('.file-toolbar a.button-link, .file-toolbar button')].map(e => e.textContent.trim()).filter(Boolean);
-          return ['Rename', 'Delete', 'Edit'].every(label => labels.includes(label));
+          return ['Rename file', 'Delete file', 'Edit file', 'Download file'].every(label => {
+            const control = document.querySelector('.file-toolbar [aria-label="' + label + '"]');
+            const content = control?.cloneNode(true);
+            content?.querySelectorAll('[role=tooltip]').forEach(node => node.remove());
+            return control?.querySelector('svg') && !content.textContent.trim() && control.dataset.tooltipContent === label;
+          });
         })()`),
-        "File actions use Studio's labelled Rename, Delete and Edit buttons",
+        "File actions use shared icon controls with accessible names and tooltips",
       );
       const downloadBounds = await ev(
         `(() => { const box = document.querySelector('.file-toolbar [aria-label="Download file"]').getBoundingClientRect(); return {x:box.left+box.width/2,y:box.top+box.height/2}; })()`,

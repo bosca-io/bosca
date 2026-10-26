@@ -1,8 +1,11 @@
 <component tag="git-repository-browser">
   <prop name="page" type="bosca.git.ui.RepositoryPage" required />
-  <page-shell :data-repository-page="page.id">
+  <script server provides="fileWorkspace">
+    page.tab == "code" && (page.file.isNotBlank() || page.editing || page.creating)
+  </script>
+  <page-shell :fill="fileWorkspace" :class='if (fileWorkspace) "repository-file-page" else ""' :data-repository-page="page.id">
     <git-repository-heading :page="page" />
-    <tabs label="Repository section" :items="page.tabs" header />
+    <tabs label="Repository section" :items="page.tabs" header class="workspace-fixed" />
     <if page.tab == "commits">
       <git-repository-commits :page="page" />
     <else-if page.tab == "branches" || page.tab == "tags">
@@ -23,12 +26,14 @@
     <else-if page.settings != null>
       <git-repository-settings :page="page.settings" />
     <else>
-      <div class="code-panel">
+      <div :class='if (fileWorkspace) "code-panel workspace-content" else "code-panel"'>
         <if page.branches.isEmpty() && page.tags.isEmpty() && !page.creating && page.file.isBlank()>
           <git-repository-setup :page="page" />
         <else>
-          <git-repository-stats :id="page.id" />
-          <git-repository-path :page="page" />
+          <if !fileWorkspace>
+            <git-repository-stats :id="page.id" />
+            <git-repository-path :page="page" />
+          </if>
           <if page.editing || page.creating>
             <git-file-editor :page="page" />
           <else-if page.file.isNotBlank()>

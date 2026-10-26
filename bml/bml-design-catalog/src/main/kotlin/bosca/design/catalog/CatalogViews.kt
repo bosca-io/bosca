@@ -2,6 +2,7 @@ package bosca.design.catalog
 
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
+import bosca.design.model.ViewTab
 
 /** Caller-owned search drafts, accepted results and local view choices for the catalog. */
 @Serializable
@@ -54,11 +55,11 @@ class CatalogViews(val id: String) {
     }
 
     fun chooseView(view: String) {
-        require(view in tabs()) { "Choose an available view." }
+        require(tabs().any { it.value == view && !it.disabled }) { "Choose an available view." }
         selected = view
     }
 
-    fun tabs(): List<String> = if (alternate) listOf("Preview", "Notes") else listOf("Preview", "Details", "Source")
+    fun tabs(): List<ViewTab> = (if (alternate) listOf("Preview", "Notes") else listOf("Preview", "Details", "Source")).map { ViewTab(it, it) }
     fun refresh() { notify("Example refreshed.", "info") }
     fun toggleDisabled() { disabled = !disabled }
     fun toggleVisible() { visible = !visible }

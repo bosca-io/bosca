@@ -58,7 +58,7 @@ explicitly when that separate appearance is intended.
 | `--fg-3` | `#6c7388` | Hints, placeholders and muted text |
 | `--fg-4` | `#454b60` | Separators and quiet control adornments |
 | `--line` | `#232839` | Ordinary borders and dividers |
-| `--line-2` | `#2e3447` | Control fallback and overlay borders |
+| `--line-2` | `#2e3447` | Control fallback and select/navigation popup borders |
 | `--ok`, `--warn` | `#34d99a`, `#ffb547` | Success and warning |
 | `--err`, `--info` | `#ff5470`, `#5ec5ff` | Error/danger and information |
 | `--purple` | `#a78bff` | Purple badge tone and source keywords |
@@ -105,6 +105,11 @@ Use documented component props and stable modifiers for other changes: button `s
 Forward an application class through the documented attribute target when styling that control.
 Generated BML scope IDs and third-party editor classes are not consumer styling hooks.
 
+Popover menus use `--fg-1` for actions, `--err` for `danger` entries, `--bg-2` for hover,
+`--accent` for focus, and `--line` for the divider beneath an optional `menu-heading`.
+The library owns row and icon spacing; `menu-icon` is the stable wrapper for projected icons.
+These styles apply inside the shared popover only.
+
 ## Optional component overrides
 
 | Tokens | Default when unset |
@@ -112,6 +117,7 @@ Generated BML scope IDs and third-party editor classes are not consumer styling 
 | `--error-fg` | `--err` for alert text |
 | `--tooltip-bg`, `--tooltip-fg`, `--tooltip-border` | `--bg-3`, `--fg-0`, `--line-2` |
 | `--tooltip-shadow` | `0 4px 12px` with shadow color at one-third opacity |
+| `--dialog-border`, `--popover-border` | Local `--line` fallback for the respective modal/popover frame |
 | `--dialog-shadow`, `--dialog-backdrop` | `0 30px 100px` with shadow color at 8/15 opacity; backdrop color at 60% |
 | `--popover-shadow`, `--select-shadow`, `--tabs-menu-shadow` | `0 12px 30px`, `0 12px 40px`, `0 14px 40px`, all at 40% shadow opacity |
 | `--toast-shadow` | `0 12px 40px -10px` with shadow color at 45% |
@@ -178,3 +184,25 @@ Explicit Chart.js dataset colors and axis/legend settings take priority over CSS
 The consumer controls colors through the shared palette, border and focus tokens. Grid geometry is
 computed from `columns`, `cellHeight`, `stackBelow` and layout JSON. The internal column/row custom
 properties carry engine coordinates and are not theme tokens.
+
+## Workspaces
+
+`workspace` inherits surfaces and borders from `--bg-1`, `--line` and `--r-sm`.
+`--workspace-bg` and `--workspace-radius` customize the optional frame. Expanded surfaces use
+`--workspace-fullscreen-bg`, falling back to `--bg-1`; set an opaque value when normal surfaces
+are translucent. `--workspace-z-index` defaults to 80. The full-screen icon control uses
+`--control-height-sm` for both dimensions (30px by default).
+The public `workspace-content`, `workspace-fixed` and `workspace-scroll` classes define fill,
+fixed-height and internally scrolling projected regions. `source-view fill` uses its parent's
+available height and the normal source color/font tokens.
+
+## Application shell and profiles
+
+`--shell-background` falls back to `--bg-0`. `--shell-accent` tints the neutral ambient layers,
+falling back to `--accent`; `--brand-accent` tints the purple layer. Set a lighter `--shell-accent`
+in light palettes to soften the background without changing control or focus colors.
+The shell inherits the application palette, fonts and control tokens. The public `shell-main`,
+`shell-navigation`, `shell-group`, `shell-label`, `shell-icon`, `shell-settings`, `shell-chevron`,
+`shell-subsystem`, `shell-subsystem-icon`, `shell-subsystem-text` and `shell-footer` classes style
+projected regions. Profile avatar/text use `--bg-3`, `--fg-0`, `--fg-1`, `--fg-2` and `--font-sans`.
+The profile menu inherits the shared popover frame, shadow and menu spacing tokens.

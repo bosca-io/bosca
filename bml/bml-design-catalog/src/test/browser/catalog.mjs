@@ -31,6 +31,8 @@ import { checkContrastVisibility } from './contrast-visibility.mjs';
 import { checkAppearance } from './appearance.mjs';
 import { checkDocuments } from './documents.mjs';
 import { checkSourcePolish } from './source-polish.mjs';
+import { checkWorkspaces } from './workspaces.mjs';
+import { checkShell } from './shell-checks.mjs';
 import { checkVisualizations } from './visualizations.mjs';
 import { checkDashboards } from './dashboards.mjs';
 import { driverDiagnostics } from './driver-diagnostics.mjs';
@@ -172,6 +174,10 @@ try {
     await checkAccessibility({navigate,evaluate,until,call,artifacts,mode,paths:['/documents','/source/languages','/components/content','/components/controls']});
   } else if(process.argv[4]==='--documents') {
     await checkDocuments({navigate,evaluate,until,call,artifacts,mode});
+  } else if(process.argv[4]==='--shell') {
+    await checkShell({call,evaluate,until:expression=>until(`Boolean(${expression})`),base,mode,artifacts});
+  } else if(process.argv[4]==='--workspaces') {
+    await checkWorkspaces({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--source-polish') {
     await checkSourcePolish({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--appearance') {
@@ -251,18 +257,23 @@ try {
   await evaluate(`document.querySelector('nav a[href="/themes"]').click()`);
   await until(`location.pathname==='/themes'&&document.readyState==='complete'`);
   await call('Emulation.setScriptExecutionDisabled',{value:false});
+  checkpoint('foundation complete');
   await checkReferences({navigate,evaluate,until,key,call,artifacts,mode,expected:JSON.parse(process.argv[4])});
+  checkpoint('references complete');
   await checkPresentation({navigate,evaluate,until,key,call,artifacts,mode});
   await checkPickers({navigate,evaluate,until,call,artifacts,mode});
+  checkpoint('pickers complete');
   await checkSources({navigate,evaluate,until,key,call,artifacts,mode});
   await checkToastNavigation({navigate,evaluate,until,call});
   await checkJsonEditors({navigate,evaluate,until,call,artifacts,mode});
+  checkpoint('editors complete');
   await checkComments({navigate,evaluate,until,call,artifacts,mode});
   await checkOverlays({navigate,evaluate,until,call,artifacts,mode});
   await checkLocalChoices({navigate,evaluate,until,call,artifacts,mode});
   checkpoint('choices complete');
   await checkSearchViews({navigate,evaluate,until,call,artifacts,mode});
   await checkTrees({navigate,evaluate,until,call,artifacts,mode});
+  checkpoint('trees complete');
   await checkRouteNavigation({navigate,evaluate,until,call,artifacts,mode});
   await checkFeedback({navigate,evaluate,until,call,artifacts,mode});
   await checkSurfaces({navigate,evaluate,until,call,artifacts,mode});
@@ -276,7 +287,11 @@ try {
 } finally {
   checkpoint('cleanup started');
   if(ws)ws.close();browser.kill('SIGTERM');
-  await new Promise(resolve=>{if(browser.exitCode!==null)resolve();else{browser.once('exit',resolve);setTimeout(resolve,2000);}});
+  await new Promise(resolve => {
+    if (browser.exitCode !== null || browser.signalCode !== null) return resolve();
+    const timeout = setTimeout(resolve, 2000);
+    browser.once('exit', () => { clearTimeout(timeout); resolve(); });
+  });
   checkpoint('browser wait finished');
   await rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});
   checkpoint('profile removed');

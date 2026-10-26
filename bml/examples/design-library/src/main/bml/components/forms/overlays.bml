@@ -47,12 +47,14 @@
               </footer>
             </form>
           </dialog>
-          <confirm-dialog title="Remove this item?" description="The application handles the confirmation."
-                          triggerLabel="Remove item" :data-confirm-dialog="state.id">
-            <footer class="modal-footer">
-              <button ref="cancel">Keep item</button>
-              <button @click="state.confirm" data-dialog-close class="danger" :data-confirm="state.id">Remove</button>
-            </footer>
+          <confirm-dialog title="Remove this item?" description="The application handles the confirmation. Previous changes remain available, and this action only affects the selected item."
+                          triggerLabel="Remove item" :data-confirm-dialog="state.id" class="single-line-actions">
+            <div class="modal-form">
+              <footer class="modal-footer">
+                <button ref="cancel">Keep item</button>
+                <button @click="state.confirm" data-dialog-close class="danger" :data-confirm="state.id">Remove</button>
+              </footer>
+            </div>
           </confirm-dialog>
           <dialog title="Disabled dialog" triggerLabel="Disabled dialog" triggerDisabled :data-disabled-dialog="state.id"><p>Disabled</p></dialog>
           <dialog title="Link dialog" triggerLabel="Add item" triggerStyle="link" :data-link-dialog="state.id"><p class="modal-fields">Link trigger content</p></dialog>
@@ -66,10 +68,11 @@
           </popover>
         </div>
         <popover label="Menu options" icon="more" iconOnly :data-menu="state.id">
-          <div role="menu">
-            <html:button role="menuitem">First choice</html:button>
-            <html:button role="menuitem" disabled>Unavailable</html:button>
-            <html:button role="menuitem">Last choice</html:button>
+          <div class="menu-heading"><strong>Menu options</strong><span>Actions from the consuming application</span></div>
+          <div role="menu" aria-label="Menu options">
+            <html:button role="menuitem"><span class="menu-icon"><icon name="sun" /></span><span class="menu-icon" hidden><icon name="moon" /></span><span>First choice</span></html:button>
+            <button role="menuitem" icon="edit" disabled><span>Unavailable</span></button>
+            <button role="menuitem" icon="log-out" class="danger"><span>Last choice</span></button>
           </div>
         </popover>
       </if>

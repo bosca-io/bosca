@@ -14,10 +14,10 @@ class CatalogJsonTest {
         val other = CatalogJson("other")
         editor.save("{\"saved\":true}")
         editor.save("  { broken ")
-        assertEquals("  { broken ", editor.draft.value)
-        assertTrue(editor.draft.error.isNotEmpty())
-        assertEquals("{\"saved\":true}", editor.draft.saved)
-        assertEquals(1, editor.draft.saves)
+        assertEquals("  { broken ", editor.text)
+        assertTrue(editor.error.isNotEmpty())
+        assertEquals(Json.parseToJsonElement("{\"saved\":true}"), editor.saved)
+        assertEquals(1, editor.saves)
         assertEquals(1, editor.noticeSequence)
         editor.toggleReadOnly()
         assertFailsWith<IllegalStateException> { editor.save("null") }
@@ -27,7 +27,7 @@ class CatalogJsonTest {
         editor.toggleDisabled()
         editor.toggleVisible()
         assertFailsWith<IllegalStateException> { editor.save("null") }
-        assertEquals(0, other.draft.saves)
+        assertEquals(0, other.saves)
         assertEquals(0, other.noticeSequence)
     }
 
@@ -40,14 +40,14 @@ class CatalogJsonTest {
         editor.refresh()
         editor.toggleReadOnly()
         val restored = Json.decodeFromString(CatalogJson.serializer(), Json.encodeToString(CatalogJson.serializer(), editor))
-        assertEquals("[1,2,3]", restored.draft.saved)
-        assertEquals("{\"component\":\"json-editor\",\"revision\":1}", restored.draft.value)
+        assertEquals(Json.parseToJsonElement("[1,2,3]"), restored.saved)
+        assertEquals(Json.parseToJsonElement("{\"component\":\"json-editor\",\"revision\":1}"), restored.value)
         assertEquals("text", restored.mode)
         assertTrue(restored.readOnly)
         assertEquals("Example refreshed.", restored.notice)
         assertEquals("info", restored.noticeTone)
         assertEquals(2, restored.noticeSequence)
         restored.replace()
-        assertEquals("{\"component\":\"json-editor\",\"revision\":2}", restored.draft.value)
+        assertEquals(Json.parseToJsonElement("{\"component\":\"json-editor\",\"revision\":2}"), restored.value)
     }
 }

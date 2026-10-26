@@ -46,10 +46,11 @@
         </div>
         <div class="catalog-overlay-clip"><popover-example :id="overlay.id" /></div>
         <popover label="Component actions" icon="more" iconOnly :width="260" :data-catalog-menu="overlay.id">
-          <div role="menu" class="catalog-menu">
-            <a href="#overlay-authoring" role="menuitem">Read the authoring notes</a>
-            <button role="menuitem" disabled>Unavailable action</button>
-            <button role="menuitem" ref="cancel">Close menu</button>
+          <div class="menu-heading"><strong>Component actions</strong><span>Design library examples</span></div>
+          <div role="menu" aria-label="Component actions">
+            <a href="#overlay-authoring" role="menuitem"><span class="menu-icon"><icon name="book-open" /></span><span>Read the authoring notes</span></a>
+            <button role="menuitem" icon="edit" disabled>Unavailable action</button>
+            <button role="menuitem" icon="close" ref="cancel">Close menu</button>
           </div>
         </popover>
       </if>

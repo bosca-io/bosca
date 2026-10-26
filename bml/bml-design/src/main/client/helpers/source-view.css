@@ -97,3 +97,5 @@
   [data-bml-source-view].bare-code .cm-editor { max-height: calc(100dvh - 160px); }
   [data-bml-source-view] .cm-editor .cm-panel.cm-search .cm-textfield { flex-basis: 100%; }
 }
+[data-bml-source-view].fill-code .cm-editor { min-height: 0; max-height: none; }
+[data-bml-source-view].fill-code:has(.cm-panel.cm-search) { min-height: 0; }

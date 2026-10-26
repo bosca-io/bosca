@@ -1,0 +1,49 @@
+<page route="/workspaces">
+  <script server provides="state" scope="server-session">bosca.design.example.WorkspaceState()</script>
+  <html lang="en">
+    <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Shared workspaces</title></head>
+    <body class="workspace-example">
+      <header class="workspace-fixed workspace-example-heading" data-workspace-background>
+        <h1>Shared workspaces</h1><a href="/">All examples</a>
+      </header>
+      <page-shell fill>
+        <div class="workspace-content workspace-example-panes">
+          <workspace label="Draft workspace" framed class="purple" data-primary-workspace>
+            <island name="workspace-state">
+              <form class="workspace-content" @submit="state.save(form.body)">
+                <div class="workspace-fixed workspace-example-toolbar">
+                  <fullscreen-button />
+                  <button size="xs" @click="state.update" data-workspace-update>Refresh { state.updates }</button>
+                  <button size="xs" @click="state.prepareFailure" data-workspace-reject>{ if (state.reject) "Rejection ready" else "Reject next save" }</button>
+                  <button size="xs" type="submit" data-workspace-save>Save draft { state.saves }</button>
+                  <dialog title="Workspace details" triggerLabel="Details" size="sm">
+                    <p>A projected dialog keeps its own Escape behavior.</p><button data-dialog-close>Close</button>
+                  </dialog>
+                </div>
+                <div class="workspace-fixed workspace-example-toolbar" data-bml-preserve="workspace-draft">
+                  <field label="Draft"><input name="body" value="Unsaved text" data-workspace-draft /></field>
+                </div>
+                <if state.error.isNotBlank()><alert compact>{ state.error }</alert></if>
+                <source-view :content="state.source" path="workspace.ts" label="Workspace source" preserveKey="workspace-source" bare fill />
+                <details class="workspace-fixed" data-nested-disclosure>
+                  <summary>Nested workspace</summary>
+                  <div class="workspace-example-nested">
+                    <workspace label="Nested workspace" framed data-nested-workspace>
+                      <div class="workspace-fixed workspace-example-toolbar"><fullscreen-button label="Expand nested" exitLabel="Return to draft" /></div>
+                      <div class="workspace-scroll" tabindex="0"><p>Nested content.</p></div>
+                    </workspace>
+                  </div>
+                </details>
+              </form>
+            </island>
+          </workspace>
+          <workspace label="Independent workspace" framed class="light" data-secondary-workspace>
+            <div class="workspace-fixed workspace-example-toolbar"><strong>Independent palette</strong><fullscreen-button /></div>
+            <source-view :content="state.source" path="neighbor.ts" label="Neighbor source" bare fill />
+          </workspace>
+        </div>
+      </page-shell>
+      <div inert data-originally-inert>Initially unavailable background.</div>
+    </body>
+  </html>
+</page>

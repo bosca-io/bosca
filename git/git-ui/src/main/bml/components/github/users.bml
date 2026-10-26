@@ -56,9 +56,6 @@
               Next principals
             </button>
           </div>
-          <if !model.failed && model.message.isNotBlank()>
-            <p role="status" class="status-message">{ model.message }</p>
-          </if>
           <div class="glass-table mapping-table">
             <div class="gt-header mapping-columns" aria-hidden="true">
               <span>GitHub user</span>
@@ -122,6 +119,9 @@
           </div>
         </form>
       </card>
+      <toast id="github-user-mapping-notice"
+             :message='if (model.failed) "" else model.message'
+             :sequence="model.noticeSequence" tone="success" data-mapping-notice />
     </html:section>
   </island>
   <style scoped>
@@ -155,11 +155,6 @@
       padding: 0;
       color: var(--fg-2);
       font-size: 12px;
-    }
-    .status-message {
-      flex: 1 1 100%;
-      margin: 0;
-      font-size: 13px;
     }
     .mapping-table {
       flex: 1 1 100%;

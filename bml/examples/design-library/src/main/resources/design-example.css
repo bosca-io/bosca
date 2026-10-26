@@ -4,6 +4,15 @@ body {
   background: #0a0c12;
   color: var(--fg-0);
 }
+.single-line-actions { white-space: nowrap; text-align: right; }
+.workspace-example { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+.workspace-example-heading { display: flex; align-items: center; gap: 16px; padding: 12px 22px; }
+.workspace-example-heading h1 { margin: 0; font-size: 20px; }
+.workspace-example-panes { flex-direction: row; gap: 16px; }
+.workspace-example-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; }
+.workspace-example-toolbar [data-bml-fullscreen-button] { margin-left: auto; }
+.workspace-example-nested { height: 180px; display: flex; }
+@media (max-width: 700px) { .workspace-example-panes { flex-direction: column; } }
 h1 {
   margin: 24px 0;
 }
@@ -287,3 +296,43 @@ form {
 
 .composition-theme .ui-tree.fixture-local-scroll { max-height: 160px; overflow: auto; }
 .fixture-table { max-height: 160px; }
+
+/* Sample palettes and content, independent of the shared shell layout. */
+.shell-example-document { margin: 0; font-size: 14px; }
+[data-example-shell] {
+  --bg-0: #0a0c12;
+  --bg-1: rgba(20, 24, 34, .72);
+  --bg-2: rgba(28, 32, 44, .78);
+  --bg-3: #1d2230;
+  --fg-0: #f3f5fb;
+  --fg-1: #cdd2e2;
+  --fg-2: #969cb1;
+  --fg-3: #6c7388;
+  --line: #232839;
+  --line-2: #2e3447;
+  --accent: #64748b;
+  --brand-accent: #7c5cff;
+  --shell-background: #0a0c12;
+  --font-sans: "Geist", system-ui, sans-serif;
+  color-scheme: dark;
+}
+[data-example-shell][data-theme="light"] {
+  --bg-0: #f8fafc;
+  --bg-1: rgba(255, 255, 255, .72);
+  --bg-2: rgba(241, 245, 249, .78);
+  --bg-3: #e2e8f0;
+  --fg-0: #0f172a;
+  --fg-1: #1e293b;
+  --fg-2: #475569;
+  --fg-3: #526174;
+  --line: #d7deea;
+  --line-2: #738399;
+  --accent: #475569;
+  --shell-background: #f8fafc;
+  --shell-accent: #cbd5e1;
+  color-scheme: light;
+}
+[data-example-shell] [data-bml-design-popover-content] { --bg-1: #10131c; --bg-2: #161a25; }
+[data-example-shell][data-theme="light"] [data-bml-design-popover-content] { --bg-1: #fff; --bg-2: #f1f5f9; }
+.shell-example-content { display: flex; flex-direction: column; gap: 18px; max-width: 560px; }
+.shell-example-description { margin: 0 0 24px; color: var(--fg-2); font: 400 14px/1.6 var(--font-sans); }

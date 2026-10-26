@@ -1,6 +1,6 @@
 <component tag="git-file-surface">
   <prop name="page" type="bosca.git.ui.RepositoryPage" required />
-  <html:section class="file-viewer file-surface" :aria-label="page.file">
+  <workspace class="file-viewer file-surface file-workspace" :label="page.file" framed>
     <header class="file-header">
       <a class="back-button" :href="page.href(path = page.path)" aria-label="Back to folder" title="Back to folder">
         <icon name="arrow-left" :size="14" />
@@ -11,14 +11,12 @@
         <code class="file-size">{ bosca.git.ui.formatSize(page.content.orEmpty().encodeToByteArray().size.toLong()) }</code>
       </if>
       <span class="file-header-spacer"></span>
+      <fullscreen-button />
       <div class="file-header-actions toolbar file-toolbar" role="group" aria-label="File actions">
         <if page.canWriteRef && page.content != null && page.fileMessage.isBlank()>
-          <a class="button-link" :href='page.href(path = page.path, file = page.file) + "&edit=true"'>Rename</a>
+          <icon-link icon="text-cursor-input" label="Rename file" :href='page.href(path = page.path, file = page.file) + "&edit=true"' />
           <git-file-actions :page="page" />
-          <a class="button-link primary" :href='page.href(path = page.path, file = page.file) + "&edit=true"'>
-            <span class="edit-icon"><icon name="edit" :size="14" /></span>
-            Edit
-          </a>
+          <icon-link icon="edit" label="Edit file" class="primary" :href='page.href(path = page.path, file = page.file) + "&edit=true"' />
         </if>
         <if page.rawHref.isNotBlank()>
           <icon-link icon="download" label="Download file" :href="page.rawHref" download />
@@ -34,21 +32,12 @@
     <else-if page.isMarkdown>
       <git-markdown-file :page="page" />
     <else-if page.content != null>
-      <source-view :content="page.content" :path="page.file" :line='ctx.query["line"]?.toIntOrNull() ?: 0' bare />
+      <source-view :content="page.content" :path="page.file" :line='ctx.query["line"]?.toIntOrNull() ?: 0' bare fill />
     </if>
-  </html:section>
+  </workspace>
   <style scoped>
-    /* Studio repository file viewer card. */
-    .file-viewer {
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-      overflow: hidden;
-      background: var(--bg-1);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-    }
     .file-header {
+      flex: none;
       display: flex;
       align-items: center;
       flex-wrap: wrap;
@@ -85,14 +74,13 @@
     }
     .file-header-actions {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: 10px;
-      margin: 0;
+      max-width: 100%;
+      min-width: 0;
+      margin: 0 0 0 auto;
       padding: 0;
-    }
-    .edit-icon {
-      display: inline-flex;
-      color: var(--accent);
     }
     .file-state {
       margin: 0;
@@ -102,6 +90,9 @@
       font-size: 13px;
     }
     .image-view {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
       display: flex;
       justify-content: center;
       padding: 16px;

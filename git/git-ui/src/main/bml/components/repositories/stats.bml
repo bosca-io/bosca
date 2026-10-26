@@ -4,20 +4,21 @@
     <island name="statistics" render="deferred" :id="id">
       <prop name="id" type="String" />
       <fallback>
-        <dl class="stat-grid">
-          <for label in listOf("Commits", "Branches", "Tags", "Contributors", "Size")>
-            <div class="stat-tile">
-              <dt class="stat-label">{ label }</dt>
-              <dd class="stat-value">
-                <span class="stats-loading stat-skeleton" role="status" :aria-label='"Loading " + label.lowercase()'></span>
-                <span class="stats-error" aria-label="Unavailable">—</span>
-              </dd>
-            </div>
-          </for>
-        </dl>
-        <div class="stats-state">
-          <span class="stats-error" role="alert">Statistics could not be loaded.</span>
-          <html:button class="stats-retry" type="button" data-bml-deferred-retry>Retry</html:button>
+        <div class="stats-placeholder">
+          <dl class="stat-grid">
+            <for label in listOf("Commits", "Branches", "Tags", "Contributors", "Size")>
+              <div class="stat-tile">
+                <dt class="stat-label">{ label }</dt>
+                <dd class="stat-value">
+                  <span class="stats-loading stat-skeleton" role="status" :aria-label='"Loading " + label.lowercase()'></span>
+                </dd>
+              </div>
+            </for>
+          </dl>
+          <div class="stats-state">
+            <span class="stats-error" role="alert">Statistics could not be loaded.</span>
+            <html:button class="stats-retry" type="button" data-bml-deferred-retry>Retry</html:button>
+          </div>
         </div>
       </fallback>
       <script server provides="stats">bosca.git.ui.repositoryStats(id)</script>
@@ -33,7 +34,6 @@
   </div>
   <style scoped>
     .repository-summary {
-      position: relative;
       min-width: 0;
       margin-bottom: 18px;
     }
@@ -81,34 +81,43 @@
       opacity: 0.2;
       animation: stat-pulse 1.5s ease-in-out infinite;
     }
+    .stats-placeholder {
+      position: relative;
+    }
     .stats-state {
+      display: none;
       position: absolute;
-      top: 100%;
-      left: 0;
-      display: flex;
+      inset: 0;
       align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      align-content: center;
+      gap: 8px;
+      padding: 16px;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
       color: var(--fg-3);
       font-size: 12.5px;
       line-height: 18px;
     }
-    .stats-error,
-    .stats-retry {
-      display: none;
+    [data-bml-deferred-state="error"] .stats-state {
+      display: flex;
     }
-    [data-bml-deferred-state="error"] .stats-error,
-    [data-bml-deferred-state="error"] .stats-retry {
-      display: inline;
+    [data-bml-deferred-state="error"] .stats-placeholder .stat-grid {
+      visibility: hidden;
     }
     [data-bml-deferred-state="error"] .stats-loading {
       display: none;
     }
     .stats-retry {
-      margin-left: 8px;
       color: var(--accent);
       background: none;
       border: 0;
       padding: 0;
       font: inherit;
+      text-decoration: underline;
+      text-underline-offset: 3px;
       cursor: pointer;
     }
     @keyframes stat-pulse {

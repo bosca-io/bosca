@@ -6,7 +6,7 @@
     <div class="catalog-stack" :data-catalog-json-owner="settings.id">
       <form @submit="settings.save(form.settings)" class="example-stack" :data-catalog-json="settings.id">
         <if settings.visible>
-          <json-editor name="settings" label="Example settings" :value="settings.draft.value" :error="settings.draft.error"
+          <json-editor name="settings" label="Example settings" :value="settings.value" :text="settings.text" :error="settings.error"
                        :mode="settings.mode" :readOnly="settings.readOnly" :disabled="settings.disabled"
                        :preserveKey='"settings-" + settings.id' :data-catalog-json-editor="settings.id" />
         </if>

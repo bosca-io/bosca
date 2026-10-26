@@ -45,7 +45,7 @@ Props and projected children retain their roles, with the caller adjustments bel
 | `ui-select` | `select` | Keep native options and change events. Mark persistent async choices explicitly and use the public search types. |
 | `ui-section` | `section` | Keep projected content; use `html:section` for an unstyled native section. |
 | `ui-section-heading` | `section-heading` | Keep title, subtitle and projected actions. |
-| `ui-segmented-control` | `segmented-control` | Keep labels/values, native hidden form value and bubbling `segmentchange` event. |
+| `ui-segmented-control` | `segmented-control` | Use `List<SegmentOption>` with stable values, labels and optional icons/disabled state. Keep the native hidden form value and bubbling `segmentchange` event. |
 | `ui-source-view` | `source-view` | Pass requested lines explicitly; Git's editable and preview workflows remain in Git. |
 | `ui-spinner` | `spinner` | Keep size; the spinner remains decorative. |
 | `ui-switch` | `switch` | Keep label, checked/disabled state and native form/change behavior. |
@@ -56,7 +56,7 @@ Props and projected children retain their roles, with the caller adjustments bel
 | `ui-tree` | `tree` | Keep local/server expansion ownership; optionally provide a preservation key. |
 | `ui-tree-item` | `tree-item` | Keep paths, labels, depth and native destinations/actions. |
 | `ui-tooltip` | `tooltip` | Keep content, placement, delay and the projected trigger. |
-| `ui-view-tabs` | `view-tabs` | Keep caller-owned selected state and handle the bubbling `viewchange` event. |
+| `ui-view-tabs` | `view-tabs` | Use `List<ViewTab>` with values independent of display labels. Keep caller-owned selected state; `viewchange` carries the stable value. |
 
 Audit intentional native elements when enabling the import. `button`, `input`, `select`, `section`,
 `time` and `dialog` also name library components. Use `html:` for their native forms, including
@@ -131,3 +131,46 @@ The [isolated consumer](../examples/design-library/README.md) exercises these co
 production and development, including two consumer themes, native fallback, declarative actions,
 retained state and component disposal. Git's route and browser checks cover its application adapters
 and the 1920/1440/1024/390px layout matrix.
+
+## Fill and full-screen workspaces
+
+Use `workspace` and `fullscreen-button` from the unaliased library import. `page-shell fill`
+provides the bounded page column; `workspace-content`, `workspace-fixed` and `workspace-scroll`
+are public projected-content classes. `source-view fill` uses the available height instead of
+snippet or file-card caps. Git's file pages now consume these primitives and no longer ship a
+local expansion helper or full-screen geometry. File actions, editable CodeMirror, Markdown
+rendering, drafts and commits remain Git-owned. Put the workspace outside a changing action
+island when its expansion should survive updates to the form. See the library README for a
+complete authoring example and CSS tokens.
+
+## Shared application shell and profile menu
+
+Compose `app-shell`, the existing `app-header`, `shell-navigation` and `shell-main` instead of
+copying Git shell styles. Use `profile` for identity display and `profile-menu` for projected account
+actions. Git retains its auth SDK, identity loading, route links and appearance cookie. Generic
+context-menu activation and all profile presentation belong to the library. Palette values and
+opaque editor/overlay colors remain consumer CSS; `--shell-background` selects the gradient base.
+
+## Complex input values
+
+Pass Kotlin objects to complex controls. `chart.config` is `ChartConfiguration`, `flow-editor.value`
+is `FlowGraph`, and `dashboard-grid.value` is `List<DashboardLayoutItem>`; `lockedIds` is `Set<String>`.
+Their model types are in `bosca.design.model`. Ordinary models use generated Kotlin serializers
+and explicit properties; application node values belong in `FlowNodeData.payload`. Decode submitted values
+with `Json.decodeFromString(FlowGraph.serializer(), form.graph)` or
+`Json.decodeFromString(ListSerializer(DashboardLayoutItem.serializer()), form.layout)`; use the same serializers for
+encoding and application state. `document-editor.value` is a ProseMirror-shaped
+`JsonObject`; `json-editor.value` is `JsonElement`. Construct sample values in Kotlin with model
+constructors or JSON builders, and bind them with `:value` / `:config`. The components encode their
+browser data internally. Native submitted form fields remain JSON text and are decoded by the
+receiving application action. JSON editor invalid/empty drafts use its separate nullable `text`
+prop; structured values do not use serialized string literals.
+
+Common chart options now use `ChartOptions` and nested Kotlin models; point collections use
+`ChartValue` objects, with numeric collection constructors for ordinary series. Flow card data,
+ports, sides, edge styling and markers have Kotlin models. Simple presentation choices use string
+attributes (for example `size="sm"`, `tone="success"` and `placement="bottom"`).
+Use shared `bosca.documents` nodes/marks through `documentValue(document)` when authoring known
+content. Preserve custom/submitted document JSON trees to retain unsupported nodes and attributes.
+
+`document-editor` also accepts `:document="article.document"` for a `bosca.content.metadata.model.Document`. It renders only `content.document`; a missing body opens an empty paragraph. A supplied record takes precedence over `value`, which remains the input for open ProseMirror JSON.

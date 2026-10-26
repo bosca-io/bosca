@@ -5,6 +5,13 @@
       <div class="catalog-palette-dark" data-document-palette="dark"><document-example id="dark" title="Dark palette" /></div>
       <div class="catalog-palette-light" data-document-palette="light"><document-example id="light" title="Light palette" /></div>
     </div>
+    <card title="Content document"><div class="catalog-stack">
+      <p class="catalog-description">Pass a content document directly. The editor uses its body; the application keeps its metadata and saves the edited form value.</p>
+      <form data-metadata-document-form>
+        <document-editor id="metadata-document" label="Content document body" name="metadataBody"
+                         :document="bosca.design.catalog.CatalogSamples.metadataDocument" data-metadata-document />
+      </form>
+    </div></card>
     <card title="Use in your application"><div class="catalog-stack">
       <p class="catalog-description">The editor submits a ProseMirror JSON document. Your application supplies its form, validation and save action. Image controls accept a URL and description; file storage stays with the application.</p>
       <a class="catalog-link" href="/components/content#ref-document-editor">Document editor API and authoring</a>
@@ -12,7 +19,7 @@
     <card title="Unsupported document content"><div class="catalog-stack">
       <p class="catalog-description">Documents containing application-specific nodes retain their original JSON and report the unsupported type. Studio collaboration, mentions and template blocks need a consuming application's integration.</p>
       <document-editor id="unsupported-document" label="Unsupported document example" name="unsupported"
-                       :value='"{\"type\":\"doc\",\"content\":[{\"type\":\"customBlock\",\"attrs\":{\"name\":\"Retain this value\"}}]}"' data-document-unsupported />
+                       :value="bosca.design.catalog.CatalogSamples.unsupportedDocument" data-document-unsupported />
     </div></card>
   </catalog-document>
 </page>

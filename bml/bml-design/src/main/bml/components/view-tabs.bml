@@ -1,17 +1,21 @@
 <component tag="view-tabs">
   <prop name="label" type="String" required />
-  <prop name="tabs" type="List<String>" required />
+  <prop name="tabs" type="List<bosca.design.model.ViewTab>" required />
   <prop name="selected" type="String" required />
-  <div class="view-tabs" role="tablist" :aria-label="label" :data-selected="selected" {...attrs}>
+  <script server provides="tabMetadata">
+    kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(bosca.design.model.ViewTab.serializer()), tabs)
+  </script>
+  <div class="view-tabs" role="tablist" :aria-label="label" :data-selected="selected" :data-tabs="tabMetadata" {...attrs}>
     <for tab in tabs>
       <html:button
         type="button"
         role="tab"
-        :data-tab="tab"
-        :aria-selected="(tab == selected).toString()"
-        :tabindex="if (tab == selected) 0 else -1"
+        :data-tab="tab.value"
+        :disabled="tab.disabled"
+        :aria-selected="(tab.value == selected).toString()"
+        :tabindex="if (!tab.disabled && tab.value == selected) 0 else -1"
       >
-        { tab }
+        { tab.label }
       </html:button>
     </for>
   </div>
@@ -65,6 +69,10 @@
     }
     button:hover {
       color: var(--fg-1);
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
     }
     button:focus-visible {
       outline: var(--focus-width) solid var(--accent);

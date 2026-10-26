@@ -4,7 +4,7 @@
   <card :title='"Widgets " + id'><island name="widgets" :key="id">
     <div class="widget-stack" :data-widgets="widgets.id">
       <form class="widget-stack" @submit="widgets.save(form.document, form.graph, form.layout)" :data-widget-form="widgets.id">
-        <document-editor :id='"document-" + widgets.id' :label='"Document " + widgets.id' :value="widgets.document"
+        <document-editor :id='"document-" + widgets.id' :label='"Document " + widgets.id' :document="widgets.sourceDocument" :value="widgets.document"
                          required :preserveKey='"document-" + widgets.id' />
         <flow-editor :id='"flow-" + widgets.id' :label='"Graph " + widgets.id' :value="widgets.graph"
                      :preserveKey='"flow-" + widgets.id' />
@@ -26,8 +26,8 @@
       <if widgets.saves != 0>
         <details><summary>Saved values</summary><div class="widget-stack">
           <pre data-saved-document>{ widgets.document }</pre>
-          <pre data-saved-graph>{ widgets.graph }</pre>
-          <pre data-saved-layout>{ widgets.layout }</pre>
+          <pre data-saved-graph>{ kotlinx.serialization.json.Json.encodeToString(bosca.design.model.FlowGraph.serializer(), widgets.graph) }</pre>
+          <pre data-saved-layout>{ kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(bosca.design.model.DashboardLayoutItem.serializer()), widgets.layout) }</pre>
         </div></details>
       </if>
     </div>

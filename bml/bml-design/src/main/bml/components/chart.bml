@@ -1,12 +1,13 @@
 <component tag="chart">
   <prop name="id" type="String" required />
   <prop name="label" type="String" required />
-  <prop name="config" type="String" required />
+  <prop name="config" type="bosca.design.model.ChartConfiguration" required />
+  <script server provides="encodedConfig">kotlinx.serialization.json.Json.encodeToString(bosca.design.model.ChartConfiguration.serializer(), config)</script>
   <prop name="loading" type="Boolean" default="false" />
   <prop name="error" type="String" default="" />
   <prop name="preserveKey" type="String" default="" />
   <script server provides="table">bosca.design.model.ChartTable.from(config)</script>
-  <div class="bosca-chart" data-bml-chart :data-chart-id="id" :data-config="config" :data-loading="loading"
+  <div class="bosca-chart" data-bml-chart :data-chart-id="id" :data-config="encodedConfig" :data-loading="loading"
        :data-error="error" :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" role="group" :aria-label="label" :aria-busy="loading.toString()" {...attrs}>
     <div class="chart-frame" ref="frame">
       <canvas ref="canvas" :aria-label="label" role="img" :aria-describedby='id + "-data-label"' hidden />

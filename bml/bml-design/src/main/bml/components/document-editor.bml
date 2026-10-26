@@ -2,7 +2,11 @@
   <prop name="id" type="String" required />
   <prop name="label" type="String" required />
   <prop name="name" type="String" default="document" />
-  <prop name="value" type="String" :default='"{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"}]}"' />
+  <prop name="value" type="kotlinx.serialization.json.JsonObject" :default="bosca.design.model.emptyDocument()" />
+  <prop name="document" type="bosca.content.metadata.model.Document?" :default="null" />
+  <script server provides="encodedValue">
+    (document?.let { bosca.design.model.documentValue(it) } ?: value).toString()
+  </script>
   <prop name="readOnly" type="Boolean" default="false" />
   <prop name="disabled" type="Boolean" default="false" />
   <prop name="required" type="Boolean" default="false" />
@@ -11,15 +15,18 @@
   <prop name="placeholder" type="String" default="Start writing…" />
   <prop name="preserveKey" type="String" default="" />
   <div class="document-editor" data-bml-document-editor role="group" :aria-label="label"
-       :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" :data-value="value" :data-name="name"
+       :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" :data-value="encodedValue" :data-name="name"
        :data-label="label" :data-readonly="readOnly" :data-disabled="disabled" :data-required="required"
        :data-error="error" :data-placeholder="placeholder" :data-editor-id="id" {...attrs}>
     <div ref="toolbar" class="document-toolbar" role="toolbar" :aria-label='label + " formatting"' hidden>
-      <html:select ref="block" aria-label="Text style">
-        <option value="paragraph">Paragraph</option>
-        <option value="1">Heading 1</option><option value="2">Heading 2</option><option value="3">Heading 3</option>
-        <option value="4">Heading 4</option><option value="5">Heading 5</option><option value="6">Heading 6</option>
-      </html:select>
+      <span class="document-select">
+        <html:select ref="block" aria-label="Text style">
+          <option value="paragraph">Paragraph</option>
+          <option value="1">Heading 1</option><option value="2">Heading 2</option><option value="3">Heading 3</option>
+          <option value="4">Heading 4</option><option value="5">Heading 5</option><option value="6">Heading 6</option>
+        </html:select>
+        <span class="document-select-chevron" aria-hidden="true"><icon name="chevron" :size="13" /></span>
+      </span>
       <div class="document-command-group" role="group" aria-label="Text formatting">
         <button size="xs" data-document-command="bold" aria-pressed="false">Bold</button>
         <button size="xs" data-document-command="italic" aria-pressed="false">Italic</button>
@@ -43,10 +50,13 @@
       <div class="document-command-group" role="group" aria-label="Additional formatting">
         <button size="xs" data-document-command="superscript" aria-pressed="false">Superscript</button>
         <button size="xs" data-document-command="subscript" aria-pressed="false">Subscript</button>
-        <html:select ref="alignment" aria-label="Text alignment">
-          <option value="left">Align left</option><option value="center">Center</option>
-          <option value="right">Align right</option><option value="justify">Justify</option>
-        </html:select>
+        <span class="document-select">
+          <html:select ref="alignment" aria-label="Text alignment">
+            <option value="left">Align left</option><option value="center">Center</option>
+            <option value="right">Align right</option><option value="justify">Justify</option>
+          </html:select>
+          <span class="document-select-chevron" aria-hidden="true"><icon name="chevron" :size="13" /></span>
+        </span>
         <button size="xs" data-document-command="undo">Undo</button>
         <button size="xs" data-document-command="redo">Redo</button>
       </div>
@@ -70,7 +80,7 @@
       </div>
     </div>
     <textarea ref="value" :id="id" :name="name" :aria-label="label" :readonly="readOnly" :disabled="disabled"
-              :aria-describedby='id + "-hint " + id + "-error"' spellcheck="false">{ value }</textarea>
+              :aria-describedby='id + "-hint " + id + "-error"' spellcheck="false">{ encodedValue }</textarea>
     <div ref="editor" class="document-surface" />
     <small :id='id + "-hint"' :hidden="hint.isBlank()">{ hint }</small>
     <p ref="feedback" :id='id + "-error"' role="status" aria-live="polite" :hidden="error.isBlank()">{ error }</p>
@@ -80,7 +90,10 @@
     .document-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
     .document-command-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
     .document-toolbar[hidden], .document-command-group[hidden], .document-insert[hidden], [hidden] { display: none; }
-    .document-toolbar select { max-width: 100%; min-height: var(--control-height-xs); padding: 0 6px; border: 1px solid var(--control-border, var(--line-2)); border-radius: var(--r-sm); background: var(--bg-2); color: var(--fg-0); font: 12px/1.5 var(--font-sans); }
+    .document-select { position: relative; display: inline-flex; min-width: 0; max-width: 100%; }
+    .document-toolbar select { box-sizing: border-box; width: 100%; max-width: 100%; height: var(--control-height-xs); padding: 0 32px 0 8px; appearance: none; -webkit-appearance: none; border: 1px solid var(--control-border, var(--line-2)); border-radius: var(--r-sm); background: var(--control-bg, var(--bg-2)); color: var(--fg-0); font: 12px/1.5 var(--font-sans); }
+    .document-select-chevron { position: absolute; top: 50%; right: 11px; transform: translateY(-50%); display: flex; color: var(--fg-4); pointer-events: none; }
+    select:disabled + .document-select-chevron { opacity: 0.35; }
     .document-toolbar select:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
     .document-insert { display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg-2); }
     .document-insert label { display: flex; flex-direction: column; gap: 6px; font: 12px/1.5 var(--font-sans); }

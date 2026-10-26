@@ -11,22 +11,13 @@ import kotlinx.serialization.json.JsonPrimitive
 data class ChartTable(val points: List<ChartPoint>, val error: String = "") {
     companion object {
         /** Read ordinary Chart.js labels and array datasets without executing configuration code. */
-        fun from(configuration: String): ChartTable = try {
-            val root = Json.parseToJsonElement(configuration) as? JsonObject
-            require(root != null) { "Chart configuration must be an object." }
-            val data = root["data"] as? JsonObject
-            val labels = data?.get("labels") as? JsonArray
-            val datasets = data?.get("datasets") as? JsonArray
-            ChartTable(datasets.orEmpty().flatMapIndexed { datasetIndex, element ->
-                val dataset = element as? JsonObject
-                val series = (dataset?.get("label") as? JsonPrimitive)?.content ?: "Series ${datasetIndex + 1}"
-                (dataset?.get("data") as? JsonArray).orEmpty().mapIndexed { index, point ->
-                    ChartPoint(datasetIndex, index, series, labels?.getOrNull(index)?.let(::display) ?: "${index + 1}", display(point))
+        fun from(configuration: ChartConfiguration): ChartTable =
+            ChartTable(configuration.data.datasets.flatMapIndexed { datasetIndex, dataset ->
+                val series = dataset.label ?: "Series ${datasetIndex + 1}"
+                dataset.data.mapIndexed { index, point ->
+                    ChartPoint(datasetIndex, index, series, configuration.data.labels.getOrNull(index)?.let(::display) ?: "${index + 1}", display(Json.encodeToJsonElement(ChartValue.serializer(), point)))
                 }
             })
-        } catch (exception: IllegalArgumentException) {
-            ChartTable(emptyList(), exception.message ?: "Invalid chart configuration.")
-        }
 
         private fun display(value: JsonElement): String = when (value) {
             JsonNull -> "No value"

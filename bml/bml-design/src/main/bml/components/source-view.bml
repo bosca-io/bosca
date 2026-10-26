@@ -3,13 +3,14 @@
   <prop name="path" type="String" default="" />
   <prop name="compact" type="Boolean" default="false" />
   <prop name="bare" type="Boolean" default="false" />
+  <prop name="fill" type="Boolean" default="false" />
   <prop name="language" type="String" default="" />
   <prop name="label" type="String" default="File source" />
   <prop name="line" type="Int" default="0" />
   <prop name="wrapped" type="Boolean" default="false" />
   <prop name="preserveKey" type="String" default="" />
   <script server provides="widgetClass">
-    "code-widget" +
+    "code-widget" + (if (fill) " fill-code" else "") +
         if (compact) {
             " compact-code " +
                 when {
@@ -55,6 +56,12 @@
       flex: none;
       min-height: 225px;
       max-height: 800px;
+    }
+    .code-widget.fill-code {
+      flex: 1;
+      height: auto;
+      min-height: 0;
+      max-height: none;
     }
     .code-widget {
       box-sizing: border-box;

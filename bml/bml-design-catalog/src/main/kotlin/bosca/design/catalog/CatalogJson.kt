@@ -1,11 +1,23 @@
 package bosca.design.catalog
 
+import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.*
 
 /** Caller-owned JSON options and notifications around the catalog's validated draft. */
 @Serializable
 class CatalogJson(val id: String, val advanced: Boolean = false) {
-    val draft: CatalogContent = CatalogContent(id, "{\"enabled\": true, \"count\": 3}")
+    var value: JsonElement = buildJsonObject { put("enabled", true); put("count", 3) }
+        private set
+    var text: String? = null
+        private set
+    var error: String = ""
+        private set
+    var saved: JsonElement? = null
+        private set
+    var saves: Int = 0
+        private set
     var mode: String = "tree"
         private set
     var readOnly: Boolean = false
@@ -25,8 +37,19 @@ class CatalogJson(val id: String, val advanced: Boolean = false) {
 
     suspend fun save(value: String) {
         check(visible && !readOnly && !disabled) { "The example editor is unavailable for saving." }
-        draft.settings(value)
-        if (draft.error.isEmpty()) notify("Settings saved.", "success")
+        delay(150)
+        text = value
+        error = try {
+            this.value = Json.parseToJsonElement(value)
+            ""
+        } catch (_: SerializationException) {
+            "Enter valid JSON before saving."
+        }
+        if (error.isEmpty()) {
+            saved = this.value
+            saves++
+            notify("Settings saved.", "success")
+        }
     }
 
     fun refresh() { notify("Example refreshed.", "info") }
@@ -43,8 +66,9 @@ class CatalogJson(val id: String, val advanced: Boolean = false) {
     }
 
     fun replace() {
-        draft.value = "{\"component\":\"json-editor\",\"revision\":${++replacements}}"
-        draft.error = ""
+        value = buildJsonObject { put("component", "json-editor"); put("revision", ++replacements) }
+        text = null
+        error = ""
     }
 
     private fun notify(message: String, tone: String) {

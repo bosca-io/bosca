@@ -55,6 +55,9 @@ export function mountCodeEditor(
   const original = textarea.value;
   const language = new Compartment();
   const wrap = new Compartment();
+  let wrapEnabled = false;
+  const appearance = new Compartment();
+  const palette = () => document.body.dataset.theme === "light" ? [] : oneDark;
   let dirty = false;
   let escape = false;
   const view = new EditorView({
@@ -63,7 +66,7 @@ export function mountCodeEditor(
       doc: original,
       extensions: [
         basicSetup,
-        oneDark,
+        appearance.of(palette()),
         language.of(codeLanguage(container.dataset.path ?? "")),
         EditorView.contentAttributes.of({
           tabindex: "0",
@@ -124,12 +127,18 @@ export function mountCodeEditor(
       ],
     }),
   });
+  const appearanceObserver = new MutationObserver(() => {
+    view.dispatch({ effects: appearance.reconfigure(palette()) });
+  });
+  appearanceObserver.observe(document.body, { attributes: true, attributeFilter: ["data-theme"] });
+  ctx.onUnmount(() => appearanceObserver.disconnect());
   ctx.on<MouseEvent>(ctx.root, "click", (event) => {
     const wrapButton = (event.target as Element).closest<HTMLButtonElement>(
       "[data-bml-ref=wrap]",
     );
     if (!wrapButton) return;
-    const enabled = wrapButton.getAttribute("aria-pressed") !== "true";
+    const enabled = !wrapEnabled;
+    wrapEnabled = enabled;
     view.dispatch({
       effects: wrap.reconfigure(enabled ? EditorView.lineWrapping : []),
     });
@@ -224,6 +233,7 @@ export function mountCodeEditor(
     container = surface.closest<HTMLElement>("[data-path]") ?? ctx.root;
     textarea = ctx.ref<HTMLTextAreaElement>("content");
     if (textarea) textarea.value = view.state.doc.toString();
+    ctx.ref<HTMLButtonElement>("wrap")?.setAttribute("aria-pressed", String(wrapEnabled));
     const next = container.dataset.nextHref;
     if (next) {
       dirty = false;

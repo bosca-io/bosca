@@ -3,45 +3,35 @@
   <script server provides="showSource">
     ctx.query["line"]?.toIntOrNull()?.let { it > 0 } == true || ctx.query["view"] == "source"
   </script>
-  <html:section class="markdown-file">
+  <html:section class="markdown-file workspace-content">
     <header class="markdown-toolbar">
       <view-tabs
         label="Markdown view"
-        :tabs='listOf("Preview", "Source")'
+        :tabs='listOf(bosca.design.model.ViewTab("Preview", "Preview"), bosca.design.model.ViewTab("Source", "Source"))'
         :selected='if (showSource) "Source" else "Preview"'
       />
     </header>
-    <div ref="previewSurface" :hidden="showSource" role="tabpanel" aria-label="Preview">
+    <div ref="previewSurface" class="markdown-preview workspace-scroll" :hidden="showSource" role="tabpanel" aria-label="Preview" tabindex="0">
       <git-markdown :html="page.markdownHtml" />
     </div>
     <div
       ref="sourceSurface"
-      class="markdown-source"
+      class="markdown-source workspace-content"
       role="tabpanel"
       aria-label="Source"
       :hidden="!showSource"
     >
-      <source-view :content="page.content.orEmpty()" :path="page.file" :line='ctx.query["line"]?.toIntOrNull() ?: 0' bare />
+      <source-view :content="page.content.orEmpty()" :path="page.file" :line='ctx.query["line"]?.toIntOrNull() ?: 0' bare fill />
     </div>
   </html:section>
   <style scoped>
-    .markdown-file {
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-    }
     .markdown-toolbar {
+      flex: none;
       display: flex;
       align-items: center;
       gap: 12px;
       padding: 0 16px;
       border-bottom: 1px solid color-mix(in oklch, var(--line) 55%, transparent);
-    }
-    .markdown-source {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
     }
     @media (max-width: 700px) {
       .markdown-toolbar {

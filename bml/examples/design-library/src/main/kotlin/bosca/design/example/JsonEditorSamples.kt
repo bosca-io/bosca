@@ -1,7 +1,12 @@
 package bosca.design.example
 
-/** Static malformed and table data for structured editor acceptance. */
+import kotlinx.serialization.json.*
+
+/** Malformed source text and structured table data for editor examples. */
 object JsonEditorSamples {
     const val invalid = "{invalid: "
-    const val table = """[{"name":"Alpha","count":1},{"name":"Beta","count":2}]"""
+    val table = buildJsonArray {
+        addJsonObject { put("name", "Alpha"); put("count", 1) }
+        addJsonObject { put("name", "Beta"); put("count", 2) }
+    }
 }

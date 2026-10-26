@@ -135,6 +135,20 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `shell and profile examples use independent local actions`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--shell", 60)
+        }
+    }
+
+    @Test
+    fun `workspaces fill the catalog page and retain source preview and appearance`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--workspaces", 60)
+        }
+    }
+
+    @Test
     fun `source languages authoring colors and compact controls follow consumer styles`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--source-polish", 60)
@@ -159,7 +173,7 @@ class CatalogApplicationTest {
             Json.decodeFromString(BmlLibraryManifest.serializer(), jar.getInputStream(jar.getJarEntry("META-INF/bml/library-manifest.json"))
                 .bufferedReader().use { it.readText() }).components.filter { it.exported }
         }
-        assertEquals(46, exports.size)
+        assertEquals(51, exports.size)
         val expectedApi = buildJsonObject {
             for (component in exports) put(component.tag, buildJsonObject {
                 put("scoped", component.styles.isNotBlank())
@@ -178,7 +192,7 @@ class CatalogApplicationTest {
             assertTrue(jar.getInputStream(manifest).readBytes().isNotEmpty())
         }
         for (development in listOf(false, true)) withServer(development) { base, client ->
-            for (path in listOf("/", "/foundation", "/themes", "/selection", "/source", "/source/languages", "/documents", "/flows", "/charts", "/dashboards", "/components/visualization", "/json", "/comments", "/overlays", "/choices", "/views", "/trees", "/navigation", "/feedback", "/surfaces", "/components", "/components/controls",
+            for (path in listOf("/", "/foundation", "/themes", "/selection", "/source", "/source/languages", "/workspaces", "/documents", "/flows", "/charts", "/dashboards", "/components/visualization", "/json", "/comments", "/overlays", "/choices", "/views", "/trees", "/navigation", "/feedback", "/surfaces", "/components", "/components/controls",
                 "/components/layout", "/components/feedback", "/components/overlays", "/components/content", "/components/aliases")) {
                 val response = request(client, base, path)
                 assertEquals(200, response.statusCode(), path + response.body())
@@ -225,7 +239,7 @@ class CatalogApplicationTest {
                 assertEquals("font/woff2", response.headers().firstValue("Content-Type").orElse(""))
                 assertEquals("wOF2", response.body().take(4).toByteArray().decodeToString())
             }
-            runBrowser(base, development, expectedApi, 60)
+            runBrowser(base, development, expectedApi, 180)
         }
     }
 

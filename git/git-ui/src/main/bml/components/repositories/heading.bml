@@ -1,6 +1,6 @@
 <component tag="git-repository-heading">
   <prop name="page" type="bosca.git.ui.RepositoryPage" required />
-  <div class="repository-heading">
+  <div class="repository-heading workspace-fixed">
     <page-heading
       icon="folder"
       :badge="page.visibility.lowercase()"

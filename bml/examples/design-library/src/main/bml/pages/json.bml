@@ -13,8 +13,8 @@
           <div class="purple json-theme" data-palette="purple"><json-controls id="purple" /></div>
         </div>
         <div class="json-cases light">
-          <json-editor name="invalid" :value="bosca.design.example.JsonEditorSamples.invalid" mode="text" label="Invalid draft" data-json-invalid />
-          <json-editor name="empty" value="" mode="text" label="Empty draft" data-json-empty />
+          <json-editor name="invalid" :text="bosca.design.example.JsonEditorSamples.invalid" mode="text" label="Invalid draft" data-json-invalid />
+          <json-editor name="empty" text="" mode="text" label="Empty draft" data-json-empty />
           <json-editor name="table" :value="bosca.design.example.JsonEditorSamples.table" mode="table" readOnly label="Readonly table" data-json-table />
         </div>
         <p id="json-after" tabindex="0">After the JSON editors.</p>

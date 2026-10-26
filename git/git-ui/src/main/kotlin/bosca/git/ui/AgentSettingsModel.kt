@@ -6,7 +6,9 @@ import bosca.git.ui.graphql.*
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
 
 @Serializable
 class AgentSettingsModel(
@@ -18,8 +20,10 @@ class AgentSettingsModel(
     var region: String = page.config?.defaults?.region.orEmpty(),
     var size: String = page.config?.defaults?.size.orEmpty(),
     var image: String = page.config?.defaults?.image.orEmpty(),
-    var profiles: String = page.config?.runnerProfiles?.toString() ?: "{}",
-    var sinks: String = Json.encodeToString(page.config?.alertSinks.orEmpty()),
+    var profiles: JsonElement = page.config?.runnerProfiles ?: JsonObject(emptyMap()),
+    var profilesText: String? = null,
+    var sinks: JsonElement = Json.encodeToJsonElement(ListSerializer(GitUiOrchestratorData.Git.GetOrchestratorConfig.AlertSinks.serializer()), page.config?.alertSinks.orEmpty()),
+    var sinksText: String? = null,
     var concurrent: Int = page.config?.maxConcurrentVms ?: 5,
     var jobTimeout: Int = page.config?.maxJobTimeoutMinutes ?: 60,
     var lifetime: Int = page.config?.maxVmLifetimeMinutes ?: 120,
@@ -59,8 +63,8 @@ class AgentSettingsModel(
         this.region = region
         this.size = size
         this.image = image
-        this.profiles = profiles
-        this.sinks = sinks
+        this.profilesText = profiles
+        this.sinksText = sinks
         this.concurrent = concurrent
         this.jobTimeout = jobTimeout
         this.lifetime = lifetime
@@ -80,7 +84,9 @@ class AgentSettingsModel(
             }
             val runners = Json.parseToJsonElement(profiles)
             require(runners is JsonObject) { "Runner profiles must be an object." }
-            val alerts = Json.decodeFromString<List<GitAlertSinkInput>>(sinks)
+            val alerts = Json.decodeFromString(ListSerializer(GitAlertSinkInput.serializer()), sinks)
+            this.profiles = runners
+            this.sinks = Json.encodeToJsonElement(ListSerializer(GitAlertSinkInput.serializer()), alerts)
             val config =
                 GitOrchestratorConfigInput(
                     provider.trim(),

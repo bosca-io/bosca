@@ -7,7 +7,7 @@
       <if dashboard.visible>
         <dashboard-grid :id='"dashboard-" + dashboard.id' :label='dashboard.id + " dashboard"' :value="dashboard.value"
           :readOnly="dashboard.readOnly" :disabled="dashboard.disabled" :error="dashboard.error"
-          :lockedIds='if (dashboard.locked) "[\"summary\"]" else "[]"' :preserveKey='"dashboard-" + dashboard.id'>
+          :lockedIds='if (dashboard.locked) setOf("summary") else emptySet()' :preserveKey='"dashboard-" + dashboard.id'>
           <dashboard-item itemId="visits" label="Visits">
             <chart :id='"dashboard-chart-" + dashboard.id' :label='dashboard.id + " dashboard visits"' :config='bosca.design.catalog.CatalogChart.configuration("bar")' />
           </dashboard-item>

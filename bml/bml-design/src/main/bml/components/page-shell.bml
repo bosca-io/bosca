@@ -21,6 +21,7 @@
       min-height: 0;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
     }
     .page-narrow {
       width: min(100% - 40px, 400px);

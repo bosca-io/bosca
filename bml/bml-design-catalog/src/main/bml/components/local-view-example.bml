@@ -1,6 +1,6 @@
 <component tag="local-view-example">
   <div data-local-views>
-    <view-tabs label="Example view" :tabs='listOf("Preview", "Details", "Source")' selected="Preview" />
+    <view-tabs label="Example view" :tabs='listOf(bosca.design.model.ViewTab("Preview", "Preview"), bosca.design.model.ViewTab("Details", "Details"), bosca.design.model.ViewTab("Source", "Source"))' selected="Preview" />
     <div role="tabpanel" tabindex="0" data-view="Preview">A local preview, owned by the application.</div>
     <div role="tabpanel" tabindex="0" data-view="Details" hidden>Details for the selected example.</div>
     <div role="tabpanel" tabindex="0" data-view="Source" hidden>Source belongs to this application.</div>

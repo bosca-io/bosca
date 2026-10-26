@@ -56,6 +56,18 @@ export async function checkOverlays({ call, evaluate, until, base, mode, artifac
   assert.equal(await evaluate('document.activeElement?.name'), 'name');
   assert.equal(await evaluate(`document.querySelector('${modal(edit)}').getBoundingClientRect().width`), 520);
   assert.deepEqual(await evaluate(`(() => { const node=document.querySelector('${modal(edit)}'); return [getComputedStyle(node).backgroundColor,getComputedStyle(node.querySelector('.modal-footer')).backgroundColor] })()`), ['rgb(255, 255, 255)','rgb(248, 250, 252)']);
+  const modalBorders = await evaluate(`(() => {
+    const panel=document.querySelector('${modal(edit)}'),sibling=document.querySelector('[data-edit-dialog=purple] > dialog');
+    const border=node=>getComputedStyle(node).borderTopColor;
+    const before={light:border(panel),dark:border(sibling)};
+    panel.style.setProperty('--dialog-border','rgb(116, 66, 186)');
+    const override={light:border(panel),dark:border(sibling)};
+    panel.style.removeProperty('--dialog-border');
+    return {before,override,restored:border(panel)};
+  })()`);
+  assert.deepEqual(modalBorders.before,{light:'rgb(203, 213, 225)',dark:'rgb(35, 40, 57)'});
+  assert.deepEqual(modalBorders.override,{light:'rgb(116, 66, 186)',dark:modalBorders.before.dark});
+  assert.equal(modalBorders.restored,modalBorders.before.light,'Modal frame overrides are local and reversible');
   const axHandle = await call('Runtime.evaluate', { expression:`document.querySelector('${modal(edit)}')` });
   const ax = await call('Accessibility.getPartialAXTree', { objectId:axHandle.result.objectId,fetchRelatives:false });
   assert.equal(ax.nodes.find(node => node.role?.value === 'dialog').name.value, 'Edit display name');
@@ -153,6 +165,51 @@ export async function checkOverlays({ call, evaluate, until, base, mode, artifac
   await click(trigger('[data-confirm-dialog=light]'));
   await until(open('[data-confirm-dialog=light]'));
   assert.equal(await evaluate(`document.querySelector('${modal('[data-confirm-dialog=light]')}').getBoundingClientRect().width`), 400);
+  await key('Escape');
+  const confirmationMeasurements=[];
+  for(const [width,height] of [[1440,1000],[390,640],[390,360]]) {
+    await call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
+    for(const palette of ['light','purple']) {
+      const root=`[data-confirm-dialog=${palette}]`;
+      await click(trigger(root));await until(open(root));
+      const original=await evaluate(`document.querySelector('${modal(root)} .confirmation-copy').textContent`);
+      let normalHeight=0;
+      for(const long of [false,true]) {
+        if(long) await evaluate(`document.querySelector('${modal(root)} .confirmation-copy').textContent=${JSON.stringify('A longer explanation remains readable as the dialog grows. '.repeat(80)+'x'.repeat(280))}`);
+        const size=await evaluate(`(() => {
+          const panel=document.querySelector('${modal(root)}'),copy=panel.querySelector('.confirmation-copy'),footer=panel.querySelector('.modal-footer'),
+            rect=node=>node.getBoundingClientRect().toJSON(),style=getComputedStyle(copy),range=document.createRange();range.selectNodeContents(copy);
+          return {panel:rect(panel),copy:rect(copy),footer:rect(footer),text:range.getBoundingClientRect().toJSON(),
+            padding:[style.paddingTop,style.paddingRight,style.paddingBottom,style.paddingLeft],lineHeight:parseFloat(style.lineHeight),
+            parentWrapping:getComputedStyle(panel.parentElement).whiteSpace,wrapping:getComputedStyle(panel).whiteSpace,alignment:getComputedStyle(panel).textAlign,
+            horizontal:panel.scrollWidth-panel.clientWidth,copyHorizontal:copy.scrollWidth-copy.clientWidth,vertical:copy.scrollHeight-copy.clientHeight};
+        })()`);
+        assert.equal(size.parentWrapping,'nowrap');assert.equal(size.wrapping,'normal');assert.equal(size.alignment,'left');
+        assert.deepEqual(size.padding,['18px','18px','18px','18px']);
+        assert.ok(size.panel.left>=16&&size.panel.right<=width-16&&size.panel.top>=0&&size.panel.bottom<=height);
+        assert.ok(size.horizontal<=1&&size.copyHorizontal<=1,'Descriptions wrap instead of introducing horizontal scroll');
+        assert.ok(size.footer.bottom<=size.panel.bottom&&size.footer.top>=size.copy.bottom-1,
+          `Actions remain within the dialog below its description: ${JSON.stringify(size)}`);
+        if(long) {
+          assert.ok(size.panel.height>normalHeight,'The dialog grows vertically with its description');
+          assert.ok(size.vertical>0,'Long descriptions have a vertical scrolling area');
+          assert.ok(await evaluate(`(() => {const copy=document.querySelector('${modal(root)} .confirmation-copy');copy.scrollTop=copy.scrollHeight;return copy.scrollTop>0})()`));
+        } else {
+          normalHeight=size.panel.height;
+          assert.ok(size.text.height>size.lineHeight,'The normal description wraps and grows the dialog');
+        }
+        confirmationMeasurements.push({width,height,palette,long,...size});
+        shot=await call('Page.captureScreenshot',{format:'png'});
+        await writeFile(join(artifacts,`confirmation-${mode}-${palette}-${width}-${height}-${long?'long':'normal'}.png`),Buffer.from(shot.data,'base64'));
+      }
+      await evaluate(`document.querySelector('${modal(root)} .confirmation-copy').textContent=${JSON.stringify(original)}`);
+      await key('Escape');await until(`!(${open(root)})`);
+    }
+  }
+  await writeFile(join(artifacts,`confirmation-${mode}.json`),JSON.stringify(confirmationMeasurements,null,2));
+  await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+  await click(trigger('[data-confirm-dialog=light]'));
+  await until(open('[data-confirm-dialog=light]'));
   await click(`${modal('[data-confirm-dialog=light]')} [data-bml-ref=cancel]`);
   assert.match(await evaluate('document.querySelector("[data-overlay-result=light]").textContent'), /Confirmed 0/);
   await click(trigger('[data-confirm-dialog=light]'));
@@ -174,6 +231,18 @@ export async function checkOverlays({ call, evaluate, until, base, mode, artifac
       owned:document.querySelector('${popover}').contains(a),width:box.width,escaped:box.bottom>clip.bottom,
       controls:document.querySelector('${trigger(popover)}').getAttribute('aria-controls')===a.id} })()`);
   assert.deepEqual(themes,{light:'rgb(255, 255, 255)',dark:'rgb(16, 19, 28)',unique:true,owned:true,width:420,escaped:true,controls:true});
+  const popoverBorders=await evaluate(`(() => {
+    const panel=document.querySelector('${content(popover)}'),sibling=document.querySelector('${content('[data-popover=purple]')}');
+    const border=node=>getComputedStyle(node).borderTopColor;
+    const before={light:border(panel),dark:border(sibling)};
+    panel.style.setProperty('--popover-border','rgb(116, 66, 186)');
+    const override={light:border(panel),dark:border(sibling)};
+    panel.style.removeProperty('--popover-border');
+    return {before,override,restored:border(panel)};
+  })()`);
+  assert.deepEqual(popoverBorders.before,{light:'rgb(203, 213, 225)',dark:'rgb(35, 40, 57)'});
+  assert.deepEqual(popoverBorders.override,{light:'rgb(116, 66, 186)',dark:popoverBorders.before.dark});
+  assert.equal(popoverBorders.restored,popoverBorders.before.light,'Popover frame overrides stay local and reversible');
   await evaluate('document.querySelector("[data-palette=light]").classList.add("alternate")');
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('${content(popover)}')).backgroundColor`),'rgb(239, 246, 255)');
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('${content('[data-popover=purple]')}')).backgroundColor`),'rgb(16, 19, 28)');
@@ -210,6 +279,49 @@ export async function checkOverlays({ call, evaluate, until, base, mode, artifac
   await key('Escape');
   await until(`!(${expanded(menu)})`);
   assert.ok(await evaluate(`document.activeElement===document.querySelector('${trigger(menu)}')`));
+  const menuMeasurements=[];
+  const measureMenu = root => evaluate(`(() => {
+    const panel=document.querySelector('${root}'),heading=panel.querySelector('.menu-heading');
+    return {marker:getComputedStyle(panel.querySelector('summary')).listStyleType,
+      arrow:getComputedStyle(panel.querySelector('summary'),'::after').content,
+      heading:getComputedStyle(heading.querySelector('strong')).fontSize,
+      gap:getComputedStyle(panel.querySelector('[role=menu]')).gap,
+      rows:[...panel.querySelectorAll('[role=menuitem]')].map(item=>{
+        const icons=[...item.querySelectorAll('.menu-icon, .button-icon')].filter(icon=>icon.checkVisibility());
+        const icon=icons[0],svg=icon.querySelector('svg'),label=(item.querySelector('.button-content')??item).lastElementChild;
+        const row=item.getBoundingClientRect(),box=icon.getBoundingClientRect();
+        return {count:icons.length,width:box.width,height:box.height,left:box.left,
+          svgWidth:svg.getBoundingClientRect().width,svgHeight:svg.getBoundingClientRect().height,
+          gap:label.getBoundingClientRect().left-box.right,rowHeight:row.height,
+          text:getComputedStyle(item).color,icon:getComputedStyle(svg).color,hidden:svg.getAttribute('aria-hidden')};
+      })};
+  })()`);
+  const checkMenu = (sample,palette) => {
+    assert.equal(sample.marker,'none');assert.equal(sample.arrow,'none');
+    assert.equal(sample.heading,'13px');assert.equal(sample.gap,'4px');
+    for(const row of sample.rows) {
+      assert.equal(row.count,1,'Hidden projected icons stay hidden without an application CSS reset');
+      assert.deepEqual([row.width,row.height,row.svgWidth,row.svgHeight],[16,16,16,16]);
+      assert.equal(row.gap,8);assert.equal(row.rowHeight,32);assert.equal(row.hidden,'true');
+      assert.equal(row.icon,row.text,'Menu icons inherit their action color');
+      assert.equal(row.left,sample.rows[0].left,'Native and library button icons align');
+    }
+    assert.equal(sample.rows[2].text,palette==='light'?'rgb(185, 28, 28)':'rgb(255, 84, 112)');
+  };
+  for(const width of [1440,390]) {
+    await call('Emulation.setDeviceMetricsOverride',{width,height:640,deviceScaleFactor:1,mobile:false});
+    for(const palette of ['light','purple']) {
+      const root=`[data-menu=${palette}]`;
+      await evaluate(`document.querySelector('${trigger(root)}').scrollIntoView({block:'center'});document.querySelector('${root}').open=true`);
+      await until(expanded(root));
+      const sample=await measureMenu(root);checkMenu(sample,palette);
+      menuMeasurements.push({width,palette,scripts:true,...sample});
+      shot=await call('Page.captureScreenshot',{format:'png'});
+      await writeFile(join(artifacts,`menu-${mode}-${palette}-${width}.png`),Buffer.from(shot.data,'base64'));
+      await key('Escape');await until(`!(${expanded(root)})`);
+    }
+  }
+  await writeFile(join(artifacts,`menu-${mode}.json`),JSON.stringify(menuMeasurements,null,2));
   for(const height of [640,360]) {
     await call('Emulation.setDeviceMetricsOverride',{width:390,height,deviceScaleFactor:1,mobile:false});
     await evaluate(`document.querySelector('${trigger(popover)}').scrollIntoView({block:'center'}); document.querySelector('${popover}').open=true`);
@@ -249,4 +361,19 @@ export async function checkOverlays({ call, evaluate, until, base, mode, artifac
   assert.equal(await evaluate('window.fixtureObservers.size'),observers,'Popover ResizeObservers disconnect on unmount');
   assert.equal(await evaluate('document.querySelectorAll(".popover-content:popover-open").length'),0);
   await call('Page.removeScriptToEvaluateOnNewDocument',{identifier:instrumentation.identifier});
+  await call('Emulation.setScriptExecutionDisabled',{value:true});
+  try {
+    await call('Emulation.setDeviceMetricsOverride',{width:390,height:640,deviceScaleFactor:1,mobile:false});
+    await call('Page.navigate',{url:base+'/overlays'});
+    await until(`document.readyState==='complete'&&document.querySelector('${menu} > [data-bml-design-popover-content]:not([popover])')`);
+    for(const palette of ['light','purple']) {
+      const root=`[data-menu=${palette}]`;
+      await click(trigger(root));
+      await until(`document.querySelector('${root}').open`);
+      assert.ok(await evaluate(`document.querySelector('${content(root)}').checkVisibility()`));
+      const sample=await measureMenu(root);checkMenu(sample,palette);
+      menuMeasurements.push({width:390,palette,scripts:false,...sample});
+    }
+  } finally {await call('Emulation.setScriptExecutionDisabled',{value:false});}
+  await writeFile(join(artifacts,`menu-${mode}.json`),JSON.stringify(menuMeasurements,null,2));
 }

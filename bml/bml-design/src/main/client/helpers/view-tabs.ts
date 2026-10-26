@@ -7,14 +7,24 @@ export function viewTabs(ctx: ClientContext) {
   const mark = (value: string) => {
     const buttons = tabs();
     const selected = buttons.find(button => button.dataset.tab === value);
+    const focusable = selected && !selected.disabled ? selected : buttons.find(button => !button.disabled);
     for (const button of buttons) {
       button.setAttribute("aria-selected", String(button === selected));
-      button.tabIndex = button === (selected ?? buttons[0]) ? 0 : -1;
+      button.tabIndex = button === focusable ? 0 : -1;
     }
   };
   const sync = () => {
+    const metadata = new Map((JSON.parse(ctx.root.dataset.tabs ?? "[]") as { value: string; label: string; disabled?: boolean }[])
+      .map(tab => [tab.value, tab]));
+    for (const button of tabs()) {
+      const tab = metadata.get(button.dataset.tab ?? "");
+      if (!tab) continue;
+      button.disabled = Boolean(tab.disabled);
+      button.textContent = tab.label;
+    }
     const next = ctx.root.dataset.selected ?? "";
     if (serverValue !== next) mark(next);
+    else mark(ctx.root.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.dataset.tab ?? next);
     serverValue = next;
   };
   const select = (button: HTMLButtonElement) => {
@@ -23,10 +33,10 @@ export function viewTabs(ctx: ClientContext) {
   };
   ctx.on<MouseEvent>(ctx.root, "click", event => {
     const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("[role=tab]") : null;
-    if (button?.parentElement === ctx.root) select(button);
+    if (button?.parentElement === ctx.root && !button.disabled) select(button);
   });
   ctx.on<KeyboardEvent>(ctx.root, "keydown", event => {
-    const buttons = tabs();
+    const buttons = tabs().filter(button => !button.disabled);
     const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
     if (index < 0 || !["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
     event.preventDefault();

@@ -99,7 +99,7 @@ Checks cover modal names and focus, Tab containment, Escape/backdrop/cancel dism
 focus, disabled triggers, pending geometry, failed-submit drafts, completion/reopen and server-issued
 requests. A preserved modal keeps an unsaved draft across unrelated updates. Popovers inherit two
 consumer palettes, escape clipped ancestors, fit desktop/phone/short viewports, retain nested action
-updates, and provide menu keyboard navigation. Repeated mounting checks listener and ResizeObserver
+updates, and provide menu keyboard navigation. Menu examples use shared headings, row spacing, projected and button-prop icons, local danger colors and hidden icon states without application menu CSS. Repeated mounting checks listener and ResizeObserver
 cleanup. With scripts disabled, popovers remain native details disclosures.
 
 The `/clipboard` page checks exact copied values, accessible/icon feedback, stable visible/quiet
@@ -247,3 +247,23 @@ metadata includes the compiled BML resources, stylesheet, notices and establishe
 This consumer check does not establish Git-host native or IDE source-navigation acceptance.
 Native browser captures use `native-production` and `native-development` filename prefixes under
 `build/reports/browser/`, alongside the ordinary JVM captures.
+
+The `/workspaces` consumer uses short `workspace` and `fullscreen-button` tags with `page-shell fill`
+and `source-view fill`. Its own form, draft and rejected-save actions sit inside the library workspace.
+Focused browser checks run against packaged production and development consumers, measuring desktop/
+phone bounds, native and denied-native full screen, focus, retained scroll/drafts through action updates,
+projected dialog Escape, independent CSS palettes, nested expansion, disposal and no-script source.
+
+The `/shell` page consumes `app-shell`, `profile` and `profile-menu` from the linked library. It
+supplies its own destinations, light/dark palettes and local display-name/account actions, without
+an auth or Git dependency. The shared components own gradient layout, sidebar/header spacing,
+identity presentation, context activation, menu keyboard navigation and focus restoration.
+
+The rich widget form supplies Kotlin `FlowGraph` and `ChartConfiguration` objects and a
+`List<DashboardLayoutItem>` for geometry. Ordinary models use generated Kotlin serializers. ProseMirror and JSON editor values are Kotlin JSON trees. Components serialize these
+values for the browser and native form fields; application actions decode submitted fields.
+Malformed and empty JSON source is passed through the separate `text` draft prop.
+
+Segmented options and local tabs use Kotlin `SegmentOption`/`ViewTab` objects. The selection fixture verifies stable values with duplicate/changed labels and disabled-item keyboard navigation. Widget state uses typed chart options, points, flow data and shared `bosca.documents` authoring through `documentValue`. Simple presentation choices use string attributes such as `size="sm"` and `tone="success"`.
+
+The widget form prefills `document-editor` through its typed `document` prop using a local `bosca.content.metadata.model.Document`. It retains native body edits across refreshes, then uses the submitted JSON body after a save. Metadata identity/title/version fields stay outside the native editor value.

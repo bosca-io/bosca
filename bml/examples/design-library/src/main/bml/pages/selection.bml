@@ -16,13 +16,19 @@
           <search-input value="" label="Empty search" :autofocus="false" data-empty-search />
           <search-input value="Readonly value" label="Readonly search" :autofocus="false" readonly data-readonly-search />
           <segmented-control label="Empty choices" name="empty" :options="emptyList()" value="" data-empty-segments />
-          <segmented-control label="Unmatched choice" name="unknown" :options='listOf("One", "Two")' value="unknown" data-unmatched-segments />
+          <segmented-control label="Unmatched choice" name="unknown" :options='listOf(bosca.design.model.SegmentOption("One", "One"), bosca.design.model.SegmentOption("Two", "Two"))' value="unknown" data-unmatched-segments />
           <view-tabs label="Empty views" :tabs="emptyList()" selected="" data-empty-views />
-          <segmented-control label="Hidden choices" name="hidden-choice" :options='listOf("One", "Two")' value="One" hidden data-hidden-segments />
-          <view-tabs label="Hidden views" :tabs='listOf("One", "Two")' selected="One" hidden data-hidden-views />
-          <view-tabs label="Unmatched view" :tabs='listOf("One", "Two")' selected="unknown" data-unmatched-views />
-          <segmented-control label="Long choices" name="long" :options='listOf("Components with long descriptive labels", "Application-owned arrangements", "Overlays and layered content")' value="Components with long descriptive labels" data-long-segments />
-          <view-tabs label="Long view names" :tabs='listOf("A deliberately long preview title", "Application-owned details and examples", "Complete authoring source")' selected="A deliberately long preview title" data-long-views />
+          <segmented-control label="Hidden choices" name="hidden-choice" :options='listOf(bosca.design.model.SegmentOption("One", "One"), bosca.design.model.SegmentOption("Two", "Two"))' value="One" hidden data-hidden-segments />
+          <view-tabs label="Hidden views" :tabs='listOf(bosca.design.model.ViewTab("One", "One"), bosca.design.model.ViewTab("Two", "Two"))' selected="One" hidden data-hidden-views />
+          <view-tabs label="Unmatched view" :tabs='listOf(bosca.design.model.ViewTab("One", "One"), bosca.design.model.ViewTab("Two", "Two"))' selected="unknown" data-unmatched-views />
+          <form data-typed-choices>
+            <segmented-control label="Stable option values" name="typed-choice" value="first" data-typed-options
+              :options='listOf(bosca.design.model.SegmentOption("first", "Same"), bosca.design.model.SegmentOption("disabled", "Unavailable", disabled = true), bosca.design.model.SegmentOption("last", "Same", "file"))' />
+            <view-tabs label="Stable tab values" selected="first" data-typed-tabs
+              :tabs='listOf(bosca.design.model.ViewTab("first", "Same"), bosca.design.model.ViewTab("disabled", "Unavailable", disabled = true), bosca.design.model.ViewTab("last", "Same"))' />
+          </form>
+          <segmented-control label="Long choices" name="long" :options='listOf(bosca.design.model.SegmentOption("Components with long descriptive labels", "Components with long descriptive labels"), bosca.design.model.SegmentOption("Application-owned arrangements", "Application-owned arrangements"), bosca.design.model.SegmentOption("Overlays and layered content", "Overlays and layered content"))' value="Components with long descriptive labels" data-long-segments />
+          <view-tabs label="Long view names" :tabs='listOf(bosca.design.model.ViewTab("A deliberately long preview title", "A deliberately long preview title"), bosca.design.model.ViewTab("Application-owned details and examples", "Application-owned details and examples"), bosca.design.model.ViewTab("Complete authoring source", "Complete authoring source"))' selected="A deliberately long preview title" data-long-views />
         </div>
       </page-shell>
     </body>

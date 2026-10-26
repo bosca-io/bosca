@@ -45,7 +45,7 @@ class CatalogViewsTest {
         assertFailsWith<IllegalStateException> { views.search("query", "all") }
         views.chooseView("Source")
         views.changeTabs()
-        assertEquals(listOf("Preview", "Notes"), views.tabs())
+        assertEquals(listOf("Preview", "Notes"), views.tabs().map { it.value })
         assertEquals("Preview", views.selected)
         assertFailsWith<IllegalArgumentException> { views.chooseView("Source") }
         views.replace()
@@ -58,7 +58,7 @@ class CatalogViewsTest {
         assertEquals(false, restored.visible)
         assertEquals("info", restored.noticeTone)
         restored.changeTabs()
-        assertEquals(listOf("Preview", "Details", "Source"), restored.tabs())
+        assertEquals(listOf("Preview", "Details", "Source"), restored.tabs().map { it.value })
         assertEquals(2, restored.revision)
         restored.replace()
         assertEquals("control", restored.query)

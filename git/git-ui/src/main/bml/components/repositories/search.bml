@@ -37,9 +37,7 @@
               <segmented-control
                 label="Search mode"
                 name="mode"
-                :options='listOf("Content", "Paths")'
-                :values='listOf("content", "paths")'
-                :icons='listOf("code", "file")'
+                :options='listOf(bosca.design.model.SegmentOption("content", "Content", "code"), bosca.design.model.SegmentOption("paths", "Paths", "file"))'
                 :value="model.mode"
                 preserveKey="git-search-mode"
               />

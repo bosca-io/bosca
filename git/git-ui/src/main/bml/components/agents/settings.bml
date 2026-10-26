@@ -67,12 +67,12 @@
           </card>
           <card title="Runner Profiles" :padded="false">
             <div class="editor-body">
-              <json-editor name="profiles" :value="model.profiles" label="Runner profiles" preserveKey="json-profiles" />
+              <json-editor name="profiles" :value="model.profiles" :text="model.profilesText" label="Runner profiles" preserveKey="json-profiles" />
             </div>
           </card>
           <card title="Alert Sinks" :padded="false">
             <div class="editor-body">
-              <json-editor name="sinks" :value="model.sinks" label="Alert sinks" preserveKey="json-sinks" />
+              <json-editor name="sinks" :value="model.sinks" :text="model.sinksText" label="Alert sinks" preserveKey="json-sinks" />
             </div>
           </card>
         </form>
