@@ -37,6 +37,8 @@ The Design Library catalog and consumer tests also require Google Chrome on the 
 They launch isolated headless profiles, using the installed macOS app or `google-chrome` on Linux.
 Set `BML_DESIGN_CHROME_BINARY` to use another Chrome executable. BML test failures print their
 full exception messages, including child-process diagnostics, directly in the Gradle log.
+The JVM CI pipeline installs Chromium through the catalog's pinned test dependency and exports
+its executable path for both suites. It does not depend on a system Chrome installation.
 
 BML Maven libraries and the `io.bosca.bml` and `io.bosca.bml.host` Gradle plugins publish with the workspace tag through
 the root `publishExceptFirebaseScrypt` task. This includes `bml-server`, which applications embed
