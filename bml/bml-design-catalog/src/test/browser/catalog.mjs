@@ -145,7 +145,9 @@ try {
     const path = await diagnostics.capture(observed), report = JSON.parse(await readFile(path, 'utf8'));
     assert.equal(report.error.message, observed.message);
     assert.equal(report.failedOperation.state, 'timeout');
-    assert.ok(report.failedOperation.elapsed>=10000, 'The original ten-second request deadline is unchanged');
+    // Compare high-resolution durations at the timer's millisecond precision.
+    assert.ok(Math.ceil(report.failedOperation.elapsed)>=10000,
+      `The original ten-second request deadline is unchanged (${report.failedOperation.elapsed}ms)`);
     assert.ok(report.probes.browser.product.startsWith('Chrome/'));
     assert.ok(report.processes.some(row=>row.pid===browser.pid));
     assert.ok(report.probes.targets.some(target=>target.type==='page'));

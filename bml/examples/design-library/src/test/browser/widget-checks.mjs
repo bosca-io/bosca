@@ -35,7 +35,12 @@ export async function checkWidgets({ call, evaluate, until, base, mode, artifact
       assert.equal(await evaluate(`${editor}.textContent`), draft);
       assert.equal(await evaluate(`${editor}.querySelector('strong')`), null);
       const originalGraph = JSON.parse((await values()).graph);
+      await evaluate(`${flow}.scrollIntoView({block:'center',behavior:'instant'})`);
+      await until(`(() => {const node=${flow}.querySelector('.vue-flow__node[data-id=start]');
+        return node.tabIndex>=0&&getComputedStyle(node).visibility==='visible'&&node.getBoundingClientRect().width>0;})()`);
       await evaluate(`${flow}.querySelector('.vue-flow__node[data-id=start]').focus()`);
+      assert.ok(await evaluate(`document.activeElement===${flow}.querySelector('.vue-flow__node[data-id=start]')`),
+        'The visible flow node accepts keyboard focus before selection and movement');
       await key('Enter');
       await key('ArrowRight');
       await until(`JSON.parse(${flow}.querySelector('textarea').value).nodes.find(node=>node.id==='start').position.x!==${originalGraph.nodes[0].position.x}`);
