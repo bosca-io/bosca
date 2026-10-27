@@ -352,7 +352,9 @@ The ordinary test suite also runs axe-core against all catalog routes in package
 development applications at 1440px and 390px, in both document appearances. Additional scans cover
 open choices, navigation menus, dialogs, tooltips, error toasts, validation, pending/loaded tables and
 example-state disclosures. Confirmed violations fail the test without disabling rules. Findings
-requiring manual review remain in `catalog-<mode>-accessibility.json`; a passing scan does not replace
+requiring manual review remain in `catalog-<mode>-accessibility-1440.json` and
+`catalog-<mode>-accessibility-390.json`. Each width runs in a separate browser process with the same
+deadline; both appearances and runtime modes remain covered. A passing scan does not replace
 screen-reader or complete manual accessibility acceptance. Each scan also records DOM and browser
 accessibility-tree evidence for popup `aria-controls` references, full option names/listbox context
 and symbolic tag-removal names. Those checks require unique component-owned targets, matching

@@ -11,6 +11,7 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
   const routes=paths??['/','/foundation','/themes','/selection','/choices','/views','/trees','/navigation','/feedback','/surfaces','/source','/source/languages','/documents','/flows','/charts','/dashboards','/components/visualization','/json','/comments','/overlays','/components','/components/controls','/components/layout','/components/feedback','/components/overlays','/components/content','/components/aliases'];
   const reports=[];
   const scan=async(path,width,appearance,state)=>{
+    console.log(`Catalog ${mode} ${reportName}: ${path} ${width}px ${appearance}, ${state}`);
     await evaluate('document.fonts.ready');
     await evaluate('Promise.all(document.getAnimations().filter(animation=>Number.isFinite(animation.effect.getComputedTiming().iterations)).map(animation=>animation.finished)).then(()=>true)');
     const result=await evaluate(`axe.run(document,{resultTypes:['violations','incomplete','passes','inapplicable']}).then(result=>({version:result.testEngine.version,url:result.url,violations:result.violations,incomplete:result.incomplete,passes:result.passes.map(rule=>rule.id),inapplicable:result.inapplicable.map(rule=>rule.id)}))`);
@@ -113,5 +114,5 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
   if(!paths)for(const id of ['aria-valid-attr-value','aria-toggle-field-name','label-content-name-mismatch'])assert.ok(reviewed.some(review=>review.rule===id),`No ${id} review evidence`);
   const contrast=reviewed.filter(review=>review.rule==='color-contrast');
   assert.ok(contrast.length>0,'No retained contrast evidence');
-  console.log(`Catalog ${mode}: ${reports.length} axe ${reports[0].version} scans, zero confirmed violations; ${reviewed.length-contrast.length} popup/name findings verified against DOM and browser accessibility evidence; ${contrast.length} solid foreground/background measurements. Original manual findings remain in accessibility.json`);
+  console.log(`Catalog ${mode}: ${reports.length} axe ${reports[0].version} scans, zero confirmed violations; ${reviewed.length-contrast.length} popup/name findings verified against DOM and browser accessibility evidence; ${contrast.length} solid foreground/background measurements. Original manual findings remain in catalog-${mode}-${reportName}.json`);
 }

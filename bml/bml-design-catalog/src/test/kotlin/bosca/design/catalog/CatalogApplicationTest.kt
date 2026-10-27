@@ -321,9 +321,16 @@ class CatalogApplicationTest {
     }
 
     @Test
-    fun `packaged catalog passes accessibility checks`() {
+    fun `packaged catalog passes accessibility checks at desktop width`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
-            runBrowser(base, development, "--accessibility", 120)
+            runBrowser(base, development, "--accessibility-desktop", 120)
+        }
+    }
+
+    @Test
+    fun `packaged catalog passes accessibility checks at phone width`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--accessibility-phone", 120)
         }
     }
 

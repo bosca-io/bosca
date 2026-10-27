@@ -197,8 +197,10 @@ try {
     await checkJsonTables({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--choices') {
     await checkLocalChoices({navigate,evaluate,until,call,artifacts,mode});
-  } else if(process.argv[4]==='--accessibility') {
-    await checkAccessibility({navigate,evaluate,until,call,artifacts,mode});
+  } else if(['--accessibility','--accessibility-desktop','--accessibility-phone'].includes(process.argv[4])) {
+    const widths=process.argv[4]==='--accessibility-desktop'?[1440]:process.argv[4]==='--accessibility-phone'?[390]:[1440,390];
+    const reportName=widths.length===1?`accessibility-${widths[0]}`:'accessibility';
+    await checkAccessibility({navigate,evaluate,until,call,artifacts,mode,widths,reportName});
   } else if(process.argv[4]==='--tab-focus') {
     await checkTabFocus({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--copy-overflow') {
