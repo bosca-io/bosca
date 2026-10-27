@@ -33,10 +33,12 @@ The IntelliJ plugin is documented in [bml-ide/README.md](bml-ide/README.md).
 The TypeScript browser runtime lives in `bml-runtime/` and uses npm; install its dependencies
 there before running tasks that bundle BML client code.
 
-The Design Library catalog and consumer tests also require Google Chrome on the test worker.
-They launch isolated headless profiles, using the installed macOS app or `google-chrome` on Linux.
-Set `BML_DESIGN_CHROME_BINARY` to use another Chrome executable. BML test failures print their
-full exception messages, including child-process diagnostics, directly in the Gradle log.
+The Design Library catalog, consumer and Notifications Web tests launch isolated headless profiles.
+Gradle prepares Chromium through the catalog's pinned private Playwright dependency before these
+tests, so a system Chrome installation is unnecessary. The first run requires network access;
+later runs reuse Playwright's browser cache. Set `BML_DESIGN_CHROME_BINARY` to use an existing
+Chrome executable and bypass browser preparation. BML test failures print their full exception
+messages, including child-process diagnostics, directly in the Gradle log.
 The JVM CI pipeline installs Chromium through the catalog's pinned test dependency and exports
 its executable path for both suites. It does not depend on a system Chrome installation.
 Browser suites, including Notifications Web adoption, run in a serial phase before aggregate JVM

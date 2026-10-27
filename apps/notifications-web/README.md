@@ -62,6 +62,10 @@ takes everything else via a catch-all HTTPRoute (Gateway API longest-prefix prec
 ./gradlew :notifications-web:nativeCompile --build-args=-Ob :notifications-web:nativeDesignAdoptionTest
 ```
 
+Gradle prepares the pinned Chromium for browser tests, including the native adoption check. The
+first run downloads the browser; later runs reuse Playwright's cache. Set `BML_DESIGN_CHROME_BINARY`
+to use an existing executable and bypass preparation.
+
 The product checks use an isolated token-scoped GraphQL fixture and Chrome profile, with successful,
 rejected and pending actions, repeated toasts, navigation/Back, consumer CSS changes and desktop/phone
 geometry. They exercise packaged workspace and source-free Maven-fixture builds in production and

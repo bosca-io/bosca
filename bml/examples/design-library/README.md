@@ -156,8 +156,10 @@ From the workspace root, prepare and check the consumer TypeScript with:
 node bml/bml-runtime/node_modules/typescript/bin/tsc --project bml/examples/design-library/tsconfig.json
 ```
 
-Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
-`BML_DESIGN_CHROME_BINARY` for another executable. Screenshots land in this project's
+Gradle prepares the pinned Chromium automatically, including for `publishedConsumerTest` and
+`nativeConsumerTest`. The first run downloads the browser; subsequent runs reuse Playwright's
+cache. Set `BML_DESIGN_CHROME_BINARY` to use an existing executable and bypass preparation.
+Screenshots land in this project's
 `build/reports/browser/`. The fixture is an application and is excluded from aggregate Maven
 publication.
 

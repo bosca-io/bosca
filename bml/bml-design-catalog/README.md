@@ -416,8 +416,9 @@ actions and Tab order, live control-height/font overrides, and compact/bare grow
 ./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.source search controls fit normal and compact viewers'
 ```
 
-Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
-`BML_DESIGN_CHROME_BINARY` for another executable. Desktop/phone screenshots are written under
+Gradle prepares the pinned Chromium automatically for Chrome-based tests. The first run downloads
+the browser; subsequent runs reuse Playwright's cache. Set `BML_DESIGN_CHROME_BINARY` to use an
+existing executable and bypass preparation. Desktop/phone screenshots are written under
 `build/reports/browser/`.
 
 An optional Firefox qualification uses the installed Firefox app on macOS or `firefox` on Linux.

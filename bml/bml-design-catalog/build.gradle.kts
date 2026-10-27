@@ -49,6 +49,20 @@ graalvmNative {
 
 tasks.named("nativeRun") { outputs.upToDateWhen { false } }
 
+tasks.register<Exec>("prepareTestBrowser") {
+    group = "verification"
+    description = "Install the pinned Chromium used by workspace browser acceptance tests."
+    workingDir(layout.projectDirectory)
+    commandLine(bml.nodeExecutable.get(), "src/test/browser/prepare-chromium.mjs",
+        layout.buildDirectory.file("test-browser/executable.txt").get().asFile.absolutePath)
+    inputs.files("package.json", "package-lock.json", "src/test/browser/prepare-chromium.mjs")
+    outputs.file(layout.buildDirectory.file("test-browser/executable.txt"))
+    // Playwright's external browser cache can be removed independently of build outputs.
+    outputs.upToDateWhen { false }
+}
+
+apply(from = rootProject.file("gradle/bml-test-browser.gradle.kts"))
+
 val catalogRuntime = configurations.named("runtimeClasspath")
 val catalogClasspath = files(tasks.jar.flatMap { it.archiveFile }, catalogRuntime).asPath
 tasks.withType<Test>().configureEach {

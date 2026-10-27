@@ -47,6 +47,8 @@ graalvmNative {
 
 tasks.named("nativeRun") { outputs.upToDateWhen { false } }
 
+apply(from = rootProject.file("gradle/bml-test-browser.gradle.kts"))
+
 val fixtureRuntime = configurations.named("runtimeClasspath")
 val publishedFixturePlugin = configurations.create("publishedFixturePlugin") { isCanBeConsumed = false }
 val publishedFixtureCompiler = configurations.create("publishedFixtureCompiler") {
@@ -68,6 +70,8 @@ tasks.withType<Test>().configureEach {
         ":bml:bml-design:sourcesJar", ":bml:bml-design:generatePomFileForMavenPublication")
     inputs.dir(layout.projectDirectory.dir("src/test/browser"))
         .withPropertyName("browserChecks").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(rootProject.file("gradle/bml-test-browser.gradle.kts"))
+        .withPropertyName("browserTestSetup").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir(layout.projectDirectory.dir("src/test/types"))
         .withPropertyName("typeChecks").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file(layout.projectDirectory.file("tsconfig.json"))

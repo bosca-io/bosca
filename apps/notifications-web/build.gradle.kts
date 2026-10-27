@@ -37,6 +37,8 @@ dependencies {
     testImplementation(gradleTestKit())
 }
 
+apply(from = rootProject.file("gradle/bml-test-browser.gradle.kts"))
+
 val adoptionRuntime = configurations.named("runtimeClasspath")
 val adoptionPlugin = configurations.create("adoptionPlugin") { isCanBeConsumed = false }
 val adoptionCompiler = configurations.create("adoptionCompiler") {
