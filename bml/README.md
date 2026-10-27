@@ -39,6 +39,8 @@ Set `BML_DESIGN_CHROME_BINARY` to use another Chrome executable. BML test failur
 full exception messages, including child-process diagnostics, directly in the Gradle log.
 The JVM CI pipeline installs Chromium through the catalog's pinned test dependency and exports
 its executable path for both suites. It does not depend on a system Chrome installation.
+Browser suites, including Notifications Web adoption, run in a serial phase before aggregate JVM
+validation. The aggregate task reuses those results, and its worker count is bounded independently.
 
 BML Maven libraries and the `io.bosca.bml` and `io.bosca.bml.host` Gradle plugins publish with the workspace tag through
 the root `publishExceptFirebaseScrypt` task. This includes `bml-server`, which applications embed

@@ -173,8 +173,10 @@ try {
     await checkVisualizations({navigate,evaluate,until,call,key,artifacts,mode});
   } else if(process.argv[4]==='--visualization-accessibility') {
     await checkAccessibility({navigate,evaluate,until,call,artifacts,mode,paths:['/flows','/charts','/components/visualization'],reportName:'visualization-accessibility'});
-  } else if(process.argv[4]==='--editor-accessibility') {
-    await checkAccessibility({navigate,evaluate,until,call,artifacts,mode,paths:['/documents','/source/languages','/components/content','/components/controls']});
+  } else if(['--editor-accessibility','--editor-accessibility-desktop','--editor-accessibility-phone'].includes(process.argv[4])) {
+    const widths=process.argv[4]==='--editor-accessibility-desktop'?[1440]:process.argv[4]==='--editor-accessibility-phone'?[390]:[1440,390];
+    const reportName=widths.length===1?`editor-accessibility-${widths[0]}`:'editor-accessibility';
+    await checkAccessibility({navigate,evaluate,until,call,artifacts,mode,paths:['/documents','/source/languages','/components/content','/components/controls'],widths,reportName});
   } else if(process.argv[4]==='--documents') {
     await checkDocuments({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--shell') {

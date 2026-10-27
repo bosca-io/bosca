@@ -4,6 +4,8 @@
 //
 //     ./gradlew :notifications-web:run                  # -> http://localhost:9094/  (from the workspace root)
 //     ./gradlew :notifications-web:downloadBoscaGraphqlSchema   # refresh src/main/graphql/schema.graphqls
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+
 plugins {
     id("org.jetbrains.kotlin.jvm")
     alias(libs.plugins.kotlin.plugin.serialization)
@@ -96,6 +98,7 @@ tasks.register<Test>("nativeDesignAdoptionTest") {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    testLogging.exceptionFormat = TestExceptionFormat.FULL
 }
 
 application {

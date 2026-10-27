@@ -152,9 +152,16 @@ class CatalogApplicationTest {
     }
 
     @Test
-    fun `new editor examples pass accessibility in both palettes and viewport sizes`() {
+    fun `new editor examples pass accessibility at desktop width`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
-            runBrowser(base, development, "--editor-accessibility", 60)
+            runBrowser(base, development, "--editor-accessibility-desktop", 60)
+        }
+    }
+
+    @Test
+    fun `new editor examples pass accessibility at phone width`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--editor-accessibility-phone", 60)
         }
     }
 

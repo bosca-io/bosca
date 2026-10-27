@@ -12,6 +12,7 @@ class WorkspaceCiBrowserTest {
     private val steps = PipelineYamlParser().parse(File("../.bosca/pipelines/ci.yaml").readText())
         .jobs.getValue("test-jvm").steps
     private val install = steps.single { it.name == "Install BML Test Browser" }
+    private val browsers = steps.single { it.name == "Run BML Browser Tests" }
     private val tests = steps.single { it.name == "Run JVM Tests" }
 
     @Test
@@ -25,7 +26,8 @@ class WorkspaceCiBrowserTest {
     }
 
     private suspend fun verifySetup(provisionBrowser: Boolean) {
-        assertTrue(steps.indexOf(install) < steps.indexOf(tests))
+        assertTrue(steps.indexOf(install) < steps.indexOf(browsers))
+        assertTrue(steps.indexOf(browsers) < steps.indexOf(tests))
         val root = Files.createTempDirectory("ci-bml-browser-").toFile().canonicalFile
         try {
             val catalog = File(root, "bml/bml-design-catalog").apply { mkdirs() }
@@ -72,6 +74,7 @@ class WorkspaceCiBrowserTest {
             val installed = executor(install).execute(install, ExpressionContext())
             assertEquals(provisionBrowser, installed.success, logs.lines.joinToString("\n"))
             if (provisionBrowser) {
+                assertTrue(executor(browsers).execute(browsers, ExpressionContext()).success, logs.lines.joinToString("\n"))
                 assertTrue(executor(tests).execute(tests, ExpressionContext()).success, logs.lines.joinToString("\n"))
                 assertEquals(browser.absolutePath, File(root, "selected-browser.txt").readText())
             } else {
