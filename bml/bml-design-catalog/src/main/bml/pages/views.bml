@@ -1,0 +1,23 @@
+<page route="/views">
+  <catalog-document title="Search and local views" description="Native queries, category choices and caller-owned panels." current="/views">
+    <p class="page-intro">Search the catalog examples, move between categories with the arrow keys and explore the local views. Each palette keeps its own query, results and selected panel.</p>
+    <div class="catalog-grid">
+      <div class="catalog-palette-dark" data-views-palette="dark"><card title="Dark palette"><search-views-example id="dark" /></card></div>
+      <div class="catalog-palette-light" data-views-palette="light"><card title="Light palette"><search-views-example id="light" /></card></div>
+    </div>
+    <div class="catalog-grid" data-views-cases>
+      <card title="Empty search"><div class="catalog-stack"><search-input label="Empty search" :autofocus="false" data-views-empty-search /><p class="example-note">The clear action appears when the query has a value.</p></div></card>
+      <card title="Readonly search"><div class="catalog-stack"><form data-views-readonly-form><search-input label="Readonly search" value="A retained query" readonly :autofocus="false" data-views-readonly /></form><p class="example-note">Readonly values stay in native form data. The clear action is unavailable.</p></div></card>
+      <card title="Disabled search"><div class="catalog-stack"><form data-views-disabled-form><search-input label="Disabled search" value="Unavailable query" disabled :autofocus="false" data-views-disabled-case /></form><p class="example-note">Disabled fields are excluded from native form data.</p></div></card>
+      <card title="Empty groups"><div class="catalog-stack"><segmented-control label="Empty categories" name="empty" :options="emptyList()" value="" data-views-empty-segments /><view-tabs label="Empty views" :tabs="emptyList()" selected="" data-views-empty-tabs /><p class="example-note">An empty group contains no keyboard target.</p></div></card>
+      <card title="Unmatched values"><div class="catalog-stack"><segmented-control label="Unmatched category" name="unmatched" :options='listOf(bosca.design.model.SegmentOption("First", "First"), bosca.design.model.SegmentOption("Second", "Second"))' value="Missing" data-views-unmatched-segments /><view-tabs label="Unmatched view" :tabs='listOf(bosca.design.model.ViewTab("First", "First"), bosca.design.model.ViewTab("Second", "Second"))' selected="Missing" data-views-unmatched-tabs /><p class="example-note">The first item is keyboard reachable without inventing a selection. These isolated tabs have no content panels.</p></div></card>
+      <card title="Long labels"><div class="catalog-stack"><segmented-control label="Long categories" name="long" :options='listOf(bosca.design.model.SegmentOption("Components with long descriptive labels", "Components with long descriptive labels"), bosca.design.model.SegmentOption("Application-owned arrangements", "Application-owned arrangements"), bosca.design.model.SegmentOption("Overlays and layered content", "Overlays and layered content"))' value="Components with long descriptive labels" data-views-long-segments /><view-tabs label="Long views" :tabs='listOf(bosca.design.model.ViewTab("A deliberately long preview title", "A deliberately long preview title"), bosca.design.model.ViewTab("Application-owned details and examples", "Application-owned details and examples"), bosca.design.model.ViewTab("Complete authoring source", "Complete authoring source"))' selected="A deliberately long preview title" data-views-long-tabs /><p class="example-note">Wide groups scroll inside the card. These isolated tabs demonstrate label layout.</p></div></card>
+    </div>
+    <card title="Use in your application"><div class="catalog-stack">
+      <p class="catalog-description">Search requests, results and panels belong to the application. A stable key retains query edits and local choices through surrounding updates. Change the key when replacing a group’s children. Repeated search controls turn autofocus off.</p>
+      <a class="catalog-link" href="/components/controls#ref-search-input">Search input API and authoring</a>
+      <a class="catalog-link" href="/components/controls#ref-segmented-control">Segmented control API and authoring</a>
+      <a class="catalog-link" href="/components/controls#ref-view-tabs">Local tabs API and authoring</a>
+    </div></card>
+  </catalog-document>
+</page>

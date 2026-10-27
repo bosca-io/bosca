@@ -7,7 +7,7 @@
   <island name="git-repository-row" :key="model.repository.id">
     <li class="gt-row repository-row" :data-next-href="model.nextHref">
       <span class="gt-cell repository-name">
-        <span class="repository-icon"><ui-icon name="folder" :size="14" /></span>
+        <span class="repository-icon"><icon name="folder" :size="14" /></span>
         <a
           class="gt-row-link"
           :href="model.repository.href"
@@ -16,13 +16,13 @@
           { model.repository.name }
         </a>
         <if model.repository.archived>
-          <ui-badge>Archived</ui-badge>
+          <badge>Archived</badge>
         </if>
       </span>
       <span class="gt-cell repository-visibility">
-        <ui-badge :tone="model.repository.visibilityTone">
+        <badge :tone="model.repository.visibilityTone">
           { model.repository.visibility.lowercase() }
-        </ui-badge>
+        </badge>
       </span>
       <span class="gt-cell repository-type">{ model.repository.contentTypeLabel }</span>
       <code class="gt-cell repository-branch">{ model.repository.defaultBranch }</code>
@@ -30,38 +30,40 @@
         { bosca.git.ui.formatSize(model.repository.size) }
       </code>
       <span class="gt-cell gt-muted repository-updated">
-        <ui-time :value="model.repository.updated" format="MMM d" inheritTypography />
+        <time :value="model.repository.updated" format="MMM d" inheritTypography />
       </span>
       <span class="gt-actions">
       <if model.repository.canManage>
-        <details class="row-actions" ref="panel">
-          <summary ref="trigger" aria-label="Repository actions" title="Repository actions">
-            <span class="row-menu-icon"><ui-icon name="list" :size="14" /></span>
-          </summary>
-          <div class="repository-menu" role="menu" aria-label="Repository actions">
-            <a
-              role="menuitem"
-              :href='"/repositories/" + bosca.git.ui.encode(model.repository.id) + "/settings"'
-            >
-              <ui-icon name="edit" :size="14" />
-              Settings
-            </a>
-            <if model.repository.archived>
-              <ui-button role="menuitem" icon="refresh" @click='model.prepare("restore")'>
-                Restore repository
-              </ui-button>
-            <else>
-              <ui-button role="menuitem" icon="archive" @click='model.prepare("archive")'>
-                Archive repository
-              </ui-button>
-            </if>
-            <ui-button class="danger" role="menuitem" icon="trash" @click='model.prepare("delete")'>
-              Delete repository
-            </ui-button>
-          </div>
-        </details>
+        <tooltip content="Repository actions">
+          <details class="row-actions" ref="panel">
+            <summary ref="trigger" aria-label="Repository actions" title="Repository actions" tabindex="0">
+              <span class="row-menu-icon"><icon name="list" :size="14" /></span>
+            </summary>
+            <div class="repository-menu" role="menu" aria-label="Repository actions">
+              <a
+                role="menuitem"
+                :href='"/repositories/" + bosca.git.ui.encode(model.repository.id) + "/settings"'
+              >
+                <icon name="edit" :size="14" />
+                Settings
+              </a>
+              <if model.repository.archived>
+                <button role="menuitem" icon="refresh" @click='model.prepare("restore")'>
+                  Restore repository
+                </button>
+              <else>
+                <button role="menuitem" icon="archive" @click='model.prepare("archive")'>
+                  Archive repository
+                </button>
+              </if>
+              <button class="danger" role="menuitem" icon="trash" @click='model.prepare("delete")'>
+                Delete repository
+              </button>
+            </div>
+          </details>
+        </tooltip>
         <if model.pendingAction.isNotBlank()>
-          <ui-dialog
+          <dialog
             :title='model.pendingAction.replaceFirstChar(Char::uppercase) + " repository?"'
             triggerLabel="Confirm action"
             :showTrigger="false"
@@ -75,29 +77,29 @@
                   { if (model.pendingAction == "delete") "This removes " + model.repository.name + " from the repository list and schedules it for deletion." else if (model.pendingAction == "archive") "Archive " + model.repository.name + " to make it read-only. You can restore it later." else "Restore " + model.repository.name + " to make it active again." }
                 </p>
                 <if model.failed>
-                  <ui-alert :tone='if (model.failed) "error" else "success"'>
+                  <alert :tone='if (model.failed) "error" else "success"'>
                     { model.message }
-                  </ui-alert>
+                  </alert>
                 </if>
               </div>
               <footer class="modal-footer">
-                <ui-button ref="cancel">Cancel</ui-button>
-                <ui-button
+                <button ref="cancel">Cancel</button>
+                <button
                   type="submit"
                   :class='if (model.pendingAction == "delete") "danger" else ""'
                   :primary='model.pendingAction != "delete"'
                 >
                   { model.pendingAction.replaceFirstChar(Char::uppercase) + " repository" }
-                </ui-button>
+                </button>
               </footer>
             </form>
-          </ui-dialog>
+          </dialog>
         </if>
       </if>
       </span>
       <if model.message.isNotBlank()>
         <div class="row-message">
-          <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+          <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
         </div>
       </if>
     </li>
@@ -213,10 +215,7 @@
   </style>
   <script client scoped>
     import { dismissibleDisclosure } from "@client/disclosure";
-    import { attachTooltip } from "@client/tooltip";
     dismissibleDisclosure(ctx);
-    const trigger = ctx.ref<HTMLElement>("trigger");
-    if (trigger) attachTooltip(ctx, trigger);
     ctx.onUpdate(() => {
       const next =
         ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;

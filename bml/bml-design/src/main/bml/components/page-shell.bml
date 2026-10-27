@@ -1,0 +1,37 @@
+<component tag="page-shell">
+  <prop name="fill" type="Boolean" default="false" />
+  <prop name="narrow" type="Boolean" default="false" />
+  <main
+    :class='"page" + (if (fill) " page-fill" else "") + (if (narrow) " page-narrow" else "")'
+    {...attrs}
+  >
+    <slot />
+  </main>
+  <style scoped>
+    .page {
+      box-sizing: border-box;
+      padding: 0 22px 22px;
+      width: 100%;
+      min-width: 0;
+      flex: 1;
+      overflow: auto;
+    }
+    .page-fill {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .page-narrow {
+      width: min(100% - 40px, 400px);
+      margin: 64px auto;
+      padding: 0;
+    }
+    @media (max-width: 600px) {
+      .page:not(.page-narrow) {
+        padding: 0 16px 20px;
+      }
+    }
+  </style>
+</component>

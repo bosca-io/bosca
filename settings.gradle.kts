@@ -204,6 +204,8 @@ includeComponent("experimentation", listOf(
 includeComponent("bml", listOf(
     "bml-annotations",
     "bml-compiler",
+    "bml-design",
+    "bml-design-catalog",
     "core-bml",
     "bml",
     "bml-server",
@@ -214,6 +216,7 @@ includeComponent("bml", listOf(
     "bml-gradle",
     "bml-sample",
     "examples:site",
+    "examples:design-library",
 ))
 
 includeComponent("calendar", listOf(

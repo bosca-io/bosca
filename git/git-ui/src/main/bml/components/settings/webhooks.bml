@@ -4,16 +4,16 @@
     bosca.git.ui.RepositoryWebhookModel(page)
   </script>
   <island name="git-repository-webhooks" :key="page.repository.id">
-    <section class="settings-stack" :data-next-href="model.nextHref">
+    <html:section class="settings-stack" :data-next-href="model.nextHref">
       <if model.message.isNotBlank()>
-        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+        <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
-      <ui-card :padded="false">
-        <ui-section-heading
+      <card :padded="false">
+        <section-heading
           title="Webhooks"
           subtitle="Send repository events to an external service."
         >
-          <ui-dialog
+          <dialog
             title="New webhook"
             triggerLabel="New webhook"
             icon="webhook"
@@ -27,33 +27,33 @@
             >
               <div class="modal-fields">
                 <if model.failed && model.creating>
-                  <ui-alert :tone='if (model.failed) "error" else "success"'>
+                  <alert :tone='if (model.failed) "error" else "success"'>
                     { model.message }
-                  </ui-alert>
+                  </alert>
                 </if>
-                <ui-field label="Payload URL">
-                  <ui-input
+                <field label="Payload URL">
+                  <input
                     name="url"
                     type="url"
                     :value="model.url"
                     placeholder="https://example.com/webhook"
                     required
                   />
-                </ui-field>
-                <ui-field label="Secret" hint="Used to sign webhook payloads.">
-                  <ui-input name="secret" type="password" autocomplete="new-password" required />
-                </ui-field>
-                <ui-field label="Events" hint="Choose the repository events to deliver.">
-                  <input name="events" type="hidden" value="[]" />
-                  <ui-select data-webhook-events multiple required>
+                </field>
+                <field label="Secret" hint="Used to sign webhook payloads.">
+                  <input name="secret" type="password" autocomplete="new-password" required />
+                </field>
+                <field label="Events" hint="Choose the repository events to deliver.">
+                  <html:input name="events" type="hidden" value="[]" />
+                  <select data-webhook-events multiple required>
                     <for event in bosca.git.ui.graphql.GitWebhookEvent.entries>
                       <option :value="event.name" :selected="event.name in model.events">
                         { event.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase) }
                       </option>
                     </for>
-                  </ui-select>
-                </ui-field>
-                <ui-switch
+                  </select>
+                </field>
+                <switch
                   name="active"
                   :checked="model.active"
                   label="Active"
@@ -61,14 +61,14 @@
                 />
               </div>
               <footer class="modal-footer">
-                <ui-button ref="cancel">Cancel</ui-button>
-                <ui-button type="submit" primary>Create webhook</ui-button>
+                <button ref="cancel">Cancel</button>
+                <button type="submit" primary>Create webhook</button>
               </footer>
             </form>
-          </ui-dialog>
-        </ui-section-heading>
+          </dialog>
+        </section-heading>
         <if model.page.webhooks.isEmpty()>
-          <ui-empty-state
+          <empty-state
             icon="webhook"
             title="No webhooks configured"
             message="Add a webhook to deliver pushes and other repository events to your services."
@@ -78,21 +78,21 @@
             <for hook in model.page.webhooks>
               <div class="record-row">
                 <span class="record-icon">
-                  <ui-icon name="webhook" />
+                  <icon name="webhook" />
                 </span>
                 <div class="record-copy">
                   <code class="record-title">{ hook.url }</code>
                   <div class="record-meta">
-                    <ui-badge :tone='if (hook.active) "success" else "neutral"'>
+                    <badge :tone='if (hook.active) "success" else "neutral"'>
                       { if (hook.active) "Active" else "Inactive" }
-                    </ui-badge>
+                    </badge>
                     <span>
                       { hook.events.joinToString(", ") { it.name.lowercase().replace('_', ' ') } }
                     </span>
-                    <ui-time :value="hook.created" />
+                    <time :value="hook.created" />
                   </div>
                 </div>
-                <ui-confirm-dialog
+                <confirm-dialog
                   title="Delete webhook?"
                   :description='"Events will no longer be delivered to " + hook.url + "."'
                   triggerLabel="Delete"
@@ -100,17 +100,17 @@
                 >
                   <form class="modal-form" @submit="model.delete(hook.id, true, ctx)">
                     <footer class="modal-footer">
-                      <ui-button ref="cancel">Cancel</ui-button>
-                      <ui-button type="submit" class="danger">Delete webhook</ui-button>
+                      <button ref="cancel">Cancel</button>
+                      <button type="submit" class="danger">Delete webhook</button>
                     </footer>
                   </form>
-                </ui-confirm-dialog>
+                </confirm-dialog>
               </div>
             </for>
           </div>
         </if>
-      </ui-card>
-    </section>
+      </card>
+    </html:section>
   </island>
   <script client scoped>
     ctx.on<SubmitEvent>(

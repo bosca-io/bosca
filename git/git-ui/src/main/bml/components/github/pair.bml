@@ -4,15 +4,15 @@
     bosca.git.ui.GitHubPairModel(page)
   </script>
   <island name="git-github-pair" :key="page.id">
-    <section class="settings-stack" :data-next-href="model.nextHref">
-      <ui-card :padded="false">
-        <ui-section-heading
+    <html:section class="settings-stack" :data-next-href="model.nextHref">
+      <card :padded="false">
+        <section-heading
           title="Repository pairing"
           subtitle="Configure the paired repository and synchronization credentials."
         />
         <div class="section-body">
           <if model.message.isNotBlank()>
-            <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+            <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
           </if>
           <if model.page.pair != null>
             <p>
@@ -22,27 +22,27 @@
               { model.page.pair.version }
             </p>
             <if model.page.pair.webhookSecretName !in model.page.secrets || model.page.pair.tokenSecretName !in model.page.secrets>
-              <ui-alert>
+              <alert>
                 A referenced shared secret is missing. Restore it or select a replacement.
-              </ui-alert>
+              </alert>
             </if>
           </if>
           <form
             class="detail-fields"
             @submit="model.save(form.owner, form.name, form.webhook, form.token, form.enabled, form.pushIncludes, form.pushExcludes, form.pullIncludes, form.pullExcludes, ctx)"
           >
-            <ui-field label="GitHub owner">
-              <ui-input name="owner" :value="model.owner" required />
-            </ui-field>
-            <ui-field label="GitHub repository name">
-              <ui-input name="name" :value="model.name" required />
-            </ui-field>
-            <ui-field label="Webhook secret name">
-              <ui-input name="webhook" :value="model.webhook" list="shared-secret-names" required />
-            </ui-field>
-            <ui-field label="Token secret name">
-              <ui-input name="token" :value="model.token" list="shared-secret-names" required />
-            </ui-field>
+            <field label="GitHub owner">
+              <input name="owner" :value="model.owner" required />
+            </field>
+            <field label="GitHub repository name">
+              <input name="name" :value="model.name" required />
+            </field>
+            <field label="Webhook secret name">
+              <input name="webhook" :value="model.webhook" list="shared-secret-names" required />
+            </field>
+            <field label="Token secret name">
+              <input name="token" :value="model.token" list="shared-secret-names" required />
+            </field>
             <datalist id="shared-secret-names">
               <for name in model.page.secrets>
                 <option :value="name" />
@@ -51,18 +51,18 @@
             <fieldset class="full-width">
               <legend>Automatic branch synchronization</legend>
               <div class="detail-fields">
-                <ui-field label="Push: include branches">
-                  <ui-input name="pushIncludes" :value="model.pushIncludes" />
-                </ui-field>
-                <ui-field label="Push: exclude branches">
-                  <ui-input name="pushExcludes" :value="model.pushExcludes" />
-                </ui-field>
-                <ui-field label="Pull: include branches">
-                  <ui-input name="pullIncludes" :value="model.pullIncludes" />
-                </ui-field>
-                <ui-field label="Pull: exclude branches">
-                  <ui-input name="pullExcludes" :value="model.pullExcludes" />
-                </ui-field>
+                <field label="Push: include branches">
+                  <input name="pushIncludes" :value="model.pushIncludes" />
+                </field>
+                <field label="Push: exclude branches">
+                  <input name="pushExcludes" :value="model.pushExcludes" />
+                </field>
+                <field label="Pull: include branches">
+                  <input name="pullIncludes" :value="model.pullIncludes" />
+                </field>
+                <field label="Pull: exclude branches">
+                  <input name="pullExcludes" :value="model.pullExcludes" />
+                </field>
               </div>
               <p class="muted">
                 Separate patterns with commas. * matches within a segment, ** across segments,
@@ -71,10 +71,10 @@
               </p>
             </fieldset>
             <div class="full-width">
-              <ui-switch name="enabled" :checked="model.enabled" label="Enable synchronization" />
+              <switch name="enabled" :checked="model.enabled" label="Enable synchronization" />
             </div>
             <div class="full-width">
-              <ui-button type="submit" primary>Save pairing</ui-button>
+              <button type="submit" primary>Save pairing</button>
             </div>
           </form>
           <p>
@@ -96,8 +96,8 @@
           </p>
           <a :href="model.page.href">Reload pairing</a>
         </div>
-      </ui-card>
-    </section>
+      </card>
+    </html:section>
   </island>
   <style scoped>
     fieldset {

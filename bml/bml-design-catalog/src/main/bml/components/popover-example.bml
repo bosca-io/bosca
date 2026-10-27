@@ -1,0 +1,19 @@
+<component tag="popover-example">
+  <prop name="id" type="String" required />
+  <script server provides="options" scope="server-session">bosca.design.catalog.CatalogPopover(id)</script>
+  <div :data-bml-preserve='"catalog-popover-" + id'>
+    <popover label="Filter components" icon="settings" :width="420" :data-catalog-popover="id">
+      <island name="options" :key="id">
+        <form @submit="options.apply(form.filter)" class="catalog-stack" :data-popover-form="options.id">
+          <field label="Component filter" hint="This local form keeps its value when applied."><input name="filter" :value="options.filter" /></field>
+          <div class="example-actions">
+            <button type="submit" primary>Apply filter</button>
+            <button ref="cancel">Close options</button>
+          </div>
+        </form>
+        <toast :id='"popover-applied-" + options.id' :message='if (options.sequence > 0) "Filter applied." else ""'
+               :sequence="options.sequence" tone="success" :data-popover-toast="options.id" />
+      </island>
+    </popover>
+  </div>
+</component>

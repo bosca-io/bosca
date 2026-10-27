@@ -3,15 +3,15 @@
     bosca.git.ui.pullListPage()
   </script>
   <git-layout title="Pull requests">
-    <ui-page>
-      <ui-page-heading
+    <page-shell>
+      <page-heading :trail='listOf(bosca.design.model.NavigationItem("Git", "", false))'
         title="Pull Requests"
         :subtitle='page.rows.size.toString() + " " + page.status.lowercase().ifBlank { "total" } + " across " + page.repositories.size + " repositories"'
       >
         <git-pull-filter :page="page" />
         <git-pull-create :page="page" />
-      </ui-page-heading>
+      </page-heading>
       <git-pull-list :page="page" />
-    </ui-page>
+    </page-shell>
   </git-layout>
 </page>

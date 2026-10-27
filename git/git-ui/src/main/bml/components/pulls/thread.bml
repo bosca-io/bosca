@@ -13,18 +13,20 @@
     <if !inline || thread.outdated || thread.resolved>
       <header class="thread-location">
         <if !inline>
-          <a ref="locationLink" :href="page.discussionHref(thread)" :title='"View discussion on " + thread.location + " in Files Changed"'>
-            <ui-icon name="file" :size="13" />
-            <span>{ thread.location }</span>
-            <ui-icon name="arrow-right" :size="12" />
-          </a>
+          <tooltip :content='"View discussion on " + thread.location + " in Files Changed"'>
+            <a ref="locationLink" :href="page.discussionHref(thread)" :title='"View discussion on " + thread.location + " in Files Changed"'>
+              <icon name="file" :size="13" />
+              <span>{ thread.location }</span>
+              <icon name="arrow-right" :size="12" />
+            </a>
+          </tooltip>
         </if>
         <span class="thread-state">
-          <if thread.outdated><ui-badge>Outdated</ui-badge></if>
-          <if !thread.outdated && thread.first.commitSha != page.headSha><ui-badge>Earlier revision</ui-badge></if>
-          <if thread.resolved><ui-badge tone="success">Resolved</ui-badge></if>
+          <if thread.outdated><badge>Outdated</badge></if>
+          <if !thread.outdated && thread.first.commitSha != page.headSha><badge>Earlier revision</badge></if>
+          <if thread.resolved><badge tone="success">Resolved</badge></if>
           <if thread.outdated || thread.first.commitSha != page.headSha>
-            <ui-icon-link icon="code" :label='"View " + thread.location + " at the original commit"' :href="page.discussionSourceHref(thread)" data-thread-source />
+            <icon-link icon="code" :label='"View " + thread.location + " at the original commit"' :href="page.discussionSourceHref(thread)" data-thread-source />
           </if>
         </span>
       </header>
@@ -33,7 +35,7 @@
       <div class="thread-comment" :data-comment-id="comment.id">
         <header class="comment-heading">
           <strong>{ page.identity(comment.authorId) }</strong>
-          <span class="comment-time"><ui-time :value="comment.created" relative ago inheritTypography /></span>
+          <span class="comment-time"><time :value="comment.created" relative ago inheritTypography /></span>
         </header>
         <p>{ comment.content }</p>
       </div>
@@ -102,9 +104,4 @@
       overflow-wrap: anywhere;
     }
   </style>
-  <script client scoped>
-    import { attachTooltip } from "@client/tooltip";
-    const link = ctx.ref("locationLink");
-    if (link) attachTooltip(ctx, link);
-  </script>
 </component>

@@ -7,6 +7,70 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class BmlLibraryManifestTest {
+    @Test
+    fun `localization contracts round trip and affect dependency digests`() {
+        val message = BmlLibraryMessage("cart.items", null, mapOf("OTHER" to "{count} items"),
+            mapOf("count" to "items.size"), "ELEMENT", 5)
+        val localized = manifest.copy(components = listOf(button.copy(messages = listOf(message))))
+        assertEquals(localized, BmlLibraryArtifacts.decode(BmlLibraryArtifacts.encode(localized)))
+        assertFalse(BmlLibraryArtifacts.digest(manifest) == BmlLibraryArtifacts.digest(localized))
+        for (invalid in listOf(
+            message.copy(key = ""), message.copy(message = "plain"), message.copy(line = 0),
+            message.copy(origin = "UNKNOWN"), message.copy(pluralForms = mapOf("ONE" to "one")),
+            message.copy(pluralForms = mapOf("OTHER" to "items", "SOME" to "some")),
+            message.copy(pluralForms = emptyMap()), message.copy(placeholders = mapOf("" to "value")),
+        )) assertFailsWith<IllegalArgumentException> {
+            localized.copy(components = listOf(button.copy(messages = listOf(invalid)))).validate()
+        }
+        assertFailsWith<IllegalArgumentException> {
+            localized.copy(components = listOf(button.copy(messages = listOf(message, message)))).validate()
+        }
+    }
+
+    @Test
+    fun `provider registrars are explicit unique constructor entry points`() {
+        val declared = manifest.copy(providerRegistrars = listOf("bosca.di.DesignProviderRegistrar"))
+        assertEquals(declared, BmlLibraryArtifacts.decode(BmlLibraryArtifacts.encode(declared)))
+        for (names in listOf(listOf("Registrar"), listOf("example.Bad()"), listOf("example.class"),
+            listOf("example.Registrar", "example.Registrar"))) {
+            assertFailsWith<IllegalArgumentException> { manifest.copy(providerRegistrars = names).validate() }
+        }
+        assertFalse(BmlLibraryArtifacts.digest(manifest) == BmlLibraryArtifacts.digest(declared))
+    }
+
+    @Test
+    fun `foreign edges require explicit versioned export contracts and canonical identities`() {
+        val requirement = BmlLibraryRequirement("example:base", "1.0", "sha256:" + "b".repeat(64), listOf("button"))
+        val id = BmlLibraryArtifacts.componentId(requirement.library, "button")
+        val wrapper = manifest.copy(
+            requirements = listOf(requirement),
+            components = listOf(button.copy(dependencies = listOf(id), eagerDependencies = listOf(id))),
+        )
+        assertEquals(wrapper, BmlLibraryArtifacts.decode(BmlLibraryArtifacts.encode(wrapper)))
+        assertFailsWith<IllegalArgumentException> { wrapper.copy(requirements = emptyList()).validate() }
+        for (invalid in listOf(
+            requirement.copy(library = manifest.library), requirement.copy(version = ""),
+            requirement.copy(digest = "unversioned"), requirement.copy(components = emptyList()),
+            requirement.copy(components = listOf("button", "button")), requirement.copy(components = listOf("ui:button")),
+        )) assertFailsWith<IllegalArgumentException> { wrapper.copy(requirements = listOf(invalid)).validate() }
+        assertFailsWith<IllegalArgumentException> { wrapper.copy(requirements = listOf(requirement, requirement)).validate() }
+        assertFailsWith<IllegalArgumentException> {
+            manifest.copy(components = listOf(button.copy(dependencies = listOf("button")))).validate()
+        }
+    }
+    @Test
+    fun `runtime identities distinguish coordinates and tags and are safe across DOM CSS and routes`() {
+        val ids = listOf("example:design", "example.design:ui", "example:design-ui", "example-design:ui")
+            .flatMap { library -> listOf("button", "ui-button").map { tag -> BmlLibraryArtifacts.componentId(library, tag) } }
+        assertEquals(ids.size, ids.distinct().size)
+        ids.forEach { assertTrue(Regex("[a-z][a-z0-9-]*").matches(it), it) }
+        assertEquals(
+            BmlLibraryArtifacts.componentId(manifest.library, button.tag),
+            BmlLibraryArtifacts.componentId(manifest.copy(version = "2.0").library, button.tag),
+        )
+        assertFailsWith<IllegalArgumentException> { BmlLibraryArtifacts.componentId("example:design:1", "button") }
+        assertFailsWith<IllegalArgumentException> { BmlLibraryArtifacts.componentId("example:design", "ui:button") }
+    }
     private val button = BmlLibraryComponent(
         tag = "button", exported = true, renderer = "example.design.ButtonComponent",
         source = BmlLibrarySource("bml/components/button.bml", 2, 1, "sha256:" + "a".repeat(64)),
@@ -25,13 +89,17 @@ class BmlLibraryManifestTest {
     fun `manifest round trips explicit contracts and source identity`() {
         val encoded = BmlLibraryArtifacts.encode(manifest)
         assertEquals(manifest, BmlLibraryArtifacts.decode(encoded))
-        assertTrue("\"formatVersion\": 1" in encoded)
+        assertTrue("\"formatVersion\": 5" in encoded)
         assertTrue("bml/components/button.bml" in encoded)
     }
 
     @Test
     fun `unsupported format and malformed source locations fail before use`() {
+        assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 1).validate() }
         assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 2).validate() }
+        assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 3).validate() }
+        assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 4).validate() }
+        assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 99).validate() }
         for (source in listOf(
             button.source.copy(entry = "/Users/producer/button.bml"),
             button.source.copy(entry = "bml/../button.bml"),
@@ -56,7 +124,7 @@ class BmlLibraryManifestTest {
             listOf(button.copy(props = button.props + button.props)),
             listOf(button.copy(renderer = "other.ButtonComponent")),
             listOf(button.copy(tag = "page")),
-            listOf(button.copy(dependencies = listOf("button"))),
+            listOf(button.copy(dependencies = listOf(BmlLibraryArtifacts.componentId(manifest.library, "button")))),
             listOf(button.copy(exported = false)),
         )) assertFailsWith<IllegalArgumentException> { manifest.copy(components = components).validate() }
     }
@@ -73,7 +141,7 @@ class BmlLibraryManifestTest {
         assertTrue(BmlLibraryArtifacts.isLibraryId("io.bosca:bml-design"))
         assertTrue(BmlLibraryArtifacts.isComponentTag("button"))
         assertTrue(BmlLibraryArtifacts.isComponentTag("card-header"))
-        for (tag in listOf("script", "component", "import", "ui:button", "../button")) {
+        for (tag in listOf("script", "component", "import", "use", "subject", "ui:button", "../button")) {
             assertFalse(BmlLibraryArtifacts.isComponentTag(tag), tag)
         }
     }

@@ -1,0 +1,24 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "pattern": "META-INF/bosca/bml/build-id"
+      },
+      {
+        "pattern": "bml/applications/bosca\\.design\\.catalog\\.generated/.*"
+      },
+      {
+        "pattern": "catalog\\.css"
+      },
+      {
+        "pattern": "logback\\.xml"
+      },
+      {
+        "pattern": "META-INF/licenses/bml-design/.*"
+      },
+      {
+        "pattern": "META-INF/services/.*"
+      }
+    ]
+  }
+}

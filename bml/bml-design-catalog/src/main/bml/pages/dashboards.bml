@@ -1,0 +1,7 @@
+<page route="/dashboards">
+  <catalog-document title="Dashboard layouts" description="Movable, resizable widgets using Studio’s dashboard grid model." current="/dashboards">
+    <p class="page-intro">Arrange widgets using the Move and Resize handles or their arrow keys. Each dashboard keeps its own layout. Narrow containers stack the widgets while retaining their desktop positions. Your application owns the widgets, data and saving.</p>
+    <div class="catalog-stack"><div class="catalog-palette-dark"><dashboard-example id="dark" title="Dark palette" /></div><div class="catalog-palette-light"><dashboard-example id="light" title="Light palette" /></div></div>
+    <card title="Use in your application"><div class="catalog-stack"><p class="catalog-description">Put ordinary BML content inside dashboard-item. Kotlin layout items use id, x, y, w and h, matching Studio. Colors, widget padding and the gap come from your CSS.</p><a class="catalog-link" href="/components/visualization#ref-dashboard-grid">Dashboard API and authoring</a></div></card>
+  </catalog-document>
+</page>

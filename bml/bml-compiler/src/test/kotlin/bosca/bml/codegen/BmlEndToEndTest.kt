@@ -34,6 +34,90 @@ fun `helper as source`(): String = "authored-feature-source"
 class BmlEndToEndTest {
 
     @Test
+    fun `attrs forwarding consumes declared props and composes at the explicit native target`() {
+        val bml = """
+            <component tag="control">
+              <prop name="dense" type="Boolean" default="false"/>
+              <label class="wrapper-label">
+                <input {...attrs} class="native" type="text" :disabled="false" :required="null"
+                       title="A &amp; B" :data-density='if (dense) "compact" else "regular"'/>
+              </label>
+            </component>
+            <component tag="wrapper">
+              <prop name="layout" type="String" default="row"/>
+              <control class="wrapper" {...attrs} :dense='layout == "row"'/>
+            </component>
+            <component tag="before">
+              <input class="local" {...attrs} :disabled="false"/>
+            </component>
+            <component tag="owned">
+              <script server provides="attrs">mapOf("data-owned" to "yes")</script>
+              <span {...attrs}/>
+            </component>
+            <page route="/">
+              <wrapper layout="row" class="caller" type="checkbox" disabled required ref="entry"
+                       name="displayName" :value='"&\"<"' aria-label="Display name"/>
+              <before class="caller" disabled/>
+              <owned data-ignored="yes"/>
+            </page>
+        """.trimIndent()
+        val parsed = BmlParser.parse(bml)
+        assertFalse(parsed.hasErrors, "parse: ${parsed.diagnostics}")
+        val result = BmlCodeGenerator("gen", "AttributesPage", "attributes.bml").generate(parsed.document)
+        assertFalse(result.diagnostics.any { it.severity == Severity.Error }, "codegen: ${result.diagnostics}")
+        val tmp = File.createTempFile("bml-attributes-e2e", "").apply { delete(); mkdirs() }
+        try {
+            val source = File(tmp, "AttributesPage.kt").apply { writeText(result.source) }
+            val outDir = File(tmp, "out").apply { mkdirs() }
+            val messages = StringBuilder()
+            val collector = object : MessageCollector {
+                override fun clear() {}
+                override fun hasErrors() = false
+                override fun report(severity: CompilerMessageSeverity, message: String, location: CompilerMessageSourceLocation?) {
+                    if (severity.isError) messages.appendLine("$severity: $message")
+                }
+            }
+            val args = K2JVMCompilerArguments().apply {
+                freeArgs = listOf(source.absolutePath)
+                destination = outDir.absolutePath
+                classpath = System.getProperty("java.class.path")
+                jvmTarget = "25"
+                noStdlib = true
+                noReflect = true
+            }
+            assertEquals(ExitCode.OK, runEmbeddedCompiler(collector, args), "$messages\n${result.source}")
+            URLClassLoader(arrayOf(outDir.toURI().toURL()), javaClass.classLoader).use { loader ->
+                val page = loader.loadClass("gen.AttributesPage").getField("INSTANCE").get(null) as bosca.bml.render.BmlPageRenderer
+                val ctx = RenderContext()
+                runBlocking { page.render(ctx) }
+                val html = ctx.toString()
+                val inputs = Regex("<input[^>]*>").findAll(html).map { it.value }.toList()
+                assertEquals(2, inputs.size, html)
+                val input = inputs.first()
+                assertTrue("class=\"native wrapper caller\"" in input, html)
+                assertTrue("type=\"text\"" in input, html)
+                assertTrue("title=\"A &amp; B\"" in input, html)
+                assertTrue("data-bml-ref=\"entry\"" in input, html)
+                assertTrue("value=\"&amp;&quot;&lt;\"" in input, html)
+                assertTrue("data-density=\"compact\"" in input, html)
+                assertTrue("name=\"displayName\"" in input, html)
+                assertTrue("aria-label=\"Display name\"" in input, html)
+                assertEquals(1, Regex(" class=").findAll(input).count(), html)
+                assertEquals(1, Regex(" type=").findAll(input).count(), html)
+                for (internal in listOf(" layout=", " dense=", " disabled", " required", "__bmlAttrs")) {
+                    assertFalse(internal in html, html)
+                }
+                assertTrue("<label class=\"wrapper-label\">" in html, html)
+                assertTrue("class=\"local caller\"" in inputs.last(), html)
+                assertTrue("<span data-owned=\"yes\"></span>" in html, html)
+                assertFalse("data-ignored" in html, html)
+            }
+        } finally {
+            tmp.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `generated deferred island compiles and renders across the request boundary`() {
         val bml = """
             <component tag="account-shell">

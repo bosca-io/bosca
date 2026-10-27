@@ -1,8 +1,5 @@
 <component tag="git-pull-comment">
   <prop name="model" type="bosca.git.ui.PullReviewModel" required />
-  <script server provides="attrs">
-    props.filterKeys { it !in setOf("model", "__bmlAttrs") }
-  </script>
   <form
     ref="commentForm"
     class="comment-form"
@@ -12,7 +9,8 @@
     :data-reply="model.isReply"
     {...attrs}
   >
-    <ui-comment-editor
+    <comment-editor
+      class="git-comment-field"
       :id='"pull-comment-" + model.page.pull.id + "-" + bosca.git.ui.encode(model.commentAnchor)'
       :label='(if (model.isReply) "Reply to comment on " else "Comment on ") + model.commentLocation'
       :submitLabel='if (model.isReply) "reply" else "comment"'
@@ -23,7 +21,7 @@
       :hint='if (!model.isReply && model.ownReviews.isEmpty()) "Submit a review to start commenting." else ""'
     >
       <slot />
-    </ui-comment-editor>
+    </comment-editor>
   </form>
   <style scoped>
     .comment-form {

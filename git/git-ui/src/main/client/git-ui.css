@@ -35,6 +35,8 @@
   --warn: #ffb547;
   --err: #ff5470;
   --info: #5ec5ff;
+  --purple: #a78bff;
+  --tooltip-border: #2e3447;
 
   --r-xs: 6px;
   --r-sm: 9px;
@@ -236,18 +238,6 @@ a:hover {
   cursor: pointer;
   padding: 8px 0;
 }
-select {
-  max-width: 100%;
-  font: inherit;
-  color: inherit;
-  background: var(--control-bg);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  height: 32px;
-  padding: 0 10px;
-  font-size: 13px;
-  line-height: normal;
-}
 .status {
   padding: 12px;
   border: 1px solid var(--line);
@@ -308,10 +298,6 @@ select {
 .file-toolbar [data-bml-island] {
   display: contents;
 }
-.source-toolbar .file-toolbar {
-  padding: 0;
-  gap: 8px;
-}
 textarea {
   font: inherit;
   color: inherit;
@@ -324,8 +310,11 @@ textarea {
 }
 
 /* Descendants rendered by child components and client widgets have their own scope markers. */
-/* Studio's glass sidebar-layout tokens and ambient background for the Git subsystem accent. */
+/* The consuming Git palette supplies the shared shell and controls. */
 .git-document {
+  color: var(--fg-0);
+  color-scheme: dark;
+  --select-active-border: var(--brand-2);
   --r-xs: 8px;
   --r-sm: 12px;
   --r-md: 16px;
@@ -338,19 +327,11 @@ textarea {
   --bg-2: rgba(28, 32, 44, 0.78);
   --control-bg: var(--bg-2);
   --control-radius: var(--r-sm);
-  height: 100dvh;
-  overflow: hidden;
-  flex-direction: row;
-  background:
-    radial-gradient(80% 55% at 12% -5%, color-mix(in oklch, var(--accent) 28%, transparent), transparent 60%),
-    radial-gradient(60% 45% at 95% 8%, color-mix(in oklch, var(--brand-accent) 18%, transparent), transparent 65%),
-    radial-gradient(70% 50% at 100% 100%, color-mix(in oklch, var(--accent) 12%, transparent), transparent 70%),
-    linear-gradient(180deg, color-mix(in oklch, var(--accent) 6%, transparent) 0%, transparent 40%),
-    #0a0c12;
+  --shell-background: #0a0c12;
 }
 /* Studio modals, menus and popovers render outside the glass layout and keep the base surface tokens. */
 .git-document dialog,
-.git-document [popover]:not(.ui-tooltip),
+.git-document [popover]:not([role="tooltip"]),
 .git-document .select-popup,
 .git-document .tabs-menu,
 .git-document .repository-menu {
@@ -367,20 +348,15 @@ textarea {
   --control-bg: var(--bg-2);
   --control-radius: var(--r-sm);
 }
-.git-main {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: auto;
-  background: transparent;
+.git-document .tabs .tabs-menu {
+  font-size: 14px;
+  color: var(--fg-0);
 }
-.git-main > [data-bml-island] {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
+.git-document .markdown-toolbar [role="tablist"] {
+  overflow: visible;
+}
+.git-document .markdown-toolbar [role="tab"]::after {
+  bottom: -1px;
 }
 h2 {
   font-size: 16px;
@@ -408,32 +384,7 @@ input[type="checkbox"] {
   scrollbar-width: thin;
   scrollbar-color: var(--line-2) transparent;
 }
-@media (max-width: 700px) {
-  .git-document {
-    flex-direction: column;
-  }
-}
 
-.table-scroll table {
-  border-collapse: collapse;
-  min-width: 100%;
-  width: max-content;
-}
-.table-scroll th,
-.table-scroll td {
-  padding: 12px 14px;
-  text-align: left;
-  border-bottom: 1px solid var(--line);
-  vertical-align: top;
-}
-.table-scroll td {
-  overflow-wrap: normal;
-}
-.table-scroll th,
-.table-scroll button,
-.table-scroll code {
-  white-space: nowrap;
-}
 /* Log rows arrive from both BML and the live subscription renderer. */
 .step-logs .log-line {
   display: flex;
@@ -520,24 +471,6 @@ input[type="checkbox"] {
   border-radius: 0;
   background: transparent;
 }
-.table-scroll th {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--fg-3);
-  background: transparent;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-.table-scroll td {
-  font-size: 12.5px;
-  color: var(--fg-1);
-}
-.table-scroll tbody tr:hover {
-  background: color-mix(in oklch, var(--bg-3) 40%, transparent);
-}
-.table-scroll tr:last-child td {
-  border-bottom: 0;
-}
 .action-panel {
   padding: 12px 0;
   border: 0;
@@ -557,47 +490,8 @@ input[type="checkbox"] {
   color: var(--fg-1);
 }
 
-.panel h2:first-child,
-.panel h3:first-child {
-  margin-top: 0;
-}
-.panel .owner-picker {
-  width: min(100%, 300px);
-  flex-shrink: 1;
-}
-.panel .toolbar {
-  align-items: end;
-}
-.panel .owner-label {
-  font-size: 12px;
-  color: var(--fg-2);
-}
-.panel .form-grid {
-  padding-bottom: 0;
-}
-.panel details > summary {
-  cursor: pointer;
-  font-weight: 600;
-}
-
-
-.ui-section h2:first-child,
-.ui-section h3:first-child {
-  margin-top: 0;
-}
-.ui-section .toolbar {
-  align-items: end;
-}
-.ui-section .toolbar:empty {
-  display: none;
-}
-.ui-section .owner-picker {
-  width: 100%;
-  min-width: 0;
-}
-.ui-section details > summary {
-  cursor: pointer;
-  font-weight: 500;
+.git-comment-field {
+  --r-md: 6px;
 }
 .git-document .pull-main .markdown {
   padding: 0;
@@ -610,43 +504,8 @@ input[type="checkbox"] {
   margin-bottom: 0;
 }
 
-/* Dialog contents cross component scopes; their form body scrolls independently of the footer. */
-.modal-form {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  margin: 0;
-}
-.modal-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 18px;
-  overflow: auto;
-  min-height: 0;
-}
-.modal-footer {
-  flex: none;
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 18px;
-  border-top: 1px solid var(--line);
-  background: var(--bg-2);
-}
-.dialog-content .dialog-header .close-button {
-  padding: 5px;
-  min-height: 28px;
-  background: transparent;
-  border-color: transparent;
-}
 .dialog-content .modal-fields .owner-picker {
   width: 100%;
-}
-.modal-fields > label:not(.field) {
-  display: flex;
-  gap: 8px;
-  align-items: center;
 }
 
 .heading-actions {
@@ -679,50 +538,6 @@ input[type="checkbox"] {
 .ui-card details > summary {
   cursor: pointer;
   font-weight: 500;
-}
-
-/* Select options and selected tags are created by the component's client controller. */
-.select-widget > select.enhanced {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-.select-options li {
-  padding: 7px 8px;
-  font-size: 13px;
-  line-height: 1.4;
-  border-radius: 6px;
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-.select-options li[data-highlighted] {
-  background: var(--bg-3);
-}
-.select-options li[aria-selected="true"] {
-  color: var(--fg-0);
-  background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
-}
-.select-options li[aria-disabled="true"] {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-.select-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
-  font-size: 11px;
-}
-.select-tag button {
-  padding: 0 2px;
-  border: 0;
-  background: transparent;
-  color: var(--fg-2);
-  cursor: pointer;
 }
 
 .field .select-widget {
@@ -975,44 +790,6 @@ input[type="checkbox"] {
 }
 .page > .settings-stack + .settings-stack {
   margin-top: 16px;
-}
-form[data-bml-action-pending] button[type="submit"].button .button-content {
-  opacity: 0;
-}
-form[data-bml-action-pending] button[type="submit"].button .button-progress {
-  display: flex;
-}
-form[data-bml-action-pending] button[type="submit"].button {
-  cursor: progress;
-}
-
-.button-link.icon-only {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  flex: none;
-}
-
-/* Matches the Nuxt Tooltip component's Bosca theme. */
-.ui-tooltip {
-  position: fixed;
-  inset: auto;
-  margin: 0;
-  max-width: min(280px, calc(100vw - 16px));
-  padding: 4px 8px;
-  border: 1px solid var(--line-2);
-  border-radius: 6px;
-  background: var(--bg-3);
-  color: var(--fg-0);
-  font-size: 11.5px;
-  font-weight: 500;
-  line-height: 1.5;
-  box-shadow: 0 4px 12px #0005;
-  pointer-events: none;
-}
-
-details[open] > .disclosure-heading > .disclosure-chevron {
-  transform: rotate(0deg);
 }
 
 /* Studio GlassTable. Rows are separate islands, so the table language is shared globally. */
@@ -1271,25 +1048,226 @@ a.info-value {
   }
 }
 
-/* File-card source views size like Studio's file viewer: at least ten lines, scrolling past 800px. */
-.bare-code .cm-editor {
-  min-height: 225px;
-  max-height: 800px;
+/* Git owns file action spacing and its workspace palette. */
+.git-document {
+  --workspace-radius: 10px;
+  --workspace-fullscreen-bg: #10131c;
 }
-.bare-code .cm-scroller {
-  overflow: auto;
+.file-editor-workspace form > .toolbar {
+  flex: none;
+  padding: 12px 16px;
 }
-form.code-widget .cm-editor {
-  min-height: 320px;
-  max-height: 800px;
+.file-editor-workspace form > .toolbar:first-child {
+  border-bottom: 1px solid var(--line);
 }
-@media (max-width: 600px) {
-  .bare-code .cm-editor {
-    max-height: calc(100dvh - 160px);
+.file-editor-workspace .code-widget,
+.file-editor-workspace .code-editor {
+  min-height: 0;
+}
+.file-editor-workspace .editor-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px 16px;
+}
+.file-editor-workspace .editor-path,
+.file-editor-workspace .commit-message {
+  min-width: 0;
+}
+.file-editor-workspace .editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: var(--control-height-md);
+}
+.file-editor-workspace .editor-actions .button[data-bml-fullscreen-button] {
+  height: var(--control-height-sm);
+  font-size: 12.5px;
+}
+.file-editor-workspace .editor-actions button[aria-pressed="true"] {
+  color: var(--fg-0);
+  background: var(--bg-3);
+  border-color: var(--accent);
+}
+.file-editor-workspace .commit-controls {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(0, auto) auto;
+  align-items: end;
+  gap: 12px 16px;
+}
+.file-editor-workspace .commit-author {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: var(--control-height-md);
+  color: var(--fg-2);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+.file-editor-workspace .commit-author > svg {
+  flex: none;
+}
+.file-editor-workspace .commit-author > span {
+  min-width: 0;
+}
+.file-editor-workspace .commit-controls .commit-submit {
+  justify-self: end;
+  min-width: 0;
+  max-width: 220px;
+}
+.file-editor-workspace .commit-submit .button-content > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .file-editor-workspace .editor-toolbar {
+    grid-template-columns: minmax(0, 1fr);
   }
+  .file-editor-workspace .commit-controls {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .file-editor-workspace .commit-controls .commit-message {
+    grid-column: 1 / -1;
+  }
+  .file-editor-workspace .commit-controls .commit-submit {
+    max-width: 180px;
+  }
+}
+.file-editor-workspace form > .alert {
+  flex: none;
+  margin: 12px 16px;
+}
+.file-editor-workspace [data-bml-fullscreen-button] {
+  margin-left: 0;
+}
+
+/* Git retains its code palette and spacing on the shared read-only viewer. */
+.git-document .code-widget[data-bml-source-view] {
+  --source-keyword: #c678dd;
+  --source-name: #e06c75;
+  --source-function: #61afef;
+  --source-constant: #d19a66;
+  --source-definition: #abb2bf;
+  --source-type: #e5c07b;
+  --source-operator: #56b6c2;
+  --source-string: #98c379;
+  --source-comment: #7d8799;
+  --source-heading: #e06c75;
+  --source-link: #7d8799;
+  --source-invalid: #ffffff;
+  color: var(--fg-0);
+  background: transparent;
+}
+.git-document [data-bml-source-view] > .code-editor {
+  overflow: hidden;
+}
+.git-document [data-bml-source-view] .cm-scroller {
+  line-height: 1.4;
+}
+.git-document [data-bml-source-view] .source-heading {
+  font-weight: bold;
 }
 
 /* Agent detail islands contribute cards directly to the page's ordered column. */
 .agent-main > [data-bml-island] {
   display: contents;
+}
+
+/* Git's structured JSON palette belongs to the consuming application. */
+[data-bml-json-editor] {
+  --json-scheme: dark;
+  --json-accent: #7c5cff;
+  --json-bg: #161a25;
+  --json-fg: #e5e7eb;
+  --json-panel-bg: #242938;
+  --json-key: #9cdcfe;
+  --json-string: #ce9178;
+  --json-number: #b5cea8;
+  --json-boolean: #569cd6;
+  --json-selection: #38445c;
+  --on-accent: #fff;
+  --jse-theme-color-highlight: #947dff;
+  --jse-main-border: 1px solid #3a4050;
+}
+
+/* Git owns appearance, including opaque overlay surfaces and editor palettes. */
+:root[data-theme="light"],
+.git-document[data-theme="light"] {
+  --workspace-fullscreen-bg: #fff;
+  --bg-0: #f8fafc;
+  --bg-1: #fff;
+  --bg-2: #f1f5f9;
+  --bg-3: #e2e8f0;
+  --bg-4: #cbd5e1;
+  --fg-0: #0f172a;
+  --fg-1: #1e293b;
+  --fg-2: #475569;
+  --fg-3: #526174;
+  --fg-4: #64748b;
+  --line: #d7deea;
+  --line-2: #738399;
+  --control-border: #738399;
+  --control-bg: var(--bg-2);
+  --accent: #475569;
+  --on-accent: #fff;
+  --ok: #166534;
+  --warn: #854d0e;
+  --err: #b91c1c;
+  --error-fg: #b91c1c;
+  --info: #1e40af;
+  --purple: #7e22ce;
+  --mark-top: #1d75a5;
+  --mark-right: #2d88bb;
+  --mark-left: #12537e;
+  --shadow-color: #0f172a;
+  --backdrop-color: #0f172a;
+  --tooltip-border: #738399;
+  --shell-background: var(--bg-0);
+  --shell-accent: #cbd5e1;
+  color-scheme: light;
+  color: var(--fg-0);
+  background-color: var(--bg-0);
+}
+.git-document[data-theme="light"] :is(dialog, [popover]:not([role="tooltip"]), .select-popup, .tabs-menu, .repository-menu) {
+  --bg-0: #f8fafc;
+  --bg-1: #fff;
+  --bg-2: #f1f5f9;
+  --line: #d7deea;
+  --line-2: #738399;
+  --control-bg: var(--bg-2);
+}
+.git-document[data-theme="light"] .code-widget[data-bml-source-view] {
+  --source-keyword: #7e22ce;
+  --source-name: #9f1239;
+  --source-function: #1d4ed8;
+  --source-constant: #9a3412;
+  --source-definition: #334155;
+  --source-type: #854d0e;
+  --source-operator: #0e7490;
+  --source-string: #166534;
+  --source-comment: #526174;
+  --source-heading: #9f1239;
+  --source-link: #1d4ed8;
+  --source-invalid: #b91c1c;
+}
+.git-document[data-theme="light"] [data-bml-json-editor] {
+  --json-scheme: light;
+  --json-accent: #6d28d9;
+  --json-bg: #fff;
+  --json-fg: #1e293b;
+  --json-panel-bg: #f1f5f9;
+  --json-key: #1d4ed8;
+  --json-string: #166534;
+  --json-number: #9a3412;
+  --json-boolean: #7e22ce;
+  --json-selection: #dbeafe;
+  --jse-theme-color-highlight: #6d28d9;
+  --jse-main-border: 1px solid #738399;
 }

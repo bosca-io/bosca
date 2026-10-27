@@ -5,6 +5,7 @@ import bosca.bml.graphql.GraphQLClientFactory
 import bosca.bml.i18n.toClientJson
 import bosca.bml.project.CompiledProject
 import bosca.bml.project.ContentDigest
+import bosca.bml.render.BmlBundledPage
 import bosca.bml.render.BmlPageRenderer
 import bosca.bml.render.BmlSharedCacheRequest
 import bosca.bml.render.BmlSharedCacheRevision
@@ -179,6 +180,10 @@ class BmlServer(
         val contracts: List<bosca.bml.render.BmlContractDispatcher>,
         val development: Boolean,
         val componentsByTag: Map<String, bosca.bml.render.BmlComponentInfo> = components.associateBy { it.tag },
+        val providerRegistrars: List<bosca.di.ProviderRegistrar> = pages.filterIsInstance<bosca.bml.render.BmlProviderPage>()
+            .flatMap { it.providerRegistrars }.distinctBy { it::class },
+        val packagedAssets: List<bosca.bml.library.BmlApplicationAssets> = pages.filterIsInstance<BmlBundledPage>().map { it.assets }.distinct(),
+        val packagedAssetBytes: ConcurrentHashMap<String, ByteArray> = ConcurrentHashMap(),
         val pagesByRoute: Map<String, BmlPageRenderer> = pages.associateBy { it.route },
         val componentTagsByPage: Map<String, Set<String>> = pages.associate { page ->
             page.route to BmlStyleAssets.closure(page.componentTags, componentsByTag).toSet()
@@ -406,6 +411,7 @@ class BmlServer(
     private val bootId: String = java.util.UUID.randomUUID().toString()
     private val reloadGeneration = MutableStateFlow(0L)
     private val registeredPageRoutes = ConcurrentHashMap.newKeySet<String>()
+    private val registeredProviderTypes = mutableSetOf<kotlin.reflect.KClass<out bosca.di.ProviderRegistrar>>()
     @Volatile private var installedApplication: BoscaApplication? = null
 
     /** Starts the server, or publishes this generation into the existing dev server. */
@@ -472,6 +478,7 @@ class BmlServer(
             "BML hot swap cannot change public asset caching"
         }
 
+        registerProviders(next.providerRegistrars)
         val router = installedApplication?.router
         if (router != null) next.pages.forEach { registerPageRoute(router, it.route) }
         state.set(next)
@@ -577,6 +584,8 @@ class BmlServer(
         }
         html = BmlClientAssets.injectPageContext(html, page.route, context.requestPath, context.lang)
         val cacheToken = current.assetCacheToken.takeUnless { current.development }
+        val libraryAssets = (page as? BmlBundledPage)?.assets
+        html = BmlStyleAssets.injectLibraryStyles(html, libraryAssets?.stylesByRoute?.get(page.route).orEmpty(), cacheToken)
         // CSS: in production, at most two links — the normalized global stylesheet and the page's
         // merged stylesheet. In dev, the global plus one chunk per rendered component,
         // so an edit invalidates one small file.
@@ -593,13 +602,16 @@ class BmlServer(
             }
             html = BmlStyleAssets.injectHead(html, links)
         }
+        // Library globals run in dependency order before application page/component modules.
+        if (current.development) libraryAssets?.scriptsByRoute?.get(page.route).orEmpty().forEach {
+            html = BmlClientAssets.inject(html, it)
+        }
         // Scripts (before </body>): global app.js, then the page's JS, then dev-reload.
         if (current.globalJs != null) {
             html = BmlClientAssets.injectUrl(html, BmlStyleAssets.GLOBAL_JS_URL, cacheToken)
         }
         if (current.productionPlan != null) {
-            // Production: one bundle per page — the bundler merged the page's own client
-            // code with its closure components' into `<slug>.page.js`; nothing else is injected.
+            // The entry imports this page's components and content-hashed shared modules.
             current.productionPlan.pageJsFile[page.route]?.let {
                 html = BmlClientAssets.inject(html, it, cacheToken)
             }
@@ -833,8 +845,18 @@ class BmlServer(
         )
     }
 
+    /** Library providers follow the listener lifetime, including generations removed by rollback. */
+    private fun registerProviders(registrars: List<bosca.di.ProviderRegistrar>) {
+        for (registrar in registrars) {
+            if (registrar::class in registeredProviderTypes) continue
+            bosca.di.register(registrar)
+            registeredProviderTypes += registrar::class
+        }
+    }
+
     fun install(application: BoscaApplication) {
         check(installedApplication == null) { "BML server is already installed" }
+        registerProviders(state.get().providerRegistrars)
         installedApplication = application
         application.install(AnalyticsSessionIdGenerator())
         state.get().logSharedCacheRefusals()
@@ -877,6 +899,20 @@ class BmlServer(
         // Serve the bundled client JS (+ sourcemaps) via Bosca Server's native static handler —
         // it does path resolution, content types, traversal protection, and ETag revalidation.
         initial.clientDir?.let { dir -> router.staticFiles(BmlClientAssets.URL_PREFIX, dir, assetCacheControl) }
+        if (initial.clientDir == null) router.get("${BmlClientAssets.URL_PREFIX}{path...}") {
+            val current = state.get()
+            val mode = if (current.development) "dev" else "prod"
+            val path = call.pathParameters["path"].orEmpty()
+            respondPackagedAsset(current, call, assetCacheControl, "$mode/$path", bmlAssetContentType(path))
+        }
+        router.get("/_bml/libraries/{key}/{path...}") {
+            val current = state.get()
+            val path = "libraries/${call.pathParameters["key"].orEmpty()}/${call.pathParameters["path"].orEmpty()}"
+            // CSS references and public resources may retain their URL across a same-version
+            // library rebuild. Only deployment-token URLs can use the immutable policy.
+            val versioned = !current.development && call.request.queryParameters["_ts"] == current.assetCacheToken
+            respondPackagedAsset(current, call, if (versioned) assetCacheControl else "no-cache", path, bmlAssetContentType(path))
+        }
         // Serve static assets (CSS, images, favicon) at the site root. Page routes are registered
         // above and take precedence; the static handler only resolves to existing files.
         initial.publicDir?.let { dir ->
@@ -1540,6 +1576,34 @@ class BmlServer(
         }
     }
 
+    private suspend fun respondPackagedAsset(
+        current: RuntimeState,
+        call: bosca.server.ServerCall,
+        cacheControl: String?,
+        path: String,
+        type: ContentType,
+    ) {
+        val indexed = current.packagedAssets.firstNotNullOfOrNull { source -> source.digest(path)?.let { source to it } }
+        if (indexed == null) {
+            call.respond(bosca.server.HttpStatusCode.NotFound, "404 Not Found")
+            return
+        }
+        cacheControl?.let { call.response.header(HttpHeaders.CacheControl, it) }
+        val etag = quotedDigest(indexed.second)
+        call.response.header(HttpHeaders.ETag, etag)
+        val condition = call.request.header(HttpHeaders.IfNoneMatch)
+        if (condition != null && (condition == "*" || condition.split(",").any { it.trim() == etag })) {
+            call.respond(bosca.server.HttpStatusCode.NotModified)
+        } else {
+            val bytes = current.packagedAssetBytes[path] ?: kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                current.packagedAssetBytes.computeIfAbsent(path) {
+                    requireNotNull(indexed.first.read(it)) { "Missing indexed BML asset $it" }
+                }
+            }
+            call.respondBytes(bytes, type)
+        }
+    }
+
     private fun inlineYaml(): String = """
         bosca:
           server:
@@ -1697,6 +1761,11 @@ internal fun bmlDeploymentCacheToken(
             part(page.renderRevision)
             part(page.contentType)
             part(page.clientModule)
+            (page as? BmlBundledPage)?.assets?.let { assets ->
+                part(assets.revision)
+                assets.stylesByRoute[page.route].orEmpty().forEach(::part)
+                assets.scriptsByRoute[page.route].orEmpty().forEach(::part)
+            }
             page.componentTags.sorted().forEach(::part)
             page.deferredRenderers.map { it.id }.sorted().forEach(::part)
         }
@@ -1722,25 +1791,31 @@ internal fun bmlDeploymentCacheToken(
     return ContentDigest.sha256(material).removePrefix("sha256:")
 }
 
-/** Classpath resource written by the `io.bosca.bml` Gradle plugin's `bmlBuildId` task (the build time). */
+/** Classpath resource written by the BML host Gradle plugin's `bmlBuildId` task (the build time). */
 internal const val BML_BUILD_ID_RESOURCE: String = "META-INF/bosca/bml/build-id"
 
 /**
- * The build identity from [BML_BUILD_ID_RESOURCE]: the time of the build that produced the site.
- * Replicas of one build share it and every CI build changes it. Returns "" with a warning when the
- * site was not built with the `io.bosca.bml` plugin; the token then relies on
- * [CompiledProject.version] and the generated render revisions alone.
+ * The identities from [BML_BUILD_ID_RESOURCE], ordered independently of classpath enumeration.
+ * A composed application can embed another runnable host; both builds must affect its deployment
+ * token. Replicas share these identities. Returns "" with a warning when none are present, leaving
+ * the token to rely on [CompiledProject.version] and generated render revisions alone.
  */
 internal fun bmlBuildId(loader: ClassLoader): String {
-    val id = loader.getResourceAsStream(BML_BUILD_ID_RESOURCE)?.use { it.readBytes().decodeToString().trim() }
-    if (id.isNullOrEmpty()) {
+    val identities = loader.getResources(BML_BUILD_ID_RESOURCE).asSequence()
+        .flatMap { url -> url.openStream().use { it.readBytes().decodeToString() }.lineSequence() }
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .distinct()
+        .sorted()
+        .toList()
+    if (identities.isEmpty()) {
         LoggerFactory.getLogger(BmlServer::class.java).warn(
             "bml: no {} resource; shared-shell validators will not change on deploys that only change server code",
             BML_BUILD_ID_RESOURCE,
         )
         return ""
     }
-    return id
+    return identities.joinToString("\n")
 }
 
 /** Prepends the public BML runtime configuration before application client code executes. */

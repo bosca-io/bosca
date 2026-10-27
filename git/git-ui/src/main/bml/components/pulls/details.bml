@@ -1,6 +1,6 @@
 <component tag="git-pull-details">
   <prop name="page" type="bosca.git.ui.PullPage" required />
-  <section class="side-card" aria-label="Pull request details">
+  <html:section class="side-card" aria-label="Pull request details">
     <h2 class="side-card-title">Details</h2>
     <dl class="info-list">
       <div class="info-row">
@@ -10,9 +10,9 @@
       <div class="info-row">
         <dt class="info-label">Merge conflicts</dt>
         <dd class="info-value">
-          <ui-badge :color='if (page.pull.status.name != "OPEN") "#a1a1aa" else if (page.pull.mergeable) "#34d99a" else "#ff5d6c"'>
+          <badge :color='if (page.pull.status.name != "OPEN") "#a1a1aa" else if (page.pull.mergeable) "#34d99a" else "#ff5d6c"'>
             { if (page.pull.status.name != "OPEN") "Not checked" else if (page.pull.mergeable) "None" else if (page.pull.conflictingFiles.isEmpty()) "Unavailable" else "Unresolved" }
-          </ui-badge>
+          </badge>
         </dd>
       </div>
       <div class="info-row">
@@ -47,12 +47,12 @@
       </div>
       <div class="info-row">
         <dt class="info-label">Created</dt>
-        <dd class="info-value"><ui-time :value="page.pull.created" format="MMM d, yyyy" inheritTypography /></dd>
+        <dd class="info-value"><time :value="page.pull.created" format="MMM d, yyyy" inheritTypography /></dd>
       </div>
       <if page.pull.mergedAt != null>
         <div class="info-row">
           <dt class="info-label">Merged</dt>
-          <dd class="info-value"><ui-time :value="page.pull.mergedAt.orEmpty()" format="MMM d, yyyy" inheritTypography /></dd>
+          <dd class="info-value"><time :value="page.pull.mergedAt.orEmpty()" format="MMM d, yyyy" inheritTypography /></dd>
         </div>
       </if>
       <if page.pull.mergeStrategy != null>
@@ -79,7 +79,7 @@
         </div>
       </if>
     </dl>
-  </section>
+  </html:section>
   <style scoped>
     .info-link {
       color: var(--accent);

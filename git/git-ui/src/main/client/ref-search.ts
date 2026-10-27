@@ -1,5 +1,5 @@
 import type { ClientContext } from "@bosca/bml";
-import type { SelectSearch } from "./select";
+import type { SelectSearch } from "@bosca/bml-design/select";
 
 /** Supplies bounded tag pages through the generated BML server contract. */
 export function mountRefSearch(

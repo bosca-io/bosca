@@ -79,8 +79,10 @@ async function signout() {
     'document.readyState === "complete" && document.querySelector("[data-bml-ref=signout]") && !document.querySelector("[data-bml-ref=signout]").disabled',
   );
   await evaluate(
-    'Array.from(document.querySelectorAll("button")).find(b=>b.textContent==="Sign out").click()',
+    'document.querySelector(".profile-popover > summary").click()',
   );
+  await until('document.querySelector(".profile-popover .popover-content").matches(":popover-open")');
+  await evaluate('document.querySelector("[data-bml-ref=signout]").click()');
   await until(
     'location.pathname === "/login" && document.readyState === "complete" && document.querySelector(".auth-form")',
   );

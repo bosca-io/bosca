@@ -124,8 +124,119 @@ await call("Network.setCookie", {
   ),
   url: base,
 });
+const foundationTags = ["button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state", "icon", "confirm-dialog", "section-heading", "table-scroll", "disclosure-heading", "empty-state", "time", "bosca-mark", "page-shell", "page-heading", "tree-item"];
+const foundationPrefix = `bml-${Buffer.from("io.bosca:bml-design").toString("hex")}-`;
+const seenFoundations = new Set();
+const clientControls = ["icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "select", "search-input", "segmented-control", "toast", "app-header", "tabs", "view-tabs", "tree", "source-view", "json-editor"];
+const seenClientControls = new Set();
+async function checkFoundationComponents() {
+  const mounts = await ev(`[...document.querySelectorAll('[data-bml-component]')].map(e=>e.dataset.bmlComponent)`);
+  for (const tag of clientControls) {
+    assert.ok(!mounts.includes(`ui-${tag}`), `Git must mount the library ${tag}`);
+    if (mounts.includes(foundationPrefix + tag)) seenClientControls.add(tag);
+  }
+  assert.ok(
+    await ev(`(() => {
+      const roots = [...document.querySelectorAll('[data-bml-design-dialog]')];
+      return roots.every(root => {
+        const panel = root.querySelector(':scope > dialog');
+        const trigger = root.querySelector(':scope > [data-bml-ref=trigger]');
+        return panel?.id && panel.hasAttribute('data-bml-design-dialog-panel') &&
+          (!trigger || (trigger.getAttribute('aria-controls') === panel.id && trigger.getAttribute('aria-haspopup') === 'dialog'));
+      }) && new Set(roots.map(root => root.querySelector(':scope > dialog').id)).size === roots.length;
+    })()`),
+    "Library dialogs own unique native panels and expose their relationship on each trigger",
+  );
+  const ids = await ev(`[...document.querySelectorAll('[data-bml-c]')].map(e=>e.getAttribute('data-bml-c'))`);
+  for (const tag of foundationTags) {
+    assert.ok(!ids.includes(`ui-${tag}`), `Git must render the library ${tag}`);
+    if (ids.includes(foundationPrefix + tag)) seenFoundations.add(tag);
+  }
+}
+async function checkFoundationPalette() {
+  const changed = await ev(`(() => {
+    const input = document.querySelector('dialog[open] input[name=title]');
+    const button = document.querySelector('dialog[open] button.primary[type=submit]');
+    const field = input.closest('.field');
+    const controls = [input, button, field];
+    const dimensions = () => controls.map(e=>{const r=e.getBoundingClientRect();return [r.width,r.height]});
+    const before = dimensions();
+    const style = document.createElement('style');
+    style.textContent = '.git-document, .git-document dialog { --control-bg: #eaf2f5; --accent: #225566; --fg-0: #225566; --fg-2: #304858; --bg-1: #edf3f5; --bg-2: #d9e8ed; --fg-1: #16323c; --dialog-border: #557b88; }';
+    document.head.append(style);
+    try {
+      return {before, after:dimensions(), background:getComputedStyle(input).backgroundColor,
+        primary:getComputedStyle(button).color, label:getComputedStyle(field).color,
+        panel:getComputedStyle(input.closest('dialog')).backgroundColor,
+        foreground:getComputedStyle(input.closest('dialog')).color,
+        border:getComputedStyle(input.closest('dialog')).borderColor,
+        footer:getComputedStyle(input.closest('dialog').querySelector('.modal-footer')).backgroundColor};
+    } finally { style.remove(); }
+  })()`);
+  assert.equal(changed.background, "rgb(234, 242, 245)");
+  assert.equal(changed.primary, "rgb(34, 85, 102)");
+  assert.equal(changed.label, "rgb(48, 72, 88)");
+  assert.equal(changed.panel, "rgb(237, 243, 245)");
+  assert.equal(changed.foreground, "rgb(22, 50, 60)");
+  assert.equal(changed.border, "rgb(85, 123, 136)");
+  assert.equal(changed.footer, "rgb(217, 232, 237)");
+  assert.deepEqual(changed.after, changed.before, "Consumer CSS changes colors without changing control geometry");
+}
+async function checkSelectPalette(selector) {
+  const theme = await ev(`(() => {
+    const widget = document.querySelector(${JSON.stringify(selector)});
+    const trigger = widget.querySelector('.select-trigger'), popup = widget.querySelector('.select-popup');
+    const controls = [widget, trigger, popup, ...popup.querySelectorAll('[role=option]')];
+    const dimensions = () => controls.map(e=>{const r=e.getBoundingClientRect();return [r.x,r.y,r.width,r.height]});
+    const before = dimensions(), style = document.createElement('style');
+    style.textContent = '.git-document [data-bml-design-select], .git-document [data-bml-design-select] [popover] { --select-active-border:#347a91; --fg-4:#347a91; --bg-2:#f0f5f7; --fg-1:#1f4554; --fg-0:#183745; --accent:#347a91; } [data-bml-design-select] [role=combobox] { transition:none; }';
+    document.head.append(style);
+    try {
+      return {before,after:dimensions(),owned:widget.contains(popup),border:getComputedStyle(trigger).borderColor,
+        background:getComputedStyle(popup).backgroundColor,color:getComputedStyle(popup).color};
+    } finally { style.remove(); }
+  })()`);
+  assert.ok(theme.owned, "The top-layer select popup stays in its owning theme subtree");
+  assert.equal(theme.border, "rgb(52, 122, 145)");
+  assert.equal(theme.background, "rgb(240, 245, 247)");
+  assert.equal(theme.color, "rgb(31, 69, 84)");
+  assert.deepEqual(theme.after, theme.before, "Consumer CSS recolors select surfaces without moving controls/options");
+}
+async function checkIconTooltip() {
+  const appearance = await ev(`(() => {
+    const trigger = document.querySelector('.file-toolbar [aria-label="Download file"]');
+    const tooltip = document.querySelector('.bosca-tooltip:popover-open');
+    const style = document.createElement('style');
+    const before = trigger.getBoundingClientRect();
+    const border = getComputedStyle(tooltip).borderTopColor;
+    style.textContent = '.file-toolbar { --tooltip-bg: #edf6f8; --tooltip-fg: #214858; --tooltip-border: #527987; }';
+    document.head.append(style);
+    try {
+      const theme = getComputedStyle(tooltip), bounds = tooltip.getBoundingClientRect();
+      const after = trigger.getBoundingClientRect();
+      return {owned:trigger.contains(tooltip), described:trigger.getAttribute('aria-describedby').split(/\\s+/).includes(tooltip.id),
+        border, background:theme.backgroundColor, color:theme.color, themedBorder:theme.borderTopColor,
+        before:[before.width,before.height], after:[after.width,after.height],
+        fits:bounds.left>=8 && bounds.right<=document.documentElement.clientWidth-8 && bounds.top>=8 && bounds.bottom<=innerHeight-8};
+    } finally { style.remove(); }
+  })()`);
+  assert.equal(appearance.owned, true, "The library tooltip stays inside its action and inherits consumer CSS");
+  assert.equal(appearance.described, true);
+  assert.equal(appearance.border, "rgb(46, 52, 71)", "Git keeps its existing tooltip border color");
+  assert.equal(appearance.background, "rgb(237, 246, 248)");
+  assert.equal(appearance.color, "rgb(33, 72, 88)");
+  assert.equal(appearance.themedBorder, "rgb(82, 121, 135)");
+  assert.deepEqual(appearance.before, [30, 30], "Icon links keep their 30px geometry");
+  assert.deepEqual(appearance.after, appearance.before);
+  assert.equal(appearance.fits, true);
+  const point = await ev(`(() => {const box=document.querySelector('.bosca-tooltip:popover-open').getBoundingClientRect();return {x:box.left+box.width/2,y:box.top+box.height/2}})()`);
+  await call("Input.dispatchMouseEvent", { type:"mouseMoved", ...point });
+  await new Promise(resolve=>setTimeout(resolve, 300));
+  assert.ok(await ev(`Boolean(document.querySelector('.bosca-tooltip:popover-open'))`), "Tooltip text remains available while hovered");
+}
 // Check rendered dimensions, including inherited typography and component wrappers.
 async function checkControlLayout(scope = "main") {
+  await checkFoundationComponents();
   const dimensions = await ev(`(() => {
     const root = document.querySelector(${JSON.stringify(scope)});
     return [...root.querySelectorAll('.input, .select-trigger, .button, .segmented-control [role=radio]')]
@@ -300,6 +411,7 @@ const paths = [
 ];
 const results = [];
 const nativeSelectFallbacks = [];
+const nativePopoverFallbacks = [];
 const loadingStates = [];
 async function holdRequests(path) {
   pausedRequests.length = 0;
@@ -372,7 +484,7 @@ async function inspectLoadingStates(width) {
     await nav("/repositories/repo");
     await waitForHeldRequest();
     await until(
-      "document.querySelector('[data-bml-deferred][aria-busy=true] .loading-state')",
+      "document.querySelectorAll('[data-bml-deferred][aria-busy=true] .stat-skeleton').length===5",
     );
     assert.ok(
       await ev(
@@ -380,15 +492,35 @@ async function inspectLoadingStates(width) {
       ),
       "Retry is shown only after a failed load",
     );
-    await captureLoading("statistics", width, ".stats-state .loading-state");
+    const statistics = await ev(`(() => {
+      const root=document.querySelector('.repository-summary');
+      return {name:'statistics',viewport:${width},width:root.getBoundingClientRect().width,
+        placeholders:[...root.querySelectorAll('.stat-skeleton')].map(element=>({
+          label:element.getAttribute('aria-label'),role:element.getAttribute('role'),
+          visible:element.checkVisibility({opacityProperty:true}),
+          width:element.getBoundingClientRect().width,height:element.getBoundingClientRect().height,
+          animation:getComputedStyle(element).animationName,duration:getComputedStyle(element).animationDuration,
+        }))};
+    })()`);
+    assert.deepEqual(statistics.placeholders.map(item => item.label),
+      ['Loading commits', 'Loading branches', 'Loading tags', 'Loading contributors', 'Loading size']);
+    assert.ok(statistics.placeholders.every(item => item.role === 'status' && item.visible && item.width > 0 && item.height > 0),
+      'Every statistic has a visible, accessible loading placeholder');
+    assert.ok(statistics.placeholders.every(item => item.animation === 'stat-pulse' && item.duration === '1.5s'),
+      'Statistics use the established placeholder animation');
+    loadingStates.push(statistics);
+    await writeFile(
+      `${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-loading-statistics-${width}.png`,
+      Buffer.from((await call('Page.captureScreenshot', {format:'png',captureBeyondViewport:false})).data,'base64'),
+    );
     await call("Emulation.setEmulatedMedia", {
       features: [{ name: "prefers-reduced-motion", value: "reduce" }],
     });
-    assert.equal(
+    assert.ok(
       await ev(
-        "getComputedStyle(document.querySelector('.stats-state .spinner')).animationName",
+        "[...document.querySelectorAll('.stat-skeleton')].every(element=>getComputedStyle(element).animationName==='none')",
       ),
-      "none",
+      'Statistics placeholders respect reduced motion',
     );
     await call("Emulation.setEmulatedMedia", { features: [] });
   } finally {
@@ -578,9 +710,29 @@ for (const width of [1920, 1440, 1024, 390]) {
       "base64",
     ),
   );
+  await call("Page.navigate", { url: base + "/repositories/repo" });
+  await until(`location.pathname==='/repositories/repo' && document.readyState==='complete' && Boolean(document.querySelector('.repository-controls .popover summary'))`);
+  await ev("document.fonts.ready");
+  const fallbackPoint = await ev(`(() => {const r=document.querySelector('.repository-controls .popover summary').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()`);
+  for (const type of ["mousePressed", "mouseReleased"])
+    await call("Input.dispatchMouseEvent", {type, ...fallbackPoint, button:"left", clickCount:1});
+  await until(`document.querySelector('.repository-controls .popover').open && document.querySelector('.popover-content').checkVisibility()`);
+  const fallback = await ev(`(() => {
+    const content=document.querySelector('.popover-content'), input=content.querySelector('input'), r=content.getBoundingClientRect();
+    return {enhanced:content.hasAttribute('popover'), value:input.value, readonly:input.readOnly,
+      left:r.left,right:r.right,viewport:document.documentElement.clientWidth};
+  })()`);
+  assert.equal(fallback.enhanced, false);
+  assert.equal(fallback.readonly, true);
+  assert.ok(fallback.value.endsWith('/repo.git'));
+  assert.ok(fallback.left>=0 && fallback.right<=fallback.viewport+1, `Native clone disclosure fits: ${JSON.stringify(fallback)}`);
+  nativePopoverFallbacks.push({width,...fallback});
+  await writeFile(`${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-native-clone-${width}.png`,
+    Buffer.from((await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:false})).data,"base64"));
   await call("Emulation.setScriptExecutionDisabled", { value: false });
   for (const path of paths) {
     await nav(path);
+    if (path === "/pulls?repo=repo&new=true") await checkFoundationPalette();
     if (await ev("Boolean(document.querySelector('.repository-summary [data-bml-deferred]'))")) {
       await until("document.querySelector('.repository-summary [data-bml-deferred]')?.dataset.bmlDeferredState==='loaded'");
     }
@@ -808,7 +960,7 @@ for (const width of [1920, 1440, 1024, 390]) {
         ),
         "Repository tabs must remain visible at every viewport",
       );
-      const clone = '[data-bml-component="ui-popover"]';
+      const clone = `[data-bml-component="${foundationPrefix}popover"]`;
       await ev(`document.querySelector('${clone} summary').click()`);
       await until(
         `document.querySelector('${clone} .popover-content').matches(':popover-open')`,
@@ -935,19 +1087,16 @@ for (const width of [1920, 1440, 1024, 390]) {
     }
     if (path.endsWith("&view=reviews")) {
       const composer =
-        '[data-bml-component="git-pull-review"] [data-bml-component="ui-dialog"]';
+        '[data-bml-component="git-pull-review"] [data-bml-design-dialog]';
       assert.ok(
         await ev(`!document.querySelector('${composer} dialog').open`),
         "Review dialog starts closed",
       );
-      await ev(
-        `document.querySelector('${composer} [data-bml-ref=trigger]').click()`,
-      );
+      await ev(`document.querySelector('.page-heading a[href*="review=true"]').click()`);
+      await until(`document.querySelector('${composer} dialog')?.matches(':modal')`);
       assert.ok(
-        await ev(
-          `document.querySelector('${composer} dialog').matches(':modal')`,
-        ),
-        "Review is a modal with background containment",
+        await ev(`!document.querySelector('${composer} > [data-bml-ref=trigger]')`),
+        "The programmatic review dialog opens through the page action without adopting its select trigger",
       );
       await ev(
         `document.querySelector('${composer} textarea').value = 'Rejected'; document.querySelector('${composer} button[type=submit]').click()`,
@@ -990,7 +1139,7 @@ for (const width of [1920, 1440, 1024, 390]) {
         "Pairing configuration remains available",
       );
       await ev(
-        `document.querySelector('[data-bml-island="component:git-github-secret:git-github-secret"] [data-bml-component="ui-dialog"] [data-bml-ref=trigger]').click()`,
+        `document.querySelector('[data-bml-island="component:git-github-secret:git-github-secret"] [data-bml-design-dialog] [data-bml-ref=trigger]').click()`,
       );
       await inspectDialog("pairing-credential-dialog", width);
       await ev(
@@ -998,7 +1147,7 @@ for (const width of [1920, 1440, 1024, 390]) {
       );
       if (!path.includes("deliveries")) {
         await ev(
-          `document.querySelector('[data-bml-island="component:git-github-history:git-github-history"] [data-bml-component="ui-dialog"] [data-bml-ref=trigger]').click()`,
+          `document.querySelector('[data-bml-island="component:git-github-history:git-github-history"] [data-bml-design-dialog] [data-bml-ref=trigger]').click()`,
         );
         await inspectDialog("synchronization-dialog", width);
       }
@@ -1103,6 +1252,10 @@ for (const width of [1920, 1440, 1024, 390]) {
         );
       }
       const row = '[data-bml-component="git-repository-row"]';
+      await ev(`document.querySelector('${row} summary').focus()`);
+      await until(`[...document.querySelectorAll('.bosca-tooltip:popover-open')].some(t=>t.textContent==='Repository actions')`);
+      assert.ok(await ev(`document.querySelector('${row} summary').closest('[data-bml-component="${foundationPrefix}tooltip"]').contains(document.querySelector('.bosca-tooltip:popover-open'))`));
+      await pressKey("Escape");
       await ev(`document.querySelector('${row} summary').click()`);
       assert.ok(
         await ev(
@@ -1180,6 +1333,7 @@ for (const width of [1920, 1440, 1024, 390]) {
       await until(
         `getComputedStyle(document.querySelector('${owner} .select-chevron')).transform === 'matrix(-1, 0, 0, -1, 0, 0)'`,
       );
+      await checkSelectPalette(owner);
       const menu = await ev(`(() => {
         const widget = document.querySelector('${owner}');
         const bounds = widget.querySelector('.select-popup').getBoundingClientRect();
@@ -1335,6 +1489,15 @@ for (const width of [1920, 1440, 1024, 390]) {
           ),
           "Tab stays in the modal",
         );
+        await ev(`document.querySelector('${component} [data-bml-ref=close]').focus()`);
+        for (const type of ["keyDown", "keyUp"])
+          await call("Input.dispatchKeyEvent", {
+            type, key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, modifiers: 8,
+          });
+        assert.ok(
+          await ev(`document.activeElement === document.querySelector('${component} button[type=submit]')`),
+          "Shift+Tab wraps from the close action to the final submit control",
+        );
         await ev(
           `document.querySelector('${component} [data-bml-ref=cancel]').click()`,
         );
@@ -1418,7 +1581,7 @@ for (const width of [1920, 1440, 1024, 390]) {
     }
     if (path === "/pipelines/run") {
       await ev(
-        `document.querySelector('.run-controls [data-bml-component="ui-dialog"] [data-bml-ref=trigger]').click()`,
+        `document.querySelector('.run-controls [data-bml-design-dialog] [data-bml-ref=trigger]').click()`,
       );
       await inspectDialog("run-cancel-dialog", width);
     }
@@ -1444,7 +1607,7 @@ for (const width of [1920, 1440, 1024, 390]) {
       path.includes("/settings?panel=utilities")
     ) {
       const dialog = await ev(
-        `(() => { const button=[...document.querySelectorAll('[data-bml-component="ui-dialog"] [data-bml-ref=trigger]')].find(e => e.getClientRects().length); if (!button) return false; button.click(); return true; })()`,
+        `(() => { const button=[...document.querySelectorAll('[data-bml-design-dialog] [data-bml-ref=trigger]')].find(e => e.getClientRects().length); if (!button) return false; button.click(); return true; })()`,
       );
       if (dialog) {
         assert.ok(
@@ -1517,7 +1680,7 @@ for (const width of [1920, 1440, 1024, 390]) {
         ),
       );
       await ev(
-        `document.querySelector('${mappings} .mapping-table [data-bml-component="ui-dialog"] [data-bml-ref=trigger]').click()`,
+        `document.querySelector('${mappings} .mapping-table [data-bml-design-dialog] [data-bml-ref=trigger]').click()`,
       );
       assert.ok(
         await ev(
@@ -1529,7 +1692,7 @@ for (const width of [1920, 1440, 1024, 390]) {
         `document.querySelector('${mappings} dialog[open] .button.danger').click()`,
       );
       await until(
-        `document.querySelector('${mappings} .empty-state') && document.querySelector('${mappings} .status-message[role=status]')?.textContent.includes('Mapping removed')`,
+        `document.querySelector('${mappings} .empty-state') && document.querySelector('${mappings} [data-mapping-notice]:popover-open .toast-message')?.textContent.includes('Mapping removed')`,
       );
     }
     if (path === "/repositories/repo?file=README.md") {
@@ -1566,10 +1729,14 @@ for (const width of [1920, 1440, 1024, 390]) {
       );
       assert.ok(
         await ev(`(() => {
-          const labels = [...document.querySelectorAll('.file-toolbar a.button-link, .file-toolbar button')].map(e => e.textContent.trim()).filter(Boolean);
-          return ['Rename', 'Delete', 'Edit'].every(label => labels.includes(label));
+          return ['Rename file', 'Delete file', 'Edit file', 'Download file'].every(label => {
+            const control = document.querySelector('.file-toolbar [aria-label="' + label + '"]');
+            const content = control?.cloneNode(true);
+            content?.querySelectorAll('[role=tooltip]').forEach(node => node.remove());
+            return control?.querySelector('svg') && !content.textContent.trim() && control.dataset.tooltipContent === label;
+          });
         })()`),
-        "File actions use Studio's labelled Rename, Delete and Edit buttons",
+        "File actions use shared icon controls with accessible names and tooltips",
       );
       const downloadBounds = await ev(
         `(() => { const box = document.querySelector('.file-toolbar [aria-label="Download file"]').getBoundingClientRect(); return {x:box.left+box.width/2,y:box.top+box.height/2}; })()`,
@@ -1593,6 +1760,7 @@ for (const width of [1920, 1440, 1024, 390]) {
           "base64",
         ),
       );
+      await checkIconTooltip();
       await pressKey("Escape");
       assert.ok(
         await ev(
@@ -1974,6 +2142,7 @@ await writeFile(
     {
       results,
       nativeSelectFallbacks,
+      nativePopoverFallbacks,
       loadingStates,
       errors,
       checks: [
@@ -2007,9 +2176,16 @@ assert.deepEqual(
   "Screen matrix has missing page headings",
 );
 assert.deepEqual(errors, [], "Screen matrix raised browser exceptions");
+assert.deepEqual([...seenFoundations].sort(), [...foundationTags].sort());
+assert.deepEqual([...seenClientControls].sort(), [...clientControls].sort());
 console.log(
   JSON.stringify({
     screens: results.length,
+    libraryFoundations: [...seenFoundations].sort(),
+    foundationPalette: "passed",
+    nativeCloneFallbacks: nativePopoverFallbacks.length,
+    libraryClientControls: [...seenClientControls].sort(),
+    iconTooltipPaletteAndHover: "passed",
     overflow: results.filter((r) => r.scroll > r.viewport + 1),
     errors,
     liveLogs: "passed",

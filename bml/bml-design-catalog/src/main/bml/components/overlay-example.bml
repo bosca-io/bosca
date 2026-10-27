@@ -1,0 +1,75 @@
+<component tag="overlay-example">
+  <prop name="id" type="String" required />
+  <script server provides="overlay" scope="server-session">bosca.design.catalog.CatalogOverlay(id)</script>
+  <island name="overlay" :key="id">
+    <div class="catalog-stack" :data-catalog-overlay="overlay.id" :data-draft-refreshes="overlay.draftRefreshes">
+      <if overlay.mounted>
+        <div class="example-actions">
+          <dialog title="Edit display name" triggerLabel="Edit name" triggerIcon="edit" icon="edit" primary
+                  subtitle="Use at least three characters." :triggerDisabled="overlay.triggerDisabled"
+                  :forceOpen="overlay.reopen" :completed="overlay.completed" :data-catalog-edit="overlay.id">
+            <form @submit="overlay.save(form.name)" class="modal-form" :data-overlay-form="overlay.id">
+              <div class="modal-fields">
+                <field label="Display name">
+                  <input name="name" :value="overlay.name" required :aria-invalid="overlay.error.isNotBlank().toString()"
+                         :aria-describedby='if (overlay.error.isNotBlank()) "overlay-error-" + overlay.id else null' />
+                </field>
+                <if overlay.error.isNotBlank()><alert :id='"overlay-error-" + overlay.id' compact>{overlay.error}</alert></if>
+              </div>
+              <footer class="modal-footer"><button ref="cancel">Cancel</button><button type="submit" primary>Save name</button></footer>
+            </form>
+            <toast :id='"overlay-rejected-" + overlay.id'
+                   :message='if (overlay.reopen && overlay.error.isBlank() && overlay.noticeTone == "error") overlay.notice else ""'
+                   :sequence="overlay.noticeSequence" tone="error" :data-overlay-rejection="overlay.id" />
+          </dialog>
+          <confirmation-example :id='"overlay-" + overlay.id' />
+          <button @click="overlay.requestDraft" :data-overlay-open="overlay.id">Open retained draft</button>
+          <dialog title="Retained draft" triggerLabel="Retained draft" :showTrigger="false" size="lg"
+                  :openRequest='if (overlay.request > 0) overlay.request.toString() else ""' :completed="overlay.draftCompleted"
+                  :returnFocus='"[data-overlay-open=" + overlay.id + "]"' :data-catalog-draft="overlay.id"
+                  :data-bml-preserve='"catalog-draft-" + overlay.id'>
+            <form class="modal-form" @submit="overlay.finishDraft(form.draft)" :data-draft-form="overlay.id">
+              <div class="modal-fields">
+                <field label="Draft" hint="Unrelated updates keep this draft in the browser."><input name="draft" value="An unsaved draft" required /></field>
+                <popover label="Draft options" icon="settings" :width="260" :data-nested-popover="overlay.id">
+                  <div class="catalog-stack"><p class="example-note">Escape closes these options before the containing dialog.</p><button ref="cancel">Close options</button></div>
+                </popover>
+                <for number in 1..12><p class="example-note">Draft section {number}. This content scrolls while the action footer remains available.</p></for>
+              </div>
+              <footer class="modal-footer">
+                <button data-dialog-close>Cancel draft</button>
+                <button @click="overlay.refreshDraft" :data-draft-refresh="overlay.id">Refresh example</button>
+                <button type="submit" primary>Save draft</button>
+              </footer>
+            </form>
+          </dialog>
+        </div>
+        <div class="catalog-overlay-clip"><popover-example :id="overlay.id" /></div>
+        <popover label="Component actions" icon="more" iconOnly :width="260" :data-catalog-menu="overlay.id">
+          <div class="menu-heading"><strong>Component actions</strong><span>Design library examples</span></div>
+          <div role="menu" aria-label="Component actions">
+            <a href="#overlay-authoring" role="menuitem"><span class="menu-icon"><icon name="book-open" /></span><span>Read the authoring notes</span></a>
+            <button role="menuitem" icon="edit" disabled>Unavailable action</button>
+            <button role="menuitem" icon="close" ref="cancel">Close menu</button>
+          </div>
+        </popover>
+      </if>
+      <details data-example-states>
+        <disclosure-heading>Example states</disclosure-heading>
+        <div class="catalog-stack overlay-state-options">
+          <switch label="Reject name saves" :checked="overlay.rejectSaves" @change="overlay.toggleRejection" :data-overlay-reject="overlay.id" />
+          <switch label="Disable the edit trigger" :checked="overlay.triggerDisabled" @change="overlay.toggleDisabled" :data-overlay-disabled="overlay.id" />
+          <switch label="Show overlays" :checked="overlay.mounted" @change="overlay.toggleMounted" :data-overlay-mounted="overlay.id" />
+          <button @click="overlay.refresh" :data-overlay-refresh="overlay.id">Refresh example</button>
+          <p class="example-note">Turn rejection off to retry a name save. The retained dialog keeps local edits through refresh. Each new open request can reopen a dismissed draft.</p>
+        </div>
+      </details>
+      <toast :id='"overlay-notice-" + overlay.id' :message='if (overlay.noticeTone == "error") "" else overlay.notice' :sequence="overlay.noticeSequence"
+             :tone="overlay.noticeTone" :data-overlay-toast="overlay.id" />
+    </div>
+  </island>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+  </script>
+</component>

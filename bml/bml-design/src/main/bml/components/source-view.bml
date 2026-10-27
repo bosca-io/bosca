@@ -1,0 +1,121 @@
+<component tag="source-view">
+  <prop name="content" type="String" required />
+  <prop name="path" type="String" default="" />
+  <prop name="compact" type="Boolean" default="false" />
+  <prop name="bare" type="Boolean" default="false" />
+  <prop name="fill" type="Boolean" default="false" />
+  <prop name="language" type="String" default="" />
+  <prop name="label" type="String" default="File source" />
+  <prop name="line" type="Int" default="0" />
+  <prop name="wrapped" type="Boolean" default="false" />
+  <prop name="preserveKey" type="String" default="" />
+  <script server provides="widgetClass">
+    "code-widget" + (if (fill) " fill-code" else "") +
+        if (compact) {
+            " compact-code " +
+                when {
+                    content.lines().size <= 3 -> "snippet-short"
+                    content.lines().size <= 8 -> "snippet-medium"
+                    else -> "snippet-long"
+                }
+        } else if (bare) " bare-code" else ""
+  </script>
+  <html:section :class="widgetClass" data-bml-source-view :data-path="path" :data-language="language" :data-label="label" :data-line="line" :data-wrapped="wrapped"
+                :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" {...attrs}>
+    <if !bare>
+      <div class="toolbar source-toolbar">
+        <div class="source-caption"><slot /></div>
+        <div class="source-actions">
+          <span class="muted editor-mode" title="Escape then Tab leaves the editor">Read-only</span>
+          <icon-button ref="wrap" icon="wrap" size="xs" label="Toggle line wrapping" :aria-pressed="wrapped.toString()" />
+        </div>
+      </div>
+    </if>
+    <textarea ref="content" hidden>{ content }</textarea>
+    <div ref="editor" class="code-editor">
+      <pre ref="fallback" class="source" tabindex="0" :aria-label="label"><code>{ content }</code></pre>
+    </div>
+  </html:section>
+  <style scoped>
+    .code-widget.compact-code {
+      flex: none;
+      min-height: 0;
+      height: 240px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .code-widget.snippet-short {
+      height: 110px;
+    }
+    .code-widget.snippet-medium {
+      height: 180px;
+    }
+    /* Embedded in a file card, sized like Studio's file viewer. */
+    .code-widget.bare-code {
+      flex: none;
+      min-height: 225px;
+      max-height: 800px;
+    }
+    .code-widget.fill-code {
+      flex: 1;
+      height: auto;
+      min-height: 0;
+      max-height: none;
+    }
+    .code-widget {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 240px;
+      min-width: 0;
+      overflow: hidden;
+      background: var(--source-bg, var(--bg-1));
+      color: var(--source-fg, var(--fg-1));
+    }
+    .code-editor {
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+      overflow: auto;
+    }
+    .source-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      flex: none;
+      padding: 6px 10px;
+      gap: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    .source-caption { min-width: 0; }
+    .source-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+    .editor-mode {
+      color: var(--fg-3);
+      font-size: 11px;
+    }
+    .source {
+      box-sizing: border-box;
+      height: 100%;
+      overflow: auto;
+      color: inherit;
+      margin: 0;
+      padding: 16px;
+      font: 13px/1.7 var(--font-mono);
+      tab-size: 2;
+    }
+    [data-wrapped] .source {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .source:focus-visible {
+      outline: var(--focus-width) solid var(--accent);
+      outline-offset: -2px;
+    }
+  </style>
+  <script client scoped>
+    import { mountSourceView } from "@client/helpers/source-view";
+    mountSourceView(ctx);
+  </script>
+</component>

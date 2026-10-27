@@ -1,0 +1,101 @@
+/* CodeMirror owns these descendants; all presentation stays under the owning viewer. */
+[data-bml-source-view] .cm-editor {
+  height: 100%;
+  min-height: 240px;
+  border: 0;
+  border-radius: 0;
+  background: var(--source-bg, var(--bg-1));
+  color: var(--source-fg, var(--fg-1));
+  font-size: 13px;
+}
+[data-bml-source-view].compact-code .cm-editor { min-height: 0; }
+[data-bml-source-view].bare-code .cm-editor { min-height: 225px; max-height: 800px; }
+[data-bml-source-view] .cm-editor.cm-focused { outline: none; }
+[data-bml-source-view] .cm-editor:has(.cm-content:focus-visible) { outline: 1px solid var(--control-border, var(--line-2)); outline-offset: -1px; }
+[data-bml-source-view] .cm-editor .cm-scroller { overflow: auto; font-family: var(--font-mono); line-height: 1.7; }
+[data-bml-source-view] .cm-content { padding: 12px 0; }
+[data-bml-source-view] .cm-gutters { background: var(--source-bg, var(--bg-1)); color: var(--source-gutter, var(--fg-3)); border: 0; }
+[data-bml-source-view] .cm-activeLine,
+[data-bml-source-view] .cm-activeLineGutter { background: transparent; }
+[data-bml-source-view] .cm-editor .cm-selectionBackground,
+[data-bml-source-view] .cm-editor ::selection { background: var(--source-selection, color-mix(in oklch, var(--accent) 25%, transparent)); }
+[data-bml-source-view] .cm-cursor { border-left-color: var(--accent); }
+[data-bml-source-view] .cm-panels,
+[data-bml-source-view] .cm-tooltip { background: var(--source-panel-bg, var(--bg-2)); color: var(--source-fg, var(--fg-1)); border-color: var(--line); }
+[data-bml-source-view] .cm-panels .cm-textfield,
+[data-bml-source-view] .cm-panels .cm-button { background: var(--control-bg, var(--bg-2)); color: var(--fg-0); border: 1px solid var(--control-border, var(--line-2)); border-radius: var(--r-sm); }
+[data-bml-source-view] .cm-panels input { accent-color: var(--accent); }
+[data-bml-source-view] .cm-searchMatch { background: var(--source-search-match, color-mix(in oklch, var(--warn) 30%, transparent)); outline: 1px solid var(--warn); }
+[data-bml-source-view] .cm-searchMatch.cm-searchMatch-selected { background: var(--source-selection, color-mix(in oklch, var(--accent) 25%, transparent)); }
+[data-bml-source-view] .cm-matchingBracket { background: var(--source-active-line, var(--bg-2)); outline: 1px solid var(--accent); color: inherit; }
+[data-bml-source-view] .cm-foldPlaceholder { background: var(--bg-3); color: var(--fg-2); border-color: var(--line-2); }
+[data-bml-source-view] .cm-selectionMatch { background: var(--source-active-line, var(--bg-2)); }
+[data-bml-source-view] .source-keyword { color: var(--source-keyword, var(--purple)); }
+[data-bml-source-view] .source-tag { color: var(--source-tag, var(--info)); }
+[data-bml-source-view] .source-attribute { color: var(--source-attribute, var(--warn)); }
+[data-bml-source-view] .source-name { color: var(--source-name, var(--fg-1)); }
+[data-bml-source-view] .source-function { color: var(--source-function, var(--info)); }
+[data-bml-source-view] .source-constant { color: var(--source-constant, var(--warn)); }
+[data-bml-source-view] .source-definition { color: var(--source-definition, var(--fg-0)); }
+[data-bml-source-view] .source-type { color: var(--source-type, var(--warn)); }
+[data-bml-source-view] .source-operator { color: var(--source-operator, var(--info)); }
+[data-bml-source-view] .source-comment { color: var(--source-comment, var(--fg-3)); }
+[data-bml-source-view] .source-link { color: var(--source-link, var(--info)); text-decoration: underline; }
+[data-bml-source-view] .source-heading { color: var(--source-heading, var(--info)); font-weight: 600; }
+[data-bml-source-view] .source-string { color: var(--source-string, var(--ok)); }
+[data-bml-source-view] .source-invalid { color: var(--source-invalid, var(--err)); }
+[data-bml-source-view] .source-emphasis { font-style: italic; }
+[data-bml-source-view] .source-strong { font-weight: bold; }
+[data-bml-source-view] .source-strikethrough { text-decoration: line-through; }
+[data-bml-source-view] .cm-editor .cm-panel.cm-search {
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 8px;
+  padding: 8px;
+  font: 12.5px/1.5 var(--font-sans);
+}
+[data-bml-source-view] .cm-editor .cm-panel.cm-search :is(input, button, label) { margin: 0; font: inherit; }
+[data-bml-source-view] .cm-editor .cm-panel.cm-search :is(.cm-textfield, button) {
+  box-sizing: border-box;
+}
+[data-bml-source-view] .cm-editor .cm-panel.cm-search .cm-textfield { flex: 1 1 180px; width: auto; min-width: 0; min-height: var(--control-height-sm); padding: 0 10px; }
+[data-bml-source-view] .cm-editor .cm-panel.cm-search .cm-textfield::placeholder { color: var(--fg-3); opacity: 1; }
+[data-bml-source-view] .cm-editor .cm-panel.cm-search button {
+  flex: none;
+  min-height: var(--control-height-xs);
+  padding: 0 8px;
+  white-space: nowrap;
+}
+[data-bml-source-view] .cm-editor .cm-panel.cm-search button:hover { background: var(--bg-3); }
+[data-bml-source-view] .cm-editor .cm-panel.cm-search label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--control-height-sm);
+  cursor: pointer;
+}
+[data-bml-source-view] .cm-editor .cm-panel.cm-search label input[type=checkbox] { flex: none; width: 14px; height: 14px; margin: 0; }
+[data-bml-source-view] .cm-editor .cm-panel.cm-search button[name=close] {
+  position: static;
+  min-width: var(--control-height-xs);
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+}
+[data-bml-source-view] .cm-editor .cm-panel.cm-search :is(input, button):focus-visible { outline: var(--focus-width) solid var(--control-border, var(--line-2)); outline-offset: 2px; }
+[data-bml-source-view].compact-code:has(.cm-panel.cm-search) { min-height: 240px; }
+[data-bml-source-view] .cm-searchMatch,
+[data-bml-source-view] .cm-searchMatch span { color: var(--source-search-fg, var(--source-fg, var(--fg-1))); }
+@media (max-width: 600px) {
+  [data-bml-source-view].bare-code .cm-editor { max-height: calc(100dvh - 160px); }
+  [data-bml-source-view] .cm-editor .cm-panel.cm-search .cm-textfield { flex-basis: 100%; }
+}
+[data-bml-source-view].fill-code .cm-editor { min-height: 0; max-height: none; }
+[data-bml-source-view].fill-code:has(.cm-panel.cm-search) { min-height: 0; }

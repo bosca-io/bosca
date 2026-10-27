@@ -1,0 +1,7 @@
+<page route="/charts">
+  <catalog-document title="Charts" description="Chart.js analytics visualization with CSS colors and readable data." current="/charts">
+    <p class="page-intro">Choose a chart type, replace the example data or select a point. View data provides the same values as a table. Your application supplies queries, result mapping and drill-down actions.</p>
+    <div class="catalog-grid"><div class="catalog-palette-dark"><chart-example id="dark" title="Dark palette" /></div><div class="catalog-palette-light"><chart-example id="light" title="Light palette" /></div></div>
+    <card title="Use in your application"><div class="catalog-stack"><p class="catalog-description">Pass ordinary Chart.js JSON configuration. Colors and fonts inherit from the consuming stylesheet; explicit dataset colors take priority. Each chart resizes within its own container.</p><a class="catalog-link" href="/components/visualization#ref-chart">Chart API and authoring</a></div></card>
+  </catalog-document>
+</page>

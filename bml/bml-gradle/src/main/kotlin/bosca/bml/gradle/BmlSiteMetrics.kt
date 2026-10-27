@@ -3,6 +3,7 @@ package bosca.bml.gradle
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.zip.GZIPOutputStream
+import groovy.json.JsonSlurper
 
 /**
  * Pure computation behind the `bmlMetrics` task: parses the compiler-written metrics
@@ -19,6 +20,7 @@ internal object BmlSiteMetrics {
         val pageJs: String?,
         val cssTags: List<String>,
         val componentJs: List<String>,
+        val libraryCss: List<String> = emptyList(),
     )
 
     /** A measured asset: size on disk and its gzip (default level) transfer size. */
@@ -49,6 +51,13 @@ internal object BmlSiteMetrics {
             "Unrecognized bml metrics manifest header: '${lines.firstOrNull()}' (expected 'bml-metrics\\t1')"
         }
         fun csv(field: String): List<String> = if (field == "-") emptyList() else field.split(',')
+        val libraryCss = lines.filter { it.startsWith("A\t") }.map { line ->
+            val fields = line.split('\t')
+            require(fields.size == 3 && fields[2].split('/').all { it.isNotEmpty() && it != "." && it != ".." } && '\\' !in fields[2]) {
+                "Malformed library stylesheet metric: '$line'"
+            }
+            fields[1] to fields[2]
+        }.groupBy({ it.first }, { it.second })
         return lines.drop(1).filter { it.startsWith("P\t") }.map { line ->
             val f = line.split('\t')
             require(f.size == 6) { "Malformed manifest page line: '$line'" }
@@ -58,6 +67,7 @@ internal object BmlSiteMetrics {
                 pageJs = f[3].takeIf { it != "-" },
                 cssTags = csv(f[4]),
                 componentJs = csv(f[5]),
+                libraryCss = libraryCss[f[1]].orEmpty().distinct(),
             )
         }
     }
@@ -83,7 +93,7 @@ internal object BmlSiteMetrics {
      *
      * When [prodJsDir] holds production bundles, the report prices the **production shape**:
      * one merged stylesheet per page (its closure minus the shared set, which counts
-     * into the global tier) and one `<slug>.page.js` bundle per page — what a deployed site
+     * into the global tier) and each `<slug>.page.js` entry with its shared module closure — what a deployed site
      * actually serves. Without it, the dev chunk shape is priced.
      */
     fun report(
@@ -92,10 +102,30 @@ internal object BmlSiteMetrics {
         cssDir: File?,
         globalAssets: List<File>,
         prodJsDir: File? = null,
+        libraryCssDir: File? = null,
     ): SiteReport {
         val missing = mutableListOf<String>()
         val global = globalAssets.mapNotNull { measure(it.name, it, missing) }.toMutableList()
         val production = prodJsDir?.takeIf { it.isDirectory }
+        val importsFile = production?.resolve("bml-imports.json")?.takeIf { it.isFile }
+        val imports = importsFile?.let {
+            val entries = JsonSlurper().parse(it) as? Map<*, *> ?: error("Invalid BML production imports")
+            entries.entries.associate { (key, value) ->
+                val name = key as? String ?: error("Invalid BML production entry")
+                val paths = value as? List<*> ?: error("Invalid BML production module list")
+                name to paths.map { path -> path as? String ?: error("Invalid BML production module path") }
+            }
+        }.orEmpty()
+        require(imports.values.flatten().all { path ->
+            path.isNotEmpty() && '\\' !in path && path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }
+        }) { "Invalid BML production module path" }
+        val measuredJs = mutableMapOf<String, AssetSize?>()
+        fun productionJs(name: String): List<AssetSize> = (imports[name] ?: listOf(name)).distinct().mapNotNull { path ->
+            measuredJs.getOrPut(path) { measure(path, production?.resolve(path), missing) }
+        }
+        fun libraryStyles(entry: PageEntry): List<AssetSize> = entry.libraryCss.mapNotNull { path ->
+            measure(path, libraryCssDir?.let { File(it, path) }, missing)
+        }
 
         if (production == null) {
             val pages = entries.map { entry ->
@@ -104,14 +134,14 @@ internal object BmlSiteMetrics {
                 val css = entry.cssTags.mapNotNull { tag ->
                     measure("$tag.css", cssDir?.let { d -> File(d, "$tag.css") }, missing)
                 }
-                PageReport(entry.objectName, entry.route, js, css)
+                PageReport(entry.objectName, entry.route, js, libraryStyles(entry) + css)
             }
             return SiteReport(global, pages, missing.distinct())
         }
 
         // Production shape. Mirrors BmlProductionAssets in bml-server (not a dependency of this
         // plugin): shared = styled-closure intersection -> folds into app.css; page css = closure
-        // minus shared, merged; page js = the one <slug>.page.js bundle.
+        // minus shared, merged; page js = its entry and deduplicated static import closure.
         fun chunk(tag: String): ByteArray? {
             val file = cssDir?.let { File(it, "$tag.css") }
             if (file == null || !file.isFile) {
@@ -140,7 +170,7 @@ internal object BmlSiteMetrics {
             val ownTags = entry.cssTags.filterNot { it in shared }
             val needsJs = entry.pageJs != null || entry.componentJs.isNotEmpty()
             if (ownTags.isEmpty() && !needsJs) {
-                return@map PageReport(entry.objectName, entry.route, emptyList(), emptyList())
+                return@map PageReport(entry.objectName, entry.route, emptyList(), libraryStyles(entry))
             }
             var candidate = slug(entry.route)
             var n = 2
@@ -155,9 +185,9 @@ internal object BmlSiteMetrics {
             val js = if (!needsJs) {
                 emptyList()
             } else {
-                listOfNotNull(measure("$candidate.page.js", File(production, "$candidate.page.js"), missing))
+                productionJs("$candidate.page.js")
             }
-            PageReport(entry.objectName, entry.route, js, css)
+            PageReport(entry.objectName, entry.route, js, libraryStyles(entry) + css)
         }
         return SiteReport(global, pages, missing.distinct())
     }

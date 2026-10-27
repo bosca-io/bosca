@@ -1,0 +1,30 @@
+<page route="/source">
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Read-only source</title>
+    </head>
+    <body>
+      <page-shell>
+        <h1>Read-only source</h1>
+        <div class="themes">
+          <div class="light source-theme" data-palette="light"><source-controls id="light" /></div>
+          <div class="purple source-theme" data-palette="purple"><source-controls id="purple" /></div>
+        </div>
+        <div class="source-cases light">
+          <source-view :content="bosca.design.example.SourceSamples.short" path="Hello.kt" compact data-source-short />
+          <source-view :content="bosca.design.example.SourceSamples.medium" compact data-source-medium />
+          <source-view :content="bosca.design.example.SourceSamples.long" path="Sample.ts" compact data-source-long />
+          <source-view :content="bosca.design.example.SourceSamples.short" path="Hello.kt" compact bare data-source-compact-bare />
+          <source-view :content="bosca.design.example.SourceSamples.long" path="Sample.ts" bare :line="2" wrapped data-source-bare />
+          <source-view content="" :line="-1" compact data-source-empty />
+          <source-view :content="bosca.design.example.SourceSamples.literals" path="Literals.ts" compact data-source-literals />
+          <source-view :content="bosca.design.example.SourceSamples.markup" path="Guide.md" compact data-source-markup />
+          <source-view content="Plain text" language="unknown" :line="999" compact data-source-plain />
+        </div>
+        <p id="source-after" tabindex="0">After the source viewers.</p>
+      </page-shell>
+    </body>
+  </html>
+</page>

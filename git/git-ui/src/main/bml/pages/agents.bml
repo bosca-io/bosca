@@ -3,25 +3,25 @@
     bosca.git.ui.agentPage()
   </script>
   <git-layout title="CI agents">
-    <ui-page>
-      <ui-page-heading
+    <page-shell>
+      <page-heading :trail='listOf(bosca.design.model.NavigationItem("Git", "", false))'
         title="CI Agents"
         :subtitle='page.agents.size.toString() + " agents · " + page.agents.count { it.status.toString() == "ONLINE" } + " online · " + page.agents.count { it.status.toString() == "BUSY" } + " busy"'
       >
         <a class="button-link" :href='"/ci-agents" + if (page.status.isNotBlank()) "?status=" + bosca.git.ui.encode(page.status) else ""'>
-          <span class="refresh-icon"><ui-icon name="pulse" :size="14" /></span>
+          <span class="refresh-icon"><icon name="pulse" :size="14" /></span>
           Refresh
         </a>
         <if page.allowed>
           <git-agent-register :page="page" />
         </if>
-      </ui-page-heading>
+      </page-heading>
       <if !page.allowed>
-        <ui-alert>Administrator access is required.</ui-alert>
+        <alert>Administrator access is required.</alert>
       <else>
         <git-agent-list :page="page" />
       </if>
-    </ui-page>
+    </page-shell>
   </git-layout>
   <style scoped>
     .refresh-icon {

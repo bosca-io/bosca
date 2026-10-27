@@ -1,0 +1,13 @@
+<component tag="section">
+  <html:section class="ui-section" {...attrs}>
+    <slot />
+  </html:section>
+  <style scoped>
+    .ui-section {
+      box-sizing: border-box;
+      min-width: 0;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--line);
+    }
+  </style>
+</component>

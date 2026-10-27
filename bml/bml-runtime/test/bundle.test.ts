@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process"
 // @vitest-environment node
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { pathToFileURL } from "node:url"
 import { describe, expect, it } from "vitest"
 // @ts-expect-error - plain .mjs build helper, no types
 import { bundleGlobalAssets, bundleIslands, bundleProduction, routeSlug } from "../tools/bundle.mjs"
@@ -51,6 +52,35 @@ describe("esbuild island bundler", () => {
 })
 
 describe("production bundler", () => {
+  it("shares engine bytes across independent page graphs and accounts for every imported chunk", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bml-prod-shared-"))
+    try {
+      writeFileSync(join(dir, "package.json"), '{"type":"module"}')
+      const payload = Array.from({ length: 6000 }, (_, i) => `item-${i.toString(36)}`).join('|')
+      writeFileSync(join(dir, "engine.ts"), `globalThis.engineLoads = (globalThis.engineLoads ?? 0) + 1; export const payload = ${JSON.stringify(payload)};`)
+      writeFileSync(join(dir, "First.ts"), `import {payload} from './engine'; globalThis.result = {page:'first',length:payload.length,loads:globalThis.engineLoads};`)
+      writeFileSync(join(dir, "Second.ts"), `import {payload} from './engine'; globalThis.result = {page:'second',length:payload.length,loads:globalThis.engineLoads};`)
+      writeFileSync(join(dir, "Plain.ts"), `globalThis.result = {page:'plain',loads:globalThis.engineLoads ?? 0};`)
+      const manifestPath = join(dir, "manifest.tsv"), outdir = join(dir, "out")
+      writeFileSync(manifestPath, 'bml-metrics\t1\nP\tFirst\t/\tFirst.js\t-\t-\nP\tSecond\t/second\tSecond.js\t-\t-\nP\tPlain\t/plain\tPlain.js\t-\t-\n')
+      await bundleProduction({ manifestPath, inDir: dir, outdir })
+      const imports = JSON.parse(readFileSync(join(outdir, 'bml-imports.json'), 'utf8')) as Record<string, string[]>
+      const first = imports['index.page.js'], second = imports['second.page.js']
+      const shared = first.filter(path => second.includes(path))
+      expect(shared).toHaveLength(1)
+      expect(shared[0]).toMatch(/^chunks\/chunk-[A-Z0-9]+\.js$/)
+      expect(imports['plain.page.js']).toEqual(['plain.page.js'])
+      const all = [...new Set(Object.values(imports).flat())]
+      expect(all.reduce((bytes, path) => bytes + readFileSync(join(outdir, path)).length, 0)).toBeLessThan(payload.length * 1.1)
+      for (const [file, page] of [['index.page.js', 'first'], ['second.page.js', 'second'], ['plain.page.js', 'plain']]) {
+        const value = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '--eval',
+          `await import(${JSON.stringify(pathToFileURL(join(outdir, file)).href)}); console.log(JSON.stringify(globalThis.result))`], { encoding: 'utf8' }))
+        expect(value).toEqual(page === 'plain' ? { page, loads: 0 } : { page, loads: 1, length: payload.length })
+      }
+      expect(all.some(path => path.endsWith('.map'))).toBe(false)
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
   it("slugs routes the same way the server does", () => {
     expect(routeSlug("/")).toBe("index")
     expect(routeSlug("/cart")).toBe("cart")

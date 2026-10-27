@@ -1,0 +1,86 @@
+<component tag="view-tabs">
+  <prop name="label" type="String" required />
+  <prop name="tabs" type="List<bosca.design.model.ViewTab>" required />
+  <prop name="selected" type="String" required />
+  <script server provides="tabMetadata">
+    kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(bosca.design.model.ViewTab.serializer()), tabs)
+  </script>
+  <div class="view-tabs" role="tablist" :aria-label="label" :data-selected="selected" :data-tabs="tabMetadata" {...attrs}>
+    <for tab in tabs>
+      <html:button
+        type="button"
+        role="tab"
+        :data-tab="tab.value"
+        :disabled="tab.disabled"
+        :aria-selected="(tab.value == selected).toString()"
+        :tabindex="if (!tab.disabled && tab.value == selected) 0 else -1"
+      >
+        { tab.label }
+      </html:button>
+    </for>
+  </div>
+  <style scoped>
+    .view-tabs:empty,
+    .view-tabs[hidden] {
+      display: none;
+    }
+    .view-tabs {
+      box-sizing: border-box;
+      max-width: 100%;
+      overflow-x: auto;
+      display: flex;
+      align-items: stretch;
+      align-self: stretch;
+      gap: 4px;
+      min-width: 0;
+    }
+    button {
+      box-sizing: border-box;
+      flex: none;
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      background: transparent;
+      padding: 10px 12px;
+      color: var(--fg-3);
+      font: inherit;
+      font-size: 13px;
+      line-height: normal;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    button::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 2px;
+      background: transparent;
+    }
+    button[aria-selected="true"]::after {
+      background: var(--accent);
+    }
+    button[aria-selected="true"] {
+      color: var(--fg-0);
+      font-weight: 500;
+    }
+    button:hover {
+      color: var(--fg-1);
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    button:focus-visible {
+      outline: var(--focus-width) solid var(--accent);
+      outline-offset: -2px;
+    }
+  </style>
+  <script client scoped>
+    import { viewTabs } from "@client/helpers/view-tabs";
+    viewTabs(ctx);
+  </script>
+</component>

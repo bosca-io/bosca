@@ -1,0 +1,106 @@
+<component tag="toast">
+  <prop name="id" type="String" required />
+  <prop name="message" type="String" default="" />
+  <prop name="sequence" type="Int" default="0" />
+  <prop name="tone" type="String" default="info" />
+  <prop name="duration" type="Int" default="4000" />
+  <div
+    class="toast-region"
+    popover="manual"
+    :data-bml-preserve="id"
+    :data-message="message"
+    :data-sequence="sequence"
+    :data-tone="tone"
+    :data-duration="duration"
+    {...attrs}
+  >
+    <div class="toast">
+      <span class="toast-icon" aria-hidden="true">
+        <span data-tone-icon="success"><icon name="check" :size="16" /></span>
+        <span data-tone-icon="error"><icon name="close" :size="16" /></span>
+        <span data-tone-icon="warning"><icon name="alert" :size="16" /></span>
+        <span data-tone-icon="info"><icon name="info" :size="16" /></span>
+      </span>
+      <span ref="message" class="toast-message" role="status" aria-live="polite" aria-atomic="true"></span>
+      <span class="toast-close"><icon-button ref="dismiss" icon="close" label="Dismiss notification" size="xs" /></span>
+    </div>
+  </div>
+  <style scoped>
+    .toast-region {
+      box-sizing: border-box;
+      font-family: var(--font-sans);
+      position: fixed;
+      inset: var(--toast-top, 75dvh) auto auto var(--toast-left, 50%);
+      transform: translateX(-50%);
+      margin: 0;
+      padding: 0;
+      width: max-content;
+      max-width: calc(100% - 32px);
+      border: 0;
+      background: transparent;
+      overflow: visible;
+      color: var(--info);
+    }
+    .toast-region[data-tone="success"] { color: var(--ok); }
+    .toast-region[data-tone="error"] { color: var(--err); }
+    .toast-region[data-tone="warning"] { color: var(--warn); }
+    .toast {
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: min(240px, calc(100vw - 32px));
+      max-width: 440px;
+      padding: 10px 14px;
+      background: var(--bg-1);
+      border: 1px solid color-mix(in oklch, currentColor 40%, transparent);
+      border-radius: var(--r-md);
+      box-shadow: var(--toast-shadow, 0 12px 40px -10px color-mix(in srgb, var(--shadow-color) 45%, transparent));
+      animation: toast-enter 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .toast-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 24px;
+      width: 24px;
+      height: 24px;
+    }
+    [data-tone-icon] { display: none; }
+    .toast-region[data-tone="success"] [data-tone-icon="success"],
+    .toast-region[data-tone="error"] [data-tone-icon="error"],
+    .toast-region[data-tone="warning"] [data-tone-icon="warning"],
+    .toast-region[data-tone="info"] [data-tone-icon="info"] { display: flex; }
+    .toast-message {
+      max-height: min(var(--toast-message-max-height, 240px), calc(100dvh - 54px));
+      overflow: auto;
+      flex: 1;
+      min-width: 0;
+      color: var(--fg-1);
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .toast-message:focus-visible {
+      outline: var(--focus-width) solid var(--accent);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+    .toast-close { display: flex; flex: none; }
+    @keyframes toast-enter {
+      from { opacity: 0; transform: translateY(12px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .toast { animation: none; }
+    }
+    @media (max-height: 360px) {
+      .toast-region { top: auto; bottom: 16px; }
+    }
+  </style>
+  <script client scoped>
+    import { toast } from "@client/helpers/toast";
+    toast(ctx);
+  </script>
+</component>

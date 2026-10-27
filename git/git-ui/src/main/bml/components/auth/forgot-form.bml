@@ -1,12 +1,12 @@
 <component tag="git-forgot-form">
   <div class="auth-flow">
-    <ui-alert ref="error" hidden />
+    <alert ref="error" hidden />
     <p ref="notice" class="auth-notice" role="status" hidden></p>
     <form ref="form" class="auth-form">
-      <ui-field label="Email">
-        <ui-input ref="identifier" name="identifier" type="email" autocomplete="email" required />
-      </ui-field>
-      <ui-button ref="submit" type="submit" class="auth-primary">Send reset link</ui-button>
+      <field label="Email">
+        <input ref="identifier" name="identifier" type="email" autocomplete="email" required />
+      </field>
+      <button ref="submit" type="submit" class="auth-primary">Send reset link</button>
     </form>
     <p class="auth-footer">
       <a ref="login" href="/login">Back to sign in</a>

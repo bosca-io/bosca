@@ -1,0 +1,71 @@
+<component tag="surface-example">
+  <prop name="id" type="String" required />
+  <script server provides="surface" scope="server-session">bosca.design.catalog.CatalogSurface(id)</script>
+  <island name="surface" :key="id">
+    <div class="catalog-stack" :data-catalog-surface="surface.id">
+      <panel :aria-label='if (surface.id == "dark") "Dark surface example" else "Light surface example"' class="catalog-surface-panel" :data-surface-panel="surface.id">
+        <div class="catalog-stack">
+          <form @submit="surface.load" class="example-form catalog-surface-form" :data-surface-form="surface.id">
+            <section-heading :title="surface.title()" subtitle="Data and actions belong to this example" :data-surface-heading="surface.id">
+              <button type="submit" size="sm" :data-surface-load="surface.id">Load examples</button>
+              <button size="sm" :disabled="!surface.loaded" @click="surface.clear" :data-surface-clear="surface.id">Clear</button>
+            </section-heading>
+            <div class="catalog-surface-stage" :data-surface-stage="surface.id">
+              <loading-state label="Loading local examples…" :compact="surface.compact" class="catalog-surface-pending" :data-surface-loading="surface.id" />
+              <div class="catalog-surface-results" :data-surface-results="surface.id">
+                <if surface.loaded>
+                  <table-scroll label="Local component examples" class="catalog-surface-table"
+                                :data-bml-preserve='"surface-table-" + surface.id + "-" + surface.revision' :data-surface-table="surface.id">
+                    <table>
+                      <caption>Available library examples</caption>
+                      <thead><tr><th scope="col">Component</th><th scope="col">Native value</th><th scope="col">Reference</th></tr></thead>
+                      <tbody><for choice in surface.rows()><tr>
+                        <th scope="row">{ choice.label }</th><td><code>{ choice.value }</code></td>
+                        <td><a class="catalog-link" :href='"/components/" + (if (choice.label.endsWith("· layout")) "layout" else if (choice.label.endsWith("· overlay")) "overlays" else "controls") + "#ref-" + choice.value'>View API</a></td>
+                      </tr></for></tbody>
+                    </table>
+                  </table-scroll>
+                <else>
+                  <empty-state title="No examples loaded" message="Load the local examples to explore a scrolling table." icon="folder" :data-surface-empty="surface.id">
+                    <button type="submit" size="sm" :data-surface-empty-action="surface.id">Load examples</button>
+                  </empty-state>
+                </if>
+              </div>
+            </div>
+          </form>
+          <section :aria-label='"Surface details " + surface.id' class="catalog-surface-section"
+                   :data-bml-preserve='"surface-disclosure-" + surface.id' :data-surface-section="surface.id">
+            <details :data-surface-disclosure="surface.id">
+              <disclosure-heading framed>Keep a local note <badge tone="info">Optional</badge></disclosure-heading>
+              <div class="catalog-stack catalog-surface-disclosure-body">
+                <p class="example-note">This native disclosure and its local draft stay in the browser while surrounding content updates.</p>
+                <field label="Local note"><input name="note" placeholder="Add a note…" maxlength="160" :data-surface-note="surface.id" /></field>
+              </div>
+            </details>
+          </section>
+          <details data-example-states>
+            <disclosure-heading>Example states</disclosure-heading>
+            <div class="catalog-stack surface-state-options">
+              <switch label="Reject loading" :checked="surface.rejectLoad" @change="surface.toggleRejection" :data-surface-reject="surface.id" />
+              <switch label="Use long labels" :checked="surface.longLabels" @change="surface.toggleLongLabels" :data-surface-long="surface.id" />
+              <switch label="Use compact loading" :checked="surface.compact" @change="surface.toggleCompact" :data-surface-compact="surface.id" />
+              <div class="example-actions"><button @click="surface.refresh" :data-surface-refresh="surface.id">Refresh example</button></div>
+              <p class="example-note">Loading, empty and table views share the same space. Rejected actions keep the current data and report through a toast.</p>
+            </div>
+          </details>
+        </div>
+      </panel>
+      <div class="catalog-grid" :data-surface-cases="surface.id">
+        <div :data-surface-padded="surface.id"><card title="Padded card"><div class="catalog-stack"><p class="catalog-description">The card provides its body padding. The application supplies content gaps.</p><button size="sm" @click="surface.refresh">Refresh example</button></div></card></div>
+        <div :data-surface-unpadded="surface.id"><card title="Unpadded card" :padded="false"><section-heading title="Projected content" subtitle="The body owns its spacing" /><div class="catalog-surface-unpadded-body"><p class="catalog-description">Use the unpadded variant for a flush heading, table or other content with its own gutters.</p></div></card></div>
+        <div :data-surface-untitled="surface.id"><card><div class="catalog-stack"><h2 class="catalog-surface-title">Caller-owned heading</h2><p class="catalog-description">Omitting title leaves only the padded content body.</p><details><disclosure-heading>Plain disclosure</disclosure-heading><p class="example-note">Native disclosure remains available without scripts.</p></details></div></card></div>
+        <div :data-surface-minimal="surface.id"><card title="Minimal empty state"><empty-state message="No matching examples." icon="search" /></card></div>
+      </div>
+      <toast :id='"surface-notice-" + surface.id' :message="surface.notice" :sequence="surface.noticeSequence" :tone="surface.noticeTone" :data-surface-toast="surface.id" />
+    </div>
+  </island>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+  </script>
+</component>

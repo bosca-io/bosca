@@ -33,6 +33,14 @@ dependencies {
 }
 ```
 
+## Shared components
+
+Use the [compiled library guide](/bml-reference/libraries) to declare a dependency and one
+project-wide `imports.bml`. The [Design Library](/bml-reference/design-library) supplies shared web
+components with short tags. Change their colors, typography and spacing through
+[consumer CSS variables](/bml-reference/design-tokens), and use `html:` when you want a native
+control with a colliding name.
+
 ## How a build works
 
 1. **`compileKotlin`** treats `.bml` files as compilation sources. The BML K2 compiler plugin parses
@@ -146,17 +154,21 @@ plugin:
 `bmlDev` builds the application and client bundles, starts its configured main class in BML
 development mode, and then lets Gradle watch the real inputs of that task graph. An edit to BML,
 Kotlin, GraphQL, resources, client TypeScript/CSS, or a configured local client runtime triggers an
-incremental rebuild. After a successful build, Gradle snapshots the application classes and
-resources and the persistent launcher loads them in a fresh child classloader. The new `BmlServer`
+incremental rebuild. After a successful build, Gradle snapshots the application classes, resources
+and compiled BML library dependencies, including transitive libraries. The persistent launcher loads
+that ordered classpath in a fresh child classloader. The new `BmlServer`
 configuration atomically replaces the current page/component/contract state; Netty keeps the same
 PID and port, and server-scoped sessions remain intact. The server announces the new generation over
 SSE so open browser tabs reload themselves. A compilation failure leaves the last good generation
 serving while Gradle keeps watching; fixing the source swaps the next successful generation in.
 
-The hot-swap boundary is the application output: BML-generated code, project Kotlin, generated
-GraphQL code, and project resources. Client bundles are rebuilt and served from their live output
-directory. Changes to BML framework or other runtime dependency jars require stopping and starting
-`bmlDev`, because those libraries intentionally stay in the parent classloader.
+The hot-swap boundary includes application output and dependency entries carrying a BML library
+manifest. Editable project libraries use the same Gradle dependency graph: their Kotlin, BML,
+client helpers, CSS, assets, resources and exports rebuild the consumer. Creating, editing or removing
+`imports.bml` also participates in the build. Each generation keeps separate immutable class/resource
+directories and library JARs, preserving resource ownership and classpath order. Client bundles are
+rebuilt and served from their live output directory. Changes to the BML framework or ordinary JVM
+runtime dependencies require stopping and starting `bmlDev`; those types stay in the parent loader.
 
 In IntelliJ, run **Tasks → bml → bmlDev** from the Gradle tool window (or create a Gradle run
 configuration for the `bmlDev` task). The task enters Gradle's reloadable-deployment mode itself;
@@ -388,29 +400,40 @@ trend lines. The data comes from `build/generated/bml/metrics/` (a `manifest.tsv
 
 **`bosca bml audit <base-url> [-r /route]... [--json out.json]`** — measures a *running*
 site over HTTP: fetches each route's HTML, discovers the assets it declares (stylesheets,
-scripts, preloads, images), and records real transfer bytes (compressed, as served),
+scripts, preloads, images), follows static JavaScript imports and re-exports, and records real transfer bytes (compressed, as served),
 decoded bytes, and per-request timing. It is deliberately framework-agnostic — point it at
 a BML deployment and at the same pages on any other stack for a 1:1 comparison. Assets
 referenced from *inside* CSS (fonts, background images) are counted but not fetched, since
-browsers download only the subsets they need.
+browsers download only the subsets they need. Dynamic imports, such as the selected source grammar,
+need browser execution and are outside this static audit and `bmlMetrics` figures.
 
 ### The production asset shape
 
-In production (`BmlServer(dev = false)`), a page downloads at most **one page stylesheet and one
-page bundle** on top of **one global stylesheet and one global script**:
+In production (`BmlServer(dev = false)`), a page links **one page stylesheet and one JavaScript
+entry** on top of **one global stylesheet and one global script**:
 
 - `/_bml/app.css` — the site's global CSS **plus** the scoped styles of components rendered by
   every page (the normalized shared set).
 - `/_bml/css/<slug>.page.css` — the page's remaining component styles, merged in chunk-link order.
-- `/_bml/js/<slug>.page.js` — the page's client code and its closure components', bundled as one
-  file by `bundle.mjs --manifest … --prod-out …` (run automatically by `bmlBundleClient` into
-  `build/generated/bml/js-prod`). **Production deployments must pass that directory as
-  `BmlServer(clientDir = …)`** — the per-module dev files are no longer injected.
+- `/_bml/js/<slug>.page.js` — the entry for the page's client code and its reachable components.
+  Shared engines and runtime code use relative imports of content-hashed files under
+  `/_bml/js/chunks/`, allowing the browser to reuse them across pages. `bmlBundleClient` writes
+  this module graph into `build/generated/bml/js-prod` and packages it with the application.
+  An explicit `BmlServer(clientDir = …)` can serve that directory instead; include its chunks.
 
 Production HTML appends one deterministic deployment digest (for example `?_ts=9c48…`) to every
-generated CSS and JS URL. The digest covers the project version, generated page and component
-source, compiled asset maps, global assets, and bundled client files. Replicas running the same
-deployment therefore emit the same URLs, while a relevant source or asset change produces a new URL.
+generated CSS and JS URL. The digest covers the build ID, the project version, generated page and
+component source, compiled asset maps, global assets, and bundled client files. The build ID is the
+build time, which the `io.bosca.bml` Gradle plugin's `bmlBuildId` task writes to
+`META-INF/bosca/bml/build-id` when that file does not exist yet: a local build keeps it until `clean`,
+and every fresh CI build gets a new one, so a deploy that changes only server code also changes the digest.
+Replicas running the same deployment therefore emit the same URLs.
+An application host that embeds compiled BML without compiling its own `.bml` files applies
+`io.bosca.bml.host` alongside `application`. This supplies the same `bmlBuildId` resource without
+compiler registries or client bundles; the full `io.bosca.bml` plugin enables it automatically for
+applications. Library projects do not generate an identity. When an application embeds another
+runnable host, all packaged host identities contribute to the deployment digest in a stable order.
+Native hosts must include `META-INF/bosca/bml/build-id` in their resource configuration.
 The generated asset responses use `Cache-Control: public, max-age=31536000, immutable`; the token
 makes that one-year TTL safe by changing the URL on the next deployment. The underlying routes stay
 unchanged. Production JS uses syntax, whitespace, and local-identifier minification without
@@ -420,4 +443,4 @@ minified into `build/generated/bml/client-assets`; CSS uses esbuild's CSS parser
 text-level whitespace removal.
 
 Dev mode keeps the per-component chunks and per-module JS so an edit invalidates one small file.
-`bmlMetrics` prices the production shape whenever the prod bundles exist.
+`bmlMetrics` prices each entry and its full static import closure whenever production bundles exist.

@@ -1,0 +1,28 @@
+<component tag="clipboard-controls">
+  <prop name="id" type="String" required />
+  <script server provides="clipboard" scope="server-session">bosca.design.example.ClipboardState(id)</script>
+  <card title="Clipboard controls">
+    <island name="clipboard" :key="id">
+      <if clipboard.mounted>
+        <div class="clipboard-row">
+          <span>Visible copy status</span>
+          <copy :value="clipboard.value" :label="clipboard.label" :data-copy-standalone="clipboard.id" class="fixture-copy" />
+        </div>
+        <copy-field :value="clipboard.value" label="Token" :copyLabel="clipboard.label" :data-copy-field="clipboard.id" />
+        <div class="clipboard-row">
+          <span>Quiet copy status</span>
+          <copy :value='clipboard.value + "\nsecond line"' :label="clipboard.label" :showStatus="false"
+                :data-bml-preserve='clipboard.id + "-copy"' :data-copy-retained="clipboard.id" />
+          <span :data-copy-neighbor="clipboard.id">Neighbor</span>
+        </div>
+        <tooltip :content="clipboard.label" :data-bml-preserve='clipboard.id + "-copy-description"' :data-copy-description="clipboard.id">
+          <button size="sm">Value details</button>
+        </tooltip>
+      </if>
+      <div class="actions">
+        <button @click="clipboard.change" :data-change-copy="clipboard.id">Update value and label</button>
+        <button @click="clipboard.toggle" :data-toggle-copy="clipboard.id">Toggle copy controls</button>
+      </div>
+    </island>
+  </card>
+</component>

@@ -1,0 +1,56 @@
+<component tag="copy">
+  <prop name="value" type="String" required />
+  <prop name="label" type="String" default="Copy" />
+  <prop name="showStatus" type="Boolean" default="true" />
+  <div class="copy-control" :data-copy-value="value" :data-copy-label="label" :data-tooltip-content="label" {...attrs}>
+    <button ref="copy" size="sm" class="icon-only" :aria-label="label" :title="label" :data-copy="value">
+      <span ref="idleIcon" class="copy-icon">
+        <icon name="copy" :size="14" />
+      </span>
+      <span ref="doneIcon" class="copy-icon" hidden>
+        <icon name="check" :size="14" />
+      </span>
+    </button>
+    <span ref="message" :class='"copy-message" + if (showStatus) "" else " quiet"' role="status" />
+  </div>
+  <style scoped>
+    .copy-control {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex: none;
+    }
+    .copy-icon {
+      display: flex;
+    }
+    .copy-message {
+      width: 26ch;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+    .copy-icon[hidden] {
+      display: none;
+    }
+    .copy-message.quiet:empty {
+      display: none;
+    }
+    .copy-message.quiet {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+  </style>
+  <script client scoped>
+    import { attachTooltip } from "@client/helpers/tooltip";
+    import { clipboardCopy } from "@client/helpers/copy";
+    const refreshTooltip = attachTooltip(ctx, () => ctx.ref<HTMLElement>("copy") ?? ctx.root);
+    clipboardCopy(ctx, refreshTooltip);
+  </script>
+</component>

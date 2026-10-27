@@ -23,23 +23,6 @@ fun installGitUi(
 }
 
 private fun installClientAssets(application: BoscaApplication) {
-    application.router.get("/_git/fonts/{path}") {
-        withContext(Dispatchers.IO) {
-            val path = call.pathParameters["path"].orEmpty()
-            val bytes =
-                if (FONT_ASSET_NAME.matches(path)) {
-                    GitUiAssets::class.java.getResourceAsStream("/git-ui/fonts/$path")?.use {
-                        it.readAllBytes()
-                    }
-                } else null
-            if (bytes == null) {
-                call.respond(HttpStatusCode.NotFound)
-            } else {
-                call.response.header("Cache-Control", "public, max-age=31536000, immutable")
-                call.respondBytes(bytes, ContentType("font", "woff2"))
-            }
-        }
-    }
     application.router.get("/_bml/js/{path}") {
         withContext(Dispatchers.IO) {
             val path = call.pathParameters["path"].orEmpty()
@@ -79,13 +62,12 @@ fun gitUiServer(graphqlEndpoint: String?, authCookiePrefix: String? = null): Bml
         signInRoute = "/login",
         notFoundRoute = "/404",
         errorRoute = "/500",
-        globalCss = resource("git-ui-fonts.css") + "\n" + resource("git-ui.css"),
+        globalCss = resource("git-ui.css"),
         globalJs = resource("git-ui.js"),
         dev = false,
     )
 
 private val CLIENT_ASSET_NAME = Regex("[A-Za-z0-9_-]+\\.page\\.js")
-private val FONT_ASSET_NAME = Regex("[A-Za-z0-9_-]+\\.woff2")
 
 private fun resource(name: String): String =
     requireNotNull(GitUiAssets::class.java.getResourceAsStream("/$name")) {

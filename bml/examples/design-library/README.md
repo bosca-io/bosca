@@ -1,0 +1,271 @@
+# Design library consumer
+
+An isolated BML application using `project(":bml:bml-design")`, one unaliased `imports.bml`, and
+nested pages/components. It renders two palettes against the same compiled dependency, application
+state, projected child content, native control escapes, and optional aliases. Forms and click actions
+use ordinary BML declarations. It has no Git dependency or external backend connection.
+
+Run from the workspace root:
+
+```sh
+./gradlew :bml:examples:design-library:run
+```
+
+Open `http://localhost:9092/`; `/aliases` compares aliased and unprefixed imports, and `/foundation`
+exercises checkboxes, switches, feedback states and table scrolling. For incremental
+development and browser reload:
+
+```sh
+./gradlew :bml:examples:design-library:bmlDev
+```
+
+Application CSS and the full HTML document are owned here. The library supplies packaged defaults
+and component styles through the normal BML asset pipeline. The server uses the compiler-generated
+aggregate registries and packaged application assets.
+
+The `/themes` page tests the [public CSS token contract](../../bml-design/css-tokens.md) with the same
+unprefixed controls in default and customized roots. Base surface/radius overrides flow into controls
+without repeated aliases. Shared heights, content gaps, focus rings and shadow/backdrop colors change
+through consumer CSS. Checks cover explicit aliases, open overlays, live class changes, independent
+neighbors and native select presentation with scripts disabled. JSON checks also override only the
+editor accent and verify its derived hover, selection and focus colors.
+
+```sh
+./gradlew :bml:bml-design:bmlValidateLibrary :bml:examples:design-library:test
+```
+
+Tests start separate JVMs with JAR-only classpaths, serve real HTTP, and run an isolated headless
+Chrome profile in development and production. They exercise labels and native input attributes,
+32/30/24px controls, two simultaneous themes, action forwarding and state isolation, pending
+geometry/accessibility, alias identity/resource deduplication, and native elements with scripts
+disabled. Additional compiler checks cover local precedence, import collisions, and typed prop
+diagnostics against the actual design-library artifact.
+
+Server fixtures request an OS-assigned port and read the successful Netty bind from that child's
+private INFO log. Startup has a five-second budget; an existing listener or configured endpoint
+does not establish readiness. The same lifecycle is used for workspace, source-free Maven and
+native launches. An integration check holds separate IPv4/IPv6 listeners open while production and
+development children bind distinct endpoints. The application packages its logging configuration
+for the native executable as well as the JVM.
+
+The compiled-consumer browser checks also verify empty tabs, segments and tree bodies at desktop
+and phone widths, with scripts enabled and disabled. Empty widgets stay out of the accessibility
+tree while the native segment form value and populated controls remain available.
+
+JSON table checks include virtual scrolling with spacer cells spanning the complete native column
+grid, including its row header, while retaining exact form values and logical row positions.
+
+Source-search checks use real keyboard input in both palettes at desktop/phone widths. Highlighted
+syntax follows the viewer foreground or a live `--source-search-fg` override, while source text,
+dimensions and outside/sibling syntax colors remain unchanged.
+Search-panel checks also cover wrapping controls, live height/font overrides and compact/bare
+viewers that grow while searching and return to their original size after closing.
+
+Fixture HTTP requests have a ten-second deadline through the complete response body. A deadline
+failure identifies the method and URL, whether response headers arrived, and any received status,
+protocol, declared content length and body byte count. Transport failures retain their original cause
+with this progress attached. Server-fixture failures also include the child PID and alive/exit state.
+An expired or interrupted wait cancels its pending exchange. Controlled local-server checks cover
+missing headers, unfinished fixed-length/chunked bodies, truncated bodies, complete responses and
+caller interruption:
+
+```sh
+./gradlew :bml:examples:design-library:test --tests bosca.design.example.DesignFixtureHttpTest
+```
+
+The foundation page checks native form values, controlled checkbox/switch change actions, disabled
+controls, independent instances, switch accessibility names, status/alert semantics, feedback colors
+from consuming CSS, and keyboard scrolling inside a narrow table region. These controls also work
+as native inputs with scripts disabled.
+
+The `/layout` page uses the library-owned `NavigationItem`, caller-supplied breadcrumbs,
+responsive header/navigation, panels/sections and native disclosures. Its projected heading actions
+update application state. Consuming CSS changes the mark colors and panel radius. Browser checks
+cover desktop/phone geometry, active-navigation visibility, disclosure keyboard operation and
+the preserved Bosca SVG paths. Native sections remain available through `<html:section>`.
+
+The foundation table is retained inside its state island, with a bounded height and enough rows to
+exercise both scroll axes. A real save keeps its DOM, keyboard focus and scroll positions. Long
+section-heading titles and subtitles also stay inside their container beside projected actions.
+
+The `/actions` page demonstrates native icon buttons/links, labelled form submission and tooltips
+in two themed roots. Checks cover pointer and keyboard use, viewport placement, clipped ancestors,
+live CSS overrides, description IDs, changed labels/triggers, delayed-show cancellation, pending
+geometry, repeated mount/unmount and listener cleanup. Icon labels and link navigation remain
+available when scripts are disabled.
+
+The `/overlays` page exercises dialogs, confirmation and popovers with caller-owned form/state.
+Checks cover modal names and focus, Tab containment, Escape/backdrop/cancel dismissal and return
+focus, disabled triggers, pending geometry, failed-submit drafts, completion/reopen and server-issued
+requests. A preserved modal keeps an unsaved draft across unrelated updates. Popovers inherit two
+consumer palettes, escape clipped ancestors, fit desktop/phone/short viewports, retain nested action
+updates, and provide menu keyboard navigation. Menu examples use shared headings, row spacing, projected and button-prop icons, local danger colors and hidden icon states without application menu CSS. Repeated mounting checks listener and ResizeObserver
+cleanup. With scripts disabled, popovers remain native details disclosures.
+
+The `/clipboard` page checks exact copied values, accessible/icon feedback, stable visible/quiet
+geometry, denied/unavailable clipboard recovery, readonly selection, successful retry, feedback
+timeouts, overlapping results, preserved value/label updates and disposal during an in-flight copy.
+Two themes and desktop/phone layouts use the same library exports. Browser tests stub clipboard
+outcomes to avoid changing the system clipboard; rendering, server actions and lifecycle are real.
+Script-disabled values remain manually selectable.
+The clipboard page also retains a focused tooltip through surrounding value/label updates, checking
+its DOM identity, updated plain-text description, top-layer state and focus.
+
+The `/notifications` page issues notices through caller-owned actions and monotonic sequences.
+Checks cover live-region priorities, repeated text, same/older/empty sequences, failed actions,
+retained DOM and announcements/timeouts across unrelated updates, hover/focus pausing, return focus,
+new-notice timeouts, reduced motion, two live CSS themes, long-message keyboard scrolling and narrow/
+short viewport fit. Document visibility is controlled through an isolated getter/event override for
+its pause/resume check. Repeated disposal verifies timer, listener and ResizeObserver cleanup,
+and remounting a retained nonempty message does not replay the earlier notice.
+
+The `/selection` page uses search input, segmented controls and local view tabs. Checks cover native
+form values, one clear/input event, caller-controlled autofocus, readonly/disabled search, typed
+drafts/caret/focus through unrelated patches, changed controlled props, rejected search recovery,
+roving arrows/Home/End and wrapping, local view events, caller-owned panel relationships, empty and
+unmatched selections, independent roots and live CSS overrides. Repeated unmounts check root and
+document listener cleanup. Script-disabled search and initial segmented values remain native. Long groups verify that keyboard
+focus reveals the selected option and a horizontal scrollbar does not clip segmented buttons.
+Plain-text panels have their own Tab stop and preservation key. Their visibility changes locally
+before the view action completes. Delayed-response checks verify forward/reverse keyboard focus
+through the completed patch in both palettes at desktop and phone widths.
+
+The `/navigation` page uses native route tabs, shared `NavigationItem` values and projected actions.
+Checks cover current/overflow destinations, keyboard navigation and dismissal, container/viewport
+refits, focused-link continuity, retained menus across unrelated action patches, changed lists, long
+current labels, empty/short/unselected lists, header spacing, clipped/short-screen popups and live
+consumer themes. Disposal checks listeners and ResizeObservers. A separate destination page verifies
+native navigation from overflow links and script-disabled scrolling rows.
+
+The `/selects` page covers native single/multiple values, required validation, disabled/loading
+controls, keyboard choices, local search/custom choices and tag removal/limits. Its application-owned
+`SelectChoices` BML contract serves isolated HTTP pages, failures and delayed responses; the generic
+control only emits `selectsearch`. Browser checks cover minimum query/debounce, offsets, explicit
+persistent options, error/retry and stale results, native values across pages, remote multiple/custom
+choices, preserved query/caret/focus, native reset, live CSS themes, clipping/short screens and disposal.
+Script-disabled checks retain styled native selects and form values. The adapter imports
+`SelectSearch` from `@bosca/bml-design/select` with `import type` and uses the existing same-origin
+contract client. Its TypeScript configuration includes the generated client tree, where the library
+linker extracts declarations from the dependency JAR. The type checks cover `SelectOption`,
+`SelectPage` and `SelectSearch`, including invalid option values and pagination offsets.
+
+From the workspace root, prepare and check the consumer TypeScript with:
+
+```bash
+./gradlew :bml:examples:design-library:bmlPrepareClient
+node bml/bml-runtime/node_modules/typescript/bin/tsc --project bml/examples/design-library/tsconfig.json
+```
+
+Gradle prepares the pinned Chromium automatically, including for `publishedConsumerTest` and
+`nativeConsumerTest`. The first run downloads the browser; subsequent runs reuse Playwright's
+cache. Set `BML_DESIGN_CHROME_BINARY` to use an existing executable and bypass preparation.
+Screenshots land in this project's
+`build/reports/browser/`. The fixture is an application and is excluded from aggregate Maven
+publication.
+
+The `/composition` page combines local and server-loaded trees, plain comment forms and timestamps.
+Its own state supplies directory actions, delayed submissions, permission changes, rejected drafts
+and controlled values. Two themes exercise native links, initial local disclosure, roving focus,
+type-ahead, focus retained during asynchronous loading, a subsequent Right Arrow into loaded children,
+and preservation across server updates.
+An action-response check changes the tree offset before its native scroll event, verifying that
+the immediate position survives replacement as well as previously settled scrolling.
+Comment checks cover native names/values, blank/readonly/disabled/permission states, sizing,
+Ctrl+Enter, pending feedback, failure/retry, current descriptions, retained draft/caret/focus,
+controlled values and native reset. Repeated removal/remount checks listeners and observers.
+The shared browser suite records actual accessibility ancestry through branch groups, stable item
+names, sibling positions/set sizes and disabled state in both palettes. It checks retained groups,
+loaded and removed server branches and remounted controls. These assertions run in workspace,
+source-free Maven and native production/development modes; each report records the browser version.
+Disabled native directories are skipped during keyboard traversal. Script-disabled checks retain
+comment form values, native Tab stops for every rendered file link and server timestamps.
+Timestamp tests cover English UTC/default, custom offset formats, relative past/future/older dates,
+escaped invalid values and invalid-pattern errors. Desktop and phone screenshots cover this page.
+
+The `/widgets` page consumes TipTap documents, VueFlow graphs and a Chart.js chart projected into
+a dashboard grid. One application-owned form saves document, graph and layout JSON together.
+Workspace, source-free Maven and native browser runs cover both palettes at 1440px/390px, real
+document input and graph movement, desktop grid movement, narrow stacking without coordinate
+changes, retained engines and unsaved widget input across server refreshes, current saved values
+and independent instances. With scripts disabled, native JSON fields and the chart data table remain
+available. The consumer has no npm dependencies for these engines; basic pages exclude their code.
+All seven packaged dependency notices are checked against their original resources and source archive.
+
+The `/source` page consumes the compiled read-only CodeMirror viewer with no CodeMirror npm
+dependency in this application. It covers explicit and inferred languages, requested lines independent
+of URL parameters, wrapping, compact/bare and empty/plain-text cases, escaped native fallback,
+search, read-only keyboard behavior, preserved state/focus and changed caller options. Its two
+palettes and live CSS overrides exercise editor, gutter, search and syntax colors. Current rows and
+gutter rows stay unfilled, with a neutral border on focus.
+Removal/remount checks CodeMirror destruction, observers and document listeners. HTTP/archive
+checks prove that ordinary button/card pages exclude viewer JS/CSS while source pages include it.
+Git also consumes this viewer; its editable and preview workflows remain in the Git application.
+
+
+The `/json` page consumes the compiled structured JSON editor. Its two independent caller-owned
+forms retain exact invalid drafts across failed submissions and unrelated updates, and support
+controlled replacements, native reset, tree/text/table views, readonly/disabled states and pending
+submission feedback. The browser checks real tree-cell editing and immediate text submission,
+keyboard exit, two palettes/live CSS changes, repeated disposal and non-overlapping desktop/phone
+viewports. With scripts disabled, escaped textarea drafts remain native form values. Archive and HTTP
+checks ensure basic and source-only pages exclude JSON editor assets. Git consumes the same library
+editor and retains its own configuration validation and actions.
+Checks also verify labelled tree groups after mode changes, named property-navigation controls,
+native table headers, direct listbox keyboard selection and visible names on native file links.
+JSON table checks enter 300 records and immediately switch from text to table mode, then verify
+virtual scrolling and return, logical row positions, hidden spacer rows and exact native form data
+in both palettes at desktop and phone widths.
+
+The normal test suite also compiles this application in a separate Gradle build using the actual
+Design Library JAR and generated Maven POM in a temporary file repository. The repository contains
+no producer sources or source archives. Framework support JARs, the Gradle/compiler plugins and the
+browser toolchain are staged separately; this check does not publish to Maven Local or a remote registry.
+It verifies cached compilation/bundling, identical asset hashes after a clean build, a JAR-only runtime,
+strict generated-client/public-type checking and the same production/development browser suite.
+It does not establish native executable or IDE source-navigation acceptance.
+
+Run that check alone from the workspace root:
+
+```sh
+./gradlew :bml:examples:design-library:publishedConsumerTest
+```
+
+Build, type-check and server/browser diagnostics and captures are retained under
+`build/reports/published-consumer/`. Temporary files are removed without following symbolic links.
+
+For native verification, build and exercise the standalone executable from the workspace root:
+
+```sh
+./gradlew :bml:examples:design-library:nativeCompile --build-args=-Ob :bml:examples:design-library:nativeConsumerTest
+```
+
+This uses GraalVM quick optimization. The dedicated task reuses the consumer integration class,
+copying only the executable into a fresh working directory for each launch. Production/development
+HTTP and browser checks therefore use embedded assets, without external JARs or source directories.
+The binary's `--check-resources` command reports the SHA-256 digests of the application stylesheet,
+logging configuration and seven dependency notices; the tests compare them with the JAR resources. Font checks also compare
+all 11 original hashes and verify MIME types, caching and deduplication. Application-owned native
+metadata includes the compiled BML resources, stylesheet, notices and established Netty registrations.
+This consumer check does not establish Git-host native or IDE source-navigation acceptance.
+Native browser captures use `native-production` and `native-development` filename prefixes under
+`build/reports/browser/`, alongside the ordinary JVM captures.
+
+The `/workspaces` consumer uses short `workspace` and `fullscreen-button` tags with `page-shell fill`
+and `source-view fill`. Its own form, draft and rejected-save actions sit inside the library workspace.
+Focused browser checks run against packaged production and development consumers, measuring desktop/
+phone bounds, native and denied-native full screen, focus, retained scroll/drafts through action updates,
+projected dialog Escape, independent CSS palettes, nested expansion, disposal and no-script source.
+
+The `/shell` page consumes `app-shell`, `profile` and `profile-menu` from the linked library. It
+supplies its own destinations, light/dark palettes and local display-name/account actions, without
+an auth or Git dependency. The shared components own gradient layout, sidebar/header spacing,
+identity presentation, context activation, menu keyboard navigation and focus restoration.
+
+The rich widget form supplies Kotlin `FlowGraph` and `ChartConfiguration` objects and a
+`List<DashboardLayoutItem>` for geometry. Ordinary models use generated Kotlin serializers. ProseMirror and JSON editor values are Kotlin JSON trees. Components serialize these
+values for the browser and native form fields; application actions decode submitted fields.
+Malformed and empty JSON source is passed through the separate `text` draft prop.
+
+Segmented options and local tabs use Kotlin `SegmentOption`/`ViewTab` objects. The selection fixture verifies stable values with duplicate/changed labels and disabled-item keyboard navigation. Widget state uses typed chart options, points, flow data and shared `bosca.documents` authoring through `documentValue`. Simple presentation choices use string attributes such as `size="sm"` and `tone="success"`.
+
+The widget form prefills `document-editor` through its typed `document` prop using a local `bosca.content.metadata.model.Document`. It retains native body edits across refreshes, then uses the submitted JSON body after a save. Metadata identity/title/version fields stay outside the native editor value.

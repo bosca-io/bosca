@@ -1,6 +1,9 @@
 package bosca.bml.compiler.plugin
 
 import bosca.bml.library.BmlLibraryArtifacts
+import bosca.bml.library.BmlLibraryDependencies
+import bosca.bml.library.BmlImportResolver
+import bosca.bml.parser.BmlParser
 import bosca.bml.project.ContentDigest
 import bosca.bml.render.BmlPageRenderer
 import bosca.bml.render.RenderContext
@@ -89,10 +92,11 @@ class BmlCompilerPluginTest {
         val sourceRoot = File(work, "producer/bml").apply { mkdirs() }
         val source = """
             <component tag="button">
-              <prop name="model" type="example.design.ButtonModel"/>
+              <script server>import example.design.ButtonModel</script>
+              <prop name="model" type="ButtonModel"/>
               <prop name="disabled" type="Boolean" default="false"/>
               <style scoped>button { color: red; }</style>
-              <html:button :disabled="disabled">{ model.label }<slot/></html:button>
+              <html:button class="library" :disabled="disabled" {...attrs}>{ model.label }<slot/></html:button>
             </component>
         """.trimIndent()
         File(sourceRoot, "button.bml").writeText(source)
@@ -119,7 +123,7 @@ class BmlCompilerPluginTest {
         assertEquals(ContentDigest.sha256(source), button.source.digest)
         assertEquals(1, button.source.line)
         assertTrue(button.hasDefaultSlot)
-        assertEquals("example.design.ButtonModel", button.props.first().declaredType)
+        assertEquals("ButtonModel", button.props.first().declaredType)
         assertFalse(button.props.first().hasDefault)
         assertTrue(button.props.last().hasDefault)
         assertTrue("data-bml-c" in button.styles)
@@ -137,31 +141,119 @@ class BmlCompilerPluginTest {
         File(work, "producer").deleteRecursively()
         output.deleteRecursively()
         resources.deleteRecursively()
-        val consumerSource = File(work, "Consumer.kt").apply {
+        val dependencies = BmlLibraryDependencies.read(listOf(artifact))
+        val imports = BmlParser.parse("""<import library="example:design"/>""")
+        val resolved = BmlImportResolver(dependencies).resolve(
+            null, BmlImportResolver.parse("consumer/imports.bml", imports.document, importsOnly = true),
+        )
+        assertTrue(resolved.problems.isEmpty(), resolved.problems.toString())
+        assertEquals(setOf("button"), resolved.bindings.keys)
+        assertEquals(button, resolved.bindings.getValue("button").component)
+        val consumerRoot = File(work, "consumer/bml").apply { mkdirs() }
+        val globalImports = File(consumerRoot, "imports.bml").apply {
+            writeText("""<import library="example:design"/>""")
+        }
+        val consumerSource = File(consumerRoot, "pages/home.bml").apply {
+            parentFile.mkdirs()
             writeText("""
-                package example.consumer
-                object ConsumerPage : bosca.bml.render.BmlPageRenderer {
-                    override val route = "/"
-                    override suspend fun render(ctx: bosca.bml.render.RenderContext) {
-                        example.design.generated.ButtonComponent.render(
-                            ctx, mapOf("model" to example.design.ButtonModel("Save")),
-                        ) { ctx.writer.text(" now") }
-                    }
-                }
+                <import library="example:design" as="ui"/>
+                <page route="/">
+                  <script server provides="model">example.design.ButtonModel("Save")</script>
+                  <button :model="model" disabled="false" class="consumer" data-note="shared"> now</button>
+                  <ui:button :model="model"> again</ui:button>
+                  <html:button>Native</html:button>
+                </page>
             """.trimIndent())
         }
+        val consumerOptions = listOf(
+            "bmlSourceRoot=$consumerRoot", "bmlPackageName=example.consumer", "bmlLibraryDependency=$artifact",
+        )
         val consumerOutput = File(work, "consumer-classes").apply { mkdirs() }
         val (consumerExit, consumerMessages) = compileWithBmlPlugin(
-            consumerOutput, emptyList(), work, listOf(consumerSource), listOf(artifact),
+            consumerOutput, consumerOptions, work, extraClasspath = listOf(artifact),
         )
         assertEquals(ExitCode.OK, consumerExit, consumerMessages)
         URLClassLoader(arrayOf(consumerOutput.toURI().toURL(), artifact.toURI().toURL()), javaClass.classLoader).use { loader ->
-            val page = loader.loadClass("example.consumer.ConsumerPage").getField("INSTANCE").get(null) as BmlPageRenderer
+            val page = loader.loadClass("example.consumer.PagesHomePage").getField("INSTANCE").get(null) as BmlPageRenderer
             val context = RenderContext()
             runBlocking { page.render(context) }
             assertTrue("Save now</button>" in context.toString(), context.toString())
+            assertTrue("Save again</button>" in context.toString(), context.toString())
+            assertTrue("<button>Native</button>" in context.toString(), context.toString())
+            assertTrue("data-note=\"shared\"" in context.toString(), context.toString())
+            assertTrue("class=\"library consumer\"" in context.toString(), context.toString())
+            assertFalse(" model=" in context.toString(), context.toString())
             assertFalse(" disabled" in context.toString(), context.toString())
         }
+        val validConsumer = consumerSource.readText()
+        val localButton = File(consumerRoot, "local.bml").apply {
+            writeText("""<component tag="button"><html:button>LOCAL</html:button></component>""")
+        }
+        val (localExit, localMessages) = compileWithBmlPlugin(
+            consumerOutput, consumerOptions, work, extraClasspath = listOf(artifact),
+        )
+        assertEquals(ExitCode.OK, localExit, localMessages)
+        URLClassLoader(arrayOf(consumerOutput.toURI().toURL(), artifact.toURI().toURL()), javaClass.classLoader).use { loader ->
+            val page = loader.loadClass("example.consumer.PagesHomePage").getField("INSTANCE").get(null) as BmlPageRenderer
+            val context = RenderContext()
+            runBlocking { page.render(context) }
+            assertTrue("LOCAL</button>" in context.toString(), context.toString())
+            assertTrue("Save again</button>" in context.toString(), context.toString())
+            assertEquals(setOf("button", BmlLibraryArtifacts.componentId("example:design", "button")), page.componentTags.toSet())
+        }
+        localButton.delete()
+        val collision = File(consumerRoot, "collision.bml").apply {
+            writeText("""<component tag="${BmlLibraryArtifacts.componentId("example:design", "button")}"><span>Collision</span></component>""")
+        }
+        val (collisionExit, collisionMessages) = compileWithBmlPlugin(
+            consumerOutput, consumerOptions, work, extraClasspath = listOf(artifact),
+        )
+        assertEquals(ExitCode.COMPILATION_ERROR, collisionExit, collisionMessages)
+        assertTrue("Conflicting runtime component identity" in collisionMessages, collisionMessages)
+        collision.delete()
+        for ((invalid, expected) in listOf(
+            validConsumer.replace("example.design.ButtonModel(\"Save\")", "\"wrong model\"") to "ButtonModel",
+            validConsumer.replace("disabled=\"false\"", "disabled=\"maybe\"") to "Boolean",
+            validConsumer.replace("<ui:button :model=\"model\"> again</ui:button>", "<ui:private-label/>") to "private imported component",
+        )) {
+            consumerSource.writeText(invalid)
+            val (invalidExit, invalidMessages) = compileWithBmlPlugin(
+                consumerOutput, consumerOptions, work, extraClasspath = listOf(artifact),
+            )
+            assertEquals(ExitCode.COMPILATION_ERROR, invalidExit, invalidMessages)
+            assertTrue(expected in invalidMessages, invalidMessages)
+        }
+        consumerSource.writeText(validConsumer)
+        globalImports.writeText("""<import library="example:absent"/>""")
+        val (missingExit, missingMessages) = compileWithBmlPlugin(
+            consumerOutput, consumerOptions, work, extraClasspath = listOf(artifact),
+        )
+        assertEquals(ExitCode.COMPILATION_ERROR, missingExit, missingMessages)
+        assertTrue("example:absent" in missingMessages, missingMessages)
+    }
+
+    @Test
+    fun `application component props can retain internal model types`() {
+        val work = newWorkDir()
+        val root = File(work, "bml").apply { mkdirs() }
+        File(root, "local.bml").writeText("""
+            <component tag="local-card">
+              <script server>import example.InternalModel</script>
+              <prop name="model" type="InternalModel"/>
+              <span>{ model.label }</span>
+            </component>
+        """.trimIndent())
+        File(root, "page.bml").writeText("""
+            <page route="/"><local-card :model='example.InternalModel("Local")'/></page>
+        """.trimIndent())
+        val model = File(work, "InternalModel.kt").apply {
+            writeText("package example\ninternal class InternalModel(val label: String)")
+        }
+        val output = File(work, "classes").apply { mkdirs() }
+        val (exit, messages) = compileWithBmlPlugin(
+            output, listOf("bmlSourceRoot=$root"), work, additionalSources = listOf(model),
+        )
+        assertEquals(ExitCode.OK, exit, messages)
     }
 
     @Test

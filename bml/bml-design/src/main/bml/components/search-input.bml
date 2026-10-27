@@ -1,0 +1,103 @@
+<component tag="search-input">
+  <prop name="value" type="String" default="" />
+  <prop name="name" type="String" default="q" />
+  <prop name="placeholder" type="String" default="Search…" />
+  <prop name="label" type="String" default="Search" />
+  <prop name="preserveKey" type="String" default="" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <prop name="autofocus" type="Boolean" default="true" />
+  <div
+    class="search-input"
+    :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)"
+    :data-placeholder="placeholder"
+    :data-value="value"
+    :data-name="name"
+    :data-label="label"
+    :data-disabled="disabled"
+  >
+    <span class="search-icon">
+      <icon name="search" :size="16" />
+    </span>
+    <html:input
+      ref="query"
+      type="search"
+      :name="name"
+      :value="value"
+      :placeholder="placeholder"
+      :aria-label="label"
+      :disabled="disabled"
+      autocomplete="off"
+      spellcheck="false"
+      :autofocus="autofocus"
+      {...attrs}
+    />
+    <div class="search-actions">
+      <span class="search-clear" ref="clearAction" :hidden="value.isBlank()">
+        <icon-button
+          ref="clear"
+          icon="close"
+          label="Clear search"
+          :disabled="disabled"
+        />
+      </span>
+      <slot />
+    </div>
+  </div>
+  <style scoped>
+    .search-input {
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-width: 0;
+      height: 40px;
+      padding: 0 4px 0 12px;
+      border: 1px solid var(--control-border, var(--line-2));
+      border-radius: 8px;
+      background: var(--bg-0);
+    }
+    .search-input:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 10%, transparent);
+    }
+    .search-icon {
+      display: flex;
+      color: var(--accent);
+      flex: none;
+    }
+    .search-clear { display: flex; }
+    .search-clear[hidden] { display: none; }
+    input {
+      box-sizing: border-box;
+      flex: 1;
+      min-width: 0;
+      height: 36px;
+      padding: 0;
+      border: 0;
+      outline: none;
+      background: transparent;
+      color: var(--fg-0);
+      font: inherit;
+      font-size: 14px;
+    }
+    input:disabled { opacity: 0.5; cursor: not-allowed; }
+    input::placeholder {
+      color: var(--fg-3);
+      opacity: 1;
+    }
+    input::-webkit-search-cancel-button {
+      display: none;
+    }
+    .search-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex: none;
+    }
+  </style>
+  <script client scoped>
+    import { searchInput } from "@client/helpers/search-input";
+    searchInput(ctx);
+  </script>
+</component>

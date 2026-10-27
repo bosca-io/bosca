@@ -4,26 +4,26 @@
   </script>
   <if page != null>
     <git-layout :title='page.name + " GitHub synchronization"'>
-      <ui-page>
-        <ui-page-heading
+      <page-shell>
+        <page-heading
           :title='page.name'
           crumb="GitHub Sync"
           icon="folder"
-          :trail='listOf(bosca.git.ui.components.NavigationItem("Repositories", "/repositories", false), bosca.git.ui.components.NavigationItem(page.name, "/repositories/" + bosca.git.ui.encode(page.id), false))'
+          :trail='listOf(bosca.design.model.NavigationItem("Git", "", false), bosca.design.model.NavigationItem("Repositories", "/repositories", false), bosca.design.model.NavigationItem(page.name, "/repositories/" + bosca.git.ui.encode(page.id), false))'
         />
         <if !page.allowed>
-          <ui-alert>Administrator access is required.</ui-alert>
+          <alert>Administrator access is required.</alert>
         <else>
           <git-github-history :page="page" />
           <details class="github-configuration" :open="page.pair == null">
-            <ui-disclosure-heading>Pairing and secrets</ui-disclosure-heading>
+            <disclosure-heading>Pairing and secrets</disclosure-heading>
             <div class="configuration-body">
               <git-github-pair :page="page" />
               <git-github-secret :page="page" />
             </div>
           </details>
         </if>
-      </ui-page>
+      </page-shell>
     </git-layout>
   </if>
   <style scoped>

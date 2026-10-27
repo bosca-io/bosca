@@ -1,14 +1,14 @@
 <component tag="git-pull-conflicts">
   <prop name="page" type="bosca.git.ui.PullPage" required />
-  <ui-card :padded="false">
-    <ui-section-heading title="Merge Conflicts">
-      <ui-badge color="#ff5d6c">
+  <card :padded="false">
+    <section-heading title="Merge Conflicts">
+      <badge color="#ff5d6c">
         { page.pull.conflictingFiles.size.toString() + if (page.pull.conflictingFiles.size == 1) " conflict" else " conflicts" }
-      </ui-badge>
-    </ui-section-heading>
+      </badge>
+    </section-heading>
     <div class="conflict-body">
       <div class="conflict-banner">
-        <span class="conflict-icon"><ui-icon name="alert" :size="16" /></span>
+        <span class="conflict-icon"><icon name="alert" :size="16" /></span>
         <div>
           <p class="conflict-title">This branch has conflicts that must be resolved</p>
           <p class="conflict-subtitle">
@@ -23,20 +23,20 @@
       <ul class="conflict-files">
         <for file in page.pull.conflictingFiles>
           <li>
-            <span class="conflict-icon"><ui-icon name="alert" :size="13" /></span>
+            <span class="conflict-icon"><icon name="alert" :size="13" /></span>
             <code>{ file }</code>
           </li>
         </for>
       </ul>
       <div class="conflict-instructions">
         <div class="instructions-heading">
-          <span class="instructions-icon"><ui-icon name="code" :size="14" /></span>
+          <span class="instructions-icon"><icon name="code" :size="14" /></span>
           Resolve via command line
         </div>
         <pre>{ "git fetch origin\ngit checkout " + page.pull.sourceBranch + "\ngit merge origin/" + page.pull.targetBranch + "\n# Resolve conflicts in your editor, then:\ngit add .\ngit commit\ngit push origin " + page.pull.sourceBranch }</pre>
       </div>
     </div>
-  </ui-card>
+  </card>
   <style scoped>
     .conflict-body {
       padding: 16px 0 0;

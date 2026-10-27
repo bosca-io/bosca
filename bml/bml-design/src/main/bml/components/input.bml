@@ -1,0 +1,51 @@
+<component tag="input">
+  <prop name="size" type="String" default="md" />
+  <prop name="mono" type="Boolean" default="false" />
+  <prop name="type" type="String" default="text" />
+  <prop name="ref" type="String" default="" />
+  <prop name="value" type="String" default="" />
+  <prop name="required" type="Boolean" default="false" />
+  <html:input
+    :class='"input size-" + size + " " + (if (mono) "mono " else "")'
+    :type="type"
+    :ref="ref.takeIf(String::isNotBlank)"
+    :value="value"
+    :required="required"
+    {...attrs}
+  />
+  <style scoped>
+    .input.mono {
+      font-family: var(--font-mono);
+    }
+    .input {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
+      font: inherit;
+      color: var(--fg-0);
+      background: var(--control-bg, var(--bg-2));
+      border: 1px solid var(--control-border, var(--line-2));
+      border-radius: var(--control-radius, var(--r-sm));
+      height: var(--control-height-md);
+      padding: 0 10px;
+      font-size: 13px;
+      line-height: normal;
+      outline: none;
+    }
+    .input.size-sm {
+      height: var(--control-height-sm);
+      font-size: 12.5px;
+    }
+    .input::placeholder {
+      color: var(--fg-3);
+    }
+    .input:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 15%, transparent);
+    }
+  </style>
+</component>

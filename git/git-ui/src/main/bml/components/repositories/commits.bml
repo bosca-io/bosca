@@ -1,18 +1,18 @@
 <component tag="git-repository-commits">
   <prop name="page" type="bosca.git.ui.RepositoryPage" required />
-  <section class="commits-panel">
+  <html:section class="commits-panel">
     <div class="commit-list">
       <if page.commits.isEmpty()>
         <p class="commit-empty">No commits found.</p>
       <else>
         <for commit in page.commits>
           <div class="commit-row">
-            <span class="commit-icon"><ui-icon name="commit" :size="14" /></span>
+            <span class="commit-icon"><icon name="commit" :size="14" /></span>
             <div class="commit-body">
               <a class="commit-message" :href="page.href(ref = commit.sha)">{ commit.message.lineSequence().first() }</a>
               <div class="commit-meta">
                 <span class="commit-author">{ commit.author.substringBefore(" <") }</span>
-                <span class="commit-time"><ui-time :value="commit.date" relative ago inheritTypography /></span>
+                <span class="commit-time"><time :value="commit.date" relative ago inheritTypography /></span>
               </div>
             </div>
             <a class="commit-sha" :href="page.href(ref = commit.sha)" :title="commit.sha">
@@ -32,7 +32,7 @@
         </if>
       </nav>
     </if>
-  </section>
+  </html:section>
   <style scoped>
     /* Studio repository commit list. */
     .commit-list {

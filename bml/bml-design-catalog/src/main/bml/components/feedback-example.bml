@@ -1,0 +1,57 @@
+<component tag="feedback-example">
+  <prop name="id" type="String" required />
+  <script server provides="feedback" scope="server-session">bosca.design.catalog.CatalogFeedback(id)</script>
+  <island name="feedback" :key="id">
+    <div class="catalog-stack" :data-catalog-feedback="feedback.id">
+      <if feedback.visible>
+        <div class="catalog-stack" :data-feedback-utilities="feedback.id">
+          <copy-field label="Library coordinate" :value="feedback.value()" copyLabel="Copy library coordinate"
+                      :data-bml-preserve='"feedback-field-" + feedback.id + "-" + feedback.revision'
+                      :data-feedback-field="feedback.id" />
+          <div class="example-actions" :data-feedback-copy-row="feedback.id">
+            <copy :value="feedback.value()" label="Copy library coordinate" :showStatus="false"
+                  :data-bml-preserve='"feedback-copy-" + feedback.id' :data-feedback-copy="feedback.id" />
+            <span class="example-note">Copy without a visible status row</span>
+          </div>
+          <div class="example-actions catalog-tooltip-placements" :data-feedback-placements="feedback.id">
+            <for placement in listOf("top", "bottom", "left", "right")>
+              <tooltip :content="feedback.description()" :placement="placement"
+                       :data-bml-preserve='"feedback-tooltip-" + feedback.id + "-" + placement'
+                       :data-feedback-tooltip="feedback.id" :data-placement="placement">
+                <button size="sm">{ placement }</button>
+              </tooltip>
+            </for>
+          </div>
+        </div>
+      </if>
+      <div class="example-actions" :data-feedback-notifications="feedback.id">
+        <button @click='feedback.notify("info")' :data-feedback-info="feedback.id">Information</button>
+        <button @click='feedback.notify("success")' :data-feedback-success="feedback.id">Success</button>
+        <button @click='feedback.notify("warning")' :data-feedback-warning="feedback.id">Warning</button>
+        <button @click='feedback.notify("error")' :data-feedback-error="feedback.id">Error</button>
+      </div>
+      <p class="example-note">Hover or focus a placement button for its description. Copy results and example actions use toasts. If clipboard access is unavailable, the field remains selectable.</p>
+      <details data-example-states>
+        <disclosure-heading>Example states</disclosure-heading>
+        <div class="catalog-stack feedback-state-options">
+          <switch label="Use long notifications" :checked="feedback.longMessage" @change="feedback.toggleLongMessage" :data-feedback-long="feedback.id" />
+          <switch label="Show copy and tooltip controls" :checked="feedback.visible" @change="feedback.toggleVisible" :data-feedback-visible="feedback.id" />
+          <div class="example-actions">
+            <button @click="feedback.replace" :data-feedback-replace="feedback.id">Replace value and description</button>
+            <button @click="feedback.refresh" :data-feedback-refresh="feedback.id">Refresh example</button>
+          </div>
+          <p class="example-note">Refresh retains unchanged controls. Replacement supplies a new copy value and tooltip description. Each palette issues its own notification sequences.</p>
+        </div>
+      </details>
+      <toast :id='"feedback-notice-" + feedback.id' :message="feedback.notice" :sequence="feedback.noticeSequence"
+             :tone="feedback.noticeTone" :data-feedback-toast="feedback.id" />
+    </div>
+  </island>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+    ctx.on<CustomEvent<{ copied: boolean }>>(ctx.root, "copyresult", event => {
+      ctx.dispatch(feedback.copied(event.detail.copied));
+    });
+  </script>
+</component>

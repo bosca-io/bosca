@@ -1,0 +1,55 @@
+# Examples keep their state in one server process. Scaling requires a shared BML session store.
+replicaCount: 1
+strategy:
+  type: Recreate
+
+image:
+  registry: ghcr.io/bosca-io/bosca
+  repository: bml-design-catalog
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+podSecurityContext: {}
+securityContext:
+  runAsNonRoot: true
+
+service:
+  type: ClusterIP
+  port: 9093
+
+# bosca-services adds the HTTPS route, Gateway listener and HTTP redirect for these hosts.
+gateway:
+  enabled: true
+  hostnames: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+podDisruptionBudget:
+  enabled: false
+  maxUnavailable: 1
+
+# Native runtime options, for example [-Xmx256m]. The chart supplies the listener port separately.
+extraArgs: []
+# The site has no backend API or infrastructure credentials.
+extraEnv: {}
+envFromConfigMaps: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  imageRegistry: ""
+  domain: ""

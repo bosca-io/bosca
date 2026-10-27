@@ -27,6 +27,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "acorn": "8.19.0",
     "esbuild": "^0.28.2"
   },
   "devDependencies": {

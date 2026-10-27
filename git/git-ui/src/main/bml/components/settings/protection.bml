@@ -4,21 +4,21 @@
     bosca.git.ui.RepositoryProtectionModel(page)
   </script>
   <island name="git-repository-protection" :key="page.repository.id">
-    <section class="settings-stack" :data-next-href="model.nextHref">
+    <html:section class="settings-stack" :data-next-href="model.nextHref">
       <if model.message.isNotBlank()>
-        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+        <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
-      <ui-card :padded="false">
-        <ui-section-heading
+      <card :padded="false">
+        <section-heading
           title="Branch protection"
           subtitle="Define review and history requirements for matching branches."
         >
-          <ui-button primary size="sm" icon="plus" data-new-rule @click="model.reset()">
+          <button primary size="sm" icon="plus" data-new-rule @click="model.reset()">
             New rule
-          </ui-button>
-        </ui-section-heading>
+          </button>
+        </section-heading>
         <if model.page.rules.isEmpty()>
-          <ui-empty-state
+          <empty-state
             icon="shield"
             title="No branch protection rules"
             message="Add a rule to require pull requests, reviews or status checks on important branches."
@@ -29,62 +29,62 @@
               <article class="rule-card">
                 <div class="rule-heading">
                   <div class="rule-pattern">
-                    <ui-icon name="shield" />
+                    <icon name="shield" />
                     <code>{ rule.pattern }</code>
                   </div>
                   <div class="toolbar">
-                    <ui-button size="sm" icon="edit" @click="model.edit(rule.id)">
+                    <button size="sm" icon="edit" @click="model.edit(rule.id)">
                       Edit rule
-                    </ui-button>
-                    <ui-confirm-dialog
+                    </button>
+                    <confirm-dialog
                       title="Delete branch protection?"
                       :description='"Protection for branches matching " + rule.pattern + " will be removed."'
                       triggerLabel="Delete"
                     >
                       <form class="modal-form" @submit="model.delete(rule.id, true, ctx)">
                         <footer class="modal-footer">
-                          <ui-button ref="cancel">Cancel</ui-button>
-                          <ui-button type="submit" class="danger">Delete rule</ui-button>
+                          <button ref="cancel">Cancel</button>
+                          <button type="submit" class="danger">Delete rule</button>
                         </footer>
                       </form>
-                    </ui-confirm-dialog>
+                    </confirm-dialog>
                   </div>
                 </div>
                 <div class="rule-badges">
                   <if rule.requirePullRequest>
-                    <ui-badge>Pull request required</ui-badge>
+                    <badge>Pull request required</badge>
                   </if>
                   <if rule.requiredApprovals != 0>
-                    <ui-badge>
+                    <badge>
                       { rule.requiredApprovals.toString() + if (rule.requiredApprovals == 1) " approval" else " approvals" }
-                    </ui-badge>
+                    </badge>
                   </if>
                   <if rule.dismissStaleReviews>
-                    <ui-badge>Dismiss stale reviews</ui-badge>
+                    <badge>Dismiss stale reviews</badge>
                   </if>
                   <if rule.requireCodeOwnerReview>
-                    <ui-badge>Code owner review</ui-badge>
+                    <badge>Code owner review</badge>
                   </if>
                   <if rule.requireLinearHistory>
-                    <ui-badge>Linear history</ui-badge>
+                    <badge>Linear history</badge>
                   </if>
                   <if !rule.allowForcePush>
-                    <ui-badge>No force push</ui-badge>
+                    <badge>No force push</badge>
                   </if>
                   <if !rule.allowDeletion>
-                    <ui-badge>No deletion</ui-badge>
+                    <badge>No deletion</badge>
                   </if>
                   <for check in rule.requireStatusChecks>
-                    <ui-badge>{ check }</ui-badge>
+                    <badge>{ check }</badge>
                   </for>
                 </div>
               </article>
             </for>
           </div>
         </if>
-      </ui-card>
+      </card>
       <if model.editing>
-        <ui-dialog
+        <dialog
           :title='if (model.id.isBlank()) "New branch protection rule" else "Edit branch protection rule"'
           triggerLabel="Continue editing"
           :showTrigger="false"
@@ -98,57 +98,57 @@
           >
             <div class="modal-fields">
               <if model.failed>
-                <ui-alert :tone='if (model.failed) "error" else "success"'>
+                <alert :tone='if (model.failed) "error" else "success"'>
                   { model.message }
-                </ui-alert>
+                </alert>
               </if>
-              <ui-field
+              <field
                 label="Branch pattern"
                 hint="Use a branch name or a pattern, such as release/*."
               >
-                <ui-input name="pattern" :value="model.pattern" placeholder="main" required />
-              </ui-field>
-              <ui-switch
+                <input name="pattern" :value="model.pattern" placeholder="main" required />
+              </field>
+              <switch
                 name="pullRequest"
                 :checked="model.pullRequest"
                 label="Require pull request"
                 description="Changes must be proposed through a pull request."
               />
-              <ui-field label="Required approvals">
-                <ui-input
+              <field label="Required approvals">
+                <input
                   name="approvals"
                   type="number"
                   min="0"
                   :value="model.approvals.toString()"
                   required
                 />
-              </ui-field>
-              <ui-switch
+              </field>
+              <switch
                 name="stale"
                 :checked="model.stale"
                 label="Dismiss stale approvals"
                 description="Request fresh reviews after new commits."
               />
-              <ui-switch
+              <switch
                 name="codeOwner"
                 :checked="model.codeOwner"
                 label="Require code owner approval"
               />
-              <ui-switch name="linear" :checked="model.linear" label="Require linear history" />
-              <ui-switch name="force" :checked="model.force" label="Allow force push" />
-              <ui-switch name="deletion" :checked="model.deletion" label="Allow branch deletion" />
-              <ui-field label="Required status checks" hint="Separate check names with commas.">
-                <ui-input name="checks" :value="model.checks" placeholder="build, test" />
-              </ui-field>
+              <switch name="linear" :checked="model.linear" label="Require linear history" />
+              <switch name="force" :checked="model.force" label="Allow force push" />
+              <switch name="deletion" :checked="model.deletion" label="Allow branch deletion" />
+              <field label="Required status checks" hint="Separate check names with commas.">
+                <input name="checks" :value="model.checks" placeholder="build, test" />
+              </field>
             </div>
             <footer class="modal-footer">
-              <ui-button ref="cancel">Cancel</ui-button>
-              <ui-button type="submit" primary>Save rule</ui-button>
+              <button ref="cancel">Cancel</button>
+              <button type="submit" primary>Save rule</button>
             </footer>
           </form>
-        </ui-dialog>
+        </dialog>
       </if>
-    </section>
+    </html:section>
   </island>
   <style scoped>
     .rule-list {

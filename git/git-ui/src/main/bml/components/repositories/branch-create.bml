@@ -5,7 +5,7 @@
   </script>
   <island name="git-branch-create" :key="model.page.id + model.page.ref">
     <div class="branch-create" :data-next-href="model.nextHref">
-      <ui-dialog
+      <dialog
         title="New Branch"
         triggerLabel="New Branch"
         triggerIcon="plus"
@@ -16,28 +16,28 @@
         <form class="modal-form" @submit="model.create(form.name, form.source, ctx)">
           <div class="modal-fields">
             <if model.failed>
-              <ui-alert :tone='if (model.failed) "error" else "success"'>
+              <alert :tone='if (model.failed) "error" else "success"'>
                 { model.message }
-              </ui-alert>
+              </alert>
             </if>
-            <ui-field label="Branch name">
-              <ui-input
+            <field label="Branch name">
+              <input
                 name="name"
                 :value="model.name"
                 placeholder="feature/new-work"
                 required
               />
-            </ui-field>
-            <ui-field label="Source ref">
-              <ui-input name="source" :value="model.source" required />
-            </ui-field>
+            </field>
+            <field label="Source ref">
+              <input name="source" :value="model.source" required />
+            </field>
           </div>
           <footer class="modal-footer">
-            <ui-button ref="cancel">Cancel</ui-button>
-            <ui-button type="submit" primary>Create branch</ui-button>
+            <button ref="cancel">Cancel</button>
+            <button type="submit" primary>Create branch</button>
           </footer>
         </form>
-      </ui-dialog>
+      </dialog>
     </div>
   </island>
   <style scoped>

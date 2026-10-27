@@ -318,6 +318,10 @@ notifications-web:
 profiles-web:
   enabled: false
 
+# ─── Design Library component catalog ─────────────────────────────────
+bml-design-catalog:
+  enabled: false
+
 # ─── imageprocessor ─────────────────────────────────────────────────
 # Internal-only HTTP image transform service. bosca-server and
 # bosca-runner reach it at http://imageprocessor.<ns>.svc.cluster.local:8003

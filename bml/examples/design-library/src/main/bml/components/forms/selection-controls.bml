@@ -1,0 +1,64 @@
+<component tag="selection-controls">
+  <prop name="id" type="String" required />
+  <script server provides="selection" scope="server-session">bosca.design.example.SelectionState(id)</script>
+  <card title="Search and local views">
+    <island name="selection" :key="id">
+      <div :data-selection="selection.id">
+        <div class="actions">
+          <button @click="selection.update" :data-selection-update="selection.id">Unrelated update</button>
+          <button @click="selection.change" :data-selection-change="selection.id">Change controlled values</button>
+          <button @click="selection.toggleChoices" :data-selection-choices="selection.id">Toggle unavailable choices</button>
+          <button @click="selection.toggleDisabled" :data-selection-disable="selection.id">Toggle disabled search</button>
+          <button @click="selection.toggle" :data-selection-toggle="selection.id">Toggle controls</button>
+        </div>
+        <p :data-selection-updates="selection.id">Updates { selection.updates }</p>
+        <if selection.mounted>
+          <form class="selection-form" :data-selection-form="selection.id" @submit="selection.search(form.q, form.mode)">
+            <search-input :value="selection.query" :disabled="selection.disabled" :autofocus="false"
+                          :label='if (selection.changed) "Changed search label" else "Search components"'
+                          :placeholder='if (selection.changed) "Changed placeholder" else "Find components…"'
+                          :preserveKey='"query-" + selection.id' :data-search-query="selection.id" class="fixture-query" maxlength="120">
+              <icon-button type="submit" icon="search" label="Run search" :disabled="selection.disabled" :data-search-submit="selection.id" />
+            </search-input>
+            <segmented-control label="Search mode" name="mode" :options='listOf(bosca.design.model.SegmentOption("content", if (selection.changed) "Changed content" else "Content", "code"), bosca.design.model.SegmentOption("paths", "Paths", "file", disabled = selection.choicesDisabled))'
+                               :value="selection.mode" :preserveKey='"mode-" + selection.id'
+                               :data-mode="selection.id" class="fixture-mode" @segmentchange="selection.choose(form.mode)" />
+            <button @click="selection.fail(form.q, form.mode)" :data-search-fail="selection.id">Rejected search</button>
+          </form>
+          <p :data-search-result="selection.id">Submitted { selection.submissions }: { selection.result }</p>
+          <if selection.error.isNotBlank()><alert :data-search-error="selection.id">{ selection.error }</alert></if>
+          <view-tabs label="Document view" :tabs='listOf(bosca.design.model.ViewTab("Preview", "Preview"), bosca.design.model.ViewTab("Source", if (selection.changed) "Updated source" else "Source", disabled = selection.choicesDisabled), bosca.design.model.ViewTab("Details", "Details"))' :selected="selection.selected"
+                     :data-bml-preserve='"views-" + selection.id' :data-views="selection.id" class="fixture-views" />
+          <for view in listOf("Preview", "Source", "Details")>
+            <div role="tabpanel" tabindex="0" :aria-label="view" :hidden="selection.selected != view" :data-view-panel="selection.id" :data-view="view"
+                 :data-bml-preserve='"view-panel-" + selection.id + "-" + view'>
+              { view } content for { selection.id }
+            </div>
+          </for>
+          <segmented-control label="Unsaved choice" name="draftMode" :options='listOf(bosca.design.model.SegmentOption("One", "One"), bosca.design.model.SegmentOption("Two", "Two"), bosca.design.model.SegmentOption("Three", "Three"))' value="One"
+                             :preserveKey='"draft-mode-" + selection.id' :data-draft-mode="selection.id" />
+        </if>
+      </div>
+    </island>
+  </card>
+  <script client scoped>
+    const connectPanels = () => {
+      for (const group of ctx.root.querySelectorAll<HTMLElement>("[data-views]")) {
+        for (const tab of group.querySelectorAll<HTMLButtonElement>("[role=tab]")) {
+          const panel = [...ctx.root.querySelectorAll<HTMLElement>("[role=tabpanel]")].find(panel => panel.dataset.view === tab.dataset.tab);
+          if (!panel) continue;
+          if (!tab.id) tab.id = `view-tab-${crypto.randomUUID()}`;
+          if (!panel.id) panel.id = `view-panel-${crypto.randomUUID()}`;
+          tab.setAttribute("aria-controls", panel.id);
+          panel.setAttribute("aria-labelledby", tab.id);
+        }
+      }
+    };
+    ctx.on<CustomEvent<string>>(ctx.root, "viewchange", event => {
+      for (const panel of ctx.root.querySelectorAll<HTMLElement>("[role=tabpanel]")) panel.hidden = panel.dataset.view !== event.detail;
+      ctx.dispatch(selection.chooseView(event.detail));
+    });
+    ctx.onUpdate(connectPanels);
+    connectPanels();
+  </script>
+</component>

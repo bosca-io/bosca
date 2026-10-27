@@ -4,11 +4,11 @@
   <script server provides="attrs">
     props.filterKeys { it !in setOf("icon", "label", "__bmlAttrs") }
   </script>
-  <ui-tooltip :content="label" placement="right">
-    <button class="diff-expander" type="button" :aria-label="label" {...attrs}>
-      <ui-icon :name="icon" :size="13" />
-    </button>
-  </ui-tooltip>
+  <tooltip :content="label" placement="right">
+    <html:button class="diff-expander" type="button" :aria-label="label" {...attrs}>
+      <icon :name="icon" :size="13" />
+    </html:button>
+  </tooltip>
   <style scoped>
     /* Full-width gutter button that reveals hidden unchanged lines. */
     .diff-expander {

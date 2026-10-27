@@ -2,6 +2,7 @@ import { writeFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 const base = process.env.GIT_UI_BASE_URL;
 if (!base) throw Error("Set GIT_UI_BASE_URL to the isolated browser fixture.");
+const foundationPrefix = `bml-${Buffer.from("io.bosca:bml-design").toString("hex")}-`;
 const targets = await (
   await fetch(`${process.env.GIT_UI_CDP_URL}/json`)
 ).json();
@@ -149,7 +150,7 @@ async function openEdit() {
   assert.equal(await ev(`document.activeElement?.name`), "title", "Edit dialog focuses the title");
 }
 async function chooseEditBranch(name) {
-  await click(`${editDialog} [data-bml-component="ui-select"]:has(select[name="${name}"]) [data-bml-ref="trigger"]`);
+  await click(`${editDialog} [data-bml-design-select]:has(select[name="${name}"]) [data-bml-ref="trigger"]`);
   await pressKey("End");
   await pressKey("Enter");
 }
@@ -266,6 +267,26 @@ for (const width of [1920, 1440, 1024, 390]) {
   assert.ok(await ev(`document.querySelector('.comment-form').closest('.diff-file') !== null`), "Line editor appears inside the selected diff");
   assert.ok(await ev(`document.activeElement === document.querySelector('.comment-form textarea')`), "Opening a line comment focuses its field");
   assert.equal(await ev(`document.querySelector('.comment-form textarea').getAttribute('aria-label')`), "Comment on a.txt:1", "The field identifies its selected file and line");
+  const commentLibrary = await ev(`(() => {
+    const field=document.querySelector('.comment-form textarea'), root=field.closest('[data-bml-component]');
+    const before=field.getBoundingClientRect(), style=document.createElement('style');
+    const originalRadius=getComputedStyle(field).borderRadius;
+    style.textContent='.git-comment-field { --bg-1:#eef5f7; --fg-0:#234657; --r-md:9px; }';
+    document.head.append(style);
+    try {
+      const after=field.getBoundingClientRect(), theme=getComputedStyle(field);
+      return {mount:root.dataset.bmlComponent, id:!!field.id&&document.getElementById(field.id)===field,
+        originalRadius, radius:theme.borderRadius, background:theme.backgroundColor, color:theme.color,
+        before:[before.width,before.height],after:[after.width,after.height],native:field.required&&field.name==='body'};
+    } finally { style.remove(); }
+  })()`);
+  assert.equal(commentLibrary.mount, foundationPrefix+'comment-editor');
+  assert.ok(commentLibrary.id&&commentLibrary.native, "The library comment keeps its native identity and form contract");
+  assert.equal(commentLibrary.originalRadius, "6px", "Consumer CSS preserves Git's textarea radius");
+  assert.equal(commentLibrary.radius, "9px");
+  assert.equal(commentLibrary.background, "rgb(238, 245, 247)");
+  assert.equal(commentLibrary.color, "rgb(35, 70, 87)");
+  assert.deepEqual(commentLibrary.after, commentLibrary.before, "Consumer CSS recolors the comment without changing its dimensions");
   assert.ok(await ev(`document.querySelector('.comment-form button[type="submit"]').disabled
     && !document.querySelector('.comment-form select')
     && !document.querySelector('.comment-form [data-bml-component="ui-card"]')`), "Empty comments are disabled without a review picker or nested card");
@@ -294,7 +315,7 @@ for (const width of [1920, 1440, 1024, 390]) {
   assert.equal(await ev(`document.querySelector('.comment-form textarea').value`), "Draft on line one", "Returning to a line restores its draft");
   await click('.inline-thread button[type="submit"]');
   await until(`!document.querySelector('[data-bml-action-pending]')
-    && document.querySelector('[data-bml-component="ui-toast"] [data-bml-ref="message"]').textContent === 'Thread resolved.'`);
+    && document.querySelector('[data-bml-component="${foundationPrefix}toast"] [data-bml-ref="message"]').textContent === 'Thread resolved.'`);
   assert.equal(await ev(`document.querySelector('.comment-form textarea').value`), "Draft on line one", "Unrelated diff updates retain an unsent comment");
   await fillComment(Array.from({ length: 25 }, (_, i) => `Comment line ${i + 1}`).join("\n"));
   assert.equal(await ev(`document.querySelector('.comment-form textarea').getBoundingClientRect().height`), 320, "Long drafts grow within a bounded field");
@@ -306,7 +327,7 @@ for (const width of [1920, 1440, 1024, 390]) {
   await click('.comment-form button[aria-label="Cancel line comment"]');
   await until(`!document.querySelector('.comment-form')`);
 
-  const toast = '[data-bml-component="ui-toast"]';
+  const toast = `[data-bml-component="${foundationPrefix}toast"]`;
   const toastMessage = `${toast} [data-bml-ref="message"]`;
   const toastDismiss = `${toast} button[aria-label="Dismiss notification"]`;
   const resolve = '.inline-thread button[type="submit"]';
@@ -478,7 +499,7 @@ for (const width of [1920, 1440, 1024, 390]) {
   await screenshot("reviews-discussions", width);
   const locationLink = `${discussion} [data-bml-ref="locationLink"]`;
   await ev(`document.querySelector('${locationLink}').focus()`);
-  await until(`document.querySelector('.ui-tooltip:popover-open')?.innerText === 'View discussion on a.txt:1 in Files Changed'`);
+  await until(`document.querySelector('.bosca-tooltip:popover-open')?.innerText === 'View discussion on a.txt:1 in Files Changed'`);
   await click(locationLink);
   await until(`new URL(location.href).searchParams.get('view') === 'files'
     && location.hash === '#discussion-comment' && document.activeElement?.id === 'discussion-comment'`);
@@ -617,7 +638,23 @@ for (const width of [1920, 1440, 1024, 390]) {
   await click('.diff-sidebar button[aria-label="Collapse Test"]');
   await until(`document.querySelector('.diff-sidebar [data-path="Test/.gitkeep"]').hidden`);
   await pressKey("ArrowRight");
-  await until(`document.activeElement?.getAttribute('aria-label') === 'Test/.gitkeep'`);
+  assert.equal(await ev(`document.activeElement.closest('[data-path]').dataset.path`),"Test","Opening keeps focus on the directory");
+  await pressKey("ArrowRight");
+  await until(`document.activeElement === document.querySelector('.diff-sidebar [data-path="Test/.gitkeep"] a')`);
+  assert.deepEqual(await ev(`({label:document.activeElement.getAttribute('aria-label'),
+    title:document.activeElement.title,href:document.activeElement.getAttribute('href'),
+    visible:!document.activeElement.closest('[data-path]').hidden})`),
+    {label:".gitkeep",title:"Test/.gitkeep",href:"#diff-Test%2F.gitkeep",visible:true},
+    "The focused file uses its visible name and retains the exact full path and destination");
+  const focusedFile = await call("Runtime.evaluate", {expression:"document.activeElement"});
+  try {
+    const tree = await call("Accessibility.getPartialAXTree", {objectId:focusedFile.result.objectId,fetchRelatives:false});
+    assert.equal(tree.nodes[0].ignored,false);
+    assert.equal(tree.nodes[0].role.value,"link");
+    assert.equal(tree.nodes[0].name.value,".gitkeep");
+  } finally {
+    await call("Runtime.releaseObject", {objectId:focusedFile.result.objectId});
+  }
   await pressKey("Enter");
   await until(`decodeURIComponent(location.hash) === '#diff-Test/.gitkeep'`);
   await ev(`window.scrollTo(0, 0); document.querySelector('main').scrollTop = 0`);

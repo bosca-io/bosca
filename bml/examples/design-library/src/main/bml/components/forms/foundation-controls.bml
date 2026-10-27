@@ -1,0 +1,35 @@
+<component tag="foundation-controls">
+  <prop name="id" type="String" required />
+  <script server provides="controls" scope="server-session">bosca.design.example.FoundationControls(id)</script>
+  <card title="Foundation controls">
+    <island name="controls" :key="id">
+      <form @submit="controls.save(form.subscription)" :data-foundation-form="controls.id">
+        <checkbox label="Notifications" description="Receive activity updates" name="subscription" value="yes" required
+                  :checked="controls.subscribed" @change="controls.toggleSubscription"
+                  :data-checkbox="controls.id" class="subscription" />
+        <switch label="Enable previews" description="Show previews beside content" name="previews" value="enabled"
+                :checked="controls.enabled" @change="controls.toggleEnabled" :data-switch="controls.id" />
+        <checkbox label="Unavailable" disabled :data-disabled-checkbox="controls.id" />
+        <switch label="Unavailable preview" disabled :data-disabled-switch="controls.id" />
+        <div class="actions"><button type="submit" primary>Save choices</button></div>
+      </form>
+      <alert tone="success" compact :hidden="controls.submissions == 0" :data-feedback="controls.id">
+        Saved { controls.submitted } ({ controls.submissions })
+      </alert>
+      <div class="actions">
+        <badge tone="success" :data-badge="controls.id">Enabled</badge>
+        <badge tone="purple" :data-purple-badge="controls.id">Preview</badge>
+      </div>
+      <loading-state label="Loading records" compact :data-status="controls.id" class="fixture-status" />
+      <empty-state title="No records" message="Create a record to get started">
+        <button size="sm">Create record</button>
+      </empty-state>
+      <table-scroll label="Records" :data-table="controls.id" class="fixture-table" :data-bml-preserve='"foundation-table-" + controls.id'>
+        <table>
+          <thead><tr><th>Name</th><th>Path</th><th>Status</th></tr></thead>
+          <tbody><for index in 1..12><tr><td>Example { index }</td><td><code>content/examples/a-long-record-name-for-horizontal-scrolling.bml</code></td><td>Ready</td></tr></for></tbody>
+        </table>
+      </table-scroll>
+    </island>
+  </card>
+</component>

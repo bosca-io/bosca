@@ -125,19 +125,32 @@ async function releaseRequests() {
     await call("Fetch.continueRequest", { requestId: request.requestId });
   await call("Fetch.disable");
 }
-async function statGeometry() {
+const measurements = [];
+async function measure(state) {
   return ev(`(() => {
-    const bounds = element => {
-      const {x, y, width, height} = element.getBoundingClientRect();
-      return {x, y, width, height};
+    const box = element => {
+      const {top,left,width,height}=element.getBoundingClientRect();
+      return {top,left,width,height};
     };
-    return {
-      summary: bounds(document.querySelector('.repository-summary')),
-      path: bounds(document.querySelector('.path-bar')),
-      tiles: [...document.querySelectorAll('.repository-summary .stat-tile')].map(bounds),
-      values: [...document.querySelectorAll('.repository-summary .stat-value')].map(bounds),
-    };
+    const root=document.querySelector('.repository-summary');
+    return {state:${JSON.stringify(state)}, summary:box(root),
+      path:box(document.querySelector('.path-bar')), tree:box(document.querySelector('.tree-list')),
+      tiles:[...root.querySelectorAll('.stat-tile')].map(box),
+      values:[...root.querySelectorAll('.stat-value')].map(box),
+      labels:[...root.querySelectorAll('.stat-label')].map(element=>element.textContent.trim()),
+      error:root.querySelector('.stats-state') ? box(root.querySelector('.stats-state')) : null};
   })()`);
+}
+function assertStable(before, after, width) {
+  for (const name of ['summary', 'path', 'tree']) {
+    for (const dimension of ['top', 'left', 'width', 'height']) {
+      assert.ok(Math.abs(before[name][dimension] - after[name][dimension]) <= 0.5,
+        `${width}px ${name}.${dimension} moved during ${before.state} → ${after.state}: ${JSON.stringify({before,after})}`);
+    }
+  }
+  assert.equal(after.tiles.length, 5);
+  assert.deepEqual(before.tiles, after.tiles, `The five statistic tiles keep their geometry at ${width}px`);
+  assert.deepEqual(before.values, after.values, `The five statistic values keep their geometry at ${width}px`);
 }
 async function screenshot(state, width) {
   await writeFile(
@@ -152,8 +165,8 @@ for (const width of [1920, 1024, 768, 390]) {
     deviceScaleFactor: 1,
     mobile: width === 390,
   });
-  let loadingGeometry;
   await holdRequests("/_bml/deferred/*git-repository-stats*");
+  let loading, failed, retrying;
   try {
     await nav("/repositories/repo");
     await waitForHeldRequest();
@@ -161,24 +174,8 @@ for (const width of [1920, 1024, 768, 390]) {
       await ev("document.querySelector('.stats-loading').checkVisibility() && !document.querySelector('.stats-retry').checkVisibility() && document.querySelector('.repository-summary [data-bml-deferred]').getAttribute('aria-busy') === 'true'"),
       "Statistics show loading while the rest of the page is usable",
     );
-    assert.deepEqual(
-      await ev("[...document.querySelectorAll('.repository-summary .stat-label')].map(label => label.textContent.trim())"),
-      ["Commits", "Branches", "Tags", "Contributors", "Size"],
-      "Every statistic has its labeled tile before the numbers arrive",
-    );
-    assert.equal(
-      await ev("[...document.querySelectorAll('.stat-skeleton')].filter(skeleton => skeleton.checkVisibility() && skeleton.getAttribute('role') === 'status' && skeleton.getAttribute('aria-label')?.startsWith('Loading ')).length"),
-      5,
-      "Every value has a visible, accessible loading placeholder",
-    );
-    loadingGeometry = await statGeometry();
-    await screenshot("loading", width);
-    await call("Emulation.setEmulatedMedia", {features: [{name: "prefers-reduced-motion", value: "reduce"}]});
-    assert.ok(
-      await ev("[...document.querySelectorAll('.stat-skeleton')].every(skeleton => getComputedStyle(skeleton).animationName === 'none')"),
-      "Loading placeholders respect reduced motion",
-    );
-    await call("Emulation.setEmulatedMedia", {features: []});
+    loading = await measure('loading');
+    await screenshot('loading', width);
     for (const request of pausedRequests.splice(0)) {
       await call("Fetch.fulfillRequest", {
         requestId: request.requestId,
@@ -186,20 +183,13 @@ for (const width of [1920, 1024, 768, 390]) {
         body: btoa("Statistics temporarily unavailable"),
       });
     }
-    await until("document.querySelector('.stats-state .stats-error').checkVisibility() && document.querySelector('.stats-retry').checkVisibility()");
+    await until("document.querySelector('.stats-error').checkVisibility() && document.querySelector('.stats-retry').checkVisibility()");
     assert.ok(
       await ev("!document.querySelector('.stats-loading').checkVisibility()"),
       "Failed statistics stop showing the loading label",
     );
-    assert.deepEqual(await statGeometry(), loadingGeometry, "Failed statistics keep the tiles and following content in place");
-    const errorLayout = await ev(`(() => {
-      const error = document.querySelector('.stats-state').getBoundingClientRect();
-      const path = document.querySelector('.path-bar').getBoundingClientRect();
-      return {left: error.left, right: error.right, bottom: error.bottom, pathTop: path.top};
-    })()`);
-    assert.ok(errorLayout.left >= 0 && errorLayout.right <= width && errorLayout.bottom <= errorLayout.pathTop,
-      `The error and retry fit between the tiles and repository path: ${JSON.stringify(errorLayout)}`);
-    await screenshot("error", width);
+    failed = await measure('failed');
+    await screenshot('failed', width);
   } finally {
     await releaseRequests();
   }
@@ -207,8 +197,9 @@ for (const width of [1920, 1024, 768, 390]) {
   try {
     await ev("document.querySelector('.stats-retry').click()");
     await waitForHeldRequest();
-    assert.ok(await ev("document.querySelector('.stats-loading').checkVisibility() && !document.querySelector('.stats-retry').checkVisibility()"));
-    assert.deepEqual(await statGeometry(), loadingGeometry, "Retry restores placeholders without moving the page");
+    retrying = await measure('retrying');
+    assert.ok(await ev("document.querySelector('.stats-loading').checkVisibility() && !document.querySelector('.stats-retry').checkVisibility()"),
+      'Retry returns to the loading placeholders');
   } finally {
     await releaseRequests();
   }
@@ -218,8 +209,44 @@ for (const width of [1920, 1024, 768, 390]) {
     ["2", "2", "1", "1", "1.0 KB"],
     "Retry replaces the statistics error with the loaded summary",
   );
-  assert.deepEqual(await statGeometry(), loadingGeometry, "Loaded numbers keep every tile, value slot and following content at its original size and position");
   assert.ok(await ev("!document.querySelector('.stats-error') && !document.querySelector('.stat-skeleton') && !document.querySelector('.repository-summary [data-bml-deferred]').hasAttribute('aria-busy')"));
+  const loaded = await measure('loaded');
+  measurements.push({width, states:[loading,failed,retrying,loaded]});
+  await writeFile(`${process.env.GIT_UI_ARTIFACT_DIR}/statistics-geometry.json`, JSON.stringify(measurements,null,2));
+  for (const state of [failed,retrying,loaded]) assertStable(loading,state,width);
+  assert.deepEqual(loading.labels, ['Commits','Branches','Tags','Contributors','Size']);
+  assert.deepEqual(loading.labels, loaded.labels);
+  assert.ok(failed.error.top >= failed.summary.top &&
+    failed.error.top + failed.error.height <= failed.summary.top + failed.summary.height + 0.5,
+    'The error and retry controls fit inside the reserved summary');
+
+  // Also measure the ordinary success path, with no preceding error or user action.
+  await holdRequests("/_bml/deferred/*git-repository-stats*");
+  let pendingSuccess;
+  try {
+    await nav("/repositories/repo");
+    await waitForHeldRequest();
+    pendingSuccess = await measure('loading-success');
+    const placeholders = await ev(`[...document.querySelectorAll('.stat-skeleton')].map(element=>({
+      label:element.getAttribute('aria-label'),role:element.getAttribute('role'),
+      visible:element.checkVisibility({opacityProperty:true}),
+      animation:getComputedStyle(element).animationName,
+    }))`);
+    assert.deepEqual(placeholders.map(item=>item.label),
+      ['Loading commits','Loading branches','Loading tags','Loading contributors','Loading size']);
+    assert.ok(placeholders.every(item=>item.role==='status' && item.visible && item.animation==='stat-pulse'));
+    await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+    assert.ok(await ev("[...document.querySelectorAll('.stat-skeleton')].every(element=>getComputedStyle(element).animationName==='none')"),
+      'Loading placeholders respect reduced motion');
+    await call('Emulation.setEmulatedMedia',{features:[]});
+  } finally {
+    await releaseRequests();
+  }
+  await until("document.querySelector('.repository-summary [data-bml-deferred]')?.dataset.bmlDeferredState==='loaded'");
+  const success = await measure('success');
+  assertStable(pendingSuccess,success,width);
+  measurements.at(-1).states.push(pendingSuccess,success);
+  await writeFile(`${process.env.GIT_UI_ARTIFACT_DIR}/statistics-geometry.json`, JSON.stringify(measurements,null,2));
 
   const geometry = await ev(`(() => {
     const header = document.querySelector('.repository-heading').getBoundingClientRect();
@@ -230,8 +257,8 @@ for (const width of [1920, 1024, 768, 390]) {
   assert.ok(geometry.left >= 0 && geometry.right <= width + 1 && geometry.scroll <= width + 1,
     `Statistics fit the viewport: ${JSON.stringify(geometry)}`);
   if (width >= 1024) assert.ok(Math.abs(geometry.right - geometry.headerRight) <= 1);
-  await screenshot("loaded", width);
-  console.log(`Statistics loading, failure, retry and layout passed at ${width}px`);
+  await screenshot('loaded', width);
+  console.log(`Statistics loading, failure, retry and success keep stable geometry at ${width}px`);
 }
 assert.deepEqual(graphqlRequests, [], "Server-rendered data pages do not refetch browser identity");
 assert.deepEqual(errors, [], "Statistics raised browser exceptions");

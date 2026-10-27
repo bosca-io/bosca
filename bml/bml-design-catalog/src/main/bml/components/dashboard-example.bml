@@ -1,0 +1,38 @@
+<component tag="dashboard-example">
+  <prop name="id" type="String" required />
+  <prop name="title" type="String" required />
+  <script server provides="dashboard" scope="server-session">bosca.design.catalog.CatalogDashboard(id)</script>
+  <card :title="title"><island name="dashboard" :key="id"><div class="catalog-stack" :data-catalog-dashboard="dashboard.id">
+    <form class="example-form" :data-dashboard-form="dashboard.id" @submit="dashboard.save(form.layout)">
+      <if dashboard.visible>
+        <dashboard-grid :id='"dashboard-" + dashboard.id' :label='dashboard.id + " dashboard"' :value="dashboard.value"
+          :readOnly="dashboard.readOnly" :disabled="dashboard.disabled" :error="dashboard.error"
+          :lockedIds='if (dashboard.locked) setOf("summary") else emptySet()' :preserveKey='"dashboard-" + dashboard.id'>
+          <dashboard-item itemId="visits" label="Visits">
+            <chart :id='"dashboard-chart-" + dashboard.id' :label='dashboard.id + " dashboard visits"' :config='bosca.design.catalog.CatalogChart.configuration("bar")' />
+          </dashboard-item>
+          <dashboard-item itemId="notes" label="Notes"><div class="catalog-stack">
+            <p class="catalog-description">Keep your widget content and actions in BML. Moving or resizing keeps unsaved input and the chart canvas.</p>
+            <field label="Dashboard note"><input name="note" label="Dashboard note" value="Review this week" /></field>
+            <a class="catalog-link" href="/charts">Chart examples</a>
+          </div></dashboard-item>
+          <dashboard-item itemId="summary" label="Summary"><p class="catalog-description">The application chooses which widgets are locked. Use Lock summary in Example states to change this widget.</p></dashboard-item>
+        </dashboard-grid>
+      </if>
+      <div class="example-actions"><button type="submit" size="sm" :disabled="dashboard.disabled || !dashboard.visible">Save layout</button><button type="reset" size="sm">Reset layout</button></div>
+    </form>
+    <details data-example-states><disclosure-heading>Example states</disclosure-heading><div class="catalog-stack visualization-states">
+      <switch label="Read only" :checked="dashboard.readOnly" @change="dashboard.toggleReadOnly" data-dashboard-readonly />
+      <switch label="Disabled" :checked="dashboard.disabled" @change="dashboard.toggleDisabled" data-dashboard-disabled />
+      <switch label="Reject save" :checked="dashboard.reject" @change="dashboard.toggleRejection" data-dashboard-reject />
+      <switch label="Lock summary" :checked="dashboard.locked" @change="dashboard.toggleLocked" data-dashboard-locked />
+      <switch label="Show dashboard" :checked="dashboard.visible" @change="dashboard.toggleVisible" data-dashboard-visible />
+      <div class="example-actions"><button size="sm" @click="dashboard.refresh" data-dashboard-refresh>Refresh example</button><button size="sm" @click="dashboard.replace" data-dashboard-replace>Replace layout</button></div>
+    </div></details>
+    <toast :id='"dashboard-notice-" + dashboard.id' :message="dashboard.notice" :sequence="dashboard.noticeSequence" :data-dashboard-toast="dashboard.id" />
+  </div></island></card>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+  </script>
+</component>

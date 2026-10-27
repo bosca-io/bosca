@@ -1,0 +1,641 @@
+/* Original Bosca Geist/Geist Mono subsets; OFL notice: META-INF/licenses/bml-design/geist.txt. */
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./fonts/geist-v5-gyByhwUxId8gMEwRGFWNOITddY4.woff2)
+    format("woff2");
+  unicode-range:
+    U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./fonts/geist-v5-gyByhwUxId8gMEwYGFWNOITddY4.woff2)
+    format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./fonts/geist-v5-gyByhwUxId8gMEwTGFWNOITddY4.woff2)
+    format("woff2");
+  unicode-range:
+    U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1,
+    U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329,
+    U+1EA0-1EF9, U+20AB;
+}
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./fonts/geist-v5-gyByhwUxId8gMEwSGFWNOITddY4.woff2)
+    format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./fonts/geist-v5-gyByhwUxId8gMEwcGFWNOITd.woff2) format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./fonts/geistmono-v6-or3nQ6H-1_WfwkMZI_qYFrodmhHkjkotbA.woff2)
+    format("woff2");
+  unicode-range:
+    U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./fonts/geistmono-v6-or3nQ6H-1_WfwkMZI_qYFrMdmhHkjkotbA.woff2)
+    format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./fonts/geistmono-v6-or3nQ6H-1_WfwkMZI_qYFg08vz7MhEIVVeA.woff2)
+    format("woff2");
+  unicode-range: U+2000-2001, U+2004-2008, U+200A, U+23B8-23BD, U+2500-259F;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./fonts/geistmono-v6-or3nQ6H-1_WfwkMZI_qYFrgdmhHkjkotbA.woff2)
+    format("woff2");
+  unicode-range:
+    U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1,
+    U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329,
+    U+1EA0-1EF9, U+20AB;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./fonts/geistmono-v6-or3nQ6H-1_WfwkMZI_qYFrkdmhHkjkotbA.woff2)
+    format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./fonts/geistmono-v6-or3nQ6H-1_WfwkMZI_qYFrcdmhHkjko.woff2)
+    format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+/* Consumer CSS loads after these defaults. Document layout belongs to the application. */
+:where(:root) {
+  --bg-0: #0a0c12;
+  --bg-1: #10131c;
+  --bg-2: #161a25;
+  --bg-3: #1d2230;
+  --line: #232839;
+  --line-2: #2e3447;
+  --fg-0: #f3f5fb;
+  --fg-1: #cdd2e2;
+  --fg-2: #969cb1;
+  --fg-3: #6c7388;
+  --fg-4: #454b60;
+  --accent: #64748b;
+  --on-accent: #fff;
+  --shadow-color: #000;
+  --backdrop-color: #000;
+  --control-height-md: 32px;
+  --control-height-sm: 30px;
+  --control-height-xs: 24px;
+  --control-gap: 6px;
+  --focus-width: 2px;
+  --focus-offset: 3px;
+  --err: #ff5470;
+  --ok: #34d99a;
+  --warn: #ffb547;
+  --info: #5ec5ff;
+  --purple: #a78bff;
+  --r-sm: 9px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --mark-top: #5ec5ff;
+  --mark-right: #79d3ff;
+  --mark-left: #409dcc;
+  --font-sans: "Geist", "Inter", -apple-system, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* Projected table children belong to the caller; these rules stay under the library wrapper. */
+[data-bml-design-table] table {
+  border-collapse: collapse;
+  min-width: 100%;
+  width: max-content;
+}
+[data-bml-design-table] th,
+[data-bml-design-table] td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+[data-bml-design-table] td {
+  overflow-wrap: normal;
+  font-size: 12.5px;
+  color: var(--fg-1);
+}
+[data-bml-design-table] th,
+[data-bml-design-table] button,
+[data-bml-design-table] code {
+  white-space: nowrap;
+}
+[data-bml-design-table] th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-3);
+  background: transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+[data-bml-design-table] code {
+  font-family: var(--font-mono);
+}
+[data-bml-design-table] tbody tr:hover {
+  background: color-mix(in oklch, var(--bg-3) 40%, transparent);
+}
+[data-bml-design-table] tr:last-child td {
+  border-bottom: 0;
+}
+
+.bosca-tooltip {
+  box-sizing: border-box;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-width: min(280px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: 4px 8px;
+  border: 1px solid var(--tooltip-border, var(--line-2));
+  border-radius: 6px;
+  background: var(--tooltip-bg, var(--bg-3));
+  color: var(--tooltip-fg, var(--fg-0));
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  box-shadow: var(--tooltip-shadow, 0 4px 12px color-mix(in srgb, var(--shadow-color) 33.3333333333%, transparent));
+  pointer-events: auto;
+  cursor: default;
+}
+
+/* Projected menu entries cross component scopes and retain native actions and links. */
+[data-bml-design-popover-content] [role="menu"] {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+[data-bml-design-popover-content] [role="menu"] :is(button, a)[role="menuitem"] {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-height-md);
+  height: auto;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--fg-1);
+  font: 500 12.5px/18px var(--font-sans);
+  text-align: left;
+  text-decoration: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+[data-bml-design-popover-content] [role="menu"] [role="menuitem"]:hover:not(:disabled) {
+  background: var(--bg-2);
+}
+[data-bml-design-popover-content] [role="menu"] [role="menuitem"]:focus-visible {
+  outline: var(--focus-width) solid var(--accent);
+  outline-offset: 0;
+}
+[data-bml-design-popover-content] [role="menu"] [role="menuitem"]:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+[data-bml-design-popover-content] [role="menu"] [role="menuitem"].danger {
+  color: var(--err);
+}
+[data-bml-design-popover-content] [role="menu"] .button-content {
+  justify-content: flex-start;
+  gap: 8px;
+}
+[data-bml-design-popover-content] [role="menu"] :is(.menu-icon, .button-icon) {
+  display: inline-flex;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  color: inherit;
+}
+[data-bml-design-popover-content] [role="menu"] :is(.menu-icon, .button-icon) > svg {
+  width: 16px;
+  height: 16px;
+}
+[data-bml-design-popover-content] .menu-icon[hidden] {
+  display: none !important;
+}
+[data-bml-design-popover-content] .menu-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px 8px 12px;
+}
+[data-bml-design-popover-content] .menu-heading :is(strong, span) {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+[data-bml-design-popover-content] .menu-heading strong {
+  color: var(--fg-0);
+  font: 600 13px/18px var(--font-sans);
+}
+[data-bml-design-popover-content] .menu-heading span {
+  color: var(--fg-2);
+  font: 400 11.5px/16px var(--font-sans);
+}
+[data-bml-design-popover-content] .menu-heading + [role="menu"] {
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+/* Projected modal forms cross component scopes and keep a scrolling body above a fixed footer. */
+[data-bml-design-dialog-panel] .modal-form {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+}
+/* Footer-only wrappers retain their actions' intrinsic height beside a scrolling description. */
+[data-bml-design-dialog-panel] .modal-form:has(> .modal-footer:only-child) {
+  flex: none;
+}
+[data-bml-design-dialog-panel] .modal-fields {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  overflow: auto;
+  min-height: 0;
+}
+[data-bml-design-dialog-panel] .modal-footer {
+  box-sizing: border-box;
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-2);
+}
+[data-bml-design-dialog-panel] .modal-fields > label:not(.field) {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Select options and tags are created by the component helper and inherit the owning theme. */
+[data-bml-design-select] .select-options > [role="option"] {
+  padding: 7px 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  border-radius: 6px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+[data-bml-design-select] .select-options > [data-highlighted] { background: var(--bg-3); }
+[data-bml-design-select] .select-options > [aria-selected="true"] {
+  color: var(--fg-0);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
+}
+[data-bml-design-select] .select-options > [aria-disabled="true"] { opacity: 0.35; cursor: not-allowed; }
+[data-bml-design-select] .select-tag {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
+  font-size: 11px;
+}
+[data-bml-design-select] .select-tag > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-bml-design-select] .select-tag button {
+  flex: none;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-2);
+  font: inherit;
+  cursor: pointer;
+}
+[data-bml-design-select] .select-tag button:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
+[data-bml-design-select] .select-tag button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Public projected-content layout hooks, including caller-owned forms and islands. */
+.workspace-content,
+[data-bml-workspace] > [data-bml-island] {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.workspace-fixed { flex: none; min-width: 0; }
+.workspace-scroll { flex: 1; min-height: 0; min-width: 0; overflow: auto; }
+:is(.workspace-content, .workspace-fixed, .workspace-scroll, [data-bml-workspace], [data-bml-fullscreen-button])[hidden] {
+  display: none !important;
+}
+
+/* Responsive shell regions style projected application navigation and profile controls. */
+[data-bml-app-shell] .shell-subsystem {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  margin: 0 6px;
+  padding: 12px 33px 12px 9px;
+  border-radius: 10px;
+}
+[data-bml-app-shell] .shell-subsystem-icon {
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 18%, transparent);
+  border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent);
+}
+[data-bml-app-shell] .shell-subsystem-text {
+  min-width: 0;
+}
+[data-bml-app-shell] .shell-subsystem strong {
+  display: block;
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--fg-0);
+  letter-spacing: -0.005em;
+}
+[data-bml-app-shell] .shell-subsystem p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--fg-3);
+}
+
+[data-bml-app-shell] .shell-navigation {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0;
+  line-height: 16px;
+}
+/* Block flow lets adjacent item margins collapse, as Studio's nav buttons do. */
+[data-bml-app-shell] .shell-group {
+  display: block;
+  margin-bottom: 14px;
+}
+[data-bml-app-shell] .shell-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 16px 6px;
+  font-size: 10px;
+  line-height: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+[data-bml-app-shell] .shell-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--fg-3);
+}
+[data-bml-app-shell] .shell-settings summary {
+  cursor: pointer;
+  list-style: none;
+}
+[data-bml-app-shell] .shell-settings summary::-webkit-details-marker {
+  display: none;
+}
+[data-bml-app-shell] .shell-settings summary:hover {
+  color: var(--fg-1);
+}
+[data-bml-app-shell] .shell-chevron {
+  display: inline-flex;
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+}
+[data-bml-app-shell] .shell-settings[open] .shell-chevron {
+  transform: rotate(0deg);
+}
+[data-bml-app-shell] .shell-footer {
+  margin-top: auto;
+  padding: 16px 12px 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-bml-app-shell] .shell-chevron {
+    transition: none;
+  }
+}
+@media (max-width: 700px) {
+  [data-bml-app-shell] .shell-subsystem {
+    display: none;
+  }
+  [data-bml-app-shell] .shell-navigation {
+    flex-direction: row;
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    padding: 0 0 8px;
+    gap: 4px;
+  }
+  [data-bml-app-shell] .shell-group {
+    display: flex;
+    flex-direction: row;
+    flex: none;
+    gap: 4px;
+    margin: 0;
+  }
+  [data-bml-app-shell] .shell-settings[open] {
+    position: relative;
+  }
+  [data-bml-app-shell] .shell-label {
+    display: none;
+  }
+  [data-bml-app-shell] .shell-settings summary.shell-label {
+    display: flex;
+    padding: 7px 10px;
+    white-space: nowrap;
+  }
+  [data-bml-app-shell] .shell-footer {
+    margin: 0 0 0 auto;
+    padding: 0;
+  }
+}
+
+/* Navigation includes links rendered by projected child components. */
+[data-bml-app-shell] .shell-navigation a {
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 24px);
+  margin: 1px 12px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  color: var(--fg-2);
+  font-size: 13px;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+[data-bml-app-shell] .shell-navigation a:hover {
+  background: var(--bg-3);
+}
+[data-bml-app-shell] .shell-navigation a[aria-current="page"] {
+  color: var(--fg-0);
+  background: color-mix(in oklch, var(--accent) 16%, transparent);
+  font-weight: 500;
+}
+[data-bml-app-shell] .shell-navigation a[aria-current="page"] .shell-icon {
+  color: var(--accent);
+}
+[data-bml-app-shell] .shell-navigation a[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 5px;
+  bottom: 5px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+@media (max-width: 700px) {
+  [data-bml-app-shell] .app-header .brand {
+    flex: 0 0 120px;
+  }
+  [data-bml-app-shell] .shell-navigation a {
+    box-sizing: border-box;
+    width: auto;
+    margin: 0;
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: 7px 10px;
+  }
+  [data-bml-app-shell] .shell-navigation a[aria-current="page"]::before {
+    display: none;
+  }
+}
+
+[data-bml-app-shell] .shell-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  background: transparent;
+}
+[data-bml-app-shell] .shell-main > [data-bml-island] {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+[data-bml-design-profile-menu] > .profile-popover > summary {
+  width: 100%;
+  height: 42px;
+  gap: 10px;
+  border-color: transparent;
+  background: transparent;
+  line-height: 18px;
+}
+[data-bml-design-profile-menu] > .profile-popover > summary:hover {
+  background: var(--bg-2);
+}
+[data-bml-design-profile-menu] > .profile-popover > summary > svg {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  color: var(--fg-1);
+}

@@ -1,0 +1,103 @@
+<page route="/components">
+  <catalog-document title="Components" description="Public APIs and rendered examples for all 51 library exports." current="/components">
+    <p class="page-intro">Import the library once. Use short component names throughout your application, then set colors in your own CSS.</p>
+    <pre class="code-sample" role="group" tabindex="0" aria-label="Library import"><code>&lt;import library="io.bosca:bml-design" /&gt;</code></pre>
+    <div class="catalog-grid">
+      <card title="Controls">
+        <div class="catalog-stack">
+          <p class="catalog-description">Native inputs, buttons and local selection.</p>
+          <ul class="reference-index">
+            <li><a href="/components/controls#ref-button" data-export-link="button"><code>button</code></a></li>
+            <li><a href="/components/controls#ref-input" data-export-link="input"><code>input</code></a></li>
+            <li><a href="/components/controls#ref-field" data-export-link="field"><code>field</code></a></li>
+            <li><a href="/components/controls#ref-checkbox" data-export-link="checkbox"><code>checkbox</code></a></li>
+            <li><a href="/components/controls#ref-switch" data-export-link="switch"><code>switch</code></a></li>
+            <li><a href="/components/controls#ref-icon-button" data-export-link="icon-button"><code>icon-button</code></a></li>
+            <li><a href="/components/controls#ref-icon-link" data-export-link="icon-link"><code>icon-link</code></a></li>
+            <li><a href="/components/controls#ref-search-input" data-export-link="search-input"><code>search-input</code></a></li>
+            <li><a href="/components/controls#ref-segmented-control" data-export-link="segmented-control"><code>segmented-control</code></a></li>
+            <li><a href="/components/controls#ref-view-tabs" data-export-link="view-tabs"><code>view-tabs</code></a></li>
+            <li><a href="/components/controls#ref-select" data-export-link="select"><code>select</code></a></li>
+          </ul>
+        </div>
+      </card>
+      <card title="Layout and navigation">
+        <div class="catalog-stack">
+          <p class="catalog-description">Surfaces, headings and caller-owned destinations.</p>
+          <ul class="reference-index">
+            <li><a href="/components/layout#ref-card" data-export-link="card"><code>card</code></a></li>
+            <li><a href="/components/layout#ref-page-shell" data-export-link="page-shell"><code>page-shell</code></a></li>
+            <li><a href="/components/layout#ref-workspace" data-export-link="workspace"><code>workspace</code></a></li>
+            <li><a href="/components/layout#ref-fullscreen-button" data-export-link="fullscreen-button"><code>fullscreen-button</code></a></li>
+            <li><a href="/components/layout#ref-panel" data-export-link="panel"><code>panel</code></a></li>
+            <li><a href="/components/layout#ref-section" data-export-link="section"><code>section</code></a></li>
+            <li><a href="/components/layout#ref-page-heading" data-export-link="page-heading"><code>page-heading</code></a></li>
+            <li><a href="/components/layout#ref-section-heading" data-export-link="section-heading"><code>section-heading</code></a></li>
+            <li><a href="/components/layout#ref-disclosure-heading" data-export-link="disclosure-heading"><code>disclosure-heading</code></a></li>
+            <li><a href="/components/layout#ref-app-header" data-export-link="app-header"><code>app-header</code></a></li>
+            <li><a href="/components/layout#ref-app-shell" data-export-link="app-shell"><code>app-shell</code></a></li>
+            <li><a href="/components/layout#ref-profile" data-export-link="profile"><code>profile</code></a></li>
+            <li><a href="/components/layout#ref-profile-menu" data-export-link="profile-menu"><code>profile-menu</code></a></li>
+            <li><a href="/components/layout#ref-tabs" data-export-link="tabs"><code>tabs</code></a></li>
+          </ul>
+        </div>
+      </card>
+      <card title="Feedback and utilities">
+        <div class="catalog-stack">
+          <p class="catalog-description">Status, identity, copying and notifications.</p>
+          <ul class="reference-index">
+            <li><a href="/components/feedback#ref-alert" data-export-link="alert"><code>alert</code></a></li>
+            <li><a href="/components/feedback#ref-badge" data-export-link="badge"><code>badge</code></a></li>
+            <li><a href="/components/feedback#ref-empty-state" data-export-link="empty-state"><code>empty-state</code></a></li>
+            <li><a href="/components/feedback#ref-loading-state" data-export-link="loading-state"><code>loading-state</code></a></li>
+            <li><a href="/components/feedback#ref-spinner" data-export-link="spinner"><code>spinner</code></a></li>
+            <li><a href="/components/feedback#ref-icon" data-export-link="icon"><code>icon</code></a></li>
+            <li><a href="/components/feedback#ref-bosca-mark" data-export-link="bosca-mark"><code>bosca-mark</code></a></li>
+            <li><a href="/components/feedback#ref-tooltip" data-export-link="tooltip"><code>tooltip</code></a></li>
+            <li><a href="/components/feedback#ref-copy" data-export-link="copy"><code>copy</code></a></li>
+            <li><a href="/components/feedback#ref-copy-field" data-export-link="copy-field"><code>copy-field</code></a></li>
+            <li><a href="/components/feedback#ref-toast" data-export-link="toast"><code>toast</code></a></li>
+            <li><a href="/components/feedback#ref-time" data-export-link="time"><code>time</code></a></li>
+          </ul>
+        </div>
+      </card>
+      <card title="Dialogs and popovers">
+        <div class="catalog-stack">
+          <p class="catalog-description">Modal forms, a rejected confirmation and native disclosures.</p>
+          <ul class="reference-index">
+            <li><a href="/components/overlays#ref-dialog" data-export-link="dialog"><code>dialog</code></a></li>
+            <li><a href="/components/overlays#ref-confirm-dialog" data-export-link="confirm-dialog"><code>confirm-dialog</code></a></li>
+            <li><a href="/components/overlays#ref-popover" data-export-link="popover"><code>popover</code></a></li>
+          </ul>
+        </div>
+      </card>
+      <card title="Content and editors">
+        <div class="catalog-stack">
+          <p class="catalog-description">Tables, keyboard trees, comments and structured content.</p>
+          <ul class="reference-index">
+            <li><a href="/components/content#ref-table-scroll" data-export-link="table-scroll"><code>table-scroll</code></a></li>
+            <li><a href="/components/content#ref-tree" data-export-link="tree"><code>tree</code></a></li>
+            <li><a href="/components/content#ref-tree-item" data-export-link="tree-item"><code>tree-item</code></a></li>
+            <li><a href="/components/content#ref-comment-editor" data-export-link="comment-editor"><code>comment-editor</code></a></li>
+            <li><a href="/components/content#ref-json-editor" data-export-link="json-editor"><code>json-editor</code></a></li>
+            <li><a href="/components/content#ref-source-view" data-export-link="source-view"><code>source-view</code></a></li>
+            <li><a href="/components/content#ref-document-editor" data-export-link="document-editor"><code>document-editor</code></a></li>
+          </ul>
+        </div>
+      </card>
+    </div>
+    <card title="Dashboards, flows and charts"><div class="catalog-stack"><p class="catalog-description">Dashboard layouts, diagrams and analytics visualization.</p><ul class="reference-index">
+      <li><a href="/components/visualization#ref-dashboard-grid" data-export-link="dashboard-grid"><code>dashboard-grid</code></a></li>
+      <li><a href="/components/visualization#ref-dashboard-item" data-export-link="dashboard-item"><code>dashboard-item</code></a></li>
+      <li><a href="/components/visualization#ref-flow-editor" data-export-link="flow-editor"><code>flow-editor</code></a></li>
+      <li><a href="/components/visualization#ref-chart" data-export-link="chart"><code>chart</code></a></li>
+    </ul></div></card>
+    <card title="Optional aliases">
+      <div class="catalog-stack">
+        <p class="catalog-description">Use an alias when you want an explicit name for a collision. Normal examples use the root unaliased import.</p>
+        <pre class="code-sample" role="group" tabindex="0" aria-label="Aliased import"><code>&lt;import library="io.bosca:bml-design" as="design" /&gt;&#10;&lt;design:button&gt;Save&lt;/design:button&gt;</code></pre>
+        <a class="catalog-link" href="/components/aliases">Open the compiled alias example</a>
+      </div>
+    </card>
+  </catalog-document>
+</page>

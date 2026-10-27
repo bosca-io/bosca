@@ -1,0 +1,38 @@
+<component tag="workspace">
+  <prop name="label" type="String" required />
+  <prop name="framed" type="Boolean" default="false" />
+  <html:section :class='"workspace" + (if (framed) " workspace-framed" else "")'
+                :aria-label="label" data-bml-workspace {...attrs}>
+    <slot />
+  </html:section>
+  <style scoped>
+    .workspace {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .workspace-framed {
+      border: 1px solid var(--line);
+      border-radius: var(--workspace-radius, var(--r-sm, 9px));
+      background: var(--workspace-bg, var(--bg-1));
+    }
+    .workspace[data-bml-workspace-expanded] {
+      position: fixed;
+      inset: 0;
+      z-index: var(--workspace-z-index, 80);
+      width: 100%;
+      height: 100dvh;
+      border: 0;
+      border-radius: 0;
+      background: var(--workspace-fullscreen-bg, var(--bg-1));
+    }
+  </style>
+  <script client scoped>
+    import { mountWorkspace } from "@client/helpers/workspace";
+    mountWorkspace(ctx);
+  </script>
+</component>

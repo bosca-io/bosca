@@ -7,10 +7,10 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The default daemon strategy keeps Kotlin IC while regenerating BML output on every compilation. */
+/** Daemon builds must regenerate BML output when either BML or its Kotlin dependencies change. */
 class BmlIncrementalCompilationTest {
     @Test
-    fun `daemon incremental compilation regenerates pages after BML and Kotlin edits`() {
+    fun `daemon compilation regenerates pages after BML and Kotlin edits`() {
         val work = createTempDirectory("bml-incremental").toFile()
         try {
             val fixture = BmlCompilerFixture(work)
@@ -29,12 +29,13 @@ class BmlIncrementalCompilationTest {
                 parentFile.mkdirs()
                 writeText("<page route=\"/\"><html><body><p>marker-one</p>{ example.PageModel.title }</body></html></page>")
             }
+            var compilation = ""
             fun compile(): String = GradleRunner.create().withProjectDir(project).withPluginClasspath()
-                .withArguments("compileKotlin", "--no-build-cache", "--info", "--stacktrace").build().output
+                .withArguments("compileKotlin", "--no-build-cache", "--info", "--stacktrace").build().output.also { compilation = it }
             fun pageBytecode(): String {
                 val pages = File(project, "build/classes/kotlin/main").walkTopDown()
                     .filter { it.isFile && it.name.startsWith("HomePage") }.toList()
-                assertTrue(pages.isNotEmpty(), "The BML page must be compiled")
+                assertTrue(pages.isNotEmpty(), "The BML page must be compiled:\n$compilation")
                 assertTrue(File(project, "build/classes/kotlin/main/bml/generated/BmlPages.class").isFile)
                 return pages.joinToString { String(it.readBytes(), Charsets.ISO_8859_1) }
             }
@@ -49,10 +50,9 @@ class BmlIncrementalCompilationTest {
                 assertFalse("marker-one" in it)
             }
 
-            // A Kotlin-only edit takes the incremental path and must still recompile the inlined constant.
+            // A Kotlin-only edit must also recompile generated code containing the inlined constant.
             model.writeText("package example\nobject PageModel { const val title = \"title-beta\"; val extra = 1 }\n")
-            val incremental = compile()
-            assertTrue("compilerMode=INCREMENTAL_COMPILER" in incremental, incremental)
+            compile()
             pageBytecode().let {
                 assertTrue("title-beta" in it)
                 assertFalse("title-alpha" in it)

@@ -1,0 +1,24 @@
+<component tag="source-controls">
+  <prop name="id" type="String" required />
+  <script server provides="source" scope="server-session">bosca.design.example.SourceViewState(id)</script>
+  <card :title='"Source " + id'>
+    <island name="source" :key="id">
+      <div :data-source-owner="source.id">
+        <div class="actions">
+          <button @click="source.update" :data-source-update="source.id">Update { source.updates }</button>
+          <button @click="source.requestLine" :data-source-line="source.id">Show line 50</button>
+          <button @click="source.toggleWrapping" :data-source-wrap="source.id">Toggle server wrapping</button>
+          <button @click="source.toggleLanguage" :data-source-language="source.id">Toggle language</button>
+          <button @click="source.replace" :data-source-replace="source.id">Replace source</button>
+          <button @click="source.toggle" :data-source-toggle="source.id">Toggle viewer</button>
+        </div>
+        <if source.mounted>
+          <source-view :content="source.content" path="Example.txt" :language="source.language" :line="source.line" :wrapped="source.wrapped"
+                       :preserveKey='"source-" + source.id + "-" + source.revision' :data-source="source.id" class="source-example" title="Application source">
+            <a href="#source-after">After source</a>
+          </source-view>
+        </if>
+      </div>
+    </island>
+  </card>
+</component>

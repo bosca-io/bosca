@@ -1,5 +1,5 @@
 import type { ClientContext } from "@bosca/bml";
-import type { SelectSearch } from "./select";
+import type { SelectSearch } from "@bosca/bml-design/select";
 
 /** Supplies Git profile choices to the reusable select through the generated server contract. */
 export function mountOwnerPicker(

@@ -1,0 +1,40 @@
+<page route="/components/visualization">
+  <catalog-document title="Dashboards, flows and charts" description="Dashboard layouts, VueFlow diagrams and Chart.js analytics components." current="/components">
+    <nav class="reference-jumps" aria-label="On this page"><a href="#ref-dashboard-grid">dashboard-grid</a><a href="#ref-dashboard-item">dashboard-item</a><a href="#ref-flow-editor">flow-editor</a><a href="#ref-chart">chart</a></nav>
+    <reference-entry name="dashboard-grid"
+      :api='"id: String (required)\nlabel: String (required)\nname: String = \"layout\"\nvalue: List<bosca.design.model.DashboardLayoutItem> = emptyList()\ncolumns: Int = 12\ncellHeight: Int = 60\nstackBelow: Int = 480\nlockedIds: Set<String> = emptySet()\nreadOnly: Boolean = false\ndisabled: Boolean = false\nerror: String = \"\"\npreserveKey: String = \"\""'
+      :contract='"Root receives attributes/classes. Default children are direct dashboard-item widgets. value is a List<DashboardLayoutItem>; item IDs match itemId. Widget data stays in the application. layoutchange supplies {layout,itemId,kind}. Unlocked collisions push widgets downward; locked destinations are rejected. Stable preserveKey retains projected widget DOM and local layout; change it when adding/removing widget content. Applications own widget data, creation and saving."'
+      :keyboard='"Tab reaches Move and Resize controls. Arrow keys change one cell. Pointer handles drag/resize; Escape or pointer cancellation restores the previous layout. Readonly, disabled, pending and locked widgets cannot move. Narrow containers stack without changing coordinates. Native reset restores the latest supplied layout. Without scripts, widgets stack and the labelled JSON form field remains visible."'
+      :css='"--dashboard-gap (16px), --dashboard-item-bg, --dashboard-item-padding (16px), --dashboard-chart-height (260px), shared palette, border, typography and focus tokens."'
+      :snippet='"<dashboard-grid id=\"overview\" label=\"Overview\" :value=\"layout\" preserveKey=\"overview\">\n  <dashboard-item itemId=\"notes\" label=\"Notes\">Your BML content</dashboard-item>\n</dashboard-grid>"'>
+      <dashboard-grid id="reference-dashboard" label="Reference dashboard" :value="bosca.design.catalog.CatalogSamples.referenceNotes"><dashboard-item itemId="notes" label="Notes"><p class="catalog-description">Move and resize this widget with its handles.</p></dashboard-item></dashboard-grid>
+      <a class="catalog-link" href="/dashboards">Working dashboards in both palettes</a>
+    </reference-entry>
+    <reference-entry name="dashboard-item"
+      :api='"itemId: String (required)\nlabel: String (required)"'
+      :contract='"A direct child of dashboard-grid. itemId matches one layout item and is local to that grid. label names the widget and handles. Additional attributes/classes reach the section; default children remain ordinary BML content in a scrolling body."'
+      :keyboard='"The parent grid enables compact native Move/Resize buttons with arrow-key controls. Widget content retains its normal keyboard behavior and focus through geometry changes. Locked or readonly widgets keep their content usable."'
+      :css='"--dashboard-item-bg, --dashboard-item-padding, shared palette, control border, radius and focus tokens."'
+      :snippet='"<dashboard-item itemId=\"visits\" label=\"Visits\">\n  <chart id=\"visits-chart\" label=\"Daily visits\" :config=\"chartConfig\" />\n</dashboard-item>"'>
+      <dashboard-grid id="reference-dashboard-item" label="Reference widget" :value="bosca.design.catalog.CatalogSamples.referenceContent" readOnly><dashboard-item itemId="content" label="Widget content"><p class="catalog-description">Your own forms, charts and actions belong here.</p></dashboard-item></dashboard-grid>
+    </reference-entry>
+    <reference-entry name="flow-editor"
+      :api='"id: String (required)\nlabel: String (required)\nname: String = \"graph\"\nvalue: bosca.design.model.FlowGraph = bosca.design.model.FlowGraph()\nreadOnly: Boolean = false\ndisabled: Boolean = false\nerror: String = \"\"\npreserveKey: String = \"\""'
+      :contract='"Root receives additional attributes/classes and default children below the outline. VueFlow edits a Kotlin FlowGraph with typed nodes and edges. Application values belong in data.payload; textarea carries the native form value. flowchange supplies {graph}; flowselect supplies {kind,id,data}. Cancel flowconnect ({connection}) synchronously to reject a proposed edge. The application owns persistence, node settings and domain validation."'
+      :keyboard='"Native Fit/zoom buttons and an expandable node/connection list remain reachable by Tab. Select a node, then use canvas arrow keys to move it. Delete is explicit through Remove selected. Named From/To controls provide keyboard connections. Read-only retains navigation; disabled excludes the form field. Without scripts the labelled JSON field remains visible."'
+      :css='"--flow-height, --flow-bg, --flow-node-bg, --flow-edge, --flow-handle, shared palette, borders, typography and focus tokens."'
+      :snippet='"<flow-editor id=\"pipeline\" label=\"Pipeline graph\" name=\"graph\" :value=\"graph\" preserveKey=\"pipeline\" />"'>
+      <flow-editor id="reference-flow" label="Reference graph" :value="bosca.design.catalog.CatalogFlow.initial" readOnly />
+      <a class="catalog-link" href="/flows">Working examples in both palettes</a>
+    </reference-entry>
+    <reference-entry name="chart"
+      :api='"id: String (required)\nlabel: String (required)\nconfig: bosca.design.model.ChartConfiguration (required)\nloading: Boolean = false\nerror: String = \"\"\npreserveKey: String = \"\""'
+      :contract='"Root receives additional attributes/classes and default children below the table. config is a Kotlin ChartConfiguration with ChartData, ChartDataset and structured Chart.js options. chartselect supplies {datasetIndex,index,label,value} for canvas clicks and keyboard table actions. The application owns queries, result mapping and drill-down."'
+      :keyboard='"The canvas has a name and an expandable server-rendered table supplies the same values without scripts. Tab reaches View data and each point action. Loading and errors reserve the chart footprint. Reduced motion disables animation. Built-in chart types include bar, line, scatter, bubble, pie, doughnut, radar and polarArea."'
+      :css='"--chart-height, --chart-bg, --chart-fg, --chart-grid, --chart-series-1 through --chart-series-6, shared palette and --font-sans. Explicit dataset colors take priority."'
+      :snippet='"<chart id=\"visits\" label=\"Daily visits\" :config=\"chartConfig\" preserveKey=\"visits\" />"'>
+      <chart id="reference-chart" label="Reference visits" :config='bosca.design.catalog.CatalogChart.configuration("line")' />
+      <a class="catalog-link" href="/charts">Working examples in both palettes</a>
+    </reference-entry>
+  </catalog-document>
+</page>

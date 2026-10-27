@@ -35,7 +35,7 @@ object BmlProductionAssets {
         val sharedCss: String,
         /** Route -> merged page CSS (routes with nothing beyond the shared set are absent). */
         val pageCss: Map<String, String>,
-        /** Route -> the page's single production bundle file name (routes with no client code are absent). */
+        /** Route -> production entry file; its relative imports load shared chunks. Static routes are absent. */
         val pageJsFile: Map<String, String>,
         /** Route -> served slug (routes needing neither page CSS nor page JS are absent). */
         val pageSlug: Map<String, String>,
@@ -72,6 +72,7 @@ object BmlProductionAssets {
         val pagesByRoute = pages.associateBy { it.route }
         fun hasClientCode(page: BmlPageRenderer): Boolean =
             page.clientModule != null ||
+                (page as? bosca.bml.render.BmlBundledPage)?.assets?.scriptsByRoute?.get(page.route).orEmpty().isNotEmpty() ||
                 BmlStyleAssets.closure(page.componentTags, byTag).any { byTag[it]?.clientModule != null }
 
         val pageCss = linkedMapOf<String, String>()

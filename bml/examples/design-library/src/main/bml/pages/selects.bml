@@ -1,0 +1,22 @@
+<page route="/selects">
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Select controls</title>
+    </head>
+    <body>
+      <page-shell>
+        <h1>Select controls</h1>
+        <div class="themes">
+          <div class="light select-theme" data-palette="light"><select-controls id="light" /></div>
+          <div class="purple select-theme" data-palette="purple"><select-controls id="purple" /></div>
+        </div>
+        <form class="select-required-fixture" data-required-form>
+          <select name="requiredChoice" label="Required choice" required data-required-select><option value="" selected>Choose</option><option value="valid">Valid choice</option></select>
+        </form>
+        <div class="select-clip"><select label="Clipped choices" data-clipped-select><for index in 1..20><option :value="index">Choice { index }</option></for></select></div>
+        <html:select id="native-select"><option>Native select</option></html:select>
+      </page-shell>
+    </body>
+  </html>
+</page>

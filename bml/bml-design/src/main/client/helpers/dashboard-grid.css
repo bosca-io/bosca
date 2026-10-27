@@ -1,0 +1,19 @@
+[data-bml-dashboard-grid][data-grid-ready]:not([data-stacked]) > .dashboard-cells {
+  display: grid;
+  grid-template-columns: repeat(var(--dashboard-columns), minmax(0, 1fr));
+  grid-auto-rows: var(--dashboard-cell-height);
+}
+[data-bml-dashboard-grid][data-grid-ready]:not([data-stacked]) > .dashboard-cells > [data-dashboard-item] {
+  grid-column: var(--dashboard-column);
+  grid-row: var(--dashboard-row);
+}
+[data-bml-dashboard-grid] [data-dashboard-active] {
+  outline: var(--focus-width, 2px) solid var(--accent);
+  outline-offset: 2px;
+}
+[data-bml-dashboard-grid] > .dashboard-cells > [data-dashboard-item][data-dashboard-active] {
+  z-index: 1;
+}
+[data-bml-dashboard-grid] .dashboard-item-content > [data-bml-chart] {
+  --chart-height: var(--dashboard-chart-height, 260px);
+}

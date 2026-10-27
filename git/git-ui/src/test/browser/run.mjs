@@ -66,10 +66,16 @@ try {
     "tags.mjs",
     "statistics.mjs",
     "pipelines.mjs",
+    "json-editor.mjs",
     "pulls.mjs",
     "review.mjs",
     "search.mjs",
     "screens.mjs",
+    "navigation.mjs",
+    "profile.mjs",
+    "dialogs.mjs",
+    "file-workspace.mjs",
+    "source.mjs",
   ];
   const selected = process.env.GIT_UI_BROWSER_TESTS?.split(",") ?? available;
   for (const test of selected) {

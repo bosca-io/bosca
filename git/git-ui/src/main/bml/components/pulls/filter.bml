@@ -1,8 +1,8 @@
 <component tag="git-pull-filter">
   <prop name="page" type="bosca.git.ui.PullListPage" required />
   <form method="get" class="pull-filter">
-    <ui-field label="Repository">
-      <ui-select searchable size="sm" name="repo">
+    <field label="Repository">
+      <select searchable size="sm" name="repo">
         <option value="" :selected="page.repository.isBlank()">All repositories</option>
         <for repository in page.repositories>
           <option :value="repository.id" :selected="repository.id == page.repository">
@@ -11,9 +11,9 @@
             { repository.slug }
           </option>
         </for>
-      </ui-select>
-    </ui-field>
-    <input name="status" type="hidden" :value="page.status" />
+      </select>
+    </field>
+    <html:input name="status" type="hidden" :value="page.status" />
   </form>
   <script client scoped>
     ctx.on(ctx.root, "change", (event) => {

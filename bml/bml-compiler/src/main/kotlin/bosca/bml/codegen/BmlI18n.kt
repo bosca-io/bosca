@@ -29,6 +29,26 @@ enum class BmlI18nOrigin { ELEMENT, ATTRIBUTE, FUNCTION }
 const val I18N_MANIFEST_PATH: String = "bml/i18n-manifest.json"
 const val I18N_MANIFEST_VERSION: Int = 1
 
+/** Combines compatible references, preferring authored markup and defaults over bare function keys. */
+internal fun mergeI18nEntries(entries: List<BmlI18nEntry>): List<BmlI18nEntry> {
+    val merged = linkedMapOf<String, BmlI18nEntry>()
+    for (entry in entries) {
+        val prior = merged[entry.key]
+        val authored = entry.message != null || entry.plural
+        val priorAuthored = prior != null && (prior.message != null || prior.plural)
+        require(prior == null || !authored || !priorAuthored ||
+            prior.message == entry.message && prior.pluralForms == entry.pluralForms) {
+            "bml i18n: key '${entry.key}' has different source text in " +
+                "${prior?.file}:${prior?.line} and ${entry.file}:${entry.line} — one key, one message"
+        }
+        if (prior == null || authored && !priorAuthored ||
+            authored == priorAuthored && prior.origin == BmlI18nOrigin.FUNCTION && entry.origin != BmlI18nOrigin.FUNCTION) {
+            merged[entry.key] = entry
+        }
+    }
+    return merged.values.sortedBy { it.key }
+}
+
 // A static `t("key")` call in embedded code (server scripts, interpolations, client TS) — the
 // literal first argument is a real message key the CLI should create. `\b` keeps `format(` and
 // friends out; dynamic keys simply don't match and stay un-harvested (legal, just not pushable).

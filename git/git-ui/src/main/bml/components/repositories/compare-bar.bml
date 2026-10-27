@@ -4,21 +4,21 @@
     <div class="ref-selector">
       <div class="ref-group">
         <span class="ref-label">Base</span>
-        <ui-select name="base" label="Base" size="sm" searchable allowCustom required>
+        <select name="base" label="Base" size="sm" searchable allowCustom required>
           <if page.base.isNotBlank() && page.base !in page.branches>
             <option :value="page.base" selected>{ page.base }</option>
           </if>
           <for branch in page.branches>
             <option :value="branch" :selected="branch == page.base">{ branch }</option>
           </for>
-        </ui-select>
+        </select>
       </div>
       <a class="swap-button" :href="page.swapHref" title="Swap base and head" aria-label="Swap base and head">
-        <ui-icon name="arrows-left-right" :size="14" />
+        <icon name="arrows-left-right" :size="14" />
       </a>
       <div class="ref-group">
         <span class="ref-label">Compare</span>
-        <ui-select name="head" label="Compare" placeholder="head ref" size="sm" searchable allowCustom required>
+        <select name="head" label="Compare" placeholder="head ref" size="sm" searchable allowCustom required>
           <option value="" :selected="page.head.isBlank()">head ref</option>
           <if page.head.isNotBlank() && page.head !in page.branches>
             <option :value="page.head" selected>{ page.head }</option>
@@ -26,7 +26,7 @@
           <for branch in page.branches>
             <option :value="branch" :selected="branch == page.head">{ branch }</option>
           </for>
-        </ui-select>
+        </select>
       </div>
     </div>
     <div class="compare-actions">
@@ -34,13 +34,13 @@
         <git-owner-picker compact :id="page.list.owner.id" :label="page.list.owner.label" />
       </div>
       <div class="repository-choice">
-        <ui-select searchable name="repo" label="Repository" size="sm">
+        <select searchable name="repo" label="Repository" size="sm">
           <for option in page.list.repositories>
             <option :value="option.id" :selected="option.id == page.id">{ option.name }</option>
           </for>
-        </ui-select>
+        </select>
       </div>
-      <ui-button type="submit" size="sm" primary ref="compare" :disabled="page.head.isBlank()">Compare</ui-button>
+      <button type="submit" size="sm" primary ref="compare" :disabled="page.head.isBlank()">Compare</button>
     </div>
   </form>
   <style scoped>

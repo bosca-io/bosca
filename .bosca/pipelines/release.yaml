@@ -55,8 +55,19 @@ jobs:
         # bml-runtime checkout's node_modules, which is git-ignored — without
         # this, the client bundle tasks fail with ERR_MODULE_NOT_FOUND.
         run: cd bml/bml-runtime && npm ci --no-audit --no-fund
+      - name: Install BML Test Browser
+        working-directory: bml/bml-design-catalog
+        run: |
+          npm ci --no-audit --no-fund
+          node node_modules/playwright-core/cli.js install --no-shell chromium
+          bml_chrome="$(node -p 'require("playwright-core").chromium.executablePath()')"
+          test -x "$bml_chrome"
+          "$bml_chrome" --version
+          printf 'BML_DESIGN_CHROME_BINARY=%q\n' "$bml_chrome" >> "$BOSCA_ENV"
+      - name: Run BML Browser Tests
+        run: ./gradlew --no-daemon --no-parallel --max-workers=2 :notifications-web:test :bml:examples:design-library:test :bml:bml-design-catalog:test
       - name: Run JVM Tests
-        run: ./gradlew --no-daemon test
+        run: ./gradlew --no-daemon --max-workers=4 test
       - name: Stop Shared Test Resources
         run: ./gradlew --no-daemon testResourcesDown
         if: always()
@@ -80,6 +91,9 @@ jobs:
         coordinate: "io.bosca:bml:${{ version }}"
       - type: maven
         namespace: bosca-maven
+        coordinate: "io.bosca:bml-design:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
         coordinate: "io.bosca:bml-compiler:${{ version }}"
       - type: maven
         namespace: bosca-maven
@@ -96,6 +110,9 @@ jobs:
       - type: maven
         namespace: bosca-maven
         coordinate: "io.bosca.bml:io.bosca.bml.gradle.plugin:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca.bml.host:io.bosca.bml.host.gradle.plugin:${{ version }}"
     steps:
       - name: Checkout
         uses: checkout

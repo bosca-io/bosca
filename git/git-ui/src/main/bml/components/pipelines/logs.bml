@@ -6,19 +6,19 @@
     bosca.git.ui.PipelineLogsModel(step, repository).also { if (loadHistory) it.load(ctx) }
   </script>
   <island name="git-pipeline-logs" :key="step">
-    <section class="step-logs" :data-log-step="model.step" :data-repository="model.repository">
+    <html:section class="step-logs" :data-log-step="model.step" :data-repository="model.repository">
       <div class="log-controls">
         <span class="log-status" data-bml-ref="logStatus" role="status" hidden />
-        <button type="button" class="log-control-btn" data-bml-ref="pause" aria-pressed="false" hidden>Pause</button>
-        <button type="button" class="log-control-btn" data-bml-ref="follow" aria-pressed="true" hidden>Follow output</button>
-        <button type="button" class="log-control-btn log-refresh" @click="model.refresh(ctx)">Refresh logs</button>
+        <html:button type="button" class="log-control-btn" data-bml-ref="pause" aria-pressed="false" hidden>Pause</html:button>
+        <html:button type="button" class="log-control-btn" data-bml-ref="follow" aria-pressed="true" hidden>Follow output</html:button>
+        <html:button type="button" class="log-control-btn log-refresh" @click="model.refresh(ctx)">Refresh logs</html:button>
       </div>
       <if model.message.isNotBlank()>
-        <ui-alert>{ model.message }</ui-alert>
+        <alert>{ model.message }</alert>
       </if>
       <div class="log-output" data-bml-ref="output" tabindex="0" aria-label="Step log output">
         <if model.hasEarlier && model.lines.isNotEmpty() && model.lines.first().lineNumber != 1>
-          <button type="button" class="log-load-earlier" @click="model.earlier(ctx)">Load earlier lines</button>
+          <html:button type="button" class="log-load-earlier" @click="model.earlier(ctx)">Load earlier lines</html:button>
         </if>
         <div data-bml-ref="lines">
           <if model.lines.isEmpty()>
@@ -33,7 +33,7 @@
           </if>
         </div>
       </div>
-    </section>
+    </html:section>
   </island>
   <style scoped>
     .step-logs {

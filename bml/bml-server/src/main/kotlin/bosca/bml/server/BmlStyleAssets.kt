@@ -85,8 +85,17 @@ object BmlStyleAssets {
         pageCssUrl?.let { append(linkTag(it, cacheToken)) }
     }
 
+    /** Library defaults precede authored page styles and the host's global stylesheet. */
+    fun injectLibraryStyles(html: String, urls: List<String>, cacheToken: String?): String {
+        val links = urls.distinct().joinToString("") { linkTag(it, cacheToken) }
+        if (links.isEmpty()) return html
+        val head = Regex("<head(?:\\s[^>]*)?>", RegexOption.IGNORE_CASE).find(html)
+        return if (head == null) injectHead(html, links)
+        else html.substring(0, head.range.last + 1) + links + html.substring(head.range.last + 1)
+    }
+
     private fun linkTag(href: String, cacheToken: String?): String =
-        """<link rel="stylesheet" href="${BmlAssetUrls.versioned(href, cacheToken)}">"""
+        """<link rel="stylesheet" href="${BmlAssetUrls.versioned(href, cacheToken).replace("&", "&amp;").replace("\"", "&quot;")}">"""
 
     /** Insert [snippet] into the page's `<head>` (before `</head>`; else synthesize one before `<body>`; else prepend). */
     fun injectHead(html: String, snippet: String): String {

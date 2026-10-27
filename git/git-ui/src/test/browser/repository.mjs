@@ -139,6 +139,8 @@ await until(
   '[...document.querySelectorAll(".tree-list a.tree-name")].some(link => link.textContent.trim() === "README.md")',
 );
 await until('document.readyState === "complete"');
+// The deferred summary above the file list must finish before pointer coordinates are measured.
+await until('Boolean(document.querySelector(".repository-summary .stat-grid"))');
 await ev("document.fonts.ready.then(() => true)");
 const readmeRow = await ev(`(() => {
   const link = [...document.querySelectorAll('.tree-list a.tree-name')].find(link => link.textContent.trim() === 'README.md');
@@ -149,14 +151,35 @@ const readmePoint = await ev(`(() => {
   const bounds = link.closest('.tree-row').getBoundingClientRect();
   return {x:bounds.left+bounds.width*0.6,y:bounds.top+bounds.height/2};
 })()`);
-for (const type of ["mousePressed", "mouseReleased"])
-  await call("Input.dispatchMouseEvent", {
-    type,
-    ...readmePoint,
-    button: "left",
-    clickCount: 1,
-  });
-await until('new URLSearchParams(location.search).get("file") === "README.md"');
+const pointerState = () => ev(`(() => {
+  const link = [...document.querySelectorAll('.tree-list a.tree-name')].find(link => link.textContent.trim() === 'README.md');
+  const hit = document.elementFromPoint(${readmePoint.x}, ${readmePoint.y});
+  return {url:location.href, point:${JSON.stringify(readmePoint)}, viewport:{width:innerWidth,height:innerHeight},
+    row:link?.closest('.tree-row').getBoundingClientRect().toJSON(), href:link?.href,
+    hit:hit?.outerHTML, hitLink:hit?.closest('a')?.href,
+    scroll:[...document.querySelectorAll('html,body,main,.git-main')].map(node=>({
+      tag:node.tagName,class:node.className,top:node.scrollTop,height:node.clientHeight,content:node.scrollHeight}))};
+})()`);
+const pointerEvidence = {before:await pointerState()};
+try {
+  assert.equal(pointerEvidence.before.hitLink,pointerEvidence.before.href,
+    "The measured point must target the README row before clicking");
+  for (const type of ["mousePressed", "mouseReleased"])
+    await call("Input.dispatchMouseEvent", {
+      type,
+      ...readmePoint,
+      button: "left",
+      clickCount: 1,
+    });
+  await until('new URLSearchParams(location.search).get("file") === "README.md"');
+} catch (error) {
+  await writeFile(process.env.GIT_UI_ARTIFACT_DIR + "/bosca-git-ui-file-pointer-failure.png",
+    Buffer.from((await call("Page.captureScreenshot", {format:"png"})).data,"base64"));
+  throw error;
+} finally {
+  pointerEvidence.after = await pointerState();
+  await writeFile(process.env.GIT_UI_ARTIFACT_DIR + "/bosca-git-ui-file-pointer.json",JSON.stringify(pointerEvidence,null,2));
+}
 const readmeNavigation = await ev(`({url:location.href})`);
 await writeFile(
   process.env.GIT_UI_ARTIFACT_DIR + "/bosca-git-ui-file-navigation.json",
@@ -271,15 +294,19 @@ for (const [query, message] of [
     "true",
     "Search feedback stays available for retry",
   );
+  assert.ok(
+    await ev(`[...document.querySelectorAll('.owner-toolbar [role=option]')].some(option => option.textContent === 'All accessible repositories')`),
+    "The caller-owned All choice remains available after empty or failed async searches",
+  );
 }
 await ev(
   'document.querySelector(".owner-toolbar .select-query").value="Alice";document.querySelector(".owner-toolbar .select-query").dispatchEvent(new Event("input",{bubbles:true}))',
 );
 await until(
-  'document.querySelectorAll(".owner-toolbar .select-options li").length>=2',
+  `[...document.querySelectorAll('.owner-toolbar [role=option]')].some(option=>option.textContent === 'Alice · @alice')`,
 );
 await ev(
-  'document.querySelector(".owner-toolbar .select-options li").dispatchEvent(new PointerEvent("pointerdown",{bubbles:true}))',
+  `[...document.querySelectorAll('.owner-toolbar [role=option]')].find(option=>option.textContent === 'Alice · @alice').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}))`,
 );
 await until(
   'new URLSearchParams(location.search).get("owner") && document.readyState === "complete" && document.querySelector(".owner-toolbar .select-query")',
@@ -288,6 +315,7 @@ assert.ok(
   await ev('new URLSearchParams(location.search).get("owner")'),
   "Owner selection applies without another submit button",
 );
+assert.equal(await ev('new URLSearchParams(location.search).get("owner")'), "owner", "The async profile result is selected separately from the persistent All choice");
 const create = '[data-bml-component="git-repository-create"]';
 await until(`document.querySelector('${create} [data-bml-ref=trigger]')`);
 await ev(
@@ -346,7 +374,7 @@ await ev(
   'document.querySelector(".repository-controls summary[aria-label=\\"Clone repository\\"]").click()',
 );
 await until(
-  'document.querySelector(".popover-content").matches(":popover-open")',
+  'document.querySelector(".repository-controls .popover-content").matches(":popover-open")',
 );
 assert.equal(
   await ev('document.activeElement?.getAttribute("aria-label")'),
@@ -421,13 +449,13 @@ await ev(
   'document.dispatchEvent(new KeyboardEvent("keydown", {key:"Escape",bubbles:true}))',
 );
 await until(
-  '!document.querySelector(".popover-content").matches(":popover-open")',
+  '!document.querySelector(".repository-controls .popover-content").matches(":popover-open")',
 );
 
 const geometry = await ev(
   '({surface:document.querySelector(".file-surface").getBoundingClientRect().height,editor:document.querySelector(".cm-editor").getBoundingClientRect().height,radius:getComputedStyle(document.querySelector(".cm-editor")).borderRadius,overflow:document.documentElement.scrollWidth>innerWidth})',
 );
-assert.ok(geometry.editor >= 224 && geometry.editor <= 801, JSON.stringify(geometry));
+assert.ok(geometry.editor >= 224 && geometry.editor < geometry.surface, JSON.stringify(geometry));
 assert.equal(geometry.radius, "0px");
 assert.equal(
   await ev(
@@ -446,6 +474,24 @@ await ev(
   'document.querySelector("form.code-widget [name=path]").value="protected.txt";document.querySelector("[name=message]").value="Keep my commit";document.querySelector(".cm-content").focus()',
 );
 await call("Input.insertText", { text: "draft edit\n" });
+await ev(`(() => {
+  window.editorBeforePreview = document.querySelector('.cm-editor');
+  document.querySelector('form.code-widget [data-bml-ref=preview]').click();
+})()`);
+await until(`!document.querySelector('form.code-widget [data-bml-ref=previewSurface]').hidden &&
+  document.querySelector('form.code-widget [data-bml-ref=previewSurface]').textContent.includes('draft edit') &&
+  document.querySelector('form.code-widget [data-bml-ref=previewStatus]').hidden`);
+assert.ok(await ev(`document.querySelector('form.code-widget [data-bml-ref=editor]').hidden`),
+  "Markdown preview renders the unsaved editor draft");
+await ev(`document.querySelector('form.code-widget [data-bml-ref=preview]').click()`);
+assert.ok(await ev(`document.querySelector('.cm-editor') === window.editorBeforePreview &&
+  !document.querySelector('form.code-widget [data-bml-ref=editor]').hidden &&
+  document.querySelector('.cm-content').textContent.includes('draft edit')`),
+  "Returning from preview retains the editable view and its draft");
+await ev(`delete window.editorBeforePreview; document.querySelector('form.code-widget [data-bml-ref=wrap]').click()`);
+assert.ok(await ev(`document.querySelector('.cm-content').classList.contains('cm-lineWrapping')`),
+  "Git can reconfigure the shared CodeMirror editor");
+await ev(`document.querySelector('form.code-widget [data-bml-ref=wrap]').click()`);
 await ev(
   'document.querySelector("form.code-widget button[type=submit]").click()',
 );
@@ -495,10 +541,18 @@ for (const width of [1440, 1024]) {
       'document.readyState==="complete" && document.querySelector(".cm-editor")',
     );
     const size = await ev(
-      '({height:document.querySelector(".cm-editor").getBoundingClientRect().height,surface:document.querySelector(".file-surface").getBoundingClientRect().height,gutters:document.querySelector(".cm-lineNumbers")!==null,scroll:document.querySelector(".cm-scroller").scrollHeight>document.querySelector(".cm-scroller").clientHeight,radius:getComputedStyle(document.querySelector(".cm-editor")).borderRadius})',
+      `(() => {
+        const surface=document.querySelector('.file-surface').getBoundingClientRect(),main=document.querySelector('main');
+        return {height:document.querySelector('.cm-editor').getBoundingClientRect().height,surface:surface.height,
+          bottom:surface.bottom,availableBottom:main.getBoundingClientRect().bottom-parseFloat(getComputedStyle(main).paddingBottom),
+          header:document.querySelector('.file-header').getBoundingClientRect().height,
+          gutters:document.querySelector('.cm-lineNumbers')!==null,
+          scroll:document.querySelector('.cm-scroller').scrollHeight>document.querySelector('.cm-scroller').clientHeight,
+          radius:getComputedStyle(document.querySelector('.cm-editor')).borderRadius};
+      })()`,
     );
-    assert.ok(size.height >= 224 && size.height <= 801, JSON.stringify(size));
-    if (file === "long.txt") assert.ok(size.height >= 799, JSON.stringify(size));
+    assert.ok(Math.abs(size.bottom-size.availableBottom)<=1, JSON.stringify(size));
+    assert.ok(Math.abs(size.height-(size.surface-size.header-2))<=1, JSON.stringify(size));
     assert.equal(size.gutters, true);
     assert.equal(size.radius, "0px");
     if (file === "long.txt") assert.equal(size.scroll, true);
@@ -612,6 +666,26 @@ await writeFile(
     "base64",
   ),
 );
+for (const width of [1920,1440,1024,390]) {
+  await call("Emulation.setDeviceMetricsOverride",{width,height:width===390?844:900,deviceScaleFactor:1,mobile:width===390});
+  await call("Page.navigate",{url:base+"/repositories/empty"});
+  await until(`location.pathname==='/repositories/empty' && document.readyState==='complete' && document.querySelector('.clone-url-input') && !document.querySelector('[data-bml-ref=signout]').disabled`);
+  const initial = await ev(`(() => {const r=document.querySelector('.clone-url-input').getBoundingClientRect();return {width:r.width,height:r.height,value:document.querySelector('.clone-url-input').value}})()`);
+  await ev(`window.originalClipboardWrite=navigator.clipboard.writeText;
+    navigator.clipboard.writeText=async()=>{throw new DOMException('Denied','NotAllowedError')};
+    document.querySelector('.setup-banner .copy-control button').click()`);
+  await until(`document.activeElement===document.querySelector('.clone-url-input') && document.activeElement.selectionStart===0 && document.activeElement.selectionEnd===document.activeElement.value.length`);
+  assert.ok(await ev(`document.querySelector('.setup-banner [role=status]').textContent.includes('Select and copy')`), "Denied setup copy retains an accessible status and selects the native URL");
+  await ev(`navigator.clipboard.writeText=window.originalClipboardWrite;delete window.originalClipboardWrite;
+    document.querySelector('.setup-banner .copy-control button').click()`);
+  await until(`document.querySelector('.setup-banner .copy-control button').getAttribute('aria-label')==='Copied'`);
+  assert.equal(await ev("navigator.clipboard.readText()"),initial.value);
+  const final = await ev(`(() => {const r=document.querySelector('.clone-url-input').getBoundingClientRect();return {width:r.width,height:r.height,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+  assert.deepEqual(final,{width:initial.width,height:initial.height,overflow:false}, "Copy success and failure preserve the quick-setup URL geometry");
+  await writeFile(`${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-setup-copy-${width}.png`,Buffer.from((await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:false})).data,"base64"));
+}
+assert.deepEqual(errors, [], "Quick-setup clipboard checks raised browser exceptions");
+console.log("Quick-setup clipboard success, denied-copy selection and stable geometry passed at four widths.");
 await call("Emulation.setDeviceMetricsOverride", {
   width: 1440,
   height: 900,

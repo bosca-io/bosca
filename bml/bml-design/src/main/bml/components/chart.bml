@@ -1,0 +1,49 @@
+<component tag="chart">
+  <prop name="id" type="String" required />
+  <prop name="label" type="String" required />
+  <prop name="config" type="bosca.design.model.ChartConfiguration" required />
+  <script server provides="encodedConfig">kotlinx.serialization.json.Json.encodeToString(bosca.design.model.ChartConfiguration.serializer(), config)</script>
+  <prop name="loading" type="Boolean" default="false" />
+  <prop name="error" type="String" default="" />
+  <prop name="preserveKey" type="String" default="" />
+  <script server provides="table">bosca.design.model.ChartTable.from(config)</script>
+  <div class="bosca-chart" data-bml-chart :data-chart-id="id" :data-config="encodedConfig" :data-loading="loading"
+       :data-error="error" :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" role="group" :aria-label="label" :aria-busy="loading.toString()" {...attrs}>
+    <div class="chart-frame" ref="frame">
+      <canvas ref="canvas" :aria-label="label" role="img" :aria-describedby='id + "-data-label"' hidden />
+      <p ref="state" role="status">{ if (loading) "Loading chart…" else if (error.isNotBlank()) error else if (table.error.isNotBlank()) table.error else if (table.points.isEmpty()) "No chart data." else "Chart data is available below." }</p>
+    </div>
+    <details class="chart-data" :id='id + "-data"'>
+      <summary :id='id + "-data-label"'>View data</summary>
+      <table-scroll :label='label + " data"'>
+        <table>
+          <caption>{ label }</caption>
+          <thead><tr><th scope="col">Series</th><th scope="col">Point</th><th scope="col">Value</th><th scope="col" data-chart-actions hidden>Action</th></tr></thead>
+          <tbody ref="rows">
+            <for point in table.points>
+              <tr><th scope="row">{ point.series }</th><td>{ point.label }</td><td>{ point.value }</td>
+                <td data-chart-actions hidden><button size="xs" :data-chart-dataset="point.dataset" :data-chart-index="point.index" :aria-label='"Select " + point.series + ": " + point.label'>Select</button></td></tr>
+            </for>
+          </tbody>
+        </table>
+      </table-scroll>
+    </details>
+    <slot />
+  </div>
+  <style scoped>
+    .bosca-chart { display: flex; flex-direction: column; gap: 16px; min-width: 0; color: var(--fg-1); font: 13px/1.5 var(--font-sans); }
+    .chart-frame { position: relative; height: var(--chart-height, 280px); min-width: 0; background: var(--chart-bg, transparent); }
+    .chart-frame p { display: grid; place-items: center; box-sizing: border-box; height: 100%; margin: 0; padding: 16px; text-align: center; color: var(--fg-2); }
+    .chart-frame [hidden], [data-chart-actions][hidden] { display: none; }
+    .chart-data { min-width: 0; }
+    summary { cursor: pointer; padding: 4px 0; font-weight: 500; }
+    summary:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    caption { padding: 12px 8px; text-align: left; font-weight: 600; }
+    th, td { padding: 8px 12px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+  </style>
+  <script client scoped>
+    import { mountChart } from "@client/helpers/chart";
+    mountChart(ctx);
+  </script>
+</component>

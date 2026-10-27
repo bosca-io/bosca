@@ -3,32 +3,32 @@
     bosca.git.ui.agentPage()
   </script>
   <git-layout title="CI agent">
-    <ui-page>
+    <page-shell>
       <if !page.allowed>
-        <ui-alert>Administrator access is required.</ui-alert>
+        <alert>Administrator access is required.</alert>
       <else-if page.selected != null>
-        <ui-page-heading
+        <page-heading
           :title="page.selected.name"
           :subtitle='page.selected.mode.toString() + " · " + page.selected.status.toString()'
-          :trail='listOf(bosca.git.ui.components.NavigationItem("CI Agents", "/ci-agents", false))'
+          :trail='listOf(bosca.design.model.NavigationItem("Git", "", false), bosca.design.model.NavigationItem("CI Agents", "/ci-agents", false))'
         >
-          <ui-button size="sm" type="submit" form="agent-form" primary icon="save">Save</ui-button>
+          <button size="sm" type="submit" form="agent-form" primary icon="save">Save</button>
           <if page.selected.mode.name == "ORCHESTRATOR">
-            <ui-button size="sm" type="submit" form="orchestrator-form" icon="save">Save Config</ui-button>
+            <button size="sm" type="submit" form="orchestrator-form" icon="save">Save Config</button>
           </if>
           <a class="button-link" :href='"/ci-agents/" + bosca.git.ui.encode(page.selected.id)'>
-            <span class="action-icon-muted"><ui-icon name="pulse" :size="14" /></span>
+            <span class="action-icon-muted"><icon name="pulse" :size="14" /></span>
             Refresh
           </a>
           <git-agent-deregister :page="page" />
-        </ui-page-heading>
+        </page-heading>
         <div class="detail-layout">
           <div class="agent-main">
             <git-agent-status :agent="page.selected" />
             <git-agent-settings :page="page" />
           </div>
           <aside class="agent-sidebar" aria-label="Agent information">
-            <ui-card title="Info" :padded="false">
+            <card title="Info" :padded="false">
               <dl class="info-items">
                 <div><dt>Type</dt><dd>{ if (page.selected.mode.name == "ORCHESTRATOR") "Orchestrator" else "Runner" }</dd></div>
                 <div><dt>Ephemeral</dt><dd>{ if (page.selected.ephemeral) "Yes" else "No" }</dd></div>
@@ -38,14 +38,14 @@
                   <dd :style='"color: " + bosca.git.ui.statusColor(page.selected.status.name)'>{ page.selected.status.name }</dd>
                 </div>
               </dl>
-            </ui-card>
-            <ui-card title="ID" :padded="false">
+            </card>
+            <card title="ID" :padded="false">
               <code class="id-box">{ page.selected.id }</code>
-            </ui-card>
+            </card>
           </aside>
         </div>
       </if>
-    </ui-page>
+    </page-shell>
   </git-layout>
   <style scoped>
     /* Studio agent detail: main cards with an Info and ID sidebar. */

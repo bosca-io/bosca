@@ -1,0 +1,15 @@
+<page route="/selection">
+  <catalog-document title="Search and selection" description="Search local examples and move between result pages." current="/selection">
+    <p class="page-intro">Search for control, layout or overlay, then use Previous and Next to move through the matches. Each example keeps its own selection. Open Example states to try unavailable, loading and failed-search behavior.</p>
+    <div class="catalog-grid">
+      <div class="catalog-palette-dark" data-picker-palette="dark"><picker-example id="dark" title="Dark palette" /></div>
+      <div class="catalog-palette-light" data-picker-palette="light"><picker-example id="light" title="Light palette" /></div>
+    </div>
+    <card title="Native form values">
+      <div class="catalog-stack">
+        <p class="catalog-description">The chosen option remains the form value when another page is shown. Saving uses a toast. Without scripts, the complete list remains a labelled native select; search, pagination and server actions need the browser runtime.</p>
+        <a class="catalog-link" href="/components/controls#ref-select">Select API and authoring</a>
+      </div>
+    </card>
+  </catalog-document>
+</page>

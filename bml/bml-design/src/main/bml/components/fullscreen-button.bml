@@ -1,0 +1,19 @@
+<component tag="fullscreen-button">
+  <prop name="label" type="String" default="Full screen" />
+  <prop name="exitLabel" type="String" default="Exit full screen" />
+  <button type="button" size="sm" class="icon-only" :aria-label="label" :title="label"
+          :data-tooltip-content="label" aria-pressed="false" data-bml-fullscreen-button
+          :data-fullscreen-label="label" :data-fullscreen-exit-label="exitLabel" hidden {...attrs}>
+    <span class="fullscreen-icon" data-fullscreen-enter-icon><icon name="maximize" :size="14" /></span>
+    <span class="fullscreen-icon" data-fullscreen-exit-icon hidden><icon name="minimize" :size="14" /></span>
+  </button>
+  <style scoped>
+    .fullscreen-icon { display: inline-flex; }
+    .fullscreen-icon[hidden] { display: none; }
+  </style>
+  <script client scoped>
+    import { attachTooltip } from "@client/helpers/tooltip";
+    const refreshTooltip = attachTooltip(ctx);
+    ctx.on(ctx.root, "bml:fullscreen-change", refreshTooltip);
+  </script>
+</component>

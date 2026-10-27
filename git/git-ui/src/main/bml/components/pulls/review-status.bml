@@ -9,7 +9,7 @@
         else -> "neutral"
     }
   </script>
-  <ui-badge :tone="tone">
+  <badge :tone="tone">
     { if (dismissed) "Dismissed" else bosca.git.ui.reviewStatusLabel(status) }
-  </ui-badge>
+  </badge>
 </component>

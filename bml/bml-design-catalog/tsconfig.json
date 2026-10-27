@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "strict": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "paths": {
+      "@bosca/bml": [
+        "../bml-runtime/src/index.ts"
+      ],
+      "@client/*": [
+        "./src/main/client/*"
+      ]
+    }
+  },
+  "include": [
+    "src/main/client/**/*.ts",
+    "build/generated/bml/ts/**/*.ts"
+  ]
+}

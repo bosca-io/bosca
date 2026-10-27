@@ -1,0 +1,41 @@
+<component tag="source-example">
+  <prop name="id" type="String" required />
+  <prop name="title" type="String" required />
+  <script server provides="source" scope="server-session">bosca.design.catalog.CatalogSource(id)</script>
+  <card :title="title">
+    <island name="source" :key="id">
+      <div class="catalog-stack" :data-catalog-source-owner="source.id">
+        <if source.visible>
+          <div class="catalog-source-frame">
+            <source-view :content="source.content" path="components.ts" label="Component preview"
+                         :language='if (source.plain) "text" else ""' :line="source.line" :wrapped="source.wrapped"
+                         :preserveKey='"source-" + source.id + "-" + source.revision'
+                         :data-catalog-source="source.id">
+              <a class="catalog-link" href="/components/content#ref-source-view">Source API</a>
+            </source-view>
+          </div>
+        </if>
+        <details data-example-states>
+          <disclosure-heading>Example states</disclosure-heading>
+          <div class="catalog-stack source-state-options">
+            <switch label="Wrap lines" :checked="source.wrapped" @change="source.toggleWrap" :data-source-wrap="source.id" />
+            <switch label="Plain text" :checked="source.plain" @change="source.togglePlainText" :data-source-plain="source.id" />
+            <switch label="Show viewer" :checked="source.visible" @change="source.toggleVisible" :data-source-visible="source.id" />
+            <div class="example-actions">
+              <button @click="source.showLine" :disabled="!source.visible || source.revision > 0" :data-source-line="source.id">Show line 40</button>
+              <button @click="source.replace" :disabled="!source.visible" :data-source-replace="source.id">Replace source</button>
+              <button @click="source.refresh" :data-source-refresh="source.id">Refresh example</button>
+            </div>
+            <p class="example-note">Refresh keeps your selection, scroll and local wrapping. Replacing the content starts a new viewer.</p>
+          </div>
+        </details>
+        <toast :id='"source-refreshed-" + source.id' :message='if (source.refreshes > 0) "Example refreshed." else ""'
+               :sequence="source.refreshes" tone="info" :data-source-toast="source.id" />
+      </div>
+    </island>
+  </card>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+  </script>
+</component>

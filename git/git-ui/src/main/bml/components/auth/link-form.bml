@@ -1,20 +1,20 @@
 <component tag="git-link-form">
   <div class="auth-flow">
-    <ui-alert ref="error" hidden />
+    <alert ref="error" hidden />
     <p ref="notice" class="auth-notice" role="status" hidden></p>
     <form ref="form" class="auth-form" hidden>
-      <ui-field label="Existing account password">
-        <ui-input
+      <field label="Existing account password">
+        <input
           ref="password"
           name="password"
           type="password"
           autocomplete="current-password"
           required
         />
-      </ui-field>
-      <ui-button ref="submit" type="submit" class="auth-primary">Confirm and sign in</ui-button>
+      </field>
+      <button ref="submit" type="submit" class="auth-primary">Confirm and sign in</button>
     </form>
-    <ui-button ref="emailProof" hidden>Send an email confirmation link</ui-button>
+    <button ref="emailProof" hidden>Send an email confirmation link</button>
     <p class="auth-footer">
       <a ref="login" href="/login">Back to sign in</a>
     </p>

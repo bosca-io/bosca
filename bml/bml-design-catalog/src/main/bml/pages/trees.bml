@@ -1,0 +1,37 @@
+<page route="/trees">
+  <catalog-document title="Trees and file navigation" description="Local disclosure, loaded children and native file links." current="/trees">
+    <p class="page-intro">Explore local component files and load another folder in each palette. Arrow keys, Home, End and type-ahead move through visible rows. Enter follows the selected file’s native link.</p>
+    <div class="catalog-grid">
+      <div class="catalog-palette-dark" data-tree-palette="dark"><card title="Dark palette"><tree-example id="dark" /></card></div>
+      <div class="catalog-palette-light" data-tree-palette="light"><card title="Light palette"><tree-example id="light" /></card></div>
+    </div>
+    <div class="catalog-grid" data-tree-cases>
+      <card title="Empty files"><div class="catalog-stack"><tree label="Empty files" embedded data-tree-empty /><empty-state icon="folder" title="No files" message="The application supplies empty-state content beside the tree." /></div></card>
+      <card title="Unavailable directory"><div class="catalog-stack">
+        <tree label="Available and unavailable files" local embedded data-tree-disabled>
+          <tree-item path="locked" label="Unavailable directory" directory disabled />
+          <tree-item path="ready" label="Available files" directory expanded />
+          <tree-item path="ready/button.bml" label="Button example" href="/components/controls#ref-button" :depth="1" />
+        </tree>
+        <p class="example-note">The disabled native directory button is unavailable for activation.</p>
+      </div></card>
+      <card title="Truncated labels"><div class="catalog-stack">
+        <tree label="Truncated file names" embedded data-tree-truncated><tree-item path="components/a-very-long-component-file-name.bml" label="A deliberately long component file name that exceeds a narrow tree’s available width.bml" href="/components/content#ref-tree-item" selected /></tree>
+        <p class="example-note">The complete label remains the native link’s accessible name. Its title supplies the full path.</p>
+      </div></card>
+      <card title="Wrapped and deeply indented"><div class="catalog-stack">
+        <tree label="Deeply indented file names" embedded data-tree-deep><tree-item path="components/a/b/c/d/e/f/g/h/i/j/k/deep-example.bml" label="veryLongComponentIdentifierThatRemainsReadableWithoutSpaces.bml" href="/components/content#ref-tree-item" :depth="12" wrap /></tree>
+        <p class="example-note">Wrapped labels remain inside their available width. Indentation is capped at twelve levels.</p>
+      </div></card>
+    </div>
+    <div class="catalog-grid">
+      <div class="catalog-palette-dark"><card title="Thirteen levels · dark palette"><deep-tree-example id="dark" /></card></div>
+      <div class="catalog-palette-light"><card title="Thirteen levels · light palette"><deep-tree-example id="light" /></card></div>
+    </div>
+    <card title="Use in your application"><div class="catalog-stack">
+      <p class="catalog-description">Supply flat rows with stable slash-separated paths and explicit depths. The application owns links, server loading and selected files. Keep a stable key for local disclosure; change it when replacing rows. Preserve the native directory button when adding asynchronous children.</p>
+      <a class="catalog-link" href="/components/content#ref-tree">Tree API and complete authoring example</a>
+      <a class="catalog-link" href="/components/content#ref-tree-item">Tree item API</a>
+    </div></card>
+  </catalog-document>
+</page>

@@ -2,7 +2,7 @@ apiVersion: v2
 name: bosca-services
 description: Bosca application services — requires bosca-infra to be deployed first
 type: application
-version: 0.1.5
+version: 0.1.6
 dependencies:
   - name: bosca-common
     version: ">=0.1.0"
@@ -55,6 +55,10 @@ dependencies:
     version: ">=0.1.0"
     repository: "file://../profiles-web"
     condition: profiles-web.enabled
+  - name: bml-design-catalog
+    version: ">=0.1.0"
+    repository: "file://../bml-design-catalog"
+    condition: bml-design-catalog.enabled
   - name: imageprocessor
     version: ">=0.1.0"
     repository: "file://../imageprocessor"

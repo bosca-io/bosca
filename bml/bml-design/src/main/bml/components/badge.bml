@@ -1,0 +1,49 @@
+<component tag="badge">
+  <prop name="tone" type="String" default="neutral" />
+  <prop name="color" type="String" default="" />
+  <span
+    class="badge"
+    :data-tone="tone"
+    :style='if (color.isNotBlank()) "--tone: " + color else null'
+    {...attrs}
+  >
+    <slot />
+  </span>
+  <style scoped>
+    /* Studio Badge: tone-coloured text with a 14% fill and 30% border. */
+    .badge {
+      box-sizing: border-box;
+      --tone: var(--fg-3);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--tone) 30%, transparent);
+      background: color-mix(in srgb, var(--tone) 14%, transparent);
+      color: var(--tone);
+      font-size: 11.5px;
+      font-weight: 530;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+    .badge[data-tone="purple"] {
+      --tone: var(--purple);
+    }
+    .badge[data-tone="info"] {
+      --tone: var(--info);
+    }
+    .badge[data-tone="success"] {
+      --tone: var(--ok);
+    }
+    .badge[data-tone="warning"] {
+      --tone: var(--warn);
+    }
+    .badge[data-tone="error"] {
+      --tone: var(--err);
+    }
+    .badge[data-tone="accent"] {
+      --tone: var(--accent);
+    }
+  </style>
+</component>

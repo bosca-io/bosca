@@ -4,15 +4,15 @@
     bosca.git.ui.AgentStatusModel(agent)
   </script>
   <island name="git-agent-status" :key="agent.id">
-    <section class="agent-status" :data-agent-active="model.active">
+    <html:section class="agent-status" :data-agent-active="model.active">
       <span class="poll-error" ref="error" role="status"></span>
       <if model.message.isNotBlank()>
-        <div class="order-alert"><ui-alert>{ model.message }</ui-alert></div>
+        <div class="order-alert"><alert>{ model.message }</alert></div>
       </if>
       <if model.agent.currentJob != null>
         <for current in listOfNotNull(model.agent.currentJob)>
           <div class="order-current">
-            <ui-card title="Current Command" :padded="false">
+            <card title="Current Command" :padded="false">
               <div class="current-command">
                 <div class="command-header">
                   <div class="command-job-info">
@@ -45,22 +45,22 @@
                   </for>
                 </div>
               </div>
-            </ui-card>
+            </card>
           </div>
         </for>
       <else-if model.agent.status.name == "ONLINE" || model.agent.status.name == "OFFLINE">
         <div class="order-current">
-          <ui-card title="Current Command" :padded="false">
+          <card title="Current Command" :padded="false">
             <div class="idle-state">
-              <span class="idle-icon"><ui-icon :name='if (model.agent.status.name == "ONLINE") "more" else "close"' :size="16" /></span>
+              <span class="idle-icon"><icon :name='if (model.agent.status.name == "ONLINE") "more" else "close"' :size="16" /></span>
               { if (model.agent.status.name == "ONLINE") "Idle — waiting for jobs" else "Offline" }
             </div>
-          </ui-card>
+          </card>
         </div>
       </if>
       <if model.agent.recentJobs.orEmpty().isNotEmpty()>
         <div class="order-recent">
-          <ui-card title="Recent Jobs" :padded="false">
+          <card title="Recent Jobs" :padded="false">
             <div class="recent-jobs">
               <for job in model.agent.recentJobs.orEmpty()>
                 <a class="recent-job-row" :href="bosca.git.ui.runHref(job.pipelineRunId)">
@@ -70,7 +70,7 @@
                   <code class="recent-job-duration">{ bosca.git.ui.pipelineElapsed(job.started, job.finished) }</code>
                   <span class="recent-job-time">
                     <if job.started != null>
-                      <ui-time :value="job.started.orEmpty()" inheritTypography />
+                      <time :value="job.started.orEmpty()" inheritTypography />
                     <else>
                       —
                     </if>
@@ -78,11 +78,11 @@
                 </a>
               </for>
             </div>
-          </ui-card>
+          </card>
         </div>
       </if>
       <div class="order-status">
-        <ui-card title="Status" :padded="false">
+        <card title="Status" :padded="false">
           <dl class="agent-grid">
             <div class="field-ro">
               <dt>Mode</dt>
@@ -96,7 +96,7 @@
               <dt>Last Heartbeat</dt>
               <dd>
                 <if model.agent.lastHeartbeat != null>
-                  <time :datetime="model.agent.lastHeartbeat.orEmpty()" :title="model.agent.lastHeartbeat.orEmpty()">{ bosca.git.ui.heartbeatAge(model.agent.lastHeartbeat) }</time>
+                  <html:time :datetime="model.agent.lastHeartbeat.orEmpty()" :title="model.agent.lastHeartbeat.orEmpty()">{ bosca.git.ui.heartbeatAge(model.agent.lastHeartbeat) }</html:time>
                 <else>
                   never
                 </if>
@@ -104,7 +104,7 @@
             </div>
             <div class="field-ro">
               <dt>Created</dt>
-              <dd><ui-time :value="model.agent.created" inheritTypography /></dd>
+              <dd><time :value="model.agent.created" inheritTypography /></dd>
             </div>
             <if model.agent.instanceId != null>
               <div class="field-ro">
@@ -125,13 +125,13 @@
             <if model.agent.expiresAt != null>
               <div class="field-ro">
                 <dt>Expires</dt>
-                <dd><ui-time :value="model.agent.expiresAt.orEmpty()" inheritTypography /></dd>
+                <dd><time :value="model.agent.expiresAt.orEmpty()" inheritTypography /></dd>
               </div>
             </if>
           </dl>
-        </ui-card>
+        </card>
       </div>
-    </section>
+    </html:section>
   </island>
   <style scoped>
     /* Studio agent detail cards; the page orders them with the settings cards. */

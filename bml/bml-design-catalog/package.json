@@ -1,0 +1,9 @@
+{
+  "name": "bosca-bml-design-catalog-tests",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "axe-core": "4.14.0",
+    "playwright-core": "1.63.0"
+  }
+}

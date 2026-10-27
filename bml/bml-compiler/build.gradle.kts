@@ -54,7 +54,16 @@ dependencies {
     testImplementation(libs.kotlin.reflect)
     testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.kotlinx.serialization.json) // email e2e builds a BmlMessageContext payload
+    testImplementation(project(":bml:bml-server"))
+    testImplementation(project(":bosca-core:core"))
+    testImplementation("org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable:$kotlinVersion")
 }
 
 // Add the local Maven repo KEFS points at (Settings > Tools > Kotlin External FIR Support),
 // alongside the root's optional Bosca registry. Task: publishMavenPublicationToLocalRepository.
+
+// Binary asset integration tests invoke the shipped browser bundler against source-free JARs.
+tasks.test {
+    inputs.files(fileTree("../bml-runtime/tools"), fileTree("../bml-runtime/src"), file("../bml-runtime/package-lock.json"))
+        .withPropertyName("bmlClientToolchain").withPathSensitivity(PathSensitivity.RELATIVE)
+}

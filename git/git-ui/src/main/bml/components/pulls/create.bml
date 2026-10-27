@@ -4,8 +4,8 @@
     bosca.git.ui.PullCreateModel(page)
   </script>
   <island name="git-pull-create" :key="page.repository">
-    <section :data-next-href="model.nextHref">
-      <ui-dialog
+    <html:section :data-next-href="model.nextHref">
+      <dialog
         title="New Pull Request"
         triggerLabel="New Pull Request"
         icon="pull"
@@ -21,7 +21,7 @@
         >
           <div class="modal-fields">
             <if model.message.isNotBlank()>
-              <ui-alert>{ model.message }</ui-alert>
+              <alert>{ model.message }</alert>
             </if>
             <if model.page.repositories.isEmpty()>
               <p class="muted">
@@ -33,8 +33,8 @@
             <p class="create-intro">Choose the branches to merge, then describe your changes.</p>
             <div class="comparison-grid">
               <div class="comparison-column">
-                <ui-field label="Target repository">
-                  <ui-select
+                <field label="Target repository">
+                  <select
                     searchable
                     name="repo"
                     label="Target repository"
@@ -47,10 +47,10 @@
                         { repository.name + " · " + repository.slug }
                       </option>
                     </for>
-                  </ui-select>
-                </ui-field>
-                <ui-field label="Target branch">
-                  <ui-select
+                  </select>
+                </field>
+                <field label="Target branch">
+                  <select
                     searchable
                     name="target"
                     label="Target branch"
@@ -61,12 +61,12 @@
                     <for branch in model.page.targetBranches>
                       <option :value="branch" :selected="branch == model.target">{ branch }</option>
                     </for>
-                  </ui-select>
-                </ui-field>
+                  </select>
+                </field>
               </div>
               <div class="comparison-column">
-                <ui-field label="Source repository">
-                  <ui-select
+                <field label="Source repository">
+                  <select
                     searchable
                     name="sourceRepo"
                     label="Source repository"
@@ -79,10 +79,10 @@
                         { repository.name + " · " + repository.slug }
                       </option>
                     </for>
-                  </ui-select>
-                </ui-field>
-                <ui-field label="Source branch">
-                  <ui-select
+                  </select>
+                </field>
+                <field label="Source branch">
+                  <select
                     searchable
                     name="source"
                     label="Source branch"
@@ -93,46 +93,46 @@
                     <for branch in model.page.branches>
                       <option :value="branch" :selected="branch == model.source">{ branch }</option>
                     </for>
-                  </ui-select>
-                </ui-field>
+                  </select>
+                </field>
               </div>
             </div>
-            <ui-field label="Title">
-              <ui-input name="title" :value="model.title" placeholder="Describe the change" required />
-            </ui-field>
-            <ui-field label="Description">
+            <field label="Title">
+              <input name="title" :value="model.title" placeholder="Describe the change" required />
+            </field>
+            <field label="Description">
               <textarea name="description" rows="4" placeholder="Explain what changed and why">{ model.description }</textarea>
-            </ui-field>
-            <ui-switch
+            </field>
+            <switch
               name="draft"
               :checked="model.draft"
               label="Create as draft"
               description="Mark it ready when you want feedback."
             />
-            <ui-switch
+            <switch
               name="deleteBranchOnMerge"
               :checked="model.deleteBranchOnMerge"
               label="Delete source branch after merge"
             />
             <if model.page.repository.isNotBlank() && !model.page.canEdit>
-              <ui-alert>Repository edit access is required to create a pull request.</ui-alert>
+              <alert>Repository edit access is required to create a pull request.</alert>
             <else-if model.page.repository.isNotBlank() && model.page.targetBranches.isEmpty()>
               <p class="muted">Commit a file to this repository before opening a pull request.</p>
             </if>
           </div>
           <footer class="modal-footer">
-            <ui-button ref="cancel">Cancel</ui-button>
-            <ui-button
+            <button ref="cancel">Cancel</button>
+            <button
               type="submit"
               primary
               :disabled="!model.page.canEdit || model.page.branches.isEmpty() || model.page.targetBranches.isEmpty()"
             >
               Create pull request
-            </ui-button>
+            </button>
           </footer>
         </form>
-      </ui-dialog>
-    </section>
+      </dialog>
+    </html:section>
   </island>
   <style scoped>
     .create-intro {

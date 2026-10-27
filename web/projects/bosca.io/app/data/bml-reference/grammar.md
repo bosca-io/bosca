@@ -15,10 +15,11 @@ terminal; `« »` a prose constraint.
 A `.bml` file is UTF-8 text. It contains a sequence of **top-level nodes**: any
 number of file-scoped **code regions** plus exactly one **primary declaration**
 (a page, route, or message), *or* one-or-more **component declarations**.
+The source-root `imports.bml` is a separate imports-only file.
 
 ```
 File          ::= Bom? TopLevelNode*
-TopLevelNode  ::= CodeRegion | Page | Route | Message | Component | Comment | Text«ws-only»
+TopLevelNode  ::= Import | CodeRegion | Page | Route | Message | Component | Comment | Text«ws-only»
 ```
 
 Constraints:
@@ -27,12 +28,15 @@ Constraints:
 - A file containing `Component` declarations MUST NOT also contain a `Page`, `Route`, or `Message`.
 - File-scoped `CodeRegion`s (`<script server>`, `<script client>`, `<contract>`)
   apply to the file's primary declaration's scope.
+- Top-level library imports apply to the file. The source root's `imports.bml` declares imports for all
+  its pages and components and accepts only imports, comments and whitespace.
 - Non-whitespace text at top level is an error.
 
 File kinds (by content), used for tooling/routing:
 - **Routable file** — has a `<page route="…">` or `<route path="…">`. An SSR response entry point.
 - **Message file** — has a `<message key="…">` containing `<email>`, `<push>`, or both.
 - **Component file** — has one or more `<component tag="…">`. Defines/overrides tags.
+- **Module imports file** — `imports.bml` at the configured source root; declares shared library imports.
 
 Template and `layout=` syntax remains reserved, but the current compiler does not generate template
 renderers or wrap pages in layouts. A routable file therefore owns its complete HTML document.
@@ -297,6 +301,21 @@ PropAttr      ::= 'type' '=' '"' TypeRef '"' | 'required' ( '=' AttrValue )?
   body and its `<script server>`. `<prop>` body, if present, is fallback content
   for a slot-typed prop. Unknown attributes passed to the component that are not
   declared props are collected and available via the implicit `attrs` binding.
+
+### Library imports
+
+```
+Import        ::= '<import' WS 'library' '=' QuotedLiteral ( WS 'as' '=' QuotedLiteral )? WS? '/>'
+```
+
+`library` is a literal `group:artifact` identity without a version; the binary must already be a
+resolved dependency. The optional literal `as` exposes qualified tags; omitting it exposes short
+export names. Local components take precedence over unprefixed imports. Two different unaliased
+libraries exporting the same name are an error. `html:` and `svg:` select native elements, and
+protected BML declarations retain their meaning. Root and file-local imports combine; importing
+one library both ways shares its compiled identity and assets.
+
+See [compiled libraries](/bml-reference/libraries) for setup, source navigation and development.
 
 ### 4.4 Control flow
 ```

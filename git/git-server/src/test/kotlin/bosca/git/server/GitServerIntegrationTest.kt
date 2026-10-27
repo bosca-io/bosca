@@ -2,6 +2,7 @@ package bosca.git.server
 
 import bosca.bml.graphql.GraphQLClientFactory
 import bosca.bml.project.CompiledProject
+import bosca.bml.project.ContentDigest
 import bosca.bml.render.BmlPageRenderer
 import bosca.bml.render.RenderContext
 import bosca.bml.server.BmlServer
@@ -87,7 +88,22 @@ class GitServerIntegrationTest {
         var process: Process? = null
         var apiPort: Int? = null
         var uiListenerPort: Int? = null
+        val nativeBinary = System.getenv("GIT_SERVER_TEST_BINARY")?.takeIf(String::isNotBlank)?.let(::File)
+        val artifacts = System.getProperty("gitServer.test.artifacts")?.let { File(it, cookiePrefix).apply { mkdirs() } }
         try {
+            val executable = nativeBinary?.let { binary ->
+                val copy = binary.copyTo(File(directory, binary.name))
+                assertTrue(copy.setExecutable(true), copy.path)
+                val digest = fileDigest(binary)
+                assertEquals(digest, fileDigest(copy))
+                artifacts?.let { output ->
+                    File(output, "executable.txt").writeText("name=${binary.name}\nbytes=${binary.length()}\nsha256=$digest\n")
+                    verifyGitServerNativeResources(
+                        File(requireNotNull(System.getProperty("gitServer.native.resourceReport"))), output,
+                    )
+                }
+                copy.absolutePath
+            }
             postgres.start()
             nats.start()
             val port = ServerSocket(0).use { it.localPort }
@@ -118,7 +134,9 @@ class GitServerIntegrationTest {
                     "\ninitialization:\n  password:\n    admin: local-admin-password\n    sa: local-sa-password\n"
             )
             val log = File(directory, "server.log")
-            val executable = System.getenv("GIT_SERVER_TEST_BINARY")?.takeIf(String::isNotBlank)
+            if (executable != null) {
+                assertEquals(setOf(File(executable).name, config.name), directory.listFiles().orEmpty().map { it.name }.toSet())
+            }
             val command =
                 if (executable == null) {
                     listOf(
@@ -135,6 +153,7 @@ class GitServerIntegrationTest {
             process =
                 ProcessBuilder(command)
                     .apply {
+                        directory(directory)
                         environment()
                             .putAll(
                                 mapOf(
@@ -205,6 +224,7 @@ class GitServerIntegrationTest {
                 Thread.sleep(100)
             }
             assertTrue(uiReady, "UI server failed to start. ${log.readText().takeLast(12_000)}")
+            assertFalse("bml: no META-INF/bosca/bml/build-id resource" in log.readText(), log.readText())
             assertEquals(404, request("/login", base = apiOrigin).statusCode())
             assertEquals(404, request("/_bml/app.css", base = apiOrigin).statusCode())
             fun graphql(
@@ -227,19 +247,36 @@ class GitServerIntegrationTest {
                 assertFalse(result.containsKey("errors"), result.toString())
                 return result.getValue("data").jsonObject
             }
-            assertEquals(200, request("/login").statusCode())
+            val loginPage = request("/login")
+            assertEquals(200, loginPage.statusCode())
+            val designStyles = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(loginPage.body())
+                .map { it.groupValues[1].replace("&amp;", "&") }
+                .filter { it.startsWith("/_bml/libraries/") && it.substringBefore('?').endsWith(".css") }
+                .map { request(it).also { response -> assertEquals(200, response.statusCode()) }.body() }
+                .joinToString("\n")
+            assertFalse("/_git/" in designStyles)
             val designFonts =
-                Regex("url\\((/_git/fonts/[^)]+)\\)")
-                    .findAll(request("/_bml/app.css").body())
+                Regex("""url\(["']?(/_bml/libraries/[^)"']+\.woff2)["']?\)""")
+                    .findAll(designStyles)
                     .map { it.groupValues[1] }
                     .toList()
             assertEquals(11, designFonts.size)
-            designFonts.forEach { path ->
-                val font = request(path)
+            assertEquals(designFonts.distinct(), designFonts)
+            val fontDigests = designFonts.associateWith { path ->
+                val uri = URI.create(origin + path)
+                val font = client.send(HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(15)).build(),
+                    HttpResponse.BodyHandlers.ofByteArray())
                 assertEquals(200, font.statusCode(), path)
                 assertEquals("font/woff2", font.headers().firstValue("Content-Type").orElse(""))
-                assertTrue(font.body().startsWith("wOF2"), path)
+                assertEquals("wOF2", font.body().take(4).toByteArray().decodeToString(), path)
+                val resource = "bml/applications/bml.generated/" + uri.path.removePrefix("/_bml/")
+                val expected = requireNotNull(javaClass.classLoader.getResourceAsStream(resource)) { resource }
+                    .use { it.readAllBytes() }
+                val digest = ContentDigest.sha256(font.body())
+                assertEquals(ContentDigest.sha256(expected), digest, path)
+                JsonPrimitive(digest)
             }
+            artifacts?.let { File(it, "font-sha256.json").writeText(JsonObject(fontDigests).toString()) }
             val signup =
                 graphql(
                     """
@@ -1309,9 +1346,29 @@ class GitServerIntegrationTest {
                 apiPort?.let { ServerSocket(it).use { socket -> assertTrue(socket.isBound) } }
                 uiListenerPort?.let { ServerSocket(it).use { socket -> assertTrue(socket.isBound) } }
             } finally {
-                nats.stop()
-                postgres.stop()
+                try {
+                    val log = File(directory, "server.log")
+                    if (artifacts != null && log.isFile) log.copyTo(File(artifacts, "server.log"), overwrite = true)
+                } finally {
+                    try {
+                        nats.stop()
+                    } finally {
+                        try {
+                            postgres.stop()
+                        } finally {
+                            if (nativeBinary != null) java.nio.file.Files.walk(directory.toPath()).use { paths ->
+                                paths.sorted(Comparator.reverseOrder()).forEach { java.nio.file.Files.delete(it) }
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+
+    private fun fileDigest(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        java.security.DigestInputStream(file.inputStream(), digest).use { it.transferTo(java.io.OutputStream.nullOutputStream()) }
+        return java.util.HexFormat.of().formatHex(digest.digest())
     }
 }

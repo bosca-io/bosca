@@ -1,0 +1,90 @@
+<component tag="popover">
+  <prop name="label" type="String" required />
+  <prop name="icon" type="String" default="" />
+  <prop name="iconOnly" type="Boolean" default="false" />
+  <prop name="width" type="Int" default="360" />
+  <details class="popover" ref="panel" :data-width="width" {...attrs}>
+    <summary
+      ref="trigger"
+      :class='if (iconOnly) "icon-only" else ""'
+      :title="label"
+      :aria-label="label"
+    >
+      <if icon.isNotBlank()>
+        <icon :name="icon" :size="14" />
+      </if>
+      <if !iconOnly>
+        { label }
+      </if>
+    </summary>
+    <div ref="content" class="popover-content" role="region" :aria-label="label" data-bml-design-popover-content>
+      <slot />
+    </div>
+  </details>
+  <style scoped>
+    .popover {
+      position: relative;
+    }
+    summary {
+      box-sizing: border-box;
+      color: var(--fg-1);
+      gap: var(--control-gap);
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      height: var(--control-height-sm);
+      padding: 0 10px;
+      line-height: normal;
+      font-size: 12.5px;
+      font-weight: 500;
+      border: 1px solid var(--control-border, var(--line-2));
+      border-radius: var(--r-sm);
+      background: var(--control-bg, var(--bg-2));
+    }
+    summary:focus-visible {
+      outline: var(--focus-width) solid var(--accent);
+      outline-offset: var(--focus-offset);
+    }
+    summary.icon-only {
+      width: var(--control-height-sm);
+      padding: 0;
+      justify-content: center;
+    }
+    summary::-webkit-details-marker {
+      display: none;
+    }
+    summary:hover {
+      background: var(--bg-3);
+    }
+    .popover-content {
+      box-sizing: border-box;
+      color: var(--fg-1);
+      font-family: var(--font-sans);
+      position: fixed;
+      inset: auto;
+      margin: 0;
+      z-index: 30;
+      width: 360px;
+      max-width: calc(100vw - 24px);
+      max-height: calc(100vh - 24px);
+      overflow: auto;
+      padding: 12px;
+      border: 1px solid var(--popover-border, var(--line));
+      border-radius: var(--r-sm);
+      background: var(--bg-1);
+      box-shadow: var(--popover-shadow, 0 12px 30px color-mix(in srgb, var(--shadow-color) 40%, transparent));
+    }
+    .popover-content:not([popover]) {
+      position: static;
+      margin-top: 8px;
+      max-width: 100%;
+    }
+  </style>
+  <script client scoped>
+    import { attachTooltip } from "@client/helpers/tooltip";
+    import { positionedPopover } from "@client/helpers/popover";
+    positionedPopover(ctx);
+    attachTooltip(ctx, () => ctx.ref<HTMLElement>("trigger") ?? ctx.root);
+  </script>
+</component>

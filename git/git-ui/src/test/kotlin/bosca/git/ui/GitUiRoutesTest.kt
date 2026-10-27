@@ -38,6 +38,7 @@ class GitUiRoutesTest {
     fun resetWrites() {
         storedFiles.clear()
         userMappings.clear()
+        orchestratorConfigs.clear()
         treeRetries.clear()
         commitSha = "abc"
         failingChecks = emptyList()
@@ -89,6 +90,21 @@ class GitUiRoutesTest {
                 ?.content,
         )
         assertFalse("Archived project" in get("/repositories?state=unknown").body())
+    }
+
+    @Test
+    fun `file views and editors reserve the page for the document`() {
+        for (path in listOf("file=README.md&line=1", "file=long.txt", "file=README.md&edit=true", "new=true")) {
+            val response = get("/repositories/repo?$path")
+            assertEquals(200, response.statusCode(), path)
+            val html = response.body()
+            assertTrue("repository-file-page" in html && "page-fill" in html, path)
+            assertTrue("file-workspace" in html && "data-bml-fullscreen-button" in html, path)
+            assertFalse("repository-summary" in html || "class=\"path-bar\"" in html, path)
+        }
+        val folder = get("/repositories/repo?path=docs").body()
+        assertTrue("repository-summary" in folder && "path-bar" in folder)
+        assertFalse("repository-file-page" in folder)
     }
 
     @Test
@@ -308,16 +324,56 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `appearance preferences are rendered before client scripts run`() {
+        for ((saved, expected) in listOf("light" to "light", "dark" to "dark", "invalid" to "dark")) {
+            val response = client.send(
+                HttpRequest.newBuilder(URI("http://localhost:$port/repositories/repo"))
+                    .header("Cookie", "_git_test=ui-test-token; git_ui_appearance=$saved")
+                    .GET().build(),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+            assertEquals(200, response.statusCode(), response.body())
+            for (tag in listOf("html", "body")) {
+                assertTrue(Regex("<$tag\\b[^>]*\\bdata-theme=\"$expected\"").containsMatchIn(response.body()), response.body())
+            }
+            assertTrue("Profile actions" in response.body(), response.body())
+        }
+    }
+
+    @Test
+    fun `production design assets stay isolated to their consuming pages`() {
+        GitUiAssetAudit(client, URI("http://localhost:$port")).verify()
+    }
+
+    @Test
     fun `design fonts are packaged and publicly served with their binary content type`() {
-        val stylesheet = get("/_bml/app.css", authenticated = false)
-        assertEquals(200, stylesheet.statusCode())
+        val html = get("/login", authenticated = false).body()
+        val styles = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(html)
+            .map { it.groupValues[1].replace("&amp;", "&") }
+            .filter { it.startsWith("/_bml/libraries/") && it.substringBefore('?').endsWith(".css") }
+            .map { get(it, authenticated = false).also { response -> assertEquals(200, response.statusCode()) }.body() }
+            .joinToString("\n")
+        assertFalse("/_git/" in styles)
         val paths =
-            Regex("url\\((/_git/fonts/[^)]+)\\)")
-                .findAll(stylesheet.body())
+            Regex("""url\(["']?(/_bml/libraries/[^)"']+\.woff2)["']?\)""")
+                .findAll(styles)
                 .map { it.groupValues[1] }
                 .toList()
         assertEquals(11, paths.size)
+        assertEquals(paths.distinct(), paths)
+        val nativeConfig = requireNotNull(GitUiAssets::class.java.getResourceAsStream(
+            "/META-INF/native-image/io.bosca/git-ui/resource-config.json",
+        )).use { Json.parseToJsonElement(it.readBytes().decodeToString()).jsonObject }
+        val nativePatterns = nativeConfig.getValue("resources").jsonObject.getValue("includes").jsonArray
+            .map { Regex(it.jsonObject.getValue("pattern").jsonPrimitive.content) }
+        val manifestPath = "bml/applications/bml.generated/client-manifest.json"
+        assertTrue(nativePatterns.any { it.matches(manifestPath) })
+        assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$manifestPath")?.use { it.readBytes() })
+        assertTrue(nativePatterns.any { it.matches("META-INF/licenses/bml-design/geist.txt") })
         paths.forEach { path ->
+            val resource = "bml/applications/bml.generated/" + path.removePrefix("/_bml/")
+            assertTrue(nativePatterns.any { it.matches(resource) }, resource)
+            assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$resource")?.use { it.readBytes() })
             val response =
                 client.send(
                     HttpRequest.newBuilder(URI("http://localhost:$port$path")).GET().build(),
@@ -327,15 +383,16 @@ class GitUiRoutesTest {
             assertEquals("font/woff2", response.headers().firstValue("Content-Type").orElse(""))
             assertEquals("wOF2", response.body().take(4).toByteArray().decodeToString())
             assertEquals(
-                "public, max-age=31536000, immutable",
+                "no-cache",
                 response.headers().firstValue("Cache-Control").orElse(""),
             )
         }
+        assertEquals(404, get(paths.first().substringBeforeLast('/') + "/missing.woff2", authenticated = false).statusCode())
         assertEquals(404, get("/_git/fonts/missing.woff2", authenticated = false).statusCode())
     }
 
     @Test
-    fun `local controls preserve native form attributes and island refs`() {
+    fun `library controls preserve native form attributes and island refs`() {
         val html = get("/login", authenticated = false).body()
         val identifier =
             Regex("<input[^>]*data-bml-ref=\"identifier\"[^>]*>").find(html)?.value.orEmpty()
@@ -358,6 +415,71 @@ class GitUiRoutesTest {
             Regex("<p[^>]*data-bml-ref=\"error\"[^>]*\\bhidden[ >]").containsMatchIn(html),
             html,
         )
+    }
+
+    @Test
+    fun `Git foundation callers resolve to the compiled design library`() {
+        val html =
+            listOf(
+                get("/login", authenticated = false),
+                get("/ci-agents/orchestrator"),
+                get("/search?repo=repo&q=snippet"),
+                get("/pulls?repo=repo&new=true"),
+                get("/repositories/repo?tab=branches"),
+            ).joinToString("\n") { response ->
+                assertEquals(200, response.statusCode(), response.body())
+                response.body()
+            }
+        for (tag in listOf("button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state")) {
+            val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
+            assertTrue("data-bml-c=\"$id\"" in html, "Missing library $tag")
+            assertFalse("data-bml-c=\"ui-$tag\"" in html, "Local $tag is still rendered")
+        }
+    }
+
+    @Test
+    fun `migrated controls have no local registrations and use library client mounts`() {
+        val migrated = listOf(
+            "button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state",
+            "icon", "icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "confirm-dialog", "select", "search-input", "segmented-control", "section-heading", "table-scroll", "disclosure-heading", "empty-state", "time", "comment-editor", "toast", "app-header", "app-shell", "profile", "profile-menu", "bosca-mark", "page-shell", "page-heading", "tabs", "view-tabs", "tree", "tree-item", "source-view", "json-editor",
+        )
+        val registered = bml.generated.BmlComponents.all.map { it.tag }.toSet()
+        for (tag in migrated) {
+            val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
+            assertTrue(id in registered, "Missing library registration for $tag")
+            assertFalse("ui-$tag" in registered, "Unused local registration for $tag")
+        }
+        for (tag in listOf("checkbox", "section", "panel")) {
+            assertFalse("ui-$tag" in registered, "Unused local registration for $tag")
+        }
+        val html = listOf(
+            "/repositories/repo?file=README.md",
+            "/pulls/pull?repo=repo&number=1&view=files",
+            "/search?repo=repo&q=snippet",
+            "/pulls?status=CLOSED",
+            "/repositories/repo/github",
+            "/ci-agents/orchestrator",
+        ).joinToString("\n") { path ->
+            val response = get(path)
+            assertEquals(200, response.statusCode(), response.body())
+            response.body()
+        }
+        assertTrue("data-bml-component=\"git-search-link\"" in html, "The navigation search link owns its shortcut")
+        assertFalse("class=\"nav-search\"" in html, "The redundant sidebar search box is removed")
+        for (tag in listOf("icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "select", "search-input", "segmented-control", "toast", "app-header", "tabs", "view-tabs", "tree", "source-view", "json-editor")) {
+            val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
+            assertTrue("data-bml-component=\"$id\"" in html, "Missing library mount for $tag")
+            assertFalse("data-bml-component=\"ui-$tag\"" in html)
+        }
+        for (tag in listOf("section-heading", "table-scroll", "disclosure-heading", "empty-state", "time", "bosca-mark", "page-shell", "page-heading", "tree-item")) {
+            val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
+            assertTrue("data-bml-c=\"$id\"" in html, "Missing library scope for $tag")
+        }
+        val confirmationId = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", "confirm-dialog")
+        assertTrue("data-bml-c=\"$confirmationId\"" in html, "Missing projected library confirmation description")
+        val download = Regex("<a[^>]*aria-label=\"Download file\"[^>]*>").find(html)?.value.orEmpty()
+        assertTrue(Regex("\\bdownload(?:[ >])").containsMatchIn(download), download)
+        assertTrue("href=\"" in download && "button-link icon-only" in download, download)
     }
 
     @Test
@@ -819,6 +941,9 @@ class GitUiRoutesTest {
     fun `markdown line navigation opens its numbered source view`() {
         val html = get("/repositories/repo?file=search-result.md&line=2").body()
         assertTrue("matching line" in html, html)
+        assertTrue("data-line=\"2\"" in html, html)
+        assertTrue("data-line=\"1\"" in get("/repositories/repo?file=a.txt&line=1").body())
+        assertTrue("data-line=\"0\"" in get("/repositories/repo?file=a.txt&line=invalid").body())
         assertTrue("data-tab=\"Source\" aria-selected=\"true\"" in html, html)
         assertFalse(Regex("<div[^>]+ref=\"sourceSurface\"[^>]+hidden").containsMatchIn(html), html)
     }
@@ -1330,7 +1455,9 @@ class GitUiRoutesTest {
         val path = "/pulls/pull?repo=repo&number=1&view=files"
         val selected = action(path, "git-pull-review.model", "select", listOf("a.txt", 0, 1))
         val html = Json.parseToJsonElement(selected.body()).jsonObject.getValue("html").jsonPrimitive.content
-        assertTrue("ui-comment-editor" in html && "Comment on a.txt:1" in html, html)
+        val commentId = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", "comment-editor")
+        assertTrue("data-bml-component=\"$commentId\"" in html && "Comment on a.txt:1" in html, html)
+        assertFalse("data-bml-component=\"ui-comment-editor\"" in html, html)
         assertFalse("Your review" in html, html)
         val original = actionState(selected)
         val review = original.getValue("reviews").jsonArray.first().jsonObject
@@ -1887,7 +2014,8 @@ class GitUiRoutesTest {
         )
         val orchestrator = get("/ci-agents/orchestrator")
         assertEquals(200, orchestrator.statusCode(), orchestrator.body())
-        assertTrue("ui-json-editor" in orchestrator.body(), orchestrator.body())
+        assertTrue("data-bml-json-editor" in orchestrator.body(), orchestrator.body())
+        assertFalse("data-bml-component=\"ui-json-editor\"" in orchestrator.body(), orchestrator.body())
         val invalid =
             action(
                 "/ci-agents/orchestrator",
@@ -1896,7 +2024,61 @@ class GitUiRoutesTest {
                 listOf("digitalocean", "", "nyc1", "small", "ubuntu", "[]", "[]", 5, 60, 120),
             )
         assertEquals(true, actionState(invalid)["failed"]?.jsonPrimitive?.boolean, invalid.body())
-        assertEquals("[]", actionState(invalid)["profiles"]?.jsonPrimitive?.content)
+        assertEquals("[]", actionState(invalid)["profilesText"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `orchestrator configuration posts structured JSON and retains failed drafts`() {
+        val profiles = """{"linux":{"size":"large","enabled":true,"count":3}}"""
+        val sinks = """[{"type":"webhook","url":"https://example.test/changed"}]"""
+        fun configure(provider: String = "digitalocean", draft: String = profiles) = action(
+            "/ci-agents/orchestrator", "git-agent-settings.model", "configure",
+            listOf(provider, "scope", "nyc1", "small", "ubuntu", draft, sinks, 7, 45, 90),
+        )
+        val before = requests.count { it.operation == "GitUiConfigureOrchestrator" }
+        val invalid = configure(draft = "{invalid: ")
+        assertEquals(true, actionState(invalid)["failed"]?.jsonPrimitive?.boolean, invalid.body())
+        assertEquals("{invalid: ", actionState(invalid)["profilesText"]?.jsonPrimitive?.content)
+        assertEquals(sinks, actionState(invalid)["sinksText"]?.jsonPrimitive?.content)
+        assertEquals(before, requests.count { it.operation == "GitUiConfigureOrchestrator" })
+        val rejected = configure(provider = "rejected-provider")
+        assertEquals(true, actionState(rejected)["failed"]?.jsonPrimitive?.boolean, rejected.body())
+        assertEquals("Configuration rejected", actionState(rejected)["message"]?.jsonPrimitive?.content)
+        assertEquals(Json.parseToJsonElement(profiles), actionState(rejected)["profiles"])
+        assertEquals(Json.parseToJsonElement(sinks), actionState(rejected)["sinks"])
+        val saved = configure()
+        assertEquals(false, actionState(saved)["failed"]?.jsonPrimitive?.boolean, saved.body())
+        assertEquals("/ci-agents/orchestrator", actionState(saved)["nextHref"]?.jsonPrimitive?.content)
+        val sent = requests.last { it.operation == "GitUiConfigureOrchestrator" }
+        assertEquals("Bearer ui-test-token", sent.authorization)
+        assertEquals("orchestrator", sent.variables["id"]?.jsonPrimitive?.content)
+        val config = sent.variables.getValue("config").jsonObject
+        assertEquals(Json.parseToJsonElement(profiles), config["runnerProfiles"])
+        assertEquals(Json.parseToJsonElement(sinks), config["alertSinks"])
+        assertEquals(7, config["maxConcurrentVms"]?.jsonPrimitive?.int)
+        assertEquals(45, config["maxJobTimeoutMinutes"]?.jsonPrimitive?.int)
+        assertEquals(90, config["maxVmLifetimeMinutes"]?.jsonPrimitive?.int)
+        assertEquals("scope", config["credentials"]?.jsonObject?.get("selfDestructTokenScope")?.jsonPrimitive?.content)
+        assertTrue("enabled" in get("/ci-agents/orchestrator").body())
+    }
+
+    @Test
+    fun `Git JSON editors use the compiled design library without loading it on ordinary pages`() {
+        val html = get("/ci-agents/orchestrator").body()
+        val component = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", "json-editor")
+        assertEquals(2, Regex("data-bml-component=\"$component\"").findAll(html).count(), html)
+        assertTrue("name=\"profiles\"" in html && "name=\"sinks\"" in html, html)
+        assertTrue("aria-label=\"Runner profiles\"" in html && "aria-label=\"Alert sinks\"" in html, html)
+        assertTrue("data-bml-preserve=\"json-profiles\"" in html && "data-bml-preserve=\"json-sinks\"" in html, html)
+        assertFalse("data-value=\"null\"" in html, "Structured settings must reach both editor inputs: $html")
+        fun script(page: String): String = Regex("src=\"(/_bml/js/[^\"]+)\"").findAll(page)
+            .joinToString("\n") { get(it.groupValues[1]).body() }
+        val editorScript = script(html)
+        assertTrue("data-json-ready" in editorScript && "jse-main" in editorScript)
+        val ordinary = script(get("/repositories/repo").body())
+        assertFalse("data-json-ready" in ordinary || "jse-main" in ordinary)
+        val style = get("/_bml/app.css").body()
+        assertTrue("--json-bg" in style && "--json-key" in style, style)
     }
 
     @Test
@@ -2096,7 +2278,10 @@ class GitUiRoutesTest {
         assertEquals(200, response.statusCode(), response.body())
         val html = response.body()
         assertTrue("file=README.md&amp;edit=true" in html || "file=README.md&edit=true" in html, html)
-        assertTrue(Regex(">\\s*Rename\\s*<").containsMatchIn(html) && Regex(">\\s*Edit\\s*<").containsMatchIn(html), html)
+        assertTrue("aria-label=\"Rename file\"" in html, html)
+        assertTrue("aria-label=\"Delete file\"" in html, html)
+        assertTrue("aria-label=\"Edit file\"" in html, html)
+        assertFalse(Regex(">\\s*(Rename|Edit)\\s*<").containsMatchIn(html), html)
         assertTrue("aria-label=\"Download file\"" in html, html)
         assertTrue("role=\"tablist\"" in html && "aria-label=\"Markdown view\"" in html, html)
         assertEquals(1, Regex("aria-label=\"File actions\"").findAll(html).count())
@@ -2121,22 +2306,38 @@ class GitUiRoutesTest {
 
     @Test
     fun `user mapping changes preserve identity labels and require removal confirmation`() {
+        val path = "/settings/github"
+        val shell = get(path).body()
+        val key = requireNotNull(Regex("data-bml-state-key=\"(git-github-users.model[^\"]*)\"").find(shell)).groupValues[1]
         val saved =
             action(
-                "/settings/github",
+                path,
                 "git-github-users.model",
                 "save",
                 listOf("alice", "principal"),
+                sourceHtml = shell,
             )
-        assertEquals(false, actionState(saved)["failed"]?.jsonPrimitive?.boolean)
+        val savedState = actionState(saved)
+        assertEquals(false, savedState["failed"]?.jsonPrimitive?.boolean)
+        assertEquals(1, savedState["noticeSequence"]?.jsonPrimitive?.int)
         assertTrue("@alice" in saved.body() && "alice@example.test" in saved.body(), saved.body())
+        assertTrue("github-user-mapping-notice" in saved.body(), saved.body())
+        assertFalse("status-message" in saved.body(), saved.body())
+        val refreshed = continueAction(path, key, "move", savedState, listOf(0L, 0L, "", ""))
+        val refreshedState = actionState(refreshed)
+        assertEquals(1, refreshedState["noticeSequence"]?.jsonPrimitive?.int)
+        assertEquals("", refreshedState["message"]?.jsonPrimitive?.content)
+        val repeated = continueAction(path, key, "save", refreshedState, listOf("alice", "principal"))
+        assertEquals(2, actionState(repeated)["noticeSequence"]?.jsonPrimitive?.int)
         val rejected =
-            action("/settings/github", "git-github-users.model", "remove", listOf(101L, false))
+            continueAction(path, key, "remove", actionState(repeated), listOf(101L, false))
         assertEquals(true, actionState(rejected)["failed"]?.jsonPrimitive?.boolean)
+        assertEquals(2, actionState(rejected)["noticeSequence"]?.jsonPrimitive?.int)
         assertEquals(1, userMappings.size)
         val removed =
-            action("/settings/github", "git-github-users.model", "remove", listOf(101L, true))
+            continueAction(path, key, "remove", actionState(rejected), listOf(101L, true))
         assertEquals(false, actionState(removed)["failed"]?.jsonPrimitive?.boolean)
+        assertEquals(3, actionState(removed)["noticeSequence"]?.jsonPrimitive?.int)
         assertTrue(userMappings.isEmpty())
     }
 
@@ -2203,6 +2404,9 @@ class GitUiRoutesTest {
             "The initial HTML reserves a labeled tile for every deferred statistic",
         )
         assertEquals(5, Regex("role=\"status\"").findAll(placeholderGrid).count())
+        for (label in listOf("commits", "branches", "tags", "contributors", "size")) {
+            assertTrue("aria-label=\"Loading $label\"" in shell.body(), shell.body())
+        }
         assertTrue(requests.drop(before).none { it.operation == "GitUiStats" })
         val payload = buildJsonObject {
             put("page", "/repositories/{id}")
@@ -2524,10 +2728,12 @@ class GitUiRoutesTest {
                 java.util.concurrent.atomic.AtomicInteger,
             >()
         private val userMappings = CopyOnWriteArrayList<JsonObject>()
+        private val orchestratorConfigs = java.util.concurrent.ConcurrentHashMap<String, JsonObject>()
         @Volatile private var commitSha = "abc"
         @Volatile private var failingChecks: List<String> = emptyList()
         @Volatile private var checkTargetUrl = "javascript:alert(1)"
         private var port = 0
+        private var subscriptionPort = 0
         private lateinit var upstream: HttpServer
         private val upstreamExecutor = Executors.newVirtualThreadPerTaskExecutor()
         @Volatile private var requestProbe: ((String) -> Unit)? = null
@@ -2536,10 +2742,15 @@ class GitUiRoutesTest {
 
         @JvmStatic fun browserFixturePort(): Int = port
         @JvmStatic fun browserFixtureApiPort(): Int = upstream.address.port
+        fun browserFixtureGraphqlEndpoint(): String = "http://localhost:$subscriptionPort/graphql"
 
         @JvmStatic
         @BeforeClass
-        fun start() {
+        fun start() = start(true)
+
+        fun startApiFixture() = start(false)
+
+        private fun start(serveUi: Boolean) {
             upstream = HttpServer.create(InetSocketAddress("localhost", 0), 0)
             upstream.executor = upstreamExecutor
             upstream.createContext("/graphql") { exchange ->
@@ -2832,8 +3043,15 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"registerAgent":{"agent":{"id":"agent"},"token":"one-time-agent-token"}}}}"""
                         operation == "GitUiUpdateAgent" ->
                             """{"data":{"git":{"updateAgent":{"id":"agent"}}}}"""
+                        operation == "GitUiConfigureOrchestrator" &&
+                            variables.getValue("config").jsonObject["provider"]?.jsonPrimitive?.content == "rejected-provider" ->
+                            """{"errors":[{"message":"Configuration rejected"}]}"""
+                        operation == "GitUiConfigureOrchestrator" -> {
+                            orchestratorConfigs[requireNotNull(id)] = variables.getValue("config").jsonObject
+                            """{"data":{"git":{"configureOrchestrator":{"id":${variables.getValue("id")}}}}}"""
+                        }
                         operation == "GitUiOrchestrator" ->
-                            """{"data":{"git":{"getOrchestratorConfig":$orchestrator}}}"""
+                            """{"data":{"git":{"getOrchestratorConfig":${id?.let { orchestratorConfigs[it] } ?: orchestrator}}}}"""
                         operation == "GitUiGitHubPair" ->
                             """{"data":{"github":{"pair":$pair},"pipelines":{"secrets":[{"name":"token"},{"name":"webhook"}]}}}"""
                         operation == "GitUiGitHubRefs" ->
@@ -3096,7 +3314,7 @@ class GitUiRoutesTest {
                         operation == "GetCurrentPrincipal" ->
                             """{"data":{"security":{"principals":{"current":{"id":"test-principal","verified":true,"primaryProfileId":null}}}}}"""
                         operation == "GetCurrentProfiles" ->
-                            """{"data":{"profiles":{"current":[]}}}"""
+                            """{"data":{"profiles":{"current":[{"id":"owner","name":"Alice","slug":"alice","isPrimary":true,"type":"GENERIC","visibility":"USER","created":"2026-10-09T00:00:00Z","attributes":[]}]}}}"""
                         operation == "SignOut" ->
                             """{"data":{"security":{"login":{"signOut":true}}}}"""
                         else -> """{"data":{"probe":true}}"""
@@ -3107,7 +3325,7 @@ class GitUiRoutesTest {
                 exchange.close()
             }
             upstream.start()
-            val subscriptionPort = ServerSocket(0).use { it.localPort }
+            subscriptionPort = ServerSocket(0).use { it.localPort }
             val subscriptionApp =
                 BoscaApplication(
                     ApplicationConfig.load(
@@ -3170,6 +3388,7 @@ class GitUiRoutesTest {
                     },
                 )
             }
+            subscriptionApp.installGitUiFixtureFiles()
             subscriptionApp.freezeMiddleware()
             subscriptionEngine = NettyServerEngine(subscriptionApp, subscriptionPort)
             thread(isDaemon = true, name = "git-ui-test-subscriptions") {
@@ -3183,6 +3402,7 @@ class GitUiRoutesTest {
                     Thread.sleep(20)
                 }
             }
+            if (!serveUi) return
             port = ServerSocket(0).use { it.localPort }
             val config =
                 "bosca:\n  server:\n    port: $port\n    drain-timeout-ms: 0\n    development: true\n"
@@ -3192,23 +3412,7 @@ class GitUiRoutesTest {
                 replyPull = Json.parseToJsonElement(pullStateFixture(pull, 10)).jsonObject
                 call.respond("reset")
             }
-            // Fixture asset delivery for browser rendering; production transport is tested in
-            // EndToEndGitCliTest.
-            app.router.get("/owner/repo/raw/{ref}/{path...}") {
-                if (call.request.cookies["_git_test"] != "ui-test-token")
-                    call.respond(bosca.server.HttpStatusCode.Forbidden)
-                else if (call.pathParameters["path"] != "images/logo.png")
-                    call.respond(bosca.server.HttpStatusCode.NotFound)
-                else
-                    call.respondBytes(
-                        java.util.Base64.getDecoder()
-                            .decode(
-                                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII="
-                            ),
-                        ContentType.Image.Png,
-                    )
-            }
-            app.router.get("/{owner}/{repo}") { call.respond("clone URL fallback") }
+            app.installGitUiFixtureFiles()
             app.freezeMiddleware()
             engine = NettyServerEngine(app, port)
             thread(isDaemon = true, name = "git-ui-test-server") { engine.start() }

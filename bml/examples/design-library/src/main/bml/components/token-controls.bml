@@ -1,0 +1,26 @@
+<component tag="token-controls">
+  <prop name="id" type="String" required />
+  <card :title='"CSS tokens: " + id'>
+    <field label="Display name">
+      <input value="Bosca" :data-token-input="id" />
+    </field>
+    <div class="actions">
+      <button primary icon="save" :data-token-button="id">Save</button>
+      <button size="sm" :data-token-small="id">Compact</button>
+      <button size="xs" :data-token-xs="id">Small</button>
+      <button disabled :data-token-disabled="id">Disabled</button>
+      <button loading :data-token-loading="id">Loading</button>
+      <icon-button icon="copy" label="Copy example" :data-token-icon="id" />
+    </div>
+    <select label="Example choice" name="choice" :data-token-select="id">
+      <html:option value="first" selected>First choice</html:option>
+      <html:option value="second">Second choice</html:option>
+    </select>
+    <div class="actions">
+      <popover label="Details" :data-token-popover="id"><p>Consumer-owned colors.</p></popover>
+      <dialog title="Theme preview" triggerLabel="Preview dialog" :data-token-dialog="id">
+        <div class="modal-fields"><p>Consumer-owned colors.</p><button data-dialog-close>Close preview</button></div>
+      </dialog>
+    </div>
+  </card>
+</component>

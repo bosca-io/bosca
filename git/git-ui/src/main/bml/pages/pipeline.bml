@@ -4,9 +4,9 @@
   </script>
   <if model != null>
     <git-layout :title="model.title">
-      <ui-page>
+      <page-shell>
         <git-pipeline-run :initial="model" />
-      </ui-page>
+      </page-shell>
     </git-layout>
   </if>
 </page>

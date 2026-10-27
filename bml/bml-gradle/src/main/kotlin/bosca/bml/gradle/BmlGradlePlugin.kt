@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.gradle.plugin.SubpluginArtifact
 import org.jetbrains.kotlin.gradle.plugin.SubpluginOption
 import java.util.Properties
 import java.io.File
+import java.util.jar.JarFile
 
 /**
  * The `io.bosca.bml` Gradle plugin. A `KotlinCompilerPluginSupportPlugin` that wires
@@ -29,6 +30,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
         ext.packageName.convention("bml.generated")
         ext.library.enabled.convention(false)
         ext.library.exports.convention(emptyList())
+        ext.library.providerRegistrars.convention(emptyList())
         ext.generateKotlinSources.convention(false) // opt-in: dump generated `.kt` for inspection/debugging
         val nodeName = if (target.providers.systemProperty("os.name").get().startsWith("Windows")) "node.exe" else "node"
         ext.nodeExecutable.convention(
@@ -73,11 +75,10 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             // up-to-date / cache-restorable and the change silently doesn't take effect. Declare the `.bml`
             // dir as a content-tracked input so editing a `.bml` correctly invalidates the compilation.
             target.tasks.named("compileKotlin", org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).configure { task ->
-                // In-process incremental compilation never invokes the BML compiler plugin, so it would
-                // silently produce no pages. Daemon compilation runs it, incrementally or not.
-                if (task.compilerExecutionStrategy.get() == org.jetbrains.kotlin.gradle.tasks.KotlinCompilerExecutionStrategy.IN_PROCESS) {
-                    task.incremental = false
-                }
+                // BML contributes complete synthetic source files after Kotlin's incremental source
+                // selection. Compile the whole module so BML-only inputs cannot silently disappear.
+                // Gradle's input snapshots still skip unchanged compilations.
+                task.incremental = false
                 task.inputs.dir(ext.sourceDir)
                     .withPropertyName("bmlSources")
                     .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
@@ -85,6 +86,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 task.inputs.property("bmlPackageName", ext.packageName)
                 task.inputs.property("bmlLibrary", ext.library.enabled)
                 task.inputs.property("bmlLibraryExports", ext.library.exports)
+                task.inputs.property("bmlLibraryProviderRegistrars", ext.library.providerRegistrars)
                 task.outputs.dir(target.layout.buildDirectory.dir("generated/bml/resources"))
                     .withPropertyName("bmlResources")
                 task.outputs.dir(target.layout.buildDirectory.dir("generated/bml/compiler-ts"))
@@ -117,9 +119,8 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 }
             }
 
-            // Only a runnable site identifies a build; a BML library applying this plugin must not
-            // ship a build-id resource that a site's server could read instead of its own.
-            target.plugins.withId("application") { registerBuildIdTask(target) }
+            // Only runnable hosts identify builds; a reusable library has no deployment identity.
+            target.plugins.withId("application") { target.pluginManager.apply(BmlHostGradlePlugin::class.java) }
             registerBundleTask(target, ext)
             registerMetricsTask(target, ext)
             registerDevelopmentTask(target)
@@ -143,7 +144,11 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             }
             target.tasks.withType(BmlValidateLibraryTask::class.java).configureEach { task ->
                 task.result.set(target.layout.buildDirectory.file("bml/validation/${task.name}.txt"))
+                task.providerRegistrars.set(ext.library.providerRegistrars)
                 task.compiledOutputs.from(main.output.classesDirs)
+                task.contractOutputs.from(target.fileTree(target.layout.buildDirectory.dir("generated/bml/resources")) {
+                    it.include("META-INF/bml/library-manifest.json", "bml/i18n-manifest.json")
+                })
                 task.kotlinSources.from(originalKotlinSources)
                 task.assetOutputs.from(target.layout.buildDirectory.dir(BmlLibraryAssets.OUTPUT))
                 task.assetSources.from(target.layout.buildDirectory.dir(BmlLibraryAssets.SOURCES))
@@ -227,10 +232,14 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                     target.tasks.withType(org.gradle.api.publish.maven.tasks.AbstractPublishToMaven::class.java)
                         .matching { it.publication == publication }.configureEach { task ->
                             task.dependsOn(validatePublication)
-                            val actualCoordinates = "${publication.groupId}:${publication.artifactId}:${publication.version}"
+                            val actualCoordinates = target.provider {
+                                "${publication.groupId}:${publication.artifactId}:${publication.version}"
+                            }
+                            task.inputs.property("bmlPublicationCoordinates", actualCoordinates)
                             task.doFirst {
-                                require(actualCoordinates == expectedCoordinates) {
-                                    "BML publication coordinates must match $expectedCoordinates from the compiled library manifest (got $actualCoordinates)"
+                                val coordinates = actualCoordinates.get()
+                                require(coordinates == expectedCoordinates) {
+                                    "BML publication coordinates must match $expectedCoordinates from the compiled library manifest (got $coordinates)"
                                 }
                             }
                         }
@@ -318,7 +327,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             task.into(tsDir)
         }
         val jsDir = target.layout.buildDirectory.dir("generated/bml/js")
-        // Production bundles: one merged `<slug>.page.js` per page, built from the metrics
+        // Production entries and shared chunks are built from the metrics
         // manifest's page→module mapping. Production deployments serve THIS dir as clientDir.
         val jsProdDir = target.layout.buildDirectory.dir("generated/bml/js-prod")
         // Production-minified every-page assets from src/main/client. They become classpath
@@ -326,6 +335,8 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
         val globalAssetSourceDir = target.layout.projectDirectory.dir("src/main/client")
         val globalAssetOutputDir = target.layout.buildDirectory.dir("generated/bml/client-assets")
         val manifestFile = target.layout.buildDirectory.file("generated/bml/metrics/$MANIFEST_FILE_NAME")
+        val applicationOutputDir = target.layout.buildDirectory.dir("generated/bml/application-assets")
+        val applicationResourcesDir = target.layout.buildDirectory.dir(ext.packageName.map { "generated/bml/resources/bml/applications/$it" })
         val libraryManifestFile = target.layout.buildDirectory.file("generated/bml/resources/META-INF/bml/library-manifest.json")
         val libraryStylesDir = target.layout.buildDirectory.dir(BmlLibraryAssets.STYLES)
         val libraryOutputDir = target.layout.buildDirectory.dir(BmlLibraryAssets.OUTPUT)
@@ -387,6 +398,9 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 .withPropertyName("clientRuntime")
                 .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
                 .optional()
+            task.inputs.files(target.fileTree(applicationResourcesDir)).withPropertyName("importedClientResources")
+                .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+            task.outputs.dir(applicationOutputDir).withPropertyName("packagedClientAssets")
             task.outputs.dir(jsDir).withPropertyName("clientJs")
             task.outputs.dir(jsProdDir).withPropertyName("clientJsProd")
             task.outputs.dir(globalAssetOutputDir).withPropertyName("globalClientAssetsOptimized")
@@ -407,12 +421,15 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                     assetDir.walkTopDown().any { it.isFile } || projectDir.resolve("public").walkTopDown().any { it.isFile } ||
                     libraryStylesDir.get().asFile.resolve("resources").walkTopDown().any { it.isFile } ||
                     libraryOutputDir.get().asFile.walkTopDown().any { it.isFile })
-                require(!libraryInputs || available) {
+                val importedInputs = !ext.library.enabled.get() && (applicationResourcesDir.get().asFile.walkTopDown().any { it.isFile } ||
+                    dir.resolve("bml-linked-client").isFile)
+                require(!(libraryInputs || importedInputs) || available) {
                     "BML library client assets require the current @bosca/bml bundler; install it or configure bml.clientBundler"
                 }
-                available && (ext.library.enabled.get() || hasPageInputs || hasGlobalInputs || hasStaleOutputs)
+                available && (ext.library.enabled.get() || hasPageInputs || hasGlobalInputs || hasStaleOutputs || importedInputs)
             }
             task.doFirst {
+                require(applicationOutputDir.get().asFile.deleteRecursively()) { "Cannot clear packaged BML application assets" }
                 if (ext.library.enabled.get()) {
                     // Require output from this invocation, including when a different bundler is selected.
                     for (directory in listOf(libraryOutputDir, librarySourcesDir)) {
@@ -425,6 +442,11 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 if (ext.library.enabled.get()) {
                     require(libraryOutputDir.get().file("META-INF/bml/client-manifest.json").asFile.isFile) {
                         "BML bundler did not produce library client assets; install the current @bosca/bml package or configure bml.clientBundler"
+                    }
+                } else if (applicationResourcesDir.get().asFile.walkTopDown().any { it.isFile } ||
+                    tsDir.get().file("bml-linked-client").asFile.isFile) {
+                    require(applicationOutputDir.get().file("client-manifest.json").asFile.isFile) {
+                        "BML bundler did not produce application client assets; install the current @bosca/bml package or configure bml.clientBundler"
                     }
                 }
             }
@@ -448,6 +470,10 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                         add("--library-sources-out"); add(librarySourcesDir.get().asFile.absolutePath)
                         add("--library-inputs-out"); add(buildDir.get().file(BmlLibraryAssets.INPUTS).asFile.absolutePath)
                     }
+                    if (!ext.library.enabled.get()) {
+                        add("--application-out"); add(applicationOutputDir.get().asFile.absolutePath)
+                        add("--application-resources"); add(applicationResourcesDir.get().asFile.absolutePath)
+                    }
                     if (ext.clientRuntime.isPresent) {
                         add("--runtime"); add(ext.clientRuntime.get().asFile.absolutePath)
                     }
@@ -455,6 +481,10 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             })
         }
         target.tasks.named("processResources", org.gradle.language.jvm.tasks.ProcessResources::class.java).configure { task ->
+            task.from(applicationOutputDir) { spec ->
+                spec.into(ext.packageName.map { "bml/applications/$it" })
+                spec.exclude { ext.library.enabled.get() }
+            }
             task.from(globalAssetOutputDir) { spec -> spec.exclude { ext.library.enabled.get() } }
             task.from(target.layout.buildDirectory.dir(BmlLibraryAssets.OUTPUT)) { spec -> spec.exclude { !ext.library.enabled.get() } }
         }
@@ -462,32 +492,6 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
         target.tasks.named("processResources").configure { task ->
             task.dependsOn("bmlBundleClient")
         }
-    }
-
-    /**
-     * `bmlBuildId` (application projects only): writes the build's identity, the current UTC time, to
-     * `META-INF/bosca/bml/build-id` in the main resources, but only when the file does not exist yet. It lives under `build/`, so a
-     * local build keeps one stable value until `clean`, and every fresh CI checkout gets a new one.
-     * bml-server includes it in the deployment token, so a deploy that changes only server code still
-     * changes shared-shell validators, without hashing anything at startup.
-     */
-    private fun registerBuildIdTask(target: Project) {
-        val outputDir = target.layout.buildDirectory.dir("generated/bml/build-id")
-        val buildId = target.tasks.register("bmlBuildId") { task ->
-            task.group = "bml"
-            task.description = "Write the BML build identity (the build time) unless it already exists."
-            val file = outputDir.map { it.file(BUILD_ID_RESOURCE) }
-            task.outputs.file(file)
-            task.doLast {
-                val idFile = file.get().asFile
-                if (!idFile.exists()) {
-                    idFile.parentFile.mkdirs()
-                    idFile.writeText(java.time.Instant.now().toString())
-                }
-            }
-        }
-        target.extensions.getByType(org.gradle.api.tasks.SourceSetContainer::class.java)
-            .getByName("main").resources.srcDir(buildId.map { outputDir.get() })
     }
 
     /**
@@ -543,6 +547,12 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 // before every composite project is in a resolvable lifecycle state.
                 task.classpath.from(run.classpath)
                 task.reloadClasspath.from(mainOutput)
+                task.reloadClasspath.from(run.classpath.filter { entry ->
+                    if (entry.isDirectory) entry.resolve("META-INF/bml/library-manifest.json").isFile
+                    else entry.isFile && entry.extension == "jar" && JarFile(entry).use {
+                        it.getJarEntry("META-INF/bml/library-manifest.json") != null
+                    }
+                })
                 task.mainClass.set(run.mainClass)
                 task.mainModule.set(run.mainModule)
                 task.inferModulePath.set(run.modularity.inferModulePath)
@@ -585,6 +595,19 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
         val resourcesOutputDir = project.layout.buildDirectory.dir("generated/bml/resources").get().asFile.absolutePath
         // The site metrics manifest + per-component CSS chunks, read by `bmlMetrics`.
         val metricsOutputDir = project.layout.buildDirectory.dir("generated/bml/metrics").get().asFile.absolutePath
+        // Request binary JAR variants, including project dependencies: classes-only variants omit
+        // the manifests/resources that make a compiled BML library consumable.
+        val libraryDependencies = project.configurations.getByName(kotlinCompilation.compileDependencyConfigurationName)
+            .incoming.artifactView { view ->
+                view.attributes.attribute(
+                    org.gradle.api.attributes.LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE,
+                    project.objects.named(org.gradle.api.attributes.LibraryElements::class.java, org.gradle.api.attributes.LibraryElements.JAR),
+                )
+            }.files
+        kotlinCompilation.compileTaskProvider.configure { task ->
+            task.inputs.files(libraryDependencies).withPropertyName("bmlLibraryDependencies")
+                .withNormalizer(org.gradle.api.tasks.ClasspathNormalizer::class.java)
+        }
         return project.provider {
             val sourceRoot = (ext?.sourceDir?.orNull?.asFile
                 ?: project.layout.projectDirectory.dir("src/main/bml").asFile).absolutePath
@@ -592,6 +615,11 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 add(SubpluginOption("enabled", "true"))
                 add(SubpluginOption("bmlPackageName", ext?.packageName?.getOrElse("bml.generated") ?: "bml.generated"))
                 add(SubpluginOption("bmlSourceRoot", sourceRoot))
+                add(SubpluginOption("bmlImportsFile", File(sourceRoot, "imports.bml").absolutePath))
+                add(org.jetbrains.kotlin.gradle.plugin.FilesSubpluginOption(
+                    "bmlLibraryClasspath", libraryDependencies, org.jetbrains.kotlin.gradle.plugin.FilesOptionKind.INTERNAL,
+                    lazy { libraryDependencies.files.sortedBy { it.absolutePath }.joinToString(File.pathSeparator) { it.absolutePath } },
+                ))
                 add(SubpluginOption("bmlTsOutputDir", tsOutputDir))
                 add(SubpluginOption("bmlResourcesOutputDir", resourcesOutputDir))
                 add(SubpluginOption("bmlMetricsOutputDir", metricsOutputDir))
@@ -606,6 +634,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                     add(SubpluginOption("bmlLibraryVersion", project.version.toString()))
                     add(SubpluginOption("bmlLibraryStyles", project.layout.buildDirectory.file("${BmlLibraryAssets.STYLES}/styles.json").get().asFile.absolutePath))
                     ext.library.exports.get().forEach { add(SubpluginOption("bmlLibraryExport", it)) }
+                    ext.library.providerRegistrars.get().forEach { add(SubpluginOption("bmlLibraryProviderRegistrar", it)) }
                 }
                 if (ext?.generateKotlinSources?.getOrElse(false) == true) {
                     add(SubpluginOption("bmlKotlinOutputDir", kotlinOutputDir))
@@ -627,6 +656,3 @@ private val publishedPluginVersion: String by lazy {
     properties.getProperty("version")?.takeIf { it.isNotBlank() }
         ?: error("Missing version in bml-gradle-plugin.properties")
 }
-
-/** Classpath resource holding the build identity read by bml-server (see `bmlBuildId`). */
-internal const val BUILD_ID_RESOURCE: String = "META-INF/bosca/bml/build-id"
