@@ -38,6 +38,9 @@ dependencies:
 - name: profiles-web
   repository: file://../profiles-web
   version: 0.1.0
+- name: bml-design-catalog
+  repository: file://../bml-design-catalog
+  version: 0.1.0
 - name: imageprocessor
   repository: file://../imageprocessor
   version: 0.1.0
@@ -50,5 +53,5 @@ dependencies:
 - name: text-embeddings-inference
   repository: file://../text-embeddings-inference
   version: 0.1.2
-digest: sha256:ea833468238232af6809cd4e25f40457927da0e7a0fc97e067d9dc6d65f15ad7
-generated: "2026-10-15T10:40:37.909254-05:00"
+digest: sha256:e39a67487f4a5597bc0661a230a50adfb2a1740845992ad25336ceb52bec00f3
+generated: "2026-10-26T19:09:10.739069-05:00"

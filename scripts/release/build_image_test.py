@@ -22,6 +22,8 @@ class BuildImageTest(unittest.TestCase):
         self.bin.mkdir()
         self.write_executable(self.bin / "uname", '#!/bin/bash\ncase "$1" in -s) echo Linux;; -m) echo x86_64;; esac\n')
         self.write_executable(self.bin / "docker", '#!/bin/bash\nprintf "docker %s\\n" "$*" >> "$COMMAND_LOG"\n')
+        self.write_executable(self.bin / "npm", '#!/bin/bash\nprintf "npm %s\\n" "$*" >> "$COMMAND_LOG"\n')
+        (self.root / "bml/bml-runtime").mkdir(parents=True)
         self.write_executable(self.root / "gradlew", """#!/bin/bash
 printf 'gradle %s\\n' "$*" >> "$COMMAND_LOG"
 case "$*" in
@@ -36,6 +38,10 @@ case "$*" in
   *:analytics:analytics-collector:nativeCompile*)
     mkdir -p analytics/analytics-collector/build/native/nativeCompile
     printf native > analytics/analytics-collector/build/native/nativeCompile/analytics-collector
+    ;;
+  *:bml:bml-design-catalog:nativeCompile*)
+    mkdir -p bml/bml-design-catalog/build/native/nativeCompile
+    printf native > bml/bml-design-catalog/build/native/nativeCompile/bml-design-catalog
     ;;
 esac
 """)
@@ -92,6 +98,23 @@ esac
             "gradle --no-daemon --no-configuration-cache :analytics:analytics-collector:nativeCompile",
         )
         self.assertEqual(len(commands), 2)
+
+    def test_design_catalog_stages_the_native_executable_without_pushing(self):
+        self.assertEqual(self.build("bml-design-catalog"), [
+            "npm ci --no-audit --no-fund",
+            "gradle --no-daemon --no-configuration-cache :bml:bml-design-catalog:nativeCompile",
+            "docker build --platform linux/amd64 -f bml/bml-design-catalog/Dockerfile "
+            "-t example.invalid/bosca/bml-design-catalog:test --build-arg ARTIFACT_SHA=release-test bml",
+        ])
+        self.assertEqual((self.root / "bml/artifacts/release-test/bml-design-catalog-native/bml-design-catalog").read_text(), "native")
+
+    def test_design_catalog_rejects_non_linux_builds_before_staging(self):
+        self.write_executable(self.bin / "uname", '#!/bin/bash\ncase "$1" in -s) echo Darwin;; -m) echo arm64;; esac\n')
+        result = subprocess.run(["bash", str(self.script), "bml-design-catalog", "test"],
+                                env=self.environment, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Linux x86_64 host", result.stderr)
+        self.assertFalse(self.commands.exists())
 
 
 if __name__ == "__main__":

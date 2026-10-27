@@ -1,0 +1,301 @@
+{
+  "reflection": [
+    {
+      "type": "bosca.server.netty.NettyHttpHandler"
+    },
+    {
+      "type": "bosca.server.netty.CompressionOffloadHandler"
+    },
+    {
+      "type": "bosca.server.netty.DrainingHttpHandler"
+    },
+    {
+      "type": "bosca.server.netty.BodylessH2cUpgradeHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http1ExchangeSequencer"
+    },
+    {
+      "type": "bosca.server.netty.Http1ProtocolSelectionHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http2PriorKnowledgeHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http2StreamProtocolSelector"
+    },
+    {
+      "type": "bosca.server.netty.Http2StreamInitializer"
+    },
+    {
+      "type": "bosca.server.netty.Http2WebSocketCloseFrameHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http2WebSocketProtocolViolationHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http2WebSocketStreamHandler"
+    },
+    {
+      "type": "bosca.server.netty.NettyServerEngine$start$1"
+    },
+    {
+      "type": "bosca.server.netty.SelectiveContentCompressor"
+    },
+    {
+      "type": "bosca.server.netty.WebSocketUpgradePreparer"
+    },
+    {
+      "type": "io.netty.bootstrap.ServerBootstrap$1"
+    },
+    {
+      "type": "io.netty.bootstrap.ServerBootstrap$ServerBootstrapAcceptor"
+    },
+    {
+      "type": "io.netty.buffer.AbstractByteBufAllocator"
+    },
+    {
+      "type": "io.netty.buffer.AbstractReferenceCountedByteBuf",
+      "fields": [
+        {
+          "name": "refCnt"
+        }
+      ]
+    },
+    {
+      "type": "io.netty.buffer.AdaptivePoolingAllocator$Chunk",
+      "fields": [
+        {
+          "name": "refCnt"
+        }
+      ]
+    },
+    {
+      "type": "io.netty.buffer.AdaptivePoolingAllocator$Magazine"
+    },
+    {
+      "type": "io.netty.channel.AbstractChannelHandlerContext"
+    },
+    {
+      "type": "io.netty.channel.ChannelException",
+      "jniAccessible": true
+    },
+    {
+      "type": "io.netty.channel.ChannelOutboundBuffer"
+    },
+    {
+      "type": "io.netty.channel.DefaultChannelConfig"
+    },
+    {
+      "type": "io.netty.channel.DefaultChannelPipeline"
+    },
+    {
+      "type": "io.netty.channel.DefaultChannelPipeline$HeadContext"
+    },
+    {
+      "type": "io.netty.channel.DefaultChannelPipeline$TailContext"
+    },
+    {
+      "type": "io.netty.channel.DefaultFileRegion",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "file"
+        },
+        {
+          "name": "transferred"
+        }
+      ]
+    },
+    {
+      "type": "io.netty.channel.embedded.EmbeddedChannel$2"
+    },
+    {
+      "type": "io.netty.channel.epoll.Epoll"
+    },
+    {
+      "type": "io.netty.channel.epoll.NativeDatagramPacketArray$NativeDatagramPacket"
+    },
+    {
+      "type": "io.netty.channel.socket.nio.NioServerSocketChannel",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.netty.channel.unix.Buffer",
+      "jniAccessible": true
+    },
+    {
+      "type": "io.netty.channel.unix.DatagramSocketAddress",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "byte[]",
+            "int",
+            "int",
+            "int",
+            "io.netty.channel.unix.DatagramSocketAddress"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "io.netty.channel.unix.DomainDatagramSocketAddress",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "byte[]",
+            "int",
+            "io.netty.channel.unix.DomainDatagramSocketAddress"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "io.netty.channel.unix.ErrorsStaticallyReferencedJniMethods",
+      "jniAccessible": true
+    },
+    {
+      "type": "io.netty.channel.unix.FileDescriptor",
+      "jniAccessible": true
+    },
+    {
+      "type": "io.netty.channel.unix.LimitsStaticallyReferencedJniMethods",
+      "jniAccessible": true
+    },
+    {
+      "type": "io.netty.channel.unix.PeerCredentials",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int[]"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "io.netty.channel.unix.Socket",
+      "jniAccessible": true
+    },
+    {
+      "type": "io.netty.handler.codec.compression.JdkZlibEncoder"
+    },
+    {
+      "type": "io.netty.handler.codec.http.HttpServerCodec"
+    },
+    {
+      "type": "io.netty.handler.codec.http.HttpServerExpectContinueHandler"
+    },
+    {
+      "type": "io.netty.handler.codec.http.HttpServerKeepAliveHandler"
+    },
+    {
+      "type": "io.netty.handler.codec.http.websocketx.WebSocketServerHandshaker$2"
+    },
+    {
+      "type": "io.netty.handler.stream.ChunkedWriteHandler"
+    },
+    {
+      "type": "io.netty.handler.timeout.IdleStateHandler"
+    },
+    {
+      "type": "io.netty.util.AbstractReferenceCounted",
+      "fields": [
+        {
+          "name": "refCnt"
+        }
+      ]
+    },
+    {
+      "type": "io.netty.util.DefaultAttributeMap"
+    },
+    {
+      "type": "io.netty.util.DefaultAttributeMap$DefaultAttribute"
+    },
+    {
+      "type": "io.netty.util.HashedWheelTimer"
+    },
+    {
+      "type": "io.netty.util.Recycler$DefaultHandle"
+    },
+    {
+      "type": "io.netty.util.ReferenceCountUtil"
+    },
+    {
+      "type": "io.netty.util.ResourceLeakDetector$DefaultResourceLeak"
+    },
+    {
+      "type": "io.netty.util.concurrent.DefaultPromise"
+    },
+    {
+      "type": "io.netty.util.concurrent.MpscIntQueue$MpscAtomicIntegerArrayQueue"
+    },
+    {
+      "type": "io.netty.util.concurrent.SingleThreadEventExecutor"
+    },
+    {
+      "type": "io.netty.util.internal.NativeLibraryUtil",
+      "methods": [
+        {
+          "name": "loadLibrary",
+          "parameterTypes": [
+            "java.lang.String",
+            "boolean"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "io.netty.util.internal.shaded.org.jctools.queues.BaseMpscLinkedArrayQueueColdProducerFields",
+      "fields": [
+        {
+          "name": "producerLimit"
+        }
+      ]
+    },
+    {
+      "type": "io.netty.util.internal.shaded.org.jctools.queues.BaseMpscLinkedArrayQueueConsumerFields",
+      "fields": [
+        {
+          "name": "consumerIndex"
+        }
+      ]
+    },
+    {
+      "type": "io.netty.util.internal.shaded.org.jctools.queues.BaseMpscLinkedArrayQueueProducerFields",
+      "fields": [
+        {
+          "name": "producerIndex"
+        }
+      ]
+    },
+    {
+      "type": "io.netty.util.internal.shaded.org.jctools.queues.MpmcArrayQueueConsumerIndexField",
+      "fields": [
+        {
+          "name": "consumerIndex"
+        }
+      ]
+    },
+    {
+      "type": "io.netty.util.internal.shaded.org.jctools.queues.MpmcArrayQueueProducerIndexField",
+      "fields": [
+        {
+          "name": "producerIndex"
+        }
+      ]
+    }
+  ]
+}

@@ -33,10 +33,12 @@ export async function checkResources({ navigate, evaluate, until, call, artifact
       const scripts = [], styles = [];
       for (const resource of resources) {
         const url = new URL(resource.url);
-        if (!url.pathname.endsWith('.js') && !url.pathname.endsWith('.css')) continue;
+        const font = url.pathname.endsWith('.woff2');
+        if (!url.pathname.endsWith('.js') && !url.pathname.endsWith('.css') && !font) continue;
         const response = await fetch(url);
         assert.equal(response.status, 200, resource.url);
-        (url.pathname.endsWith('.js') ? scripts : styles).push(await response.text());
+        if (font) assert.equal(Buffer.from(await response.arrayBuffer()).subarray(0, 4).toString(), 'wOF2', resource.url);
+        else (url.pathname.endsWith('.js') ? scripts : styles).push(await response.text());
       }
       assert.ok(scripts.length > 0 && styles.length > 0, path);
       const js = scripts.join('\n'), css = styles.join('\n');

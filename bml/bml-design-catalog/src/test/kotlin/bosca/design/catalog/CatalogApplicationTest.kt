@@ -80,6 +80,23 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `native executable serves production resources and interactions without a workspace`() {
+        val binary = File(System.getProperty("catalog.binary"))
+        assertTrue(binary.isFile && binary.canExecute(), binary.path)
+        val directory = kotlin.io.path.createTempDirectory("native catalog-").toFile()
+        try {
+            val executable = directory.resolve(binary.name)
+            java.nio.file.Files.copy(binary.toPath(), executable.toPath(), java.nio.file.StandardCopyOption.COPY_ATTRIBUTES)
+            assertEquals(listOf(binary.name), directory.listFiles()?.map { it.name })
+            withServer(false, executable) { base, _ ->
+                runBrowser(base, false, "--resources", 60)
+                runBrowser(base, false, "--visualizations", 90)
+                runBrowser(base, false, expectedComponentApi(), 180)
+            }
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test
     fun `cold pages download only their optional engines and styles`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--resources", 60)
@@ -182,24 +199,7 @@ class CatalogApplicationTest {
         assertTrue(files.all { it.isFile && it.extension == "jar" })
         assertFalse(files.any { it.name.startsWith("git-") || it.name.startsWith("core-git") || it.name.startsWith("design-library-") })
         val catalog = files.single { it.name.startsWith("bml-design-catalog-") }
-        val library = files.single { it.name.startsWith("bml-design-") && !it.name.startsWith("bml-design-catalog-") }
-        val exports = JarFile(library).use { jar ->
-            Json.decodeFromString(BmlLibraryManifest.serializer(), jar.getInputStream(jar.getJarEntry("META-INF/bml/library-manifest.json"))
-                .bufferedReader().use { it.readText() }).components.filter { it.exported }
-        }
-        assertEquals(51, exports.size)
-        val expectedApi = buildJsonObject {
-            for (component in exports) put(component.tag, buildJsonObject {
-                put("scoped", component.styles.isNotBlank())
-                put("props", buildJsonArray {
-                    for (prop in component.props) add(buildJsonObject {
-                        put("name", prop.name)
-                        put("type", prop.declaredType)
-                        put("hasDefault", prop.hasDefault)
-                    })
-                })
-            })
-        }.toString()
+        val expectedApi = expectedComponentApi()
         JarFile(catalog).use { jar ->
             assertFalse(jar.entries().asSequence().any { it.name.startsWith("bosca/git/") })
             val manifest = jar.entries().asSequence().single { it.name.endsWith("/client-manifest.json") }
@@ -350,11 +350,34 @@ class CatalogApplicationTest {
         }
     }
 
+    private fun expectedComponentApi(): String {
+        val library = classpath.split(File.pathSeparator).map(::File).single { it.name.startsWith("bml-design-") && !it.name.startsWith("bml-design-catalog-") }
+        val exports = JarFile(library).use { jar ->
+            Json.decodeFromString(BmlLibraryManifest.serializer(), jar.getInputStream(jar.getJarEntry("META-INF/bml/library-manifest.json"))
+                .bufferedReader().use { it.readText() }).components.filter { it.exported }
+        }
+        assertEquals(51, exports.size)
+        return buildJsonObject {
+            for (component in exports) put(component.tag, buildJsonObject {
+                put("scoped", component.styles.isNotBlank())
+                put("props", buildJsonArray {
+                    for (prop in component.props) add(buildJsonObject {
+                        put("name", prop.name)
+                        put("type", prop.declaredType)
+                        put("hasDefault", prop.hasDefault)
+                    })
+                })
+            })
+        }.toString()
+    }
+
     private fun runBrowser(base: String, development: Boolean, argument: String, timeoutSeconds: Long,
                            script: String = System.getProperty("catalog.browser")) {
         val log = File.createTempFile("catalog-browser-", ".log")
+        val mode = (if (System.getProperty("catalog.binary") == null) "" else "native-") +
+            if (development) "development" else "production"
         val process = ProcessBuilder(System.getProperty("catalog.node"), script, base,
-            if (development) "development" else "production", argument).redirectErrorStream(true).redirectOutput(log).start()
+            mode, argument).redirectErrorStream(true).redirectOutput(log).start()
         try {
             assertTrue(process.waitFor(timeoutSeconds, TimeUnit.SECONDS), "Browser timed out: ${log.readText()}")
             assertEquals(0, process.exitValue(), log.readText())
@@ -367,11 +390,17 @@ class CatalogApplicationTest {
         }
     }
 
-    private fun withServer(development: Boolean, test: (String, HttpClient) -> Unit) {
+    private fun withServer(development: Boolean, executable: File? = null, test: (String, HttpClient) -> Unit) {
         var base: String? = null
         val log = File.createTempFile("catalog-server-", ".log")
-        val process = ProcessBuilder(System.getProperty("catalog.java"), "-Dbml.dev=$development", "-cp", classpath,
-            "bosca.design.catalog.MainKt", "0").redirectErrorStream(true).redirectOutput(log).start()
+        val command = if (executable == null) listOf(System.getProperty("catalog.java"), "-Dbml.dev=$development", "-cp", classpath,
+            "bosca.design.catalog.MainKt", "0") else listOf(executable.absolutePath, "0")
+        val builder = ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log)
+        if (executable != null) {
+            builder.directory(executable.parentFile)
+            builder.environment()["BML_DEV"] = "false"
+        }
+        val process = builder.start()
         try {
             var boundPort: Int? = null
             for (attempt in 0 until 200) {

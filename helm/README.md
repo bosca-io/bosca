@@ -19,6 +19,27 @@ For an existing deployment, use its current release names, namespaces and values
 files. Chart versions follow the selected Git release tag. Update any version
 constraints that still select the former independent `0.1.x` chart releases.
 
+## Design Library site
+
+`bml-design-catalog` serves the interactive Design Library catalog as a GraalVM native executable
+on port 9093. Enable the optional services dependency and supply a hostname in the deployment's
+own values file:
+
+```yaml
+bml-design-catalog:
+  enabled: true
+  gateway:
+    enabled: true
+    hostnames: [design.example.com]
+```
+
+With the shared Gateway enabled, the services chart adds its TLS listener, HTTPS route and HTTP
+redirect. The image and chart use the selected release tag, with normal registry/tag overrides.
+The catalog needs no Bosca API, database or infrastructure credentials. Its examples keep state
+in one process; the chart defaults to one replica and Recreate rollouts. Restarts reset demo state.
+See the [catalog deployment guide](../bml/bml-design-catalog/README.md#deployment) for local image
+builds and standalone Service deployment.
+
 ## Bible usage worker
 
 The runner chart enables `fumsQueueRunner` for API.Bible usage reports. If your

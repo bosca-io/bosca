@@ -9,7 +9,7 @@ them here so consumers don't have to list each hostname twice (once on the
 HTTPRoute and once on the Gateway).
 */}}
 {{- $hostnames := list -}}
-{{- range $chart := list "bosca-server" "bosca-runner" "bosca-studio" "bosca-collector" "bml-message-server" "bosca-kubernetes-controller" "bosca-artifacts-server" "bosca-git-server" "bosca-gateway" "bosca-io" "notifications-web" "profiles-web" }}
+{{- range $chart := list "bosca-server" "bosca-runner" "bosca-studio" "bosca-collector" "bml-message-server" "bosca-kubernetes-controller" "bosca-artifacts-server" "bosca-git-server" "bosca-gateway" "bosca-io" "notifications-web" "profiles-web" "bml-design-catalog" }}
   {{- $cfg := index $.Values $chart }}
   {{- if and $cfg (kindIs "map" $cfg) }}
     {{- with index $cfg "gateway" }}

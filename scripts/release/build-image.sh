@@ -26,7 +26,7 @@ cd "$ROOT"
 
 IMAGES=(
   bosca-server bosca-runner analytics-collector artifacts-server git-server
-  kubernetes-controller bml-message-server notifications-web profiles-web
+  kubernetes-controller bml-message-server notifications-web profiles-web bml-design-catalog
   bosca-cli bosca-studio bosca-io imageprocessor bosca-gateway
   recommendation-trainer recommendation-model-loader
 )
@@ -152,6 +152,12 @@ case "$IMAGE" in
     (cd bml/bml-runtime && npm ci --no-audit --no-fund)
     gradle --no-configuration-cache ":$IMAGE:nativeCompile" ":$IMAGE:bmlBundleClient"
     docker_build "apps/$IMAGE" "apps/$IMAGE/Dockerfile"
+    ;;
+  bml-design-catalog)
+    require_linux_x86_64
+    (cd bml/bml-runtime && npm ci --no-audit --no-fund)
+    stage_native :bml:bml-design-catalog bml/bml-design-catalog bml-design-catalog bml bml-design-catalog-native
+    docker_build bml bml/bml-design-catalog/Dockerfile --build-arg "ARTIFACT_SHA=$STAGE"
     ;;
   bosca-cli)
     stage_native :cli cli bosca cli bosca-cli-native

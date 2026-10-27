@@ -2,6 +2,7 @@ plugins {
     id("org.jetbrains.kotlin.jvm")
     alias(libs.plugins.kotlin.plugin.serialization)
     id("io.bosca.bml")
+    id("org.graalvm.buildtools.native")
     application
 }
 
@@ -13,6 +14,7 @@ dependencies {
     implementation(project(":bml:bml-design"))
     implementation(project(":bml:bml-server"))
     implementation(project(":bml:bml-annotations"))
+    implementation(project(":bosca-core:core-graalvm"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
     runtimeOnly(libs.logback.classic)
@@ -27,6 +29,25 @@ bml {
 application {
     mainClass.set("bosca.design.catalog.MainKt")
 }
+
+graalvmNative {
+    testSupport.set(false)
+    agent { enabled.set(false) }
+    metadataRepository { enabled = true }
+    binaries {
+        named("main") {
+            imageName.set("bml-design-catalog")
+            mainClass.set("bosca.design.catalog.MainKt")
+            buildArgs.add("-O3")
+            buildArgs.addAll(providers.gradleProperty("bosca.native.march")
+                .map { listOf("-march=$it") }.orElse(emptyList()))
+            buildArgs.addAll(listOf("--exclude-config", ".*/.*.jar", "^/META-INF/native-image/org\\.jline/.*"))
+            if (org.gradle.internal.os.OperatingSystem.current().isLinux) buildArgs.add("--gc=G1")
+        }
+    }
+}
+
+tasks.named("nativeRun") { outputs.upToDateWhen { false } }
 
 val catalogRuntime = configurations.named("runtimeClasspath")
 val catalogClasspath = files(tasks.jar.flatMap { it.archiveFile }, catalogRuntime).asPath
@@ -44,7 +65,22 @@ tasks.withType<Test>().configureEach {
 }
 
 val firefoxTreeTest = "bosca.design.catalog.CatalogApplicationTest.Firefox trees retain native keyboard navigation"
-tasks.test { filter { excludeTestsMatching(firefoxTreeTest) } }
+val nativeCatalogTest = "bosca.design.catalog.CatalogApplicationTest.native executable serves production resources and interactions without a workspace"
+tasks.test { filter { excludeTestsMatching(firefoxTreeTest); excludeTestsMatching(nativeCatalogTest) } }
+
+tasks.register<Test>("nativeCatalogTest") {
+    group = "verification"
+    description = "Exercise the standalone native catalog with production assets and isolated browser actions."
+    dependsOn("nativeCompile", tasks.testClasses)
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching(nativeCatalogTest) }
+    val binary = layout.buildDirectory.file("native/nativeCompile/bml-design-catalog" +
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else "")
+    inputs.file(binary).withPropertyName("nativeCatalogBinary").withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("catalog.binary", binary.get().asFile.absolutePath)
+    outputs.upToDateWhen { false }
+}
 
 tasks.register<Test>("browserTest") {
     group = "verification"
@@ -54,6 +90,7 @@ tasks.register<Test>("browserTest") {
     filter {
         includeTestsMatching("bosca.design.catalog.CatalogApplicationTest")
         excludeTestsMatching(firefoxTreeTest)
+        excludeTestsMatching(nativeCatalogTest)
     }
 }
 

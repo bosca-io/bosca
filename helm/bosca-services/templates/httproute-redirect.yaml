@@ -15,7 +15,7 @@ Multiple HTTPRoutes attached to the same listener are merged by the
 gateway controller — there is no ordering significance to the split.
 */ -}}
 {{- $hostnames := list -}}
-{{- range $chart := list "bosca-server" "bosca-runner" "bosca-studio" "bosca-collector" "bosca-kubernetes-controller" "bosca-artifacts-server" "bosca-git-server" "bosca-gateway" "bosca-io" "notifications-web" "profiles-web" }}
+{{- range $chart := list "bosca-server" "bosca-runner" "bosca-studio" "bosca-collector" "bosca-kubernetes-controller" "bosca-artifacts-server" "bosca-git-server" "bosca-gateway" "bosca-io" "notifications-web" "profiles-web" "bml-design-catalog" }}
   {{- $cfg := index $.Values $chart }}
   {{- if and $cfg (kindIs "map" $cfg) }}
     {{- with index $cfg "gateway" }}

@@ -13,6 +13,71 @@ Run from the workspace root:
 
 Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 
+## Deployment
+
+The deployment artifact is a GraalVM native executable with its production JavaScript, shared
+chunks, styles, fonts and application resources embedded. It runs without a JVM, Node, a Bosca API,
+database, workspace checkout or external asset directory:
+
+```sh
+./gradlew :bml:bml-design-catalog:nativeCompile
+bml/bml-design-catalog/build/native/nativeCompile/bml-design-catalog 9093
+```
+
+Native compilation targets the build host. The Linux/amd64 container image is built on a Linux
+x86_64 runner, following the other native Bosca services. From that host, build and run locally:
+
+```sh
+PUSH=false BOSCA_IMAGE_REGISTRY=bosca scripts/release/build-image.sh bml-design-catalog local
+docker run --rm -p 9093:9093 bosca/bml-design-catalog:local
+```
+
+The image defaults to production mode on port 9093; a port argument overrides 9093. The Dockerfile
+uses a small runtime image and copies only the native executable. Its Dockerfile-specific ignore
+rules keep the source tree and build dependencies out of the context.
+`.bosca/pipelines/release-image-bml-design-catalog.yaml` builds and publishes `bml-design-catalog`
+through the existing tagged image-release process.
+
+`helm/bml-design-catalog` provides the standalone Deployment and ClusterIP Service. It is also an
+optional `bosca-services` dependency, disabled by default. In the deployment's own values file,
+enable the site and configure its public host:
+
+```yaml
+gateway:
+  enabled: true
+bml-design-catalog:
+  enabled: true
+  image:
+    tag: <published-image-version>
+  gateway:
+    enabled: true
+    hostnames: [design.example.com]
+```
+
+The services umbrella adds the HTTPS route, TLS listener and HTTP-to-HTTPS redirect. All page,
+island-action and asset paths stay on that origin. Apply these values to the existing services
+release and namespace using the deployment's normal Helm upgrade process. A standalone chart
+installation exposes the Service; its external routing belongs to that deployment.
+
+Examples keep their server-session state in memory. The chart defaults to one replica and Recreate
+rollouts, and a restart resets demonstration state. Multiple replicas require a shared BML session
+store. This site does not store product data or need backend credentials.
+
+Run the native deployment regression from the workspace root:
+
+```sh
+./gradlew :bml:bml-design-catalog:nativeCompile --build-args=-Ob :bml:bml-design-catalog:nativeCatalogTest
+```
+
+`-Ob` is a quick validation build; omit it for release optimization. The test copies only the native
+executable into an isolated directory and checks production JS/CSS, selected grammar and font
+resources, chart/flow interactions and the catalog's form/editor/navigation actions. Image-builder
+tests stub publishing commands; Helm tests verify ports, probes, image versions, naming overrides
+and Gateway routing without a cluster rollout. Native heap flags can be passed through the chart's
+`extraArgs`, for example `[-Xmx256m]`.
+
+## Examples
+
 | Route | Examples |
 | --- | --- |
 | `/` | Unprefixed import/authoring, buttons and feedback, links into the catalog |

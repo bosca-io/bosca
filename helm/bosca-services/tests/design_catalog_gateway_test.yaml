@@ -1,0 +1,75 @@
+suite: Design Library catalog Gateway routing
+templates:
+  - templates/gateway.yaml
+  - templates/httproute-bml-design-catalog.yaml
+  - templates/httproute-redirect.yaml
+release:
+  name: example
+  namespace: bosca
+set:
+  global.domain: example.com
+  bml-design-catalog:
+    enabled: true
+    gateway:
+      enabled: true
+      hostnames: [design.example.com]
+tests:
+  - it: adds a TLS listener for the catalog hostname
+    template: templates/gateway.yaml
+    asserts:
+      - equal:
+          path: spec.listeners[1].hostname
+          value: design.example.com
+      - equal:
+          path: spec.listeners[1].tls.certificateRefs[0].name
+          value: design-example-com-tls
+  - it: sends all paths to the catalog over the HTTPS Gateway listener
+    template: templates/httproute-bml-design-catalog.yaml
+    asserts:
+      - equal:
+          path: spec.parentRefs[0].port
+          value: 443
+      - equal:
+          path: spec.rules[0].matches[0].path
+          value: {type: PathPrefix, value: /}
+      - equal:
+          path: spec.rules[0].backendRefs[0]
+          value: {name: example-bml-design-catalog, port: 9093}
+  - it: honors the catalog service name and port overrides
+    template: templates/httproute-bml-design-catalog.yaml
+    set:
+      bml-design-catalog.fullnameOverride: design-site
+      bml-design-catalog.service.port: 9098
+    asserts:
+      - equal:
+          path: metadata.name
+          value: design-site
+      - equal:
+          path: spec.rules[0].backendRefs[0]
+          value: {name: design-site, port: 9098}
+  - it: redirects HTTP requests to HTTPS
+    template: templates/httproute-redirect.yaml
+    asserts:
+      - equal:
+          path: spec.parentRefs[0].port
+          value: 80
+      - equal:
+          path: spec.hostnames[0]
+          value: design.example.com
+      - equal:
+          path: spec.rules[0].filters[0].requestRedirect
+          value: {scheme: https, statusCode: 301}
+  - it: leaves the catalog route absent when the site is disabled
+    template: templates/httproute-bml-design-catalog.yaml
+    set:
+      bml-design-catalog.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: leaves the catalog route absent when Gateway routing is disabled
+    template: templates/httproute-bml-design-catalog.yaml
+    set:
+      gateway.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
