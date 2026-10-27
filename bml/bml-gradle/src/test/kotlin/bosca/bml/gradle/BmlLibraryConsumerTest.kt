@@ -85,6 +85,7 @@ class BmlLibraryConsumerTest {
             assertTrue("<button label=\"Published\"> library</button>" in aliased.output, aliased.output)
             page.writeText(page.readText().replace("<button label=", "<ui:button label=").replace("</button>", "</ui:button>"))
             val qualified = runner(consumer, "run").build()
+            assertEquals(TaskOutcome.SUCCESS, qualified.task(":compileKotlin")?.outcome, qualified.output)
             assertTrue("<button>Published library</button>" in qualified.output, qualified.output)
 
             // Change only export metadata, leaving source files and compiled class ABIs unchanged.
@@ -123,5 +124,5 @@ class BmlLibraryConsumerTest {
     private fun runner(project: File, vararg tasks: String): GradleRunner = GradleRunner.create()
         .withProjectDir(project)
         .withPluginClasspath()
-        .withArguments(*tasks, "--stacktrace", "--configuration-cache")
+        .withArguments(*tasks, "--stacktrace", "--configuration-cache", "--no-watch-fs")
 }

@@ -103,7 +103,12 @@ class BmlLibraryDevelopmentTest {
             val resource = source("design/src/main/resources/library-value.txt", "resource-one")
             val extra = source("design/src/main/bml/extra.bml", """<component tag="extra"><span>extra-one</span></component>""")
             val imports = source("app/src/main/bml/imports.bml", """<import library="example:design"/>""")
-            val home = source("app/src/main/bml/home.bml", """<page route="/"><html><body><library-label/></body></html></page>""")
+            val home = source("app/src/main/bml/home.bml", """
+                <page route="/">
+                  <script client>console.log('consumer-client-one')</script>
+                  <html><body><library-label/></body></html>
+                </page>
+            """)
             val global = source("app/src/main/bml/global.bml", """<page route="/global"><html><body><library-label/></body></html></page>""")
             val extraPage = source("app/src/main/bml/extra.bml", """<page route="/extra"><html><body><extra/></body></html></page>""")
             source("app/src/main/kotlin/example/app/Main.kt", """
@@ -148,7 +153,7 @@ class BmlLibraryDevelopmentTest {
                     .timeout(Duration.ofSeconds(5)).GET().build(), HttpResponse.BodyHandlers.ofString())
             fun body(path: String = "/"): String {
                 val response = request(path)
-                assertEquals(200, response.statusCode(), response.body())
+                assertEquals(200, response.statusCode(), "GET $path: ${response.body()}")
                 return response.body()
             }
             fun assets(kind: String): String {
@@ -175,6 +180,7 @@ class BmlLibraryDevelopmentTest {
                     .groupValues[1]
                 return body(path)
             }
+            val marker = File(work, "app/build/bml/dev/current-generation")
             fun rebuild(success: Boolean = true, edit: () -> Unit) {
                 val output = log.readText()
                 val successful = Regex("BUILD SUCCESSFUL").findAll(output).count()
@@ -189,12 +195,18 @@ class BmlLibraryDevelopmentTest {
                     } else Regex("BUILD FAILED").findAll(current).count() > failed
                 }
                 await("the next watch cycle") { Regex("Waiting for changes").findAll(log.readText()).count() > waits }
+                if (success) {
+                    val generation = marker.useLines { it.first() }.take(12)
+                    await("activation of generation $generation") {
+                        "bmlDev loaded application generation $generation" in log.readText()
+                    }
+                }
             }
-            val marker = File(work, "app/build/bml/dev/current-generation")
             await("the initial library rendering") { "library-one" in body() }
             await("Gradle's next watch cycle") { "Waiting for changes" in log.readText() }
             assertTrue("token-one" in body() && "resource-one" in body() && "bml-one" in body())
             assertTrue("client-one" in assets("js"))
+            assertTrue("consumer-client-one" in assets("js"))
             assertTrue("style-one" in assets("css"))
             assertTrue("asset-one" in svg())
             val response = client.send(HttpRequest.newBuilder(base.resolve("/_bml/reload"))
@@ -232,6 +244,14 @@ class BmlLibraryDevelopmentTest {
             await("the changed library asset", seconds = 10) { "asset-two" in svg() }
             rebuild { resource.writeText("resource-two") }
             await("the changed library resource", seconds = 10) { "resource-two" in body() }
+            val clientGeneration = marker.readText()
+            val workingPage = home.readText()
+            rebuild(success = false) { home.writeText(workingPage.replace("console.log('consumer-client-one')", "const broken = ;")) }
+            assertEquals(clientGeneration, marker.readText())
+            assertTrue("client-two" in assets("js"), "A failed client bundle must retain the last completed JavaScript")
+            assertTrue("style-two" in assets("css"))
+            rebuild { home.writeText(workingPage.replace("consumer-client-one", "consumer-client-two")) }
+            await("the repaired application client", seconds = 10) { "consumer-client-two" in assets("js") }
             val workingModel = model.readText()
             val workingGeneration = marker.readText()
             rebuild(success = false) { model.writeText("invalid Kotlin source") }

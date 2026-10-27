@@ -556,11 +556,13 @@ class BmlBinaryRuntimeTest {
                             assertEquals(200, response.statusCode(), path)
                             val source = response.body().decodeToString()
                             assertFalse("UNUSED_CLIENT_SENTINEL" in source, source)
-                            File(clientRoot, clean.substringAfterLast('/')).writeText(source)
+                            val target = File(clientRoot, clean.removePrefix("/_bml/js/"))
+                            target.parentFile.mkdirs()
+                            target.writeText(source)
                             val etag = response.headers().firstValue("ETag").orElseThrow()
                             assertEquals(304, get(path, etag).statusCode())
-                            Regex("(?:from\\s*|import\\s*)[\"'](\\./[^\"']+)[\"']").findAll(source).forEach {
-                                download("/_bml/js/" + it.groupValues[1].removePrefix("./"))
+                            Regex("""(?:from\s*|import\s*)["'](\.{1,2}/[^"']+)["']""").findAll(source).forEach {
+                                download(URI(clean).resolve(it.groupValues[1]).toString())
                             }
                         }
                         scripts.forEach(::download)

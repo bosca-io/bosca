@@ -445,7 +445,7 @@ class BmlLibraryResolutionTest : CodeInsightFixtureTestCase<EmptyModuleFixtureBu
     private fun publicComponents(binary: VirtualFile): List<BmlLibraryComponent> {
         val metadata = requireNotNull(binary.findFileByRelativePath(BmlLibraryArtifacts.MANIFEST_PATH))
         return BmlLibraryArtifacts.decode(VfsUtilCore.loadText(metadata)).components.filter { it.exported }.also {
-            assertEquals("current Design Library public exports", 46, it.size)
+            assertEquals("current Design Library public exports", 51, it.size)
         }
     }
 

@@ -54,7 +54,7 @@ toolchain. Ultimate supplies the JavaScript/TypeScript support used for client-s
 
 Run `./gradlew :bml:bml-ide:test` from the workspace root for the editor tests. Library acceptance
 attaches the actual Design Library binary and sources artifacts to an isolated IDE project, with
-no producer checkout or compiled consumer. All 46 public components navigate through bare and
+no producer checkout or compiled consumer. All public components navigate through bare and
 optional aliased opening, closing and self-closing tags to their original attached BML declarations.
 Every public prop completes in literal and bound form even without source attachments. Kotlin
 navigation reaches attached `NavigationItem`, `ChartPoint` and `ChartTable` source. The suite also

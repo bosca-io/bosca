@@ -65,9 +65,9 @@ class BmlLibraryInputTrackingTest {
             assertEquals(TaskOutcome.SUCCESS, labelChanged.task(":bmlValidateLibrary")?.outcome)
             assertTrue("second-label" in moduleJs(producer))
 
-            tokens.writeText(".button { color: #222222; }")
+            tokens.writeText(".button { color: #213547; }")
             assertEquals(TaskOutcome.SUCCESS, jar(producer).task(":bmlBundleLibraryStyles")?.outcome)
-            assertTrue("#222222" in entry(producer, "META-INF/bml/library-manifest.json"))
+            assertTrue("#213547" in entry(producer, "META-INF/bml/library-manifest.json"))
 
             // A new file beside an imported one can change how that import resolves.
             source("shared/label.tsx", "export const label = 'sibling-label'")
@@ -82,7 +82,7 @@ class BmlLibraryInputTrackingTest {
     }
 
     private fun jar(project: File): BuildResult = GradleRunner.create().withProjectDir(project).withPluginClasspath()
-        .withArguments("jar", "--configuration-cache", "--no-build-cache", "--stacktrace", "--max-workers=2").build()
+        .withArguments("jar", "--configuration-cache", "--no-build-cache", "--no-watch-fs", "--stacktrace", "--max-workers=2").build()
 
     private fun entry(project: File, path: String): String = JarFile(File(project, "build/libs/design-1.2.3.jar")).use { jar ->
         jar.getInputStream(requireNotNull(jar.getJarEntry(path)) { path }).bufferedReader().use { it.readText() }

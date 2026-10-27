@@ -33,6 +33,11 @@ The IntelliJ plugin is documented in [bml-ide/README.md](bml-ide/README.md).
 The TypeScript browser runtime lives in `bml-runtime/` and uses npm; install its dependencies
 there before running tasks that bundle BML client code.
 
+The Design Library catalog and consumer tests also require Google Chrome on the test worker.
+They launch isolated headless profiles, using the installed macOS app or `google-chrome` on Linux.
+Set `BML_DESIGN_CHROME_BINARY` to use another Chrome executable. BML test failures print their
+full exception messages, including child-process diagnostics, directly in the Gradle log.
+
 BML Maven libraries and the `io.bosca.bml` and `io.bosca.bml.host` Gradle plugins publish with the workspace tag through
 the root `publishExceptFirebaseScrypt` task. This includes `bml-server`, which applications embed
 as their host library. The web release pipeline builds, tests, and publishes the `@bosca/bml`
