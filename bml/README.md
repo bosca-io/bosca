@@ -41,8 +41,12 @@ Chrome executable and bypass browser preparation. BML test failures print their 
 messages, including child-process diagnostics, directly in the Gradle log.
 The JVM CI pipeline installs Chromium through the catalog's pinned test dependency and exports
 its executable path for both suites. It does not depend on a system Chrome installation.
-Browser suites, including Notifications Web adoption, run in a serial phase before aggregate JVM
-validation. The aggregate task reuses those results, and its worker count is bounded independently.
+Browser suites, including Notifications Web adoption, run in a dedicated phase before aggregate JVM
+validation. Within the catalog and Design Library consumer suites, independent test methods run in
+a pool of four while test classes remain serial. Each method owns its server, browser profile and
+cookies; focused checks use distinct report names. Set `-Pbml.browser.workers=1` to run methods
+serially, or choose another pool size for the available machine. The aggregate task reuses those
+results, and its Gradle worker count is bounded independently.
 
 `./gradlew :bml:bml-server:chunkCacheBrowserTest` checks module requests across two deployments
 with unchanged JavaScript and a retained browser cache, for both filesystem and packaged assets.

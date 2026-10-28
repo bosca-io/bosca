@@ -186,6 +186,8 @@ jte-models = { module = "gg.jte:jte-models", version.ref = "jte" }
 junit = { module = "junit:junit", version.ref = "junit" }
 junit-jupiter = { module = "org.testcontainers:junit-jupiter", version.ref = "junit-jupiter" }
 junit-platform-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-platform" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
+junit-platform-vintage = { module = "org.junit.vintage:junit-vintage-engine", version.ref = "junit-platform" }
 koog-a2a-server = { module = "ai.koog:a2a-server", version.ref = "koog-a2a" }
 koog-a2a-transport-server-jsonrpc-http = { module = "ai.koog:a2a-transport-server-jsonrpc-http", version.ref = "koog-a2a" }
 koog-agents = { module = "ai.koog:koog-agents", version.ref = "koog" }

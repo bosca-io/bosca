@@ -108,6 +108,16 @@ export async function checkDeepTrees({navigate,evaluate,until,call,artifacts,mod
       }
       await key('Enter');
       await until(`location.pathname==='/components/content'&&location.hash==='#ref-tree-item'`);
+      await until(`document.readyState==='complete'&&document.querySelectorAll('[data-json-ready]').length===3&&
+        document.querySelector('[data-document-ready]')&&document.querySelector('[data-source-ready]')&&
+        [...document.querySelectorAll('[data-bml-source-view]')].every(source=>source.hasAttribute('data-source-ready'))`);
+      report.cases.push({width,destination:await evaluate(`({path:location.pathname,hash:location.hash,ready:document.readyState,
+        jsonEditors:document.querySelectorAll('[data-json-ready]').length,
+        documentEditors:document.querySelectorAll('[data-document-ready]').length,
+        sources:document.querySelectorAll('[data-source-ready]').length})`)});
+      // Configure scripting on an empty document, outside the running editors' execution policy.
+      await call('Page.navigate',{url:'about:blank'});
+      await until(`location.href==='about:blank'&&document.readyState==='complete'`);
       await call('Emulation.setScriptExecutionDisabled',{value:true});
       try {
         await navigate('/trees');

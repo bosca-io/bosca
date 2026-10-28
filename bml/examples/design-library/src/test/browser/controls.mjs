@@ -289,10 +289,14 @@ try {
     assert.equal(table.font, '11px'); assert.equal(table.padding, '12px 14px');
     if (width === 390) {
       assert.equal(table.overflow, true);
-      await evaluate('document.querySelector("[data-table=light]").focus()');
+      await evaluate(`(() => {const table=document.querySelector('[data-table=light]');
+        window.fixtureKeyboardScrollEnded=false;
+        table.addEventListener('scrollend',()=>window.fixtureKeyboardScrollEnded=true,{once:true});
+        table.focus()})()`);
       await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
       await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
       await until('document.querySelector("[data-table=light]").scrollLeft > 0');
+      await until('window.fixtureKeyboardScrollEnded === true');
       assert.equal(await evaluate('getComputedStyle(document.querySelector("[data-table=light]")).outlineColor'), 'rgb(21, 128, 61)');
       await evaluate(`document.querySelector('[data-table=light]').scrollTo({left:80,top:90,behavior:'instant'})`);
       await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
