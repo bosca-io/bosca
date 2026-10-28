@@ -86,8 +86,10 @@ const filter = computed(() => {
   return parts.join(' AND ')
 })
 
+const sort = computed(() => searchQuery.value ? [] : ['published:desc'])
+
 const collectionsGql = gql`
-  query GetAllCollections($query: String!, $filter: String!, $limit: Int!, $offset: Int!) {
+  query GetAllCollections($query: String!, $filter: String!, $limit: Int!, $offset: Int!, $sort: [String!]) {
     search {
       search(query: {
         query: $query
@@ -95,6 +97,7 @@ const collectionsGql = gql`
         storageSystemName: "Admin Search Index"
         limit: $limit
         offset: $offset
+        sort: $sort
       }) {
         documents {
           collection {
@@ -175,6 +178,7 @@ const { data, status, refresh } = useAsyncQuery<{
   filter,
   limit,
   offset,
+  sort,
 })
 
 const collections = computed<SearchCollection[]>(() =>
