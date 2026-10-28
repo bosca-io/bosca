@@ -5,4 +5,5 @@ bosca:
 
 bml:
   graphqlEndpoint: "${BML_GRAPHQL_ENDPOINT:http://localhost:8094/graphql}"
+  artifactsEndpoint: "${BML_ARTIFACTS_ENDPOINT:}"
   authCookiePrefix: "${BML_AUTH_COOKIE_PREFIX:}"

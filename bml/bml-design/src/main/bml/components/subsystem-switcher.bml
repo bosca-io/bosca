@@ -1,0 +1,60 @@
+<component tag="subsystem-switcher">
+  <prop name="items" type="List<bosca.design.model.SubsystemNavigationItem>" required />
+  <prop name="currentId" type="String" default="" />
+  <prop name="brand" type="String" default="Bosca" />
+  <prop name="product" type="String" required />
+  <prop name="homeHref" type="String" default="/" />
+  <script server provides="current">items.firstOrNull { it.id == currentId }</script>
+  <div class="subsystem-switcher" data-bml-design-dialog data-subsystem-switcher :data-current-subsystem="currentId">
+    <html:button class="subsystem-trigger" ref="trigger" type="button" aria-label="Switch subsystems">
+      <span class="subsystem-trigger-icon"><icon :name='current?.icon ?: "workflow"' :size="16" /></span>
+      <span class="subsystem-trigger-text"><strong>{ current?.label ?: product }</strong><span>{ current?.description ?: "Build & Deliver" }</span></span>
+      <span class="subsystem-trigger-chevron"><icon name="chevron-right" :size="14" /></span>
+    </html:button>
+    <html:dialog class="subsystem-dialog" ref="dialog" :aria-label='brand + " " + product + " subsystems"' data-bml-design-dialog-panel>
+      <header class="subsystem-dialog-header">
+        <a class="subsystem-dialog-brand" :href="homeHref"><bosca-mark /><strong>{ brand }</strong><span class="subsystem-brand-separator"></span><span>{ product }</span></a>
+        <icon-button ref="close" label="Close subsystem navigation" icon="close" size="xs" />
+      </header>
+      <div class="subsystem-search"><icon name="search" :size="15" /><html:input ref="filter" type="search" placeholder="Filter subsystems…" aria-label="Filter subsystems" autocomplete="off" /><span class="subsystem-esc">esc</span></div>
+      <div class="subsystem-dialog-body" ref="body">
+        <div data-subsystem-recent-block hidden><p class="subsystem-category">Recent</p><subsystem-links :items="items" :currentId="currentId" variant="menu" recent /></div>
+        <for category in items.map { it.category }.distinct()>
+          <div data-subsystem-category><p class="subsystem-category">{ category }</p><subsystem-links :items="items.filter { it.category == category }" :currentId="currentId" variant="menu" /></div>
+        </for>
+        <p class="subsystem-empty" ref="empty" role="status" hidden>No subsystems match “<span ref="query"></span>”</p>
+      </div>
+    </html:dialog>
+  </div>
+  <style scoped>
+    .subsystem-switcher { margin:0 6px; flex-shrink:0; }
+    .subsystem-trigger { display:flex; align-items:center; gap:10px; padding:12px 9px; border:0; border-radius:10px; width:100%; background:transparent; color:var(--fg-0); cursor:pointer; text-align:left; font:inherit; }
+    .subsystem-trigger:hover { background:color-mix(in oklch,var(--bg-3) 50%,transparent); }
+    .subsystem-trigger-icon { display:flex; align-items:center; justify-content:center; width:32px; height:32px; flex:0 0 32px; border-radius:999px; background:color-mix(in oklch,var(--accent) 18%,transparent); border:1px solid color-mix(in oklch,var(--accent) 35%,transparent); color:var(--accent); }
+    .subsystem-trigger-text { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
+    .subsystem-trigger-text strong { font-size:14px; line-height:18px; font-weight:600; letter-spacing:-.005em; }
+    .subsystem-trigger-text > span { font-size:11px; line-height:14px; color:var(--fg-3); }
+    .subsystem-trigger-chevron { color:var(--fg-3); flex:none; }
+    .subsystem-dialog { box-sizing:border-box; width:860px; max-width:calc(100% - 48px); max-height:min(90dvh,calc(100dvh - 48px)); padding:0; color:var(--fg-0); background:var(--bg-0); border:1px solid color-mix(in oklch,var(--fg-3) 18%,transparent); border-radius:var(--r-lg); box-shadow:0 24px 80px -20px #0006,inset 0 0 0 1px color-mix(in oklch,var(--fg-4) 8%,transparent),inset 0 1px 0 0 #ffffff12; font-family:var(--font-sans); overflow:hidden; }
+    .subsystem-dialog::backdrop { background:transparent; backdrop-filter:none; }
+    .subsystem-dialog-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 20px; border-bottom:1px solid color-mix(in oklch,var(--line) 35%,transparent); }
+    .subsystem-dialog-brand { display:flex; align-items:center; gap:10px; color:var(--fg-1); font-size:13px; text-decoration:none; }
+    .subsystem-dialog-brand strong { font-size:14px; font-weight:600; color:var(--fg-0); }
+    .subsystem-brand-separator { width:1px; height:16px; background:var(--fg-3); }
+    .subsystem-search { display:flex; align-items:center; gap:10px; padding:12px 20px; border-bottom:1px solid color-mix(in oklch,var(--line) 35%,transparent); color:var(--fg-3); }
+    .subsystem-search input { width:0; min-width:0; flex:1; background:transparent; border:0; outline:0; font:inherit; font-size:14px; color:var(--fg-0); }
+    .subsystem-search input::placeholder { color:var(--fg-3); }
+    .subsystem-esc { font-size:10px; padding:2px 6px; border:1px solid color-mix(in oklch,var(--line) 60%,transparent); border-radius:4px; font-family:var(--font-mono); }
+    .subsystem-dialog-body { padding:16px; overflow:auto; max-height:calc(90dvh - 154px); }
+    .subsystem-dialog-body > div + div { margin-top:8px; }
+    .subsystem-category { margin:0; padding:8px 16px 4px; font-size:10px; color:var(--fg-3); text-transform:uppercase; letter-spacing:.12em; font-weight:700; }
+    .subsystem-empty { padding:32px 20px; text-align:center; color:var(--fg-3); font-size:13px; }
+    @media(max-width:700px) { .subsystem-trigger { padding:8px; } .subsystem-trigger-text > span { display:none; } .subsystem-trigger-text strong { font-size:12px; } .subsystem-trigger-icon { width:26px; height:26px; flex-basis:26px; } .subsystem-switcher { margin:6px 0; } .subsystem-dialog { max-width:calc(100% - 32px); } }
+  </style>
+  <script client scoped>
+    import { modalDialog } from "@client/helpers/dialog";
+    import { subsystemSwitcher } from "@client/helpers/subsystems";
+    modalDialog(ctx, { closeOnEscape: true });
+    subsystemSwitcher(ctx);
+  </script>
+</component>

@@ -109,8 +109,8 @@ normal CI execution/permission checks are preserved.
 Atlas owns its root SDL, namespace accessors, schema/dispatcher registrars, and provider list.
 Git and artifacts retain their existing domain implementations. Git CI owns the registry-backed
 produced/required artifact verifier, so CI requirement gates and producer completion do not require
-WorkOps. The default packages install initial security, the Git search index, and GitHub sync
-pipelines. Domain migrations register Git maintenance and CI requirement schedules.
+WorkOps. The default packages install initial security, the Git search index, GitHub sync
+pipelines, and the shared default artifact sync/publication pipelines. Domain migrations register Git maintenance and CI requirement schedules.
 
 `:server:atlas-ui-server` uses the same shared Atlas auth/landing and Git application as the
 embedded listener. The API owns process-wide services. UI requests drain before backend shutdown;
@@ -132,3 +132,8 @@ and queue pools: authentication, private Git clone/push, CI attribution, artifac
 producer completion, agent claims/results, raw downloads, live logs, scheduler history, and graceful
 shutdown. Configuration/schema tests check role selection and the Git UI/auth operation contracts;
 listener lifecycle tests check bind/installation failures and sibling shutdown.
+
+Artifact administration is available under `/artifacts` in the BML host. The authenticated Atlas
+landing page links both applications. Artifact file uploads and reads use the UI origin; a separate
+registry pool can be selected with `BML_ARTIFACTS_ENDPOINT`, while its public file URL origin can be
+set with `ATLAS_ARTIFACTS_URL`. The UI continues using the shared Atlas GraphQL endpoint.

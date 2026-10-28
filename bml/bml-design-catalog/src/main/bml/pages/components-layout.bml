@@ -1,4 +1,5 @@
 <page route="/components/layout">
+  <script server provides="paginationPage">ctx.query["page"]?.toLongOrNull()?.coerceIn(1L, 3L) ?: 2L</script>
   <catalog-document title="Layout and navigation" description="Surfaces, headings and caller-owned destinations." current="/components">
     <a class="catalog-link" href="/shell">Open the application shell and profile example</a>
     <a class="catalog-link" href="/surfaces">Working surfaces, disclosures and data states in two palettes</a>
@@ -132,5 +133,12 @@
       <tabs label="Example routes" :items='listOf(bosca.design.model.NavigationItem("Components", "/components", false), bosca.design.model.NavigationItem("Layout", "/components/layout", true), bosca.design.model.NavigationItem("Foundation", "/foundation", false))' />
       <a class="catalog-link" href="/navigation">Working route navigation and overflow states</a>
     </reference-entry>
+    <card title="Forms and actions" description="The library owns form spacing, footer alignment, navigation controls, and pagination.">
+      <form action="/components/layout" method="get"><form-body>
+        <field label="Example name"><input name="example" value="Library form" /></field>
+        <form-actions><button-link href="/components/layout" icon="arrow-left">Cancel</button-link><button type="submit" primary>Save example</button></form-actions>
+      </form-body></form>
+      <pagination :page="paginationPage" :previousHref='if (paginationPage != 1L) "/components/layout?page=" + (paginationPage - 1) else ""' :nextHref='if (paginationPage != 3L) "/components/layout?page=" + (paginationPage + 1) else ""' label="Example pages" />
+    </card>
   </catalog-document>
 </page>

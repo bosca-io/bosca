@@ -100,6 +100,9 @@ textarea {
 .git-document {
   color: var(--fg-0);
   color-scheme: dark;
+  --mark-top: var(--accent);
+  --mark-right: color-mix(in oklch, var(--accent) 85%, #fff);
+  --mark-left: color-mix(in oklch, var(--accent) 80%, #000);
   --select-active-border: var(--brand-2);
   --r-xs: 8px;
   --r-sm: 12px;
@@ -1002,9 +1005,6 @@ a.info-value {
   --error-fg: #b91c1c;
   --info: #1e40af;
   --purple: #7e22ce;
-  --mark-top: #1d75a5;
-  --mark-right: #2d88bb;
-  --mark-left: #12537e;
   --shadow-color: #0f172a;
   --backdrop-color: #0f172a;
   --tooltip-border: #738399;

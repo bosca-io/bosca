@@ -1,0 +1,20 @@
+<component tag="artifacts-download">
+  <prop name="url" type="String" required />
+  <prop name="filename" type="String" required />
+  <div class="artifact-download">
+    <html:input ref="url" :value="url" :aria-label='"Download URL for " + filename' readonly hidden />
+    <icon-button ref="copy" icon="copy" :label='"Copy URL for " + filename' size="xs" />
+    <p class="sr-only" ref="message" role="status">
+    </p>
+  </div>
+  <script client scoped>
+  const input = ctx.ref<HTMLInputElement>("url");
+  const button = ctx.ref<HTMLButtonElement>("copy");
+  const message = ctx.ref<HTMLElement>("message");
+  if (input) { input.value = new URL(input.value, location.origin).href; ctx.on(input, "focus", () => input.select()); }
+  if (button && input && message) ctx.on(button, "click", async () => {
+    try { await navigator.clipboard.writeText(input.value); message.textContent = "Download URL copied."; }
+    catch { input.hidden = false; input.focus(); input.select(); message.textContent = "Select and copy the URL."; }
+  });
+  </script>
+</component>

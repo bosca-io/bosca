@@ -32,13 +32,20 @@ class AtlasUiRoutesTest {
     }
 
     @Test
-    fun `landing route requires a session and retains the existing repository destination`() {
+    fun `landing route requires a session and links the Atlas applications`() {
         val anonymous = get("/")
         assertEquals(302, anonymous.statusCode())
         assertTrue(anonymous.headers().firstValue("Location").orElse("").startsWith("/login?redirect="))
         val signedIn = get("/", "_atlas_test=atlas-session")
-        assertEquals(302, signedIn.statusCode())
-        assertEquals("/repositories", signedIn.headers().firstValue("Location").orElse(""))
+        assertEquals(200, signedIn.statusCode())
+        assertTrue("href=\"/repositories\"" in signedIn.body())
+        assertTrue("href=\"/artifacts/namespaces\"" in signedIn.body())
+        assertTrue("Welcome." in signedIn.body())
+        assertTrue("aria-label=\"Atlas systems\"" in signedIn.body())
+        assertTrue("Build &amp; Deliver" in signedIn.body())
+        assertFalse("data-bml-app-shell" in signedIn.body())
+        val light = get("/", "_atlas_test=atlas-session; git_ui_appearance=light")
+        assertTrue("data-theme=\"light\"" in light.body())
     }
 
     @Test

@@ -12,17 +12,17 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 /**
- * Checks generated operations against the executable standalone API, including namespace wiring.
+ * Checks both imported applications against Atlas's executable shared API, including namespace wiring.
  */
 class AtlasGraphQLSchemaTest {
     @Test
-    fun `standalone schema accepts every Git UI operation`() = runTest {
+    fun `shared schema accepts every Git and artifacts UI operation`() = runTest {
         SchemaRegistry.initialize(*atlasSchemaRegistrars())
         val validator = OperationValidator(SchemaRegistry.registry)
         val root = File(requireNotNull(System.getProperty("workspaceRoot")))
         val operations =
-            File(root, "git/git-ui/src/main/graphql").listFiles().orEmpty().filter {
-                it.extension == "graphql"
+            listOf("git/git-ui/src/main/graphql", "artifacts/artifacts-ui/src/main/graphql").flatMap { directory ->
+                File(root, directory).listFiles().orEmpty().filter { it.extension == "graphql" }
             }
         assertTrue(operations.isNotEmpty())
         operations.forEach { file ->

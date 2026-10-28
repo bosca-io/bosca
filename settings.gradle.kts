@@ -270,6 +270,7 @@ includeComponent("artifacts", listOf(
     "artifacts-base",
     "artifacts-admin",
     "artifacts-ui",
+    "artifacts-installer",
     "artifacts-docker",
     "artifacts-helm",
     "artifacts-maven",

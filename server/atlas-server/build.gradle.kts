@@ -38,6 +38,7 @@ dependencies {
     implementation(project(":git:git-jobs"))
     implementation(project(":artifacts:core-artifacts"))
     implementation(project(":artifacts:artifacts-base"))
+    implementation(project(":artifacts:artifacts-installer"))
     implementation(project(":artifacts:artifacts-admin"))
     implementation(project(":artifacts:artifacts-docker"))
     implementation(project(":artifacts:artifacts-helm"))
@@ -80,6 +81,9 @@ tasks.test {
     val serverClasspath = sourceSets.main.get().runtimeClasspath
     doFirst { systemProperty("atlasServerClasspath", serverClasspath.asPath) }
     systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
+    systemProperty("atlas.artifacts.browser", providers.gradleProperty("atlas.artifacts.browser").getOrElse("false"))
+    inputs.file(rootProject.file("artifacts/artifacts-ui/src/test/browser/artifacts.mjs"))
+        .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
 }
 
 configurations.all {

@@ -1,0 +1,80 @@
+<component tag="artifacts-upload">
+  <prop name="page" type="bosca.artifacts.ui.ArtifactUploadPage" required />
+  <card :padded="false">
+    <form ref="uploadForm">
+      <form-body padded>
+        <field label="Raw repository">
+          <select name="repositoryId" required>
+            <option value="">Choose a repository</option>
+            <if page.admin>
+              <option value="new">Create a new raw repository</option>
+            </if>
+            <for repository in page.repositories>
+              <option :value="repository.id" :selected="repository.id == page.selectedRepositoryId">{ repository.path }</option>
+            </for>
+          </select>
+        </field>
+        <if page.admin>
+          <details>
+            <disclosure-heading>New repository coordinates</disclosure-heading>
+            <field label="Namespace">
+              <select name="namespaceId">
+                <option value="">Choose a namespace</option>
+                <for namespace in page.namespaces>
+                  <option :value="namespace.id">{ namespace.name }</option>
+                </for>
+              </select>
+            </field>
+            <field label="New raw repository name">
+              <input name="name" maxlength="255" />
+            </field>
+          </details>
+        </if>
+        <field label="Version">
+          <input name="version" required placeholder="1.0.0" />
+        </field>
+        <div class="artifact-drop" ref="dropZone">
+          <label class="artifact-drop-target">
+            <html:input ref="fileInput" type="file" multiple class="artifact-file-input" />
+            <span class="artifact-drop-icon">
+              <icon name="upload" :size="20" />
+            </span>
+            <span class="artifact-drop-copy">
+              <strong>Choose files or drop them here</strong>
+              <span>Set the artifact filenames before uploading</span>
+            </span>
+          </label>
+        </div>
+        <div class="artifact-stack" ref="files" aria-label="Upload files" aria-live="polite">
+        </div>
+        <p ref="message" role="status">
+        </p>
+      </form-body>
+      <form-actions bordered align="between">
+        <button-link href="/artifacts/repositories" icon="arrow-left">Back to repositories</button-link>
+        <form-actions>
+          <button ref="cancel" size="sm" hidden>Cancel upload</button>
+          <button type="submit" ref="upload" size="sm" primary>Upload files</button>
+        </form-actions>
+      </form-actions>
+    </form>
+    <div ref="fileTemplate" hidden>
+      <div class="artifact-file">
+        <label>Filename<html:input name="filename" required />
+        </label>
+        <p data-file-info>
+        </p>
+        <progress max="100" value="0" aria-label="Upload progress">
+        </progress>
+        <p data-file-status role="status">Ready</p>
+        <button type="button" data-file-remove>Remove file</button>
+      </div>
+    </div>
+  </card>
+  <style scoped>progress { width:100%; } .artifact-file label { display:flex; flex-direction:column; gap:8px; }</style>
+  <script client scoped>
+  import { ArtifactUploadTarget } from "./ArtifactUploadTarget";
+  import { mountArtifactUpload } from "@client/upload";
+  mountArtifactUpload(ctx, (repositoryId, namespaceId, name) => ArtifactUploadTarget.resolve(repositoryId, namespaceId, name));
+  </script>
+</component>

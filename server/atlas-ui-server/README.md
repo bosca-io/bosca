@@ -1,6 +1,6 @@
 # Bosca Atlas UI server
 
-Standalone BML host for the shared Atlas authentication/landing pages and Git UI. It serves the
+Standalone BML host composing the shared Atlas authentication/landing pages, Git UI, and artifacts UI. It serves the
 same application used by Atlas's embedded UI listener and uses HTTP proxies for domain operations.
 It has no database, migration, security-provider, or job-consumer initialization.
 
@@ -26,5 +26,10 @@ backend. The browser uses the existing same-origin authentication model and neve
 cross-origin backend calls.
 
 The host reuses the established Git UI proxy implementation; Atlas UI owns auth, session setup,
-and the root landing route. Artifacts UI remains a separate BML module for the Studio port.
+and the root landing route. The host enables Atlas's system switcher in the imported Git header;
+standalone Git keeps its own navigation. Git and artifacts each retain their local links, with the
+shared dialog providing system switching and a return to Atlas home.
+Artifacts UI is imported from `:artifacts:artifacts-ui`, with typed GraphQL actions and same-origin
+registry file proxies. `BML_ARTIFACTS_ENDPOINT` optionally selects a separate registry upstream;
+`ATLAS_ARTIFACTS_URL` sets the public origin used in copied file URLs. GraphQL remains shared.
 See [Atlas server](../atlas-server/README.md) for deployment roles and production-process tests.

@@ -1,0 +1,3 @@
+<page route="/" requireAuth>
+  <script server>ctx.redirectTo = "/repositories"</script>
+</page>

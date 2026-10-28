@@ -29,6 +29,19 @@ export function passwordStrength(password: string): string {
   return `Password strength: ${["Weak", "Weak", "Fair", "Good", "Strong"][score]}`;
 }
 
+/** Returns a same-origin destination, defaulting to the Atlas home page. */
+export function atlasReturnPath(requested: string | null): string {
+  if (!requested?.startsWith("/")) return "/";
+  try {
+    const destination = new URL(requested, location.origin);
+    if (destination.origin === location.origin)
+      return destination.pathname + destination.search + destination.hash;
+  } catch {
+    // Invalid return paths use the same home destination as a fresh login.
+  }
+  return "/";
+}
+
 /** Shared SDK operations and navigation. BML owns each form's setup, events and lifecycle. */
 export function createAuthFlow(
   auth: BoscaAuth,

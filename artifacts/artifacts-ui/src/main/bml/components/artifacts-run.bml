@@ -1,0 +1,55 @@
+<component tag="artifacts-run">
+  <prop name="initial" type="bosca.artifacts.ui.ArtifactRunModel" required />
+  <script server provides="model">bosca.artifacts.ui.ArtifactRunModel(initial.id, initial.status, initial.error, initial.modified, initial.nodes)</script>
+  <island name="artifacts-run" :key="initial.id">
+    <page-shell class="artifact-page" flush>
+      <page-heading title="Artifact pipeline run" :subtitle="model.status">
+        <button-link href="/artifacts/repositories" icon="boxes">Artifacts</button-link>
+        <button @click="model.refresh(ctx)">Refresh</button>
+      </page-heading>
+      <div class="artifact-content">
+        <artifacts-feedback :feedback="model.feedback" />
+        <card title="Run status">
+          <div class="artifact-stack">
+            <p>Updated: { model.modified }</p>
+            <if model.error.isNotBlank()>
+              <alert>{ model.error }</alert>
+            </if>
+            <for node in model.nodes>
+              <article class="artifact-file">
+                <strong>{ node.id } · { node.status }</strong>
+                <p>{ node.error }</p>
+              </article>
+            </for>
+            <if model.status == "FAILED">
+              <confirm-dialog title="Restart failed run?" description="The original input will run against the current pipeline." triggerLabel="Restart run">
+                <form @submit="model.restart(form.confirmed, ctx)">
+                  <form-body padded>
+                    <checkbox name="confirmed" label="Restart this run" required />
+                  </form-body>
+                  <form-actions bordered>
+                    <button size="sm" data-dialog-close>Cancel</button>
+                    <button type="submit" size="sm">Restart run</button>
+                  </form-actions>
+                </form>
+              </confirm-dialog>
+            </if>
+            <if model.active>
+              <confirm-dialog title="Cancel run?" description="The running or suspended pipeline will be cancelled." triggerLabel="Cancel run">
+                <form @submit="model.cancel(form.confirmed, ctx)">
+                  <form-body padded>
+                    <checkbox name="confirmed" label="Cancel this run" required />
+                  </form-body>
+                  <form-actions bordered>
+                    <button size="sm" data-dialog-close>Cancel</button>
+                    <button type="submit" size="sm" class="danger">Cancel run</button>
+                  </form-actions>
+                </form>
+              </confirm-dialog>
+            </if>
+          </div>
+        </card>
+      </div>
+    </page-shell>
+  </island>
+</component>

@@ -1,4 +1,4 @@
-package bosca.server.installer
+package bosca.artifacts.installer
 
 import bosca.artifacts.model.ArtifactCompleted
 import bosca.artifacts.model.ArtifactPublicationTarget

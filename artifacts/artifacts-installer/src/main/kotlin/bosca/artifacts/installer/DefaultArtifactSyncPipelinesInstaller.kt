@@ -1,4 +1,4 @@
-package bosca.server.installer
+package bosca.artifacts.installer
 
 import bosca.artifacts.model.ArtifactSyncTarget
 import bosca.artifacts.model.ArtifactTagPublished

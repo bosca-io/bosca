@@ -27,6 +27,15 @@ import kotlinx.serialization.json.Json
 
 @Providers
 class Configuration {
+    @Provider(name = "default-artifact-sync-pipelines")
+    fun artifactSyncInstaller(pipelines: bosca.pipelines.service.PipelineService): PackageInstaller =
+        bosca.artifacts.installer.DefaultArtifactSyncPipelinesInstaller(pipelines)
+
+    @Provider(name = "default-artifact-sync-pipelines-package")
+    fun artifactSyncPackage(): PackageInstallation = PackageInstallation(
+        key = "default-artifact-sync-pipelines", name = "Default Artifact Sync Pipelines",
+        versions = listOf(PackageInstallationVersion(version = "1.1.0", installerNames = listOf("default-artifact-sync-pipelines"))),
+    )
 
     @Provider(singleton = true)
     fun atlasConfiguration(application: BoscaApplication): AtlasConfiguration = AtlasConfiguration.from(application.environment.config)

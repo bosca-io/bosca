@@ -73,7 +73,17 @@ internal class AtlasProcessFixture : AutoCloseable {
             runCatching { request(api, "/api/v1/ready").statusCode() == 200 }.getOrDefault(false)
         }
         if (flags["ATLAS_UI_ENABLED"] != "false") {
-            await("$name UI ready", log) { runCatching { request(ui, "/api/v1/ready").statusCode() == 200 }.getOrDefault(false) }
+            var observation = "No response"
+            await("$name UI ready at $ui", log, { observation }) {
+                try {
+                    val response = request(ui, "/api/v1/ready")
+                    observation = "HTTP ${response.statusCode()}: ${response.body().take(300)}"
+                    response.statusCode() == 200
+                } catch (failure: java.io.IOException) {
+                    observation = failure.toString()
+                    false
+                }.also { ready -> if (!ready && !process.isAlive) error("UI host stopped: $observation\n${log.readText().takeLast(16_000)}") }
+            }
         }
         return api to ui
     }
@@ -87,7 +97,7 @@ internal class AtlasProcessFixture : AutoCloseable {
 
     fun newOrigin(): String = "http://localhost:${freePort()}"
 
-    fun startUi(api: String, origin: String): String {
+    fun startUi(api: String, origin: String, artifactsEndpoint: String? = null): String {
         val port = URI.create(origin).port
         val config = File(directory, "ui.yaml")
         config.writeText("""
@@ -97,6 +107,7 @@ internal class AtlasProcessFixture : AutoCloseable {
                 drain-timeout-ms: 0
             bml:
               graphqlEndpoint: "$api/graphql"
+              artifactsEndpoint: "${artifactsEndpoint.orEmpty()}"
               authCookiePrefix: "_atlas_test"
         """.trimIndent())
         val log = File(directory, "ui.log")
@@ -128,13 +139,13 @@ internal class AtlasProcessFixture : AutoCloseable {
         HttpResponse.BodyHandlers.ofString(),
     )
 
-    fun await(description: String, log: File? = null, assertion: () -> Boolean) {
+    fun await(description: String, log: File? = null, observation: () -> String = { "" }, assertion: () -> Boolean) {
         val deadline = System.nanoTime() + Duration.ofSeconds(90).toNanos()
         while (System.nanoTime() < deadline) {
             if (assertion()) return
             Thread.sleep(100)
         }
-        error("Timed out waiting for $description. ${log?.readText()?.takeLast(16_000) ?: logs()}")
+        error("Timed out waiting for $description. ${observation()} ${log?.readText()?.takeLast(16_000) ?: logs()}")
     }
 
     fun logs(): String = directory.listFiles().orEmpty().filter { it.extension == "log" }

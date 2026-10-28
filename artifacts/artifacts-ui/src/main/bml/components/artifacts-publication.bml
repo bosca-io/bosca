@@ -1,0 +1,182 @@
+<component tag="artifacts-publication">
+  <prop name="initial" type="bosca.artifacts.ui.ArtifactPublicationModel" required />
+  <script server provides="model">bosca.artifacts.ui.ArtifactPublicationModel(initial.repository, initial.destinations, initial.secrets, initial.versions, initial.offset, initial.versionCount, initial.selectedVersionId, initial.reviewedVersion, initial.history, initial.historyOffset, initial.hasNext)</script>
+  <island name="artifacts-publication" :key="initial.repository.id">
+    <div class="artifact-stack">
+      <artifacts-feedback :feedback="model.feedback" />
+      <card title="GitHub release sync" description="Publish completed raw versions as release assets. The destination tag must already point to the exact build commit.">
+        <div class="artifact-stack">
+          <form-actions align="start">
+            <button @click='model.edit("")'>Add destination</button>
+          </form-actions>
+          <for destination in model.destinations>
+            <section class="artifact-row">
+              <div>
+                <strong>{ destination.key }</strong>
+                <p>{ destination.owner }/{ destination.githubRepository } · { destination.tagPrefix } · { if (destination.enabled) "Enabled" else "Disabled" }</p>
+                <p>Token secret: { destination.tokenSecretName }</p>
+              </div>
+              <button @click="model.edit(destination.id)">Edit destination</button>
+            </section>
+          </for>
+          <if model.editing>
+            <form @submit="model.save(form.key, form.owner, form.githubRepository, form.githubRepositoryId, form.tagPrefix, form.tokenSecretName, form.enabled, ctx)">
+              <form-body>
+                <field label="Destination name">
+                  <input name="key" type="text" :value="model.draft.key" :readonly="model.draft.id.isNotBlank()" required />
+                </field>
+                <field label="Owner">
+                  <input name="owner" type="text" :value="model.draft.owner" :readonly="model.draft.id.isNotBlank()" required />
+                </field>
+                <field label="Repository name">
+                  <input name="githubRepository" type="text" :value="model.draft.githubRepository" :readonly="model.draft.id.isNotBlank()" required />
+                </field>
+                <field label="Numeric repository ID">
+                  <input name="githubRepositoryId" type="text" :value="model.draft.githubRepositoryId" :readonly="model.draft.id.isNotBlank()" required />
+                </field>
+                <field label="Tag prefix">
+                  <input name="tagPrefix" type="text" :value="model.draft.tagPrefix" :readonly="model.draft.id.isNotBlank()"  />
+                </field>
+                <field label="Token secret">
+                  <select name="tokenSecretName" required>
+                    <option value="">Choose a secret</option>
+                    <if model.draft.tokenSecretName.isNotBlank() && model.draft.tokenSecretName !in model.secrets>
+                      <option :value="model.draft.tokenSecretName" selected>{ model.draft.tokenSecretName } (missing)</option>
+                    </if>
+                    <for name in model.secrets>
+                      <option :value="name" :selected="model.draft.tokenSecretName == name">{ name }</option>
+                    </for>
+                  </select>
+                </field>
+                <checkbox name="enabled" label="Enable synchronization" :checked="model.draft.enabled" />
+                <form-actions>
+                  <button @click="model.cancel()">Cancel</button>
+                  <button type="submit" primary>Save destination</button>
+                </form-actions>
+              </form-body>
+            </form>
+          </if>
+          <details>
+            <disclosure-heading>Add or replace a token secret</disclosure-heading>
+            <form @submit="model.saveSecret(form.secretName, form.secretValue, ctx)">
+              <form-body>
+                <field label="Secret name">
+                  <input name="secretName" required />
+                </field>
+                <field label="Token">
+                  <input type="password" name="secretValue" autocomplete="new-password" required />
+                </field>
+                <form-actions align="start">
+                  <button type="submit">Save token secret</button>
+                </form-actions>
+              </form-body>
+            </form>
+          </details>
+        </div>
+      </card>
+      <card title="Publish release">
+        <div class="artifact-stack">
+          <form @submit="model.selectVersion(form.versionId, ctx)">
+            <form-body>
+              <field label="Version">
+                <select name="versionId" required>
+                  <for version in model.versions>
+                    <option :value="version.id" :selected="model.selectedVersionId == version.id">{ version.version }</option>
+                  </for>
+                </select>
+              </field>
+              <form-actions align="start">
+                <button type="submit">Review version</button>
+              </form-actions>
+            </form-body>
+          </form>
+          <pagination label="Publication version pages" :page="model.offset / 15 + 1" :hasPrevious="model.offset != 0L" :hasNext="model.versionsHasNext">
+            <if model.offset != 0L>
+              <button @click="model.versionsPage(-1, ctx)">Previous versions</button>
+            </if>
+            <if model.versionsHasNext>
+              <button @click="model.versionsPage(1, ctx)">Next versions</button>
+            </if>
+          </pagination>
+          <if model.reviewedVersion != null>
+            <h3>Stored files</h3>
+            <for blob in model.reviewedVersion?.blobs.orEmpty()>
+              <article class="artifact-file">
+                <strong>{ blob.filename.ifBlank { blob.role } }</strong>
+                <p>{ blob.sizeLabel } · { blob.mediaType }</p>
+                <copy-field label="Digest" :value="blob.digest" />
+              </article>
+            </for>
+            <p>Recorded commit: { model.reviewedVersion?.commitSha?.ifBlank { "Not recorded" } }</p>
+            <if model.reviewedVersion?.finalized != true>
+              <form @submit="model.complete(form.commitSha, form.confirmed, ctx)">
+                <form-body>
+                  <field label="Exact build commit SHA">
+                    <input name="commitSha" :value="model.commitDraft.ifBlank { model.reviewedVersion?.commitSha.orEmpty() }" pattern="[0-9a-fA-F]{40}" required mono />
+                  </field>
+                  <checkbox name="confirmed" label="All files have finished uploading and match this build commit" required />
+                  <form-actions align="start">
+                    <button type="submit">Confirm completed uploads</button>
+                  </form-actions>
+                </form-body>
+              </form>
+            </if>
+            <form @submit="model.publish(form.destinationId, form.commitSha, ctx)">
+              <form-body>
+                <field label="Destination">
+                  <select name="destinationId" required>
+                    <option value="">Choose an enabled destination</option>
+                    <for destination in model.destinations>
+                      <if destination.enabled>
+                        <option :value="destination.id">{ destination.key }</option>
+                      </if>
+                    </for>
+                  </select>
+                </field>
+                <field label="Exact build commit SHA">
+                  <input name="commitSha" :value="model.commitDraft.ifBlank { model.reviewedVersion?.commitSha.orEmpty() }" pattern="[0-9a-fA-F]{40}" required mono />
+                </field>
+                <form-actions align="start">
+                  <button type="submit" :disabled="model.reviewedVersion?.completed != true">Queue publication</button>
+                </form-actions>
+              </form-body>
+            </form>
+          </if>
+        </div>
+      </card>
+      <card title="Release sync status">
+        <div class="artifact-stack">
+          <form-actions align="start">
+            <button @click="model.refresh(ctx)">Refresh publication status</button>
+          </form-actions>
+          <if model.history.isEmpty()>
+            <empty-state icon="clock" message="No publication records on this page." compact />
+          </if>
+          <for publication in model.history>
+            <article class="artifact-file">
+              <strong>{ publication.tag } · { publication.status }</strong>
+              <p>{ model.destinationLabel(publication.destinationId) }</p>
+              <p>Commit: { publication.commit } · Attempts: { publication.attempts }</p>
+              <p>Published: { publication.published.ifBlank { "Not yet published" } }</p>
+              <p>Last verified: { publication.verified.ifBlank { "Not yet verified" } }</p>
+              <if publication.error.isNotBlank()>
+                <alert>{ publication.error }</alert>
+              </if>
+              <for blob in publication.files>
+                <p>{ blob.filename } · { blob.sizeLabel } · { blob.digest }</p>
+              </for>
+            </article>
+          </for>
+          <pagination label="Publication history pages" :page="model.historyOffset / 15 + 1" :hasPrevious="model.historyOffset != 0L" :hasNext="model.hasNext">
+            <if model.historyOffset != 0L>
+              <button @click="model.historyPage(-1, ctx)">Previous publications</button>
+            </if>
+            <if model.hasNext>
+              <button @click="model.historyPage(1, ctx)">Next publications</button>
+            </if>
+          </pagination>
+        </div>
+      </card>
+    </div>
+  </island>
+</component>

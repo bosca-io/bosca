@@ -3,8 +3,9 @@
   <script server provides="path">
     ctx.requestPath
   </script>
-  <app-header brand="Bosca" product="Git" href="/repositories">
+  <app-header brand="Bosca" product="Git" href="/">
     <if signedIn>
+      <div class="atlas-git-switcher" data-atlas-system-switcher><subsystem-switcher :items="bosca.atlas.ui.AtlasSubsystems.items" currentId="git" product="Atlas" /></div>
       <div class="shell-subsystem git-subsystem">
         <span class="shell-subsystem-icon subsystem-icon">
           <icon name="branch" />

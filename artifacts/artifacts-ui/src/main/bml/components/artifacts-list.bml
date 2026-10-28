@@ -1,0 +1,204 @@
+<component tag="artifacts-list">
+  <prop name="initial" type="bosca.artifacts.ui.ArtifactListModel" required />
+  <script server provides="model">bosca.artifacts.ui.ArtifactListModel(initial.kind, initial.namespaceId, initial.type, initial.offset, initial.admin, namespaces = initial.namespaces, repositories = initial.repositories, namespace = initial.namespace, hasNext = initial.hasNext)</script>
+  <island name="artifacts-list" :key="initial.kind + initial.namespaceId">
+    <page-shell class="artifact-page" flush>
+      <page-heading :title="model.title" :subtitle='if (model.kind == "namespaces") model.namespaces.size.toString() + " namespaces" else if (model.namespace != null) model.namespace?.repositoryCount.toString() + " repositories" else ""' :trail='listOf(bosca.design.model.NavigationItem("Artifacts", "/artifacts/namespaces", false))'>
+        <if model.admin>
+          <artifacts-create :initial="model" />
+        </if>
+      </page-heading>
+      <div class="artifact-content">
+        <artifacts-feedback :feedback="model.feedback" />
+        <if !model.admin>
+          <p>Administrator access is required to use artifact administration.</p>
+          <button-link href="/" icon="arrow-left">Back to Atlas</button-link>
+        <else>
+          <if model.kind == "namespaces">
+            <card title="Namespaces" :padded="false">
+              <if model.namespaces.isEmpty()>
+                <empty-state message="No namespaces. Create one to start organizing artifact repositories." />
+              </if>
+              <if model.namespaces.isNotEmpty()>
+                <table-scroll label="Artifact namespaces" class="artifact-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Visibility</th>
+                        <th>Repositories</th>
+                        <th>Created</th>
+                        <th>
+                          <span class="sr-only">Actions</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <for namespace in model.namespaces>
+                        <tr>
+                          <td>
+                            <a class="artifact-name" :href="namespace.href">{ namespace.name }</a>
+                          </td>
+                          <td>
+                            <badge :tone='if (namespace.public) "success" else "neutral"'>{ if (namespace.public) "Public" else "Private" }</badge>
+                          </td>
+                          <td>
+                            <div class="artifact-type-counts">
+                              <for type in bosca.artifacts.ui.artifactTypes>
+                                <if (namespace.counts[type] ?: 0) != 0L>
+                                  <badge :color="bosca.artifacts.ui.artifactTypeColor(type)">{ namespace.counts[type].toString() + " " + type }</badge>
+                                </if>
+                              </for>
+                              <if namespace.repositoryCount == 0L>
+                                <span class="artifact-muted">None</span>
+                              </if>
+                            </div>
+                          </td>
+                          <td class="artifact-date">{ namespace.created.take(10) }</td>
+                          <td>
+                            <div class="artifact-row-actions">
+                              <copy :showStatus="false" :value="namespace.id" label="Copy namespace ID" />
+                              <confirm-dialog :title='"Delete " + namespace.name + "?"' description="All repositories and versions in this namespace will be permanently removed." triggerLabel="Delete namespace">
+                                <form @submit="model.delete(namespace.id, form.confirmed, ctx)">
+                                  <form-body padded>
+                                    <checkbox name="confirmed" label="Delete this namespace and its contents" required />
+                                  </form-body>
+                                  <form-actions bordered>
+                                    <button size="sm" data-dialog-close>Cancel</button>
+                                    <button type="submit" size="sm" class="danger">Delete namespace</button>
+                                  </form-actions>
+                                </form>
+                              </confirm-dialog>
+                              <icon-link :href="namespace.href" icon="arrow-right" label="Open namespace" />
+                            </div>
+                          </td>
+                        </tr>
+                      </for>
+                    </tbody>
+                  </table>
+                </table-scroll>
+              </if>
+            </card>
+          <else>
+            <if model.namespace != null>
+              <card title="Details" :padded="false">
+                <div class="artifact-detail-grid">
+                  <div>
+                    <span class="artifact-detail-label">Name</span>
+                    <span class="artifact-detail-value mono">{ model.namespace?.name }</span>
+                  </div>
+                  <div>
+                    <span class="artifact-detail-label">ID</span>
+                    <div class="artifact-detail-id">
+                      <code :title="model.namespaceId">{ model.namespaceId }</code>
+                      <copy :showStatus="false" :value="model.namespaceId" label="Copy namespace ID" />
+                    </div>
+                  </div>
+                  <div>
+                    <span class="artifact-detail-label">Visibility</span>
+                    <form class="artifact-visibility" @submit="model.visibility(form.public, ctx)">
+                      <badge :tone='if (model.namespace?.public == true) "success" else "neutral"'>{ if (model.namespace?.public == true) "Public" else "Private" }</badge>
+                      <switch name="public" label="Allow anonymous pull" :checked="model.namespace?.public == true" />
+                      <button type="submit" size="xs">Save</button>
+                    </form>
+                  </div>
+                  <div>
+                    <span class="artifact-detail-label">Created</span>
+                    <span class="artifact-detail-value">{ model.namespace?.created?.take(10) }</span>
+                  </div>
+                </div>
+              </card>
+            </if>
+            <if model.kind == "repositories">
+              <artifacts-drop />
+            </if>
+            <card title="Repositories" :padded="false">
+              <nav class="artifact-filter" aria-label="Registry type">
+                <a :href='model.href + "?type=all"' :aria-current='if (model.type == "all") "page" else "false"'>All types</a>
+                <for type in bosca.artifacts.ui.artifactTypes>
+                  <a :href='model.href + "?type=" + type' :aria-current='if (model.type == type) "page" else "false"'>{ type }</a>
+                </for>
+              </nav>
+              <if model.repositories.isEmpty()>
+                <empty-state message="No repositories found." />
+              </if>
+              <if model.repositories.isNotEmpty()>
+                <table-scroll label="Artifact repositories" class="artifact-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <if model.namespace == null>
+                          <th>Namespace</th>
+                        </if>
+                        <th>Type</th>
+                        <th>Created</th>
+                        <th>Modified</th>
+                        <th>
+                          <span class="sr-only">Actions</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <for repository in model.repositories>
+                        <tr>
+                          <td>
+                            <a class="artifact-name" :href="repository.href" :title="repository.path">{ repository.name }</a>
+                          </td>
+                          <if model.namespace == null>
+                            <td>
+                              <a :href='"/artifacts/namespaces/" + repository.namespaceId'>{ repository.namespace }</a>
+                            </td>
+                          </if>
+                          <td>
+                            <badge :color="bosca.artifacts.ui.artifactTypeColor(repository.type)">{ repository.type }</badge>
+                          </td>
+                          <td class="artifact-date">{ repository.created.take(10) }</td>
+                          <td class="artifact-date">{ repository.modified.take(10) }</td>
+                          <td>
+                            <div class="artifact-row-actions">
+                              <copy :showStatus="false" :value="repository.id" label="Copy repository ID" />
+                              <confirm-dialog :title='"Delete " + repository.name + "?"' description="All versions, tags, and files in this repository will be permanently removed." triggerLabel="Delete repository">
+                                <form @submit="model.delete(repository.id, form.confirmed, ctx)">
+                                  <form-body padded>
+                                    <checkbox name="confirmed" label="Delete this repository and its contents" required />
+                                  </form-body>
+                                  <form-actions bordered>
+                                    <button size="sm" data-dialog-close>Cancel</button>
+                                    <button type="submit" size="sm" class="danger">Delete repository</button>
+                                  </form-actions>
+                                </form>
+                              </confirm-dialog>
+                              <icon-link :href="repository.href" icon="arrow-right" label="Open repository" />
+                            </div>
+                          </td>
+                        </tr>
+                      </for>
+                    </tbody>
+                  </table>
+                </table-scroll>
+              </if>
+              <pagination label="Repository pages" :page="model.offset / 15 + 1" :previousHref='if (model.offset != 0L) model.previousHref else ""' :nextHref='if (model.hasNext) model.nextHref else ""' />
+            </card>
+            <if model.namespace != null>
+              <form-actions>
+                <button-link :href='"/artifacts/settings/permissions?namespaceId=" + model.namespaceId' icon="shield">Manage namespace permissions</button-link>
+                <confirm-dialog :triggerIconOnly="false" title="Delete namespace?" description="All repositories and versions will be permanently removed." triggerLabel="Delete namespace">
+                  <form @submit="model.deleteNamespace(form.confirmed, ctx)">
+                    <form-body padded>
+                      <checkbox name="confirmed" label="Delete this namespace and its contents" required />
+                    </form-body>
+                    <form-actions bordered>
+                      <button size="sm" data-dialog-close>Cancel</button>
+                      <button type="submit" size="sm" class="danger">Delete namespace</button>
+                    </form-actions>
+                  </form>
+                </confirm-dialog>
+              </form-actions>
+            </if>
+          </if>
+        </if>
+      </div>
+    </page-shell>
+  </island>
+</component>

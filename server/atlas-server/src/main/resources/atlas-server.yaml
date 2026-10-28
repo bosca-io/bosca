@@ -2,6 +2,7 @@ packages:
   - "security-initial"
   - "git-search-index"
   - "github"
+  - "default-artifact-sync-pipelines"
 
 bosca:
   server:

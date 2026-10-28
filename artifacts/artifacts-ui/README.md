@@ -1,28 +1,68 @@
 # Artifacts UI
 
-BML UI scaffold for Bosca Atlas, following the current `:git:git-ui` architecture and Bosca
-Design Library presentation. It declares BML and typed GraphQL tooling without depending on
-artifact backend implementations. Artifact pages and client behavior are not implemented yet.
+Artifact administration BML application imported by `server/atlas-ui-server` alongside Git UI.
+Pages and server actions use generated, typed HTTP operations through Atlas's shared `/graphql`.
+The host uses the same authentication session, design library, and request credentials as Git.
+The Atlas brand returns to the home launcher. The shared system switcher moves between Git and
+artifacts; the artifacts sidebar keeps its own repository, namespace, and permission links.
 
-## Source layout
+The existing nested artifact administration fields require administrator membership. These pages
+show that requirement before loading protected data. Registry clients continue using namespace
+VIEW/EDIT permissions; the UI does not change backend authorization.
 
-- `src/main/bml`: artifact pages and artifact-specific components.
-- `src/main/kotlin/bosca/artifacts/ui`: page loaders, models, and server actions.
-- `src/main/graphql`: checked-in schema subset and typed operations.
-- `src/main/client`: artifact-specific CSS and client modules.
+## Routes and workflows
 
-BML generates into `bosca.artifacts.ui.generated`; GraphQL clients generate into
-`bosca.artifacts.ui.graphql`. Atlas composes these views through `:server:atlas-ui`, hosted by
-`:server:atlas-ui-server` in standalone and combined deployments.
+- `/artifacts/namespaces`: protocol counts, visibility, creation, and confirmed deletion.
+- `/artifacts/namespaces/{id}`: registry type filtering, offset pagination, repository creation,
+  public pull visibility, and namespace administration.
+- `/artifacts/repositories`: registry filtering, paged browsing, copy IDs, confirmed deletion, and
+  a file drop target for raw uploads.
+- `/artifacts/repositories/{id}`: paged versions and Docker tags, expandable file manifests,
+  metadata, sizes, digests, copyable protocol download URLs, raw uploads, and confirmed deletion.
+- `/artifacts/repositories/upload`: existing or new raw repository targets, editable filenames,
+  multiple files, progress, cancellation, per-file failures, and retry of unfinished files.
+  Files selected on repository pages are staged for the next full-page navigation and consumed
+  once on the upload page. File bytes stay in the browser until the upload request.
+- `/artifacts/settings/permissions`: namespace group grants and revocation through the existing API.
+- `/artifacts/settings/repositories/{id}`: Docker sync destinations/status/tag pushes, or raw release
+  destinations/status, stored-file completion review, and publication. Destination updates retain
+  optimistic locking. Token values are written to the existing pipeline secret store and are not
+  kept in BML model state.
+- `/artifacts/runs/{id}`: platform pipeline run state, node errors, refresh, confirmed restart of
+  failed runs, and cancellation of active runs. These are distinct from Git CI run IDs.
 
-## Studio parity baseline
+## Registry origins
 
-Use Studio's artifacts pages and components as the functional baseline: namespace and repository
-browsing, versions/tags/files, raw uploads, namespace and repository permissions, repository
-settings, sync destinations/status, and release publication destinations/status. Follow Git's
-source-level inventory, HTTP integration tests, responsive browser checks, and packaged-asset
-verification when implementing those workflows.
+Browser uploads and file reads use the host's same-origin routes. `BML_ARTIFACTS_ENDPOINT` optionally
+selects a separate registry upstream, while GraphQL stays on `BML_GRAPHQL_ENDPOINT`. Without that
+setting, registry traffic uses the GraphQL backend origin. `ATLAS_ARTIFACTS_URL` optionally sets the
+public registry origin used in copied URLs; otherwise the UI origin is used, with file reads proxied.
+No browser-to-registry CORS configuration is required for these UI workflows.
 
-Pages load data and compose domain components. Shared controls come from `:bml:bml-design`.
-Loaders and server actions use typed HTTP GraphQL operations under the caller's authentication;
-client islands use declarative BML actions and the host's same-origin proxies.
+Atlas and the main API server use `artifacts-installer` to seed the same default sync/publication
+pipeline package. Existing operator graphs and the package's version are preserved.
+
+## Structure and validation
+
+Cards, descriptions, disclosures, form bodies/footers, destructive actions, navigation controls,
+empty states, and pagination come from `bml-design`. Artifact CSS supplies the subsystem theme
+and domain layout; it must not override descendant button or dialog presentation. Destructive
+actions use the library's `danger` class, and ghost styling belongs only to the dialog trigger.
+
+`src/main/bml` owns pages/components; `src/main/kotlin` owns loaders, view models, and actions;
+`src/main/graphql` owns the maintained schema subset and operations; `src/main/client` handles
+browser file I/O. Generated BML code uses `bosca.artifacts.ui.generated`, and GraphQL code uses
+`bosca.artifacts.ui.graphql`.
+
+Run from the workspace root:
+
+```bash
+./gradlew :artifacts:artifacts-ui:check :artifacts:artifacts-installer:test
+./gradlew :server:atlas-server:test --tests 'bosca.atlas.server.AtlasArtifactsIntegrationTest'
+./gradlew :server:atlas-server:test --tests 'bosca.atlas.server.AtlasArtifactsIntegrationTest' -Patlas.artifacts.browser=true
+```
+
+The browser option starts a separate Chrome profile against isolated production Atlas processes.
+It never uses a deployed authenticated session. Screenshots and width measurements are written to
+`artifacts/artifacts-ui/build/reports/browser`. See the [Studio inventory](docs/studio-ui-inventory.md).
+Native compilation and external provider operations require separate validation.

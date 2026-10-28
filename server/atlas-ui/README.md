@@ -3,7 +3,15 @@
 Shared BML authentication and landing routes for Bosca Atlas. The module owns `/`, `/login`,
 `/auth/signup`, `/auth/forgot`, `/auth/reset-password`, `/auth/verify`, and `/auth/link/confirm`,
 along with authentication forms, browser SDK initialization, return navigation, and shared
-profile-menu actions. The authenticated root route retains the existing redirect to `/repositories`.
+profile-menu actions. The authenticated root route is the post-login home launcher, with Git and artifacts entry points.
+The subsystem header opens Studio-style categorized navigation with search, recent items, and keyboard selection.
+The design library owns the shared switcher and launcher components; `AtlasSubsystems` in this module
+defines Atlas's systems, routes, descriptions, icons, and colors. Home, Git, and artifacts use those
+components directly with the shared catalog.
+Git keeps Studio's slate accent; Artifacts uses its magenta accent.
+The brand returns home; local sidebars remain scoped to their system. Explicit login return paths are preserved.
+Standalone Git retains its
+own `/` redirect to `/repositories`.
 
 `AtlasUi` exposes the compiled page/component registries and global assets for application hosts.
 `AtlasUi.server` and `AtlasUi.install` can host the shared routes independently of Git.
@@ -20,7 +28,7 @@ established flows. Auth requests identify their originator as `atlas-ui`.
 
 - `src/main/bml/pages`: the landing route and public authentication pages.
 - `src/main/bml/components/auth`: authentication forms and presentation.
-- `src/main/bml/components/layout`: reserved for the shared Atlas shell and navigation.
+- `src/main/bml/components/layout`: shared profile adapter.
 - `src/main/kotlin/bosca/atlas/ui`: host composition through `AtlasUi`.
 - `src/main/graphql`: checked-in schema subset and typed operations when needed.
 - `src/main/client`: shared CSS, SDK bootstrap, auth flows, appearance and profile-menu actions.

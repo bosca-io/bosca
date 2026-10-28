@@ -1,0 +1,8 @@
+<component tag="form-body">
+  <prop name="padded" type="Boolean" default="false" />
+  <div class="form-body" :data-padded="padded" {...attrs}><slot /></div>
+  <style scoped>
+    .form-body { display:flex; flex-direction:column; gap:14px; min-width:0; }
+    .form-body[data-padded] { padding:18px; }
+  </style>
+</component>

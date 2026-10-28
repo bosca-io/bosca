@@ -1,5 +1,5 @@
 import { BoscaAuth } from "@bosca/auth-client-browser/core";
-import { createAuthFlow } from "./auth";
+import { atlasReturnPath, createAuthFlow } from "./auth";
 
 declare global {
   var atlasAuth: BoscaAuth;
@@ -14,16 +14,6 @@ globalThis.atlasAuth = new BoscaAuth({
   tokenName: globalThis.bmlConfig?.authCookiePrefix,
 });
 
-globalThis.atlasReturnPath = (requested) => {
-  if (!requested?.startsWith("/")) return "/";
-  try {
-    const destination = new URL(requested, location.origin);
-    if (destination.origin === location.origin)
-      return destination.pathname + destination.search + destination.hash;
-  } catch {
-    // An invalid return path falls back to the Atlas landing route.
-  }
-  return "/";
-};
+globalThis.atlasReturnPath = atlasReturnPath;
 
 globalThis.atlasAuthFlow = createAuthFlow(atlasAuth, atlasReturnPath);

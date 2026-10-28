@@ -16,6 +16,7 @@ object AtlasUi {
     val componentIslandDispatchers = BmlIslands.componentDispatchers
     val css: String get() = resource("atlas-ui.css")
     val javascript: String get() = resource("atlas-ui.js")
+    val favicon: String get() = resource("atlas-mark.svg")
 
     /** Builds the shared UI using the caller's configured HTTP GraphQL endpoint and cookie prefix. */
     fun server(graphqlEndpoint: String?, authCookiePrefix: String? = null): BmlServer =
@@ -37,6 +38,9 @@ object AtlasUi {
     /** Installs shared Atlas routes and their packaged assets into a host application. */
     fun install(application: BoscaApplication, graphqlEndpoint: String, authCookiePrefix: String? = null) {
         server(graphqlEndpoint, authCookiePrefix).install(application)
+        application.router.get("/favicon.svg") {
+            call.respondBytes(favicon.encodeToByteArray(), bosca.server.ContentType.parse("image/svg+xml"))
+        }
     }
 
     private fun resource(name: String): String =

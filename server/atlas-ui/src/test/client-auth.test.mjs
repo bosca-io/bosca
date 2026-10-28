@@ -15,6 +15,7 @@ const result = await build({
 });
 const {
   createAuthFlow,
+  atlasReturnPath,
   authError,
   passwordStrength,
   AccountLinkRequiredError,
@@ -46,14 +47,30 @@ function setup(search = "", overrides = {}, pathname = "/login") {
     getLinkFromUrl: () => null,
     ...overrides,
   };
-  const flow = createAuthFlow(auth, (path) =>
-    path?.startsWith("/") && !path.startsWith("//") ? path : "/repositories",
-  );
+  const flow = createAuthFlow(auth, atlasReturnPath);
   return { flow, navigations, storage };
 }
 
 const email = " Person@Example.test ";
 const password = "correct-password-123!";
+
+test("fresh login lands at Atlas home and explicit artifact deep links are preserved", async () => {
+  const auth = { signInWithPassword: async () => ({ principal: { verified: true } }) };
+  const home = setup("", auth);
+  await home.flow.signIn(email, password);
+  assert.deepEqual(home.navigations, ["/"]);
+  const path = "/artifacts/repositories/raw-id?offset=15#files";
+  const linked = setup("?" + new URLSearchParams({ redirect: path }), auth);
+  await linked.flow.signIn(email, password);
+  assert.deepEqual(linked.navigations, [path]);
+});
+
+test("external and malformed login destinations fall back to Atlas home", () => {
+  setup();
+  for (const path of [null, "", "https://elsewhere.test/", "//elsewhere.test/", "/\\elsewhere.test/", "/\\\\elsewhere.test/", "//[invalid"]) {
+    assert.equal(atlasReturnPath(path), "/", String(path));
+  }
+});
 
 test("data pages restore tokens without refetching identity while auth pages restore identity", async () => {
   for (const [path, expected] of [["/repositories/repo", false], ["/pipelines/run", false], ["/login", true], ["/auth/signup", true]]) {
@@ -120,7 +137,7 @@ test("verified signup establishes a session before leaving", async () => {
   });
   await fixture.flow.signUp(email, password, "Ada", "Lovelace");
   assert.equal(signins, 1);
-  assert.deepEqual(fixture.navigations, ["/repositories"]);
+  assert.deepEqual(fixture.navigations, ["/"]);
   const failure = setup("", {
     signUp: async () => ({ verified: true }),
     signInWithPassword: async () => {
@@ -259,7 +276,7 @@ test("password and emailed proof confirmations establish sessions before navigat
   });
   await passwordFixture.flow.confirmPassword(password);
   assert.deepEqual(input, ["pending", password]);
-  assert.deepEqual(passwordFixture.navigations, ["/repositories"]);
+  assert.deepEqual(passwordFixture.navigations, ["/"]);
   let proof;
   const emailFixture = setup("?proof=emailed", {
     linkConfirmEmail: async (value) => {
@@ -268,7 +285,7 @@ test("password and emailed proof confirmations establish sessions before navigat
   });
   await emailFixture.flow.confirmEmail();
   assert.equal(proof, "emailed");
-  assert.deepEqual(emailFixture.navigations, ["/repositories"]);
+  assert.deepEqual(emailFixture.navigations, ["/"]);
 });
 
 test("incomplete account-link requests never call the SDK", async () => {
