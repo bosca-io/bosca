@@ -114,5 +114,12 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
   if(!paths)for(const id of ['aria-valid-attr-value','aria-toggle-field-name','label-content-name-mismatch'])assert.ok(reviewed.some(review=>review.rule===id),`No ${id} review evidence`);
   const contrast=reviewed.filter(review=>review.rule==='color-contrast');
   assert.ok(contrast.length>0,'No retained contrast evidence');
+  if(!paths)for(const [group,routes] of Object.entries({
+    trees:['/trees'],
+    editors:['/documents','/source/languages','/components/content','/components/controls'],
+    visualizations:['/flows','/charts','/components/visualization'],
+    dashboards:['/dashboards','/components/visualization'],
+  }))assert.ok(reports.some(report=>routes.includes(report.path)&&report.reviews.some(review=>review.rule==='color-contrast')),
+    `No retained ${group} contrast evidence`);
   console.log(`Catalog ${mode}: ${reports.length} axe ${reports[0].version} scans, zero confirmed violations; ${reviewed.length-contrast.length} popup/name findings verified against DOM and browser accessibility evidence; ${contrast.length} solid foreground/background measurements. Original manual findings remain in catalog-${mode}-${reportName}.json`);
 }

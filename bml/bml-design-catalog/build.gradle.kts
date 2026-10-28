@@ -19,6 +19,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     runtimeOnly(libs.logback.classic)
     testImplementation(libs.kotlin.test.junit)
+    testImplementation(libs.junit.platform.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+    testRuntimeOnly(libs.junit.platform.vintage)
 }
 
 bml {
@@ -66,6 +69,14 @@ apply(from = rootProject.file("gradle/bml-test-browser.gradle.kts"))
 val catalogRuntime = configurations.named("runtimeClasspath")
 val catalogClasspath = files(tasks.jar.flatMap { it.archiveFile }, catalogRuntime).asPath
 tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
+    // Only explicitly concurrent browser classes opt in. Cap compensation threads too:
+    // blocking HTTP calls can otherwise grow the pool beyond its target parallelism.
+    val browserWorkers = providers.gradleProperty("bml.browser.workers").getOrElse("4")
+    systemProperty("junit.jupiter.execution.parallel.enabled", "true")
+    systemProperty("junit.jupiter.execution.parallel.config.strategy", "fixed")
+    systemProperty("junit.jupiter.execution.parallel.config.fixed.parallelism", browserWorkers)
+    systemProperty("junit.jupiter.execution.parallel.config.fixed.max-pool-size", browserWorkers)
     dependsOn(tasks.jar, catalogRuntime)
     inputs.dir(layout.projectDirectory.dir("src/test/browser"))
         .withPropertyName("browserChecks").withPathSensitivity(PathSensitivity.RELATIVE)

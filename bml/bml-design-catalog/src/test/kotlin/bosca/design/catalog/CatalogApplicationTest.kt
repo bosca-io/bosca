@@ -19,12 +19,15 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.put
-import kotlin.test.Test
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.parallel.Execution
+import org.junit.jupiter.api.parallel.ExecutionMode
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** Exercises the catalog as an ordinary packaged consumer with no product backend. */
+@Execution(ExecutionMode.CONCURRENT)
 class CatalogApplicationTest {
     private val classpath = System.getProperty("catalog.classpath")
 
@@ -40,7 +43,6 @@ class CatalogApplicationTest {
     fun `deep trees expose all levels and retain keyboard navigation`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--deep-tree", 60)
-            runBrowser(base, development, "--tree-accessibility", 60)
         }
     }
 
@@ -69,13 +71,6 @@ class CatalogApplicationTest {
     fun `dashboard layouts retain widgets and native form values`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--dashboards", 90)
-        }
-    }
-
-    @Test
-    fun `dashboards pass accessibility in both palettes and viewport sizes`() {
-        for (development in listOf(false, true)) withServer(development) { base, _ ->
-            runBrowser(base, development, "--dashboard-accessibility", 90)
         }
     }
 
@@ -141,27 +136,6 @@ class CatalogApplicationTest {
     fun `flows and charts retain independent state and native values`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--visualizations", 90)
-        }
-    }
-
-    @Test
-    fun `visualizations pass accessibility in both palettes and viewport sizes`() {
-        for (development in listOf(false, true)) withServer(development) { base, _ ->
-            runBrowser(base, development, "--visualization-accessibility", 90)
-        }
-    }
-
-    @Test
-    fun `new editor examples pass accessibility at desktop width`() {
-        for (development in listOf(false, true)) withServer(development) { base, _ ->
-            runBrowser(base, development, "--editor-accessibility-desktop", 60)
-        }
-    }
-
-    @Test
-    fun `new editor examples pass accessibility at phone width`() {
-        for (development in listOf(false, true)) withServer(development) { base, _ ->
-            runBrowser(base, development, "--editor-accessibility-phone", 60)
         }
     }
 
@@ -389,7 +363,8 @@ class CatalogApplicationTest {
                            script: String = System.getProperty("catalog.browser")) {
         val log = File.createTempFile("catalog-browser-", ".log")
         val mode = (if (System.getProperty("catalog.binary") == null) "" else "native-") +
-            if (development) "development" else "production"
+            (if (development) "development" else "production") +
+            if (argument in setOf("--choices", "--feedback", "--surfaces")) "-focused" else ""
         val process = ProcessBuilder(System.getProperty("catalog.node"), script, base,
             mode, argument).redirectErrorStream(true).redirectOutput(log).start()
         try {
@@ -426,12 +401,15 @@ class CatalogApplicationTest {
             val port = requireNotNull(boundPort) { "Catalog did not report a successful bind: ${log.readText()}" }
             val endpoint = "http://localhost:$port"
             base = endpoint
-            val client = HttpClient.newBuilder().cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build()
-            val response = request(client, endpoint, "/")
-            assertEquals(200, response.statusCode(), response.body())
-            assertTrue("Bosca Design Library" in response.body(), response.body())
-            assertTrue(process.isAlive, log.readText())
-            test(endpoint, client)
+            // Match Chromium's HTTP/1.1 transport on the loopback fixture origin.
+            HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                .cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build().use { client ->
+                    val response = request(client, endpoint, "/")
+                    assertEquals(200, response.statusCode(), response.body())
+                    assertTrue("Bosca Design Library" in response.body(), response.body())
+                    assertTrue(process.isAlive, log.readText())
+                    test(endpoint, client)
+                }
         } catch (failure: Throwable) {
             val state = if (process.isAlive) "running" else "exited ${process.exitValue()}"
             failure.addSuppressed(IllegalStateException("Catalog development=$development at ${base ?: "unbound port"} ($state): ${log.readText()}"))

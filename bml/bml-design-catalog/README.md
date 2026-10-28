@@ -279,8 +279,13 @@ Build and verify:
 
 The ordinary `test` task also includes the browser test. Tests launch separate production and
 development JVMs using only built JARs, exercise HTTP assets and actions, and use an isolated headless
-Chrome profile. Each child binds its own ephemeral port; readiness requires its successful bind log
-and a catalog HTTP response. Fixture checks also run both modes together beside occupied IPv4 and
+Chrome profile. Independent methods run in a bounded pool of four (`-Pbml.browser.workers=1` selects
+serial execution). The full-document accessibility tests cover every route in both palettes and
+runtime modes at desktop and phone widths, including editor, visualization, dashboard and tree
+states. Each combination is audited once, with contrast evidence required for each group of routes.
+Each child binds its own ephemeral port; readiness requires its successful bind log
+and a catalog HTTP response. JVM fixture requests use HTTP/1.1, matching Chromium on the loopback
+origin. Fixture checks also run both modes together beside occupied IPv4 and
 IPv6 endpoints. They check navigation, rejected-draft retention, pending and saved form state,
 independent instances, saved light/dark appearance, two palettes, narrow layouts, native fallbacks and
 the 11 packaged Geist/Geist Mono assets. Notification regressions cover dismissed/expired/visible
@@ -453,10 +458,11 @@ built-in types, CSS series colors, controlled updates, native form rules, reset,
 independent dark/light roots and script-disabled alternatives at desktop/phone widths:
 
 ```sh
-./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.flows and charts*' --tests 'bosca.design.catalog.CatalogApplicationTest.visualizations pass*' --tests 'bosca.design.catalog.ChartTableTest'
+./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.flows and charts*' --tests 'bosca.design.catalog.CatalogApplicationTest.*accessibility*' --tests 'bosca.design.catalog.ChartTableTest'
 ```
 
-Visualization accessibility reports use `catalog-<mode>-visualization-accessibility.json`; scans include expanded node/connection controls and chart data tables.
+The full-document accessibility reports include visualization scans with expanded node/connection
+controls and chart data tables.
 
 The `/dashboards` examples use `dashboard-grid` and `dashboard-item` with Studio's cell-coordinate
 model. Each palette contains a real Chart.js widget, a retained note input and a locked summary.
@@ -467,7 +473,7 @@ updates. Focused acceptance covers collisions/locks, native forms and reset, con
 independent roots, CSS gaps, invalid input, repeated disposal and script-disabled content:
 
 ```sh
-./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.dashboard layouts*' --tests 'bosca.design.catalog.CatalogApplicationTest.dashboards pass*'
+./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.dashboard layouts*' --tests 'bosca.design.catalog.CatalogApplicationTest.*accessibility*'
 ```
 
 The `/shell` page consumes `app-shell`, `profile` and `profile-menu` from the linked library. It
