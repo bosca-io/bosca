@@ -65,7 +65,7 @@ jobs:
           "$bml_chrome" --version
           printf 'BML_DESIGN_CHROME_BINARY=%q\n' "$bml_chrome" >> "$BOSCA_ENV"
       - name: Run BML Browser Tests
-        run: ./gradlew --no-daemon --no-parallel --max-workers=2 :notifications-web:test :bml:examples:design-library:test :bml:bml-design-catalog:test
+        run: ./gradlew --no-daemon --no-parallel --max-workers=2 :bml:bml-server:chunkCacheBrowserTest :notifications-web:test :bml:examples:design-library:test :bml:bml-design-catalog:test
       - name: Run JVM Tests
         run: ./gradlew --no-daemon --max-workers=4 test
       - name: Stop Shared Test Resources

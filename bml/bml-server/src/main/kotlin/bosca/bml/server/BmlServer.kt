@@ -228,6 +228,24 @@ class BmlServer(
         val gqlFactory: GraphQLClientFactory? = graphqlEndpoint?.let(::GraphQLClientFactory),
         val contractsByName: Map<String, bosca.bml.render.BmlContractDispatcher> = contracts.associateBy { it.name },
     ) {
+        /** Computed once per generation; no asset bodies or directories are read during rendering. */
+        val moduleImportMap: String = if (development) "" else BmlClientAssets.importMap(
+            buildSet {
+                packagedAssets.flatMap { it.paths }.forEach { path ->
+                    if (path.endsWith(".js")) when {
+                        path.startsWith("prod/") -> add(BmlClientAssets.URL_PREFIX + path.removePrefix("prod/"))
+                        path.startsWith("libraries/") -> add("/_bml/$path")
+                    }
+                }
+                clientDir?.takeIf { it.isDirectory }?.let { directory ->
+                    directory.walkTopDown().filter { it.isFile && it.extension == "js" }.forEach {
+                        add(BmlClientAssets.URL_PREFIX + it.relativeTo(directory).invariantSeparatorsPath)
+                    }
+                }
+            },
+            assetCacheToken,
+        )
+
         init {
             pages.forEach { ContentType.parse(it.contentType) }
         }
@@ -584,6 +602,7 @@ class BmlServer(
         }
         html = BmlClientAssets.injectPageContext(html, page.route, context.requestPath, context.lang)
         val cacheToken = current.assetCacheToken.takeUnless { current.development }
+        html = BmlClientAssets.injectImportMap(html, current.moduleImportMap)
         val libraryAssets = (page as? BmlBundledPage)?.assets
         html = BmlStyleAssets.injectLibraryStyles(html, libraryAssets?.stylesByRoute?.get(page.route).orEmpty(), cacheToken)
         // CSS: in production, at most two links — the normalized global stylesheet and the page's
@@ -901,8 +920,7 @@ class BmlServer(
             router.staticFiles(BmlClientAssets.URL_PREFIX, dir)
             application.installHandler { call, next ->
                 if (call.request.path.startsWith(BmlClientAssets.URL_PREFIX)) {
-                    val path = call.request.path.removePrefix(BmlClientAssets.URL_PREFIX)
-                    call.response.header(HttpHeaders.CacheControl, assetCacheControl(state.get(), call, path))
+                    call.response.header(HttpHeaders.CacheControl, assetCacheControl(state.get(), call))
                 }
                 next()
             }
@@ -911,7 +929,7 @@ class BmlServer(
             val current = state.get()
             val mode = if (current.development) "dev" else "prod"
             val path = call.pathParameters["path"].orEmpty()
-            respondPackagedAsset(current, call, assetCacheControl(current, call, path), "$mode/$path", bmlAssetContentType(path))
+            respondPackagedAsset(current, call, assetCacheControl(current, call), "$mode/$path", bmlAssetContentType(path))
         }
         router.get("/_bml/libraries/{key}/{path...}") {
             val current = state.get()
@@ -1560,15 +1578,13 @@ class BmlServer(
         call.attributes[CACHE_CONTROL_SET_ATTRIBUTE] = true
     }
 
-    /** Immutable caching requires a content-hashed chunk name or this deployment's token. */
+    /** Every generated asset, including chunks, revalidates without this deployment's token. */
     private fun assetCacheControl(
         current: RuntimeState,
         call: bosca.server.ServerCall,
-        clientPath: String? = null,
     ): String {
         val versioned = call.request.queryParameters["_ts"] == current.assetCacheToken
-        val contentHashed = clientPath?.matches(CONTENT_HASHED_CHUNK) == true
-        return if (!current.development && (versioned || contentHashed)) PRODUCTION_ASSET_CACHE_CONTROL else "no-cache"
+        return if (!current.development && versioned) PRODUCTION_ASSET_CACHE_CONTROL else "no-cache"
     }
 
     /**
@@ -1672,7 +1688,6 @@ class BmlServer(
         private val INSTALLATION_ID = Regex("^[A-Za-z0-9_-]{1,128}${'$'}")
         private const val SITEMAP_ROUTE = "/sitemap.xml"
         private const val PRODUCTION_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
-        private val CONTENT_HASHED_CHUNK = Regex("^chunks/[^/]+-[A-Z0-9]{8}\\.js$")
         private const val CLOUDFLARE_CDN_CACHE_CONTROL = "Cloudflare-CDN-Cache-Control"
         private const val DEFERRED_REDIRECT_HEADER = "X-BML-Redirect"
         /** Call attribute recording that this response already carries a Cache-Control header. */

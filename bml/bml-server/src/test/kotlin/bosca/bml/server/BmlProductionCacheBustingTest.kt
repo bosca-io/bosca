@@ -18,6 +18,7 @@ import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 class BmlProductionCacheBustingTest {
 
@@ -145,7 +146,7 @@ class BmlProductionCacheBustingTest {
             HttpRequest.newBuilder(URI.create("http://localhost:$port/")).GET().build(),
             HttpResponse.BodyHandlers.ofString(),
         ).body()
-        val tokens = Regex("/_bml/(?:app\\.(?:css|js)|(?:css|js)/index\\.page\\.(?:css|js))\\?_ts=([0-9a-f]+)")
+        val tokens = Regex("(?:href|src)=\"/_bml/(?:app\\.(?:css|js)|(?:css|js)/index\\.page\\.(?:css|js))\\?_ts=([0-9a-f]+)")
             .findAll(html)
             .map { it.groupValues[1] }
             .toList()
@@ -166,6 +167,7 @@ class BmlProductionCacheBustingTest {
             "/_bml/css/index.page.css",
             "/_bml/app.js",
             "/_bml/js/index.page.js",
+            "/_bml/js/chunks/chunk-ABCDEFGH.js",
         )) {
             val response = client.send(
                 HttpRequest.newBuilder(URI.create("http://localhost:$port$path?_ts=$token")).GET().build(),
@@ -182,7 +184,7 @@ class BmlProductionCacheBustingTest {
 
     @Test
     fun `stable production asset URLs revalidate without a matching deployment token`() {
-        for (path in listOf("/_bml/app.css", "/_bml/css/index.page.css", "/_bml/app.js", "/_bml/js/index.page.js")) {
+        for (path in listOf("/_bml/app.css", "/_bml/css/index.page.css", "/_bml/app.js", "/_bml/js/index.page.js", "/_bml/js/chunks/chunk-ABCDEFGH.js")) {
             for (query in listOf("", "?_ts=old-deployment")) {
                 val response = client.send(
                     HttpRequest.newBuilder(URI.create("http://localhost:$port$path$query")).GET().build(),
@@ -203,13 +205,15 @@ class BmlProductionCacheBustingTest {
     }
 
     @Test
-    fun `content hashed production chunks are immutable without a deployment token`() {
+    fun `production import map adds the deployment token to filesystem chunks`() {
         val response = client.send(
-            HttpRequest.newBuilder(URI.create("http://localhost:$port/_bml/js/chunks/chunk-ABCDEFGH.js")).GET().build(),
+            HttpRequest.newBuilder(URI.create("http://localhost:$port/")).GET().build(),
             HttpResponse.BodyHandlers.ofString(),
         )
         assertEquals(200, response.statusCode())
-        assertEquals(listOf("public, max-age=31536000, immutable"), response.headers().allValues("Cache-Control"))
+        val html = response.body()
+        val token = checkNotNull(Regex("_ts=([0-9a-f]+)").find(html)?.groupValues?.get(1)) { html }
+        assertTrue(html.contains("\"/_bml/js/chunks/chunk-ABCDEFGH.js\":\"/_bml/js/chunks/chunk-ABCDEFGH.js?_ts=$token\""), html)
     }
 
     companion object {

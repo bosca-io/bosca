@@ -118,6 +118,12 @@ common engines download once across pages. A page still loads only its reachable
 this adds no public helper imports or component props. `bmlMetrics` includes the entry's full static
 module closure in its first-load figures.
 
+Production pages include an import map that adds the deployment's `_ts` token to application
+chunks and compiled library modules, including nested and lazy imports. When the deployment token
+changes, browsers request new module URLs even when their packaged bytes are unchanged. Module
+URLs remain stable within a deployment. Immutable caching requires the current token; requests
+without it or with an older token revalidate.
+
 Packaged asset responses use the indexed content digest for conditional requests before loading a
 body. Response bytes are verified and cached within the active application generation; a reload
 uses its new inventory and cache. Unknown paths remain unavailable.

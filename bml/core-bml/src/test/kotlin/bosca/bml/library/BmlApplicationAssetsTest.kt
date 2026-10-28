@@ -21,6 +21,7 @@ class BmlApplicationAssetsTest {
             else { reads++; body.copyOf() }
         }
         assertEquals(digest, assets.digest("prod/page.js"))
+        assertEquals(setOf("prod/page.js"), assets.paths)
         assertNull(assets.digest("../prod/page.js"))
         assertNull(assets.digest("unknown"))
         assertEquals(0, reads)

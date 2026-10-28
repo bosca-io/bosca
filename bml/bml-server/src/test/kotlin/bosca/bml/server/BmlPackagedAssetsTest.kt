@@ -22,6 +22,7 @@ import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 
 class BmlPackagedAssetsTest {
@@ -110,7 +111,7 @@ class BmlPackagedAssetsTest {
     }
 
     @Test
-    fun `production packaged assets are immutable only with a content hash or current deployment token`() {
+    fun `production packaged assets are immutable only with the current deployment token`() {
         val port = ServerSocket(0).use { it.localPort }
         val server = Fixture("production asset").server(port, development = false)
         val engine = start(server, port)
@@ -123,7 +124,7 @@ class BmlPackagedAssetsTest {
 
                 val html = get("/").body()
                 val token = checkNotNull(Regex("_ts=([0-9a-f]+)").find(html)?.groupValues?.get(1)) { html }
-                for (path in listOf("/_bml/js/index.page.js", "/_bml/libraries/key/theme.css")) {
+                for (path in listOf("/_bml/js/index.page.js", "/_bml/js/chunks/chunk-ABCDEFGH.js", "/_bml/libraries/key/theme.css")) {
                     for ((query, expected) in listOf(
                         "" to "no-cache",
                         "?_ts=old-deployment" to "no-cache",
@@ -134,9 +135,7 @@ class BmlPackagedAssetsTest {
                         assertEquals(listOf(expected), response.headers().allValues("Cache-Control"), path + query)
                     }
                 }
-                val chunk = get("/_bml/js/chunks/chunk-ABCDEFGH.js")
-                assertEquals(200, chunk.statusCode())
-                assertEquals(listOf("public, max-age=31536000, immutable"), chunk.headers().allValues("Cache-Control"))
+                assertTrue(html.contains("\"/_bml/js/chunks/chunk-ABCDEFGH.js\":\"/_bml/js/chunks/chunk-ABCDEFGH.js?_ts=$token\""), html)
             }
         } finally {
             engine.stopWithoutHalting()
