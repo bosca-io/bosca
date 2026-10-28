@@ -4,6 +4,7 @@ import com.github.benmanes.caffeine.cache.Caffeine
 import java.time.Duration
 import bosca.cache.ServiceCache
 import bosca.cache.serializers.StringKeySerializer
+import bosca.db.connectionOrNull
 import bosca.git.dfs.BoscaDfsRepositoryManager
 import bosca.git.dfs.GitWorkDispatcher
 import bosca.git.installer.GitSearchIndexInstaller
@@ -474,9 +475,15 @@ class RepositoryBrowseServiceImpl(
      * synchronous and bridge to storage with `runBlocking`, so they must never run on a request
      * thread or on `Dispatchers.IO`. The block is deliberately not `suspend`: it holds a thread and
      * an open repository, so it must only do blocking JGit work.
+     * Ref callbacks borrow the caller's connection; pack reads retain their independent lifecycle.
      */
-    private suspend fun <T> withRepository(repositoryId: UUID, block: (Repository) -> T): T =
-        withContext(GitWorkDispatcher) { dfsManager.open(repositoryId).use { block(it) } }
+    private suspend fun <T> withRepository(repositoryId: UUID, block: (Repository) -> T): T {
+        val manager = connectionOrNull()
+        return withContext(GitWorkDispatcher) {
+            val repository = if (manager == null) dfsManager.open(repositoryId) else dfsManager.open(repositoryId, manager)
+            repository.use { block(it) }
+        }
+    }
 
     /**
      * Walks the indexed `content` field for the first line that contains [query]

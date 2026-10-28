@@ -3,8 +3,10 @@
 package bosca.git.ci.service
 
 import bosca.db.ConnectionManager
+import bosca.db.ConnectionPool
 import bosca.db.asCoroutineContext
 import bosca.di.ProviderRegistry
+import bosca.di.provides
 import bosca.git.ci.parser.PipelineYamlParser
 import bosca.git.ci.repository.PipelineRepository
 import bosca.git.model.Blob
@@ -19,6 +21,7 @@ import bosca.git.service.PipelineScheduleService
 import bosca.serialization.UUID
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.test.runTest
@@ -68,6 +71,10 @@ class PipelineServiceImplTest {
     @BeforeTest
     fun setup() {
         ProviderRegistry.clear()
+        val pool = mockk<ConnectionPool>()
+        every { pool.connection() } returns connection
+        provides<ConnectionPool>(singleton = true) { pool }
+        coEvery { pipelineRepository.tryLockForSync(repoId) } returns true
         coEvery { repositoryService.findById(repoId) } returns bosca.git.model.Repository(
             id = repoId, ownerId = UUID.random(), slug = "repo", name = "Repo",
         )
@@ -491,6 +498,67 @@ class PipelineServiceImplTest {
 
         coVerify(exactly = 0) { pipelineRepository.archive(any()) }
         coVerify(exactly = 0) { pipelineRepository.delete(any()) }
+    }
+
+    @Test
+    fun `a head change while snapshots are read retries before writing the catalog`() = runTest(connection.asCoroutineContext()) {
+        val currentYaml = validYaml.replace("name: Build", "name: Current")
+        val pipelineId = UUID.random()
+        coEvery { browseService.resolveRef(repoId, "refs/heads/main") } returnsMany
+            listOf("abc123", "newer", "newer", "newer")
+        coEvery { browseService.listTree(repoId, any(), ".bosca/pipelines") } returns listOf(treeEntry("build.yaml"))
+        coEvery { browseService.readBlob(repoId, "abc123", ".bosca/pipelines/build.yaml") } returns blob(validYaml)
+        coEvery { browseService.readBlob(repoId, "newer", ".bosca/pipelines/build.yaml") } returns blob(currentYaml)
+        coEvery { pipelineRepository.findByRepositoryAndFilePath(repoId, any()) } returns null
+        coEvery { pipelineRepository.findByRepository(repoId) } returns emptyList()
+        coEvery { pipelineRepository.create(any()) } answers { firstArg<Pipeline>().copy(id = pipelineId) }
+
+        val triggered = service.syncPipelines(repoId, "refs/heads/main", "abc123").single()
+
+        assertEquals("Build", triggered.name)
+        assertEquals(pipelineId, triggered.id)
+        coVerify(exactly = 1) { pipelineRepository.create(match { it.name == "Current" }) }
+        coVerify(exactly = 0) { pipelineRepository.create(match { it.name == "Build" }) }
+        coVerify(exactly = 1) { scheduleService.sync(match { it.name == "Current" }, any()) }
+    }
+
+    @Test
+    fun `busy catalog retries without reloading immutable Git files`() = runTest(connection.asCoroutineContext()) {
+        coEvery { pipelineRepository.tryLockForSync(repoId) } returnsMany listOf(false, false, true)
+        coEvery { browseService.listTree(repoId, "abc123", ".bosca/pipelines") } returns emptyList()
+        coEvery { pipelineRepository.findByRepository(repoId) } returns emptyList()
+
+        assertTrue(service.syncPipelines(repoId, "refs/heads/main", "abc123").isEmpty())
+
+        coVerify(exactly = 3) { pipelineRepository.tryLockForSync(repoId) }
+        coVerify(exactly = 1) { browseService.listTree(repoId, "abc123", ".bosca/pipelines") }
+        coVerify(exactly = 3) { connection.release() }
+    }
+
+    @Test
+    fun `catalog synchronization rejects a caller transaction before reading Git`() = runTest(connection.asCoroutineContext()) {
+        coEvery { connection.inTransaction } returns true
+
+        assertFailsWith<IllegalStateException> { service.syncPipelines(repoId, "refs/heads/main", "abc123") }
+
+        coVerify(exactly = 0) { browseService.resolveRef(any(), any()) }
+        coVerify(exactly = 0) { pipelineRepository.tryLockForSync(any()) }
+    }
+
+    @Test
+    fun `a default branch change during preparation reloads its catalog before writing`() = runTest(connection.asCoroutineContext()) {
+        val original = bosca.git.model.Repository(id = repoId, ownerId = UUID.random(), slug = "repo", name = "Repo")
+        coEvery { repositoryService.findById(repoId) } returnsMany
+            listOf(original, original.copy(defaultBranch = "trunk"), original.copy(defaultBranch = "trunk"), original.copy(defaultBranch = "trunk"))
+        coEvery { browseService.resolveRef(repoId, "refs/heads/trunk") } returns "abc123"
+        coEvery { browseService.listTree(repoId, "abc123", ".bosca/pipelines") } returns emptyList()
+        coEvery { pipelineRepository.findByRepository(repoId) } returns emptyList()
+
+        assertTrue(service.syncPipelines(repoId, "refs/heads/main", "abc123").isEmpty())
+
+        coVerify(exactly = 2) { pipelineRepository.tryLockForSync(repoId) }
+        coVerify(exactly = 1) { pipelineRepository.findByRepository(repoId) }
+        coVerify(exactly = 2) { browseService.resolveRef(repoId, "refs/heads/trunk") }
     }
 
     private fun testPipeline(
