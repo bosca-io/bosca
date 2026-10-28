@@ -16,6 +16,11 @@ plugins {
 }
 
 val iosDeploymentTarget = "18.2"
+// JVM validation generates providers on desktop to avoid resolving native metadata and CocoaPods.
+val jvmCodegen = providers.gradleProperty("bosca.kmp.jvmCodegen").map(String::toBoolean).getOrElse(false)
+val providerKspConfiguration = if (jvmCodegen) "kspDesktopProviders" else "kspCommonMainMetadata"
+val providerKspTask = if (jvmCodegen) "kspProvidersKotlinDesktop" else "kspCommonMainKotlinMetadata"
+
 val androidEnabled = gradle.extra["androidEnabled"] as Boolean
 if (androidEnabled) {
     apply(plugin = "com.android.kotlin.multiplatform.library")
@@ -38,7 +43,18 @@ kotlin {
         }
     }
 
-    jvm("desktop")
+    jvm("desktop") {
+        if (jvmCodegen) {
+            // A generation-only compilation keeps providers in commonMain without mixing in
+            // platform-specific generators such as Room's expect/actual implementations.
+            val mainCompilation = compilations.getByName("main")
+            val commonSources = this@kotlin.sourceSets.getByName("commonMain").kotlin
+            compilations.create("providers") {
+                defaultSourceSet.kotlin.srcDirs(commonSources.sourceDirectories)
+                compileDependencyFiles = mainCompilation.compileDependencyFiles
+            }
+        }
+    }
 
     listOf(
         iosArm64(),
@@ -52,7 +68,10 @@ kotlin {
 
     sourceSets {
         commonMain {
-            kotlin.srcDir("build/generated/ksp/metadata/commonMain/kotlin")
+            kotlin.srcDir(
+                if (jvmCodegen) "build/generated/ksp/desktop/desktopProviders/kotlin"
+                else "build/generated/ksp/metadata/commonMain/kotlin",
+            )
         }
         commonMain.dependencies {
             api(project(":bosca-kmp:client-core"))
@@ -120,7 +139,7 @@ tasks.withType<PodBuildTask>().configureEach {
 }
 
 dependencies {
-    add("kspCommonMainMetadata", project(":services-di:di-ksp"))
+    add(providerKspConfiguration, project(":services-di:di-ksp"))
     if (androidEnabled) {
         add("kspAndroid", libs.androidx.room3.compiler)
     }
@@ -136,14 +155,14 @@ ksp {
 }
 
 tasks.configureEach {
-    if (name.startsWith("ksp") && name != "kspCommonMainKotlinMetadata") {
-        dependsOn("kspCommonMainKotlinMetadata")
+    if (name.startsWith("ksp") && name != providerKspTask) {
+        dependsOn(providerKspTask)
     }
 }
 
-// The sources jar includes generated commonMain metadata, so its KSP producer must run first.
+// Source jars must run the selected provider generator before collecting its output.
 tasks.matching { it.name == "sourcesJar" || it.name.endsWith("SourcesJar") }.configureEach {
-    dependsOn("kspCommonMainKotlinMetadata")
+    dependsOn(providerKspTask)
 }
 
 room3 {
@@ -151,6 +170,14 @@ room3 {
 }
 
 kover {
+    if (jvmCodegen) {
+        currentProject {
+            sources {
+                // KSP analyzes main's sources in this compilation; coverage comes from main's bytecode.
+                excludedSourceSets.add("providers")
+            }
+        }
+    }
     reports {
         filters {
             excludes {
@@ -183,23 +210,29 @@ tasks.named("koverVerify") {
 }
 
 val verifyAnalyticsProviderBindings by tasks.registering {
-    dependsOn("kspCommonMainKotlinMetadata")
+    dependsOn(providerKspTask)
     val registrar = layout.buildDirectory.file(
-        "generated/ksp/metadata/commonMain/kotlin/bosca/di/AnalyticsProviderRegistrar.kt",
+        (if (jvmCodegen) "generated/ksp/desktop/desktopProviders/kotlin" else "generated/ksp/metadata/commonMain/kotlin") +
+            "/bosca/di/AnalyticsProviderRegistrar.kt",
     )
     inputs.file(registrar)
     doLast {
         val source = registrar.get().asFile.readText()
+        // Named and unnamed providers occupy separate registry slots.
         val bindings = Regex("ProviderRegistry\\.register\\(([^,]+)::class[^\\n]*")
             .findAll(source)
-            .map { it.groupValues[1].trim() }
+            .map {
+                val type = it.groupValues[1].trim()
+                val name = Regex(", \"([^\"]+)\", (?:true|false)\\)").find(it.value)?.groupValues?.get(1)
+                type to name
+            }
             .toList()
         val duplicates = bindings.groupingBy { it }.eachCount().filterValues { it > 1 }
         check(duplicates.isEmpty()) { "Generated analytics registrar contains duplicate bindings: $duplicates" }
-        check(bindings.count { it == "AnalyticsService" } == 1) {
+        check(bindings.count { it.first == "AnalyticsService" } == 1) {
             "Generated analytics registrar must contain exactly one AnalyticsService binding"
         }
-        check(bindings.count { it == "AnalyticsLifecycle" } == 1) {
+        check(bindings.count { it.first == "AnalyticsLifecycle" } == 1) {
             "Generated analytics registrar must contain exactly one AnalyticsLifecycle binding"
         }
     }
