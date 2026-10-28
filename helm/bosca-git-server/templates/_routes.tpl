@@ -16,7 +16,7 @@ Only UI routes match: .git transport and raw paths remain on the API fallback. *
 {{- range list "pulls" "pipelines" "ci-agents" -}}
   {{- $routes = append $routes (printf "^/%s/%s/?$" . $uuid) -}}
 {{- end -}}
-{{- $routes = append $routes "^/_bml/(js|css|i18n|identity|render|contract|action|deferred|reload|app[.]css|app[.]js)(/.*)?$" -}}
+{{- $routes = append $routes "^/_bml/(libraries|js|css|i18n|identity|render|contract|action|deferred|reload|app[.]css|app[.]js)(/.*)?$" -}}
 {{- $routes = append $routes "^/_git/(fonts|subscriptions)(/.*)?$" -}}
 {{- toYaml $routes -}}
 {{- end -}}

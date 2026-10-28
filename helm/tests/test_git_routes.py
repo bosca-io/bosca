@@ -1,6 +1,7 @@
 """Exercise the rendered Git HTTPRoute with Envoy's RE2 regex engine."""
 
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -12,6 +13,10 @@ import yaml
 
 HELM_ROOT = Path(__file__).resolve().parents[1]
 UUID = "8f9b5d41-6c78-4d16-9408-d1ba4af6aff2"
+LIBRARY_ASSETS = [
+    f"/_bml/libraries/{'a' * 64}/{asset}"
+    for asset in ("design.css", "modules/navigation.js", "fonts/geist-latin.woff2")
+]
 
 
 class GitGatewayRoutesTest(unittest.TestCase):
@@ -89,9 +94,30 @@ class GitGatewayRoutesTest(unittest.TestCase):
             paths.extend(f"/_bml/{endpoint}{suffix}" for suffix in ("", "/", "/nested/asset.js"))
         for endpoint in ("fonts", "subscriptions"):
             paths.extend(f"/_git/{endpoint}{suffix}" for suffix in ("", "/", "/nested/asset"))
+        paths.extend(LIBRARY_ASSETS)
         for path in paths:
             with self.subTest(path=path):
                 self.assertEqual(8093, self.port_for(path))
+
+    def test_library_assets_use_ui_listener_in_local_and_compose_proxies(self):
+        workspace = HELM_ROOT.parent
+        proxies = [
+            ("deployments/local/Caddyfile", r'@gitUi path_regexp git_ui "([^"]+)"',
+             "reverse_proxy @gitUi git-server:8093"),
+            ("deployments/bosca-compose/config/nginx.conf.template", r'location ~ "([^"]+)"',
+             "proxy_pass http://127.0.0.1:@@GIT_UI_PORT@@;"),
+        ]
+        for file, expression, upstream in proxies:
+            config = (workspace / file).read_text()
+            match = re.search(expression, config)
+            self.assertIsNotNone(match, file)
+            self.assertIn(upstream, config[match.end():], file)
+            for path in LIBRARY_ASSETS:
+                with self.subTest(proxy=file, path=path):
+                    self.assertIsNotNone(re2.fullmatch(match.group(1), path))
+            for path in ("/_bml/unknown", "/project.git/info/refs", "/graphql"):
+                with self.subTest(proxy=file, path=path):
+                    self.assertIsNone(re2.fullmatch(match.group(1), path))
 
     def test_git_transport_and_api_paths_stay_on_api_listener(self):
         paths = [

@@ -10,7 +10,7 @@ internal fun gitUiPathPattern(): String {
         "/settings/github/?",
         "/repositories(/$id(/(settings|secrets|github))?)?/?",
         "/(pulls|pipelines|ci-agents)(/$id)?/?",
-        "/_bml/(js|css|i18n|identity|render|contract|action|deferred|reload|app[.]css|app[.]js)(/.*)?",
+        "/_bml/(libraries|js|css|i18n|identity|render|contract|action|deferred|reload|app[.]css|app[.]js)(/.*)?",
         "/_git/(fonts|subscriptions)(/.*)?",
     ).joinToString("|", prefix = "^(", postfix = ")$")
 }

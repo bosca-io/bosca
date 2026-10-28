@@ -52,6 +52,42 @@ describe("esbuild island bundler", () => {
 })
 
 describe("production bundler", () => {
+  it("changes shared and lazy chunk URLs transitively when their content changes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bml-prod-cache-"))
+    try {
+      writeFileSync(join(dir, "Lazy.ts"), `export const version = 'first'`)
+      writeFileSync(join(dir, "Shared.ts"), `export async function readVersion() { return (await import('./Lazy')).version }`)
+      writeFileSync(join(dir, "First.ts"), `import {readVersion} from './Shared'; readVersion().then(value => console.log('first', value))`)
+      writeFileSync(join(dir, "Second.ts"), `import {readVersion} from './Shared'; readVersion().then(value => console.log('second', value))`)
+      const manifestPath = join(dir, "manifest.tsv")
+      writeFileSync(manifestPath, 'bml-metrics\t1\nP\tFirst\t/\tFirst.js\t-\t-\nP\tSecond\t/second\tSecond.js\t-\t-\n')
+      async function snapshot(name: string) {
+        const outdir = join(dir, name)
+        await bundleProduction({ manifestPath, inDir: dir, outdir })
+        return {
+          entry: readFileSync(join(outdir, "index.page.js"), "utf8"),
+          chunks: Object.fromEntries(readdirSync(join(outdir, "chunks")).map(file =>
+            [file, readFileSync(join(outdir, "chunks", file), "utf8")])) as Record<string, string>,
+        }
+      }
+      const first = await snapshot("first")
+      expect(Object.keys(first.chunks)).toHaveLength(2)
+      expect(await snapshot("unchanged")).toEqual(first)
+
+      writeFileSync(join(dir, "Lazy.ts"), `export const version = 'second'`)
+      const changed = await snapshot("changed")
+      expect(Object.keys(changed.chunks)).toHaveLength(2)
+      expect(changed.entry).not.toEqual(first.entry)
+      for (const file of Object.keys(changed.chunks)) {
+        expect(file).toMatch(/-[A-Z0-9]+\.js$/)
+        expect(Object.keys(first.chunks)).not.toContain(file)
+      }
+      for (const file of Object.keys(first.chunks)) {
+        expect(changed.entry + Object.values(changed.chunks).join("\n")).not.toContain(file)
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
   it("shares engine bytes across independent page graphs and accounts for every imported chunk", async () => {
     const dir = mkdtempSync(join(tmpdir(), "bml-prod-shared-"))
     try {

@@ -316,12 +316,18 @@ class BmlDeferredRoutesTest {
     }
 
     @Test
-    fun `public immutable assets never carry browser identity cookies`() {
-        val response = get("/_bml/app.js")
-
-        assertEquals(200, response.statusCode())
-        assertEquals("public, max-age=31536000, immutable", header(response, "Cache-Control"))
-        assertTrue(response.headers().allValues("Set-Cookie").isEmpty(), response.headers().map().toString())
+    fun `public assets never carry browser identity cookies`() {
+        val html = get("/shared/42").body()
+        val versioned = checkNotNull(Regex("/_bml/app\\.js\\?_ts=[0-9a-f]+").find(html)?.value) { html }
+        for ((path, policy) in listOf(
+            "/_bml/app.js" to "no-cache",
+            versioned to "public, max-age=31536000, immutable",
+        )) {
+            val response = get(path)
+            assertEquals(200, response.statusCode())
+            assertEquals(policy, header(response, "Cache-Control"))
+            assertTrue(response.headers().allValues("Set-Cookie").isEmpty(), response.headers().map().toString())
+        }
     }
 
     @Test
