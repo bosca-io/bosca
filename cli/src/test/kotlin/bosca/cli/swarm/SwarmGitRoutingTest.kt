@@ -41,6 +41,9 @@ class SwarmGitRoutingTest {
         "/repositories", "/repositories/$id", "/repositories/$id/settings", "/repositories/$id/github",
         "/pulls/$id?view=files", "/pipelines/$id", "/ci-agents/$id", "/settings/github",
         "/_bml/app.css", "/_bml/app.js", "/_bml/js/repository.page.js",
+        "/_bml/libraries/${"a".repeat(64)}/styles/design.css?_ts=fixture",
+        "/_bml/libraries/${"a".repeat(64)}/chunks/chunk-ABCDEFGH.js",
+        "/_bml/libraries/${"a".repeat(64)}/fonts/geist-latin.woff2",
         "/_bml/action", "/_bml/deferred/repository", "/_bml/contract/markdown/preview",
         "/_git/fonts/geist.woff2", "/_git/subscriptions",
     )

@@ -895,28 +895,35 @@ class BmlServer(
         // until the next deployment changes that URL. Public-directory assets keep their separate,
         // explicitly configured policy because their URLs are not versioned by BML.
         val initial = state.get()
-        val assetCacheControl = if (dev) "no-cache" else PRODUCTION_ASSET_CACHE_CONTROL
         // Serve the bundled client JS (+ sourcemaps) via Bosca Server's native static handler —
         // it does path resolution, content types, traversal protection, and ETag revalidation.
-        initial.clientDir?.let { dir -> router.staticFiles(BmlClientAssets.URL_PREFIX, dir, assetCacheControl) }
+        initial.clientDir?.let { dir ->
+            router.staticFiles(BmlClientAssets.URL_PREFIX, dir)
+            application.installHandler { call, next ->
+                if (call.request.path.startsWith(BmlClientAssets.URL_PREFIX)) {
+                    val path = call.request.path.removePrefix(BmlClientAssets.URL_PREFIX)
+                    call.response.header(HttpHeaders.CacheControl, assetCacheControl(state.get(), call, path))
+                }
+                next()
+            }
+        }
         if (initial.clientDir == null) router.get("${BmlClientAssets.URL_PREFIX}{path...}") {
             val current = state.get()
             val mode = if (current.development) "dev" else "prod"
             val path = call.pathParameters["path"].orEmpty()
-            respondPackagedAsset(current, call, assetCacheControl, "$mode/$path", bmlAssetContentType(path))
+            respondPackagedAsset(current, call, assetCacheControl(current, call, path), "$mode/$path", bmlAssetContentType(path))
         }
         router.get("/_bml/libraries/{key}/{path...}") {
             val current = state.get()
             val path = "libraries/${call.pathParameters["key"].orEmpty()}/${call.pathParameters["path"].orEmpty()}"
             // CSS references and public resources may retain their URL across a same-version
             // library rebuild. Only deployment-token URLs can use the immutable policy.
-            val versioned = !current.development && call.request.queryParameters["_ts"] == current.assetCacheToken
-            respondPackagedAsset(current, call, if (versioned) assetCacheControl else "no-cache", path, bmlAssetContentType(path))
+            respondPackagedAsset(current, call, assetCacheControl(current, call), path, bmlAssetContentType(path))
         }
         // Serve static assets (CSS, images, favicon) at the site root. Page routes are registered
         // above and take precedence; the static handler only resolves to existing files.
         initial.publicDir?.let { dir ->
-            router.staticFiles("/", dir, if (dev) assetCacheControl else initial.publicCacheControl)
+            router.staticFiles("/", dir, if (dev) "no-cache" else initial.publicCacheControl)
         }
         // These routes are registered unconditionally because a hot-swapped generation can add
         // the first global/component asset after the Netty router is already live.
@@ -924,13 +931,13 @@ class BmlServer(
             val current = state.get()
             val css = current.servedGlobalCss
             if (css == null) call.respond(bosca.server.HttpStatusCode.NotFound, "404 Not Found")
-            else respondInMemoryAsset(current, call, assetCacheControl, css, ContentType("text", "css"))
+            else respondInMemoryAsset(current, call, assetCacheControl(current, call), css, ContentType("text", "css"))
         }
         router.get(BmlStyleAssets.GLOBAL_JS_URL) {
             val current = state.get()
             val js = current.globalJs
             if (js == null) call.respond(bosca.server.HttpStatusCode.NotFound, "404 Not Found")
-            else respondInMemoryAsset(current, call, assetCacheControl, js, ContentType("text", "javascript"))
+            else respondInMemoryAsset(current, call, assetCacheControl(current, call), js, ContentType("text", "javascript"))
         }
         router.get("${BmlStyleAssets.COMPONENT_CSS_PREFIX}{file}") {
             val current = state.get()
@@ -941,7 +948,7 @@ class BmlServer(
                 current.componentsByTag[file.removeSuffix(".css")]?.styles
             }
             if (css == null) call.respond(bosca.server.HttpStatusCode.NotFound, "404 Not Found")
-            else respondInMemoryAsset(current, call, assetCacheControl, css, ContentType("text", "css"))
+            else respondInMemoryAsset(current, call, assetCacheControl(current, call), css, ContentType("text", "css"))
         }
         // Per-locale message catalogs for client-side t(): the requested
         // locale's fallback chain MERGED server-side, so the browser helper needs no fallback
@@ -1553,6 +1560,17 @@ class BmlServer(
         call.attributes[CACHE_CONTROL_SET_ATTRIBUTE] = true
     }
 
+    /** Immutable caching requires a content-hashed chunk name or this deployment's token. */
+    private fun assetCacheControl(
+        current: RuntimeState,
+        call: bosca.server.ServerCall,
+        clientPath: String? = null,
+    ): String {
+        val versioned = call.request.queryParameters["_ts"] == current.assetCacheToken
+        val contentHashed = clientPath?.matches(CONTENT_HASHED_CHUNK) == true
+        return if (!current.development && (versioned || contentHashed)) PRODUCTION_ASSET_CACHE_CONTROL else "no-cache"
+    }
+
     /**
      * Serves an in-process asset tier with a content validator. Content can change while the
      * process remains alive, so a process boot id is not a valid ETag for hot-swapped assets.
@@ -1654,6 +1672,7 @@ class BmlServer(
         private val INSTALLATION_ID = Regex("^[A-Za-z0-9_-]{1,128}${'$'}")
         private const val SITEMAP_ROUTE = "/sitemap.xml"
         private const val PRODUCTION_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+        private val CONTENT_HASHED_CHUNK = Regex("^chunks/[^/]+-[A-Z0-9]{8}\\.js$")
         private const val CLOUDFLARE_CDN_CACHE_CONTROL = "Cloudflare-CDN-Cache-Control"
         private const val DEFERRED_REDIRECT_HEADER = "X-BML-Redirect"
         /** Call attribute recording that this response already carries a Cache-Control header. */

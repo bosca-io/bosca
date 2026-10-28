@@ -28,19 +28,31 @@ class BmlPackagedAssetsTest {
     private class Fixture(val value: String) {
         val reads = AtomicInteger()
         val digest = ContentDigest.sha256(value)
-        private val manifest = Json.encodeToString(BmlClientManifest.serializer(), BmlClientManifest(files = listOf(
-            BmlAssetFile("dev/main.js", digest),
-            BmlAssetFile("libraries/key/theme.css", digest),
-        )))
+        private val manifest = Json.encodeToString(
+            BmlClientManifest.serializer(), BmlClientManifest(
+                files = listOf(
+                    BmlAssetFile("dev/main.js", digest),
+                    BmlAssetFile("prod/index.page.js", digest),
+                    BmlAssetFile("prod/chunks/chunk-ABCDEFGH.js", digest),
+                    BmlAssetFile("libraries/key/theme.css", digest),
+                )
+            )
+        )
         private val assets = BmlApplicationAssets("app", emptyMap(), emptyMap()) { path ->
             if (path.endsWith("client-manifest.json")) manifest.encodeToByteArray()
-            else { reads.incrementAndGet(); value.encodeToByteArray() }
+            else {
+                reads.incrementAndGet(); value.encodeToByteArray()
+            }
         }
-        fun server(port: Int) = BmlServer(CompiledProject("assets", "1"), listOf(object : BmlPageRenderer, BmlBundledPage {
+
+        fun server(port: Int, development: Boolean = true) = BmlServer(CompiledProject("assets", "1"), listOf(object : BmlPageRenderer, BmlBundledPage {
             override val route = "/"
+            override val clientModule = "main.js"
             override val assets = this@Fixture.assets
-            override suspend fun render(ctx: RenderContext) { ctx.writer.markup("<html><head></head><body>assets</body></html>") }
-        }), port, dev = true)
+            override suspend fun render(ctx: RenderContext) {
+                ctx.writer.markup("<html><head></head><body>assets</body></html>")
+            }
+        }), port, dev = development)
     }
 
     @Test
@@ -48,24 +60,15 @@ class BmlPackagedAssetsTest {
         val port = ServerSocket(0).use { it.localPort }
         val first = Fixture("first generation")
         val server = first.server(port)
-        val app = BoscaApplication(ApplicationConfig.load("bosca:\n  server:\n    port: $port\n    drain-timeout-ms: 0\n    development: true\n".byteInputStream()))
-        server.install(app)
-        app.freezeMiddleware()
-        val engine = NettyServerEngine(app, port)
-        thread(isDaemon = true, name = "bml-packaged-asset-test") { engine.start() }
+        val engine = start(server, port)
         try {
-            var ready = false
-            for (attempt in 0 until 100) {
-                try { java.net.Socket("localhost", port).close(); ready = true; break }
-                catch (_: java.io.IOException) { Thread.sleep(50) }
-            }
-            check(ready) { "Packaged asset test server did not start" }
             val client = HttpClient.newHttpClient()
             fun get(path: String, etag: String? = null): HttpResponse<String> {
                 val request = HttpRequest.newBuilder(URI.create("http://localhost:$port$path")).timeout(Duration.ofSeconds(10))
                 if (etag != null) request.header("If-None-Match", etag)
                 return client.send(request.GET().build(), HttpResponse.BodyHandlers.ofString())
             }
+
             val etag = "\"${first.digest.removePrefix("sha256:")}\""
             for (path in listOf("/_bml/js/main.js", "/_bml/libraries/key/theme.css")) {
                 val conditional = get(path, etag)
@@ -104,5 +107,56 @@ class BmlPackagedAssetsTest {
             assertEquals(first.value, get("/_bml/js/main.js").body())
             assertEquals(2, first.reads.get(), "Rollback retains its own validated response cache")
         } finally { engine.stopWithoutHalting() }
+    }
+
+    @Test
+    fun `production packaged assets are immutable only with a content hash or current deployment token`() {
+        val port = ServerSocket(0).use { it.localPort }
+        val server = Fixture("production asset").server(port, development = false)
+        val engine = start(server, port)
+        try {
+            HttpClient.newHttpClient().use { client ->
+                fun get(path: String) = client.send(
+                    HttpRequest.newBuilder(URI.create("http://localhost:$port$path")).GET().build(),
+                    HttpResponse.BodyHandlers.ofString(),
+                )
+
+                val html = get("/").body()
+                val token = checkNotNull(Regex("_ts=([0-9a-f]+)").find(html)?.groupValues?.get(1)) { html }
+                for (path in listOf("/_bml/js/index.page.js", "/_bml/libraries/key/theme.css")) {
+                    for ((query, expected) in listOf(
+                        "" to "no-cache",
+                        "?_ts=old-deployment" to "no-cache",
+                        "?_ts=$token" to "public, max-age=31536000, immutable",
+                    )) {
+                        val response = get(path + query)
+                        assertEquals(200, response.statusCode(), path + query)
+                        assertEquals(listOf(expected), response.headers().allValues("Cache-Control"), path + query)
+                    }
+                }
+                val chunk = get("/_bml/js/chunks/chunk-ABCDEFGH.js")
+                assertEquals(200, chunk.statusCode())
+                assertEquals(listOf("public, max-age=31536000, immutable"), chunk.headers().allValues("Cache-Control"))
+            }
+        } finally {
+            engine.stopWithoutHalting()
+        }
+    }
+
+    private fun start(server: BmlServer, port: Int): NettyServerEngine {
+        val app = BoscaApplication(ApplicationConfig.load("bosca:\n  server:\n    port: $port\n    drain-timeout-ms: 0\n    development: true\n".byteInputStream()))
+        server.install(app)
+        app.freezeMiddleware()
+        val engine = NettyServerEngine(app, port)
+        thread(isDaemon = true, name = "bml-packaged-asset-test") { engine.start() }
+        for (attempt in 0 until 100) {
+            try {
+                java.net.Socket("localhost", port).close(); return engine
+            } catch (_: java.io.IOException) {
+                Thread.sleep(50)
+            }
+        }
+        engine.stopWithoutHalting()
+        error("Packaged asset test server did not start")
     }
 }

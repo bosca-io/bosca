@@ -154,7 +154,13 @@ class BmlProductionCacheBustingTest {
     }
 
     @Test
-    fun `production css and js use long-lived immutable caching`() {
+    fun `production css and js use long-lived immutable caching with the deployment token`() {
+        val html = client.send(
+            HttpRequest.newBuilder(URI.create("http://localhost:$port/")).GET().build(),
+            HttpResponse.BodyHandlers.ofString(),
+        ).body()
+        val token = Regex("_ts=([0-9a-f]+)").find(html)?.groupValues?.get(1)
+        checkNotNull(token) { html }
         for (path in listOf(
             "/_bml/app.css",
             "/_bml/css/index.page.css",
@@ -162,7 +168,7 @@ class BmlProductionCacheBustingTest {
             "/_bml/js/index.page.js",
         )) {
             val response = client.send(
-                HttpRequest.newBuilder(URI.create("http://localhost:$port$path")).GET().build(),
+                HttpRequest.newBuilder(URI.create("http://localhost:$port$path?_ts=$token")).GET().build(),
                 HttpResponse.BodyHandlers.ofString(),
             )
             assertEquals(200, response.statusCode(), path)
@@ -172,6 +178,38 @@ class BmlProductionCacheBustingTest {
                 path,
             )
         }
+    }
+
+    @Test
+    fun `stable production asset URLs revalidate without a matching deployment token`() {
+        for (path in listOf("/_bml/app.css", "/_bml/css/index.page.css", "/_bml/app.js", "/_bml/js/index.page.js")) {
+            for (query in listOf("", "?_ts=old-deployment")) {
+                val response = client.send(
+                    HttpRequest.newBuilder(URI.create("http://localhost:$port$path$query")).GET().build(),
+                    HttpResponse.BodyHandlers.ofString(),
+                )
+                assertEquals(200, response.statusCode(), path + query)
+                assertEquals(listOf("no-cache"), response.headers().allValues("Cache-Control"), path + query)
+                val etag = response.headers().firstValue("ETag").orElseThrow()
+                val conditional = client.send(
+                    HttpRequest.newBuilder(URI.create("http://localhost:$port$path$query"))
+                        .header("If-None-Match", etag).GET().build(),
+                    HttpResponse.BodyHandlers.ofString(),
+                )
+                assertEquals(304, conditional.statusCode(), path + query)
+                assertEquals(listOf("no-cache"), conditional.headers().allValues("Cache-Control"), path + query)
+            }
+        }
+    }
+
+    @Test
+    fun `content hashed production chunks are immutable without a deployment token`() {
+        val response = client.send(
+            HttpRequest.newBuilder(URI.create("http://localhost:$port/_bml/js/chunks/chunk-ABCDEFGH.js")).GET().build(),
+            HttpResponse.BodyHandlers.ofString(),
+        )
+        assertEquals(200, response.statusCode())
+        assertEquals(listOf("public, max-age=31536000, immutable"), response.headers().allValues("Cache-Control"))
     }
 
     companion object {
@@ -185,7 +223,10 @@ class BmlProductionCacheBustingTest {
         fun boot() {
             port = ServerSocket(0).use { it.localPort }
             clientDir = java.nio.file.Files.createTempDirectory("bml-production-cache-test").toFile()
-                .also { it.resolve("index.page.js").writeText("console.log('page')") }
+                .also {
+                    it.resolve("index.page.js").writeText("console.log('page')")
+                    it.resolve("chunks/chunk-ABCDEFGH.js").apply { parentFile.mkdirs() }.writeText("console.log('chunk')")
+                }
             val page = object : BmlPageRenderer {
                 override val route = "/"
                 override val clientModule = "Page.js"
