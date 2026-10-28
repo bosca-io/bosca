@@ -133,6 +133,8 @@ case "$IMAGE" in
     docker_build artifacts artifacts/artifacts-server/Dockerfile.graalvm --build-arg "ARTIFACT_SHA=$STAGE"
     ;;
   git-server)
+    require_linux_x86_64
+    (cd bml/bml-runtime && npm ci --no-audit --no-fund)
     stage_native :git:git-server git/git-server bosca-git-server git git-server-native
     docker_build git git/git-server/Dockerfile --build-arg "ARTIFACT_SHA=$STAGE"
     ;;
