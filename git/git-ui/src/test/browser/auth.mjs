@@ -63,7 +63,7 @@ await call("Emulation.setDeviceMetricsOverride", {
 async function navigate(path, selector = "h1") {
   await call("Page.navigate", { url: base + path });
   await until(
-    `location.href === ${JSON.stringify(base + path)} && document.readyState === 'complete' && document.querySelector(${JSON.stringify(selector)}) && typeof gitAuthFlow !== 'undefined'`,
+    `location.href === ${JSON.stringify(base + path)} && document.readyState === 'complete' && document.querySelector(${JSON.stringify(selector)}) && typeof atlasAuthFlow !== 'undefined'`,
   );
 }
 async function fill(values) {

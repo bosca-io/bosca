@@ -48,6 +48,8 @@ val projects = arrayOf(
     project(":git:git"),
     project(":git:git-ci"),
     project(":git:git-jobs"),
+    project(":artifacts:core-artifacts"),
+    project(":artifacts:artifacts-base"),
 )
 
 configurations.all {

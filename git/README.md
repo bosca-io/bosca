@@ -15,6 +15,10 @@ Native git hosting platform with WorkOps integration, source ref management for 
 | `git-ui` | Componentized BML UI library |
 | `git-ui-server` | BML host module with HTTP and subscription proxies to Git server |
 
+Atlas also hosts these Git/CI modules with embedded or separate workers. See the
+[Atlas server](../server/atlas-server/README.md) for runnable hosts and process roles. The registry-backed
+CI artifact verifier is owned by `git-ci`, allowing Atlas to run it without WorkOps.
+
 ## Prerequisites
 
 - **JDK 25** (resolved via Gradle toolchains)

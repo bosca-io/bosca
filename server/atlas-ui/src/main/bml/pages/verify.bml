@@ -1,0 +1,10 @@
+<page route="/auth/verify">
+  <atlas-auth-layout title="Check your email.">
+    <atlas-auth-heading
+      eyebrow="Verify your account"
+      title="Check your email."
+      sub="Follow the verification link to finish creating your account."
+    />
+    <atlas-verify-form />
+  </atlas-auth-layout>
+</page>

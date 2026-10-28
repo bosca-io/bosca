@@ -1,0 +1,114 @@
+plugins {
+    id("org.jetbrains.kotlin.jvm")
+    alias(libs.plugins.kotlin.ksp)
+    alias(libs.plugins.kotlin.plugin.serialization)
+    id("org.graalvm.buildtools.native")
+    alias(libs.plugins.shadow)
+    application
+    id("io.bosca.bml.host")
+}
+
+description = "Bosca Atlas backend composition"
+
+java {
+    toolchain { languageVersion.set(JavaLanguageVersion.of(25)) }
+}
+
+dependencies {
+    implementation(project(":bosca-core:core"))
+    implementation(project(":bosca-core:core-security"))
+    implementation(project(":bosca-core:security"))
+    implementation(project(":bosca-core:core-storage"))
+    implementation(project(":bosca-core:storage"))
+    implementation(project(":bosca-core:core-scheduler"))
+    implementation(project(":bosca-core:scheduler"))
+    implementation(project(":social:core-profile"))
+    implementation(project(":social:profile"))
+    implementation(project(":content:core-content"))
+    implementation(project(":content:content"))
+    implementation(project(":content:slugs"))
+    implementation(project(":search:core-search"))
+    implementation(project(":search:search"))
+    implementation(project(":pipelines:core-pipelines"))
+    implementation(project(":pipelines:pipelines"))
+    implementation(project(":git:core-git"))
+    implementation(project(":git:core-git-ci"))
+    implementation(project(":git:git"))
+    implementation(project(":git:git-ci"))
+    implementation(project(":git:git-jobs"))
+    implementation(project(":artifacts:core-artifacts"))
+    implementation(project(":artifacts:artifacts-base"))
+    implementation(project(":artifacts:artifacts-admin"))
+    implementation(project(":artifacts:artifacts-docker"))
+    implementation(project(":artifacts:artifacts-helm"))
+    implementation(project(":artifacts:artifacts-maven"))
+    implementation(project(":artifacts:artifacts-npm"))
+    implementation(project(":artifacts:artifacts-raw"))
+    implementation(project(":artifacts:artifacts-ml"))
+    implementation(project(":sharedqueue:sharedqueue"))
+    implementation(project(":analytics:analytics-server-client"))
+    implementation(project(":server:atlas-ui-server"))
+    implementation(project(":bosca-core:core-graalvm"))
+    implementation(libs.logback.classic)
+    implementation(libs.jgit)
+    implementation(libs.postgresql)
+
+    ksp(project(":bosca-core:core-ksp"))
+    ksp(project(":services-di:service-ksp"))
+    ksp(project(":services-di:di-ksp"))
+
+    testImplementation(libs.kotlin.test.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(project(":bosca-core:test-support"))
+    testImplementation(libs.mockk)
+    testImplementation(project(":bml:core-bml"))
+    testImplementation(project(":bml:bml-server"))
+}
+
+ksp {
+    arg("ProviderRegistrarPrefix", "Atlas")
+}
+
+application {
+    mainClass.set("bosca.atlas.server.ApplicationKt")
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-XX:+UseG1GC")
+}
+
+tasks.named<JavaExec>("run") { outputs.upToDateWhen { false } }
+
+tasks.test {
+    val serverClasspath = sourceSets.main.get().runtimeClasspath
+    doFirst { systemProperty("atlasServerClasspath", serverClasspath.asPath) }
+    systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
+}
+
+configurations.all {
+    exclude(group = "org.jline", module = "jline")
+    exclude(group = "io.netty", module = "netty-all")
+}
+
+tasks.shadowJar {
+    isZip64 = true
+    filesMatching(listOf("META-INF/services/**", "META-INF/bosca/bml/build-id")) {
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    }
+    mergeServiceFiles()
+    append("META-INF/bosca/bml/build-id")
+}
+
+graalvmNative {
+    testSupport.set(false)
+    agent { enabled.set(false) }
+    metadataRepository { enabled = true }
+    binaries {
+        named("main") {
+            imageName.set("bosca-atlas-server")
+            mainClass.set("bosca.atlas.server.ApplicationKt")
+            buildArgs.add("-O3")
+            buildArgs.add("-H:+GenerateEmbeddedResourcesFile")
+            buildArgs.addAll(providers.gradleProperty("bosca.native.march").map { listOf("-march=$it") }.orElse(emptyList()))
+            buildArgs.addAll(listOf("--exclude-config", ".*/.*.jar", "^/META-INF/native-image/org\\.jline/.*"))
+            if (org.gradle.internal.os.OperatingSystem.current().isLinux) buildArgs.add("--gc=G1")
+        }
+    }
+}

@@ -14,6 +14,7 @@ dependencies {
     api(project(":bml:bml-server"))
     api(project(":bml:bml-design"))
     api(project(":bosca-core:core"))
+    implementation(project(":server:atlas-ui"))
     implementation(project(":bml:core-bml"))
     implementation(project(":bml:bml-annotations"))
     implementation(project(":bosca-graphql:bosca-graphql-client"))
@@ -34,10 +35,13 @@ bml {
 tasks.named("bmlInstallClientDependencies") {
     inputs.files(fileTree("../../bml/bml-runtime") { include("package.json", "src/**", "tools/**") })
     inputs.files(fileTree("../../web/packages/auth") { include("package.json", "src/**") })
+    inputs.files(fileTree("../../server/atlas-ui") { include("package.json", "src/main/client/**") })
 }
 
 tasks.named("bmlBundleClient") {
     inputs.file("tsconfig.json").withPropertyName("clientTypeScriptConfig")
+    inputs.files(fileTree("../../server/atlas-ui/src/main/client"))
+        .withPropertyName("atlasClientSources").withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 val typecheckClient by tasks.registering(Exec::class) {
@@ -50,10 +54,10 @@ val typecheckClient by tasks.registering(Exec::class) {
 
 val testClient by tasks.registering(Exec::class) {
     group = "verification"
-    description = "Test Git authentication and pipeline log behavior."
+    description = "Test Git pipeline log behavior."
     dependsOn("bmlInstallClientDependencies")
     workingDir(projectDir)
-    commandLine(bml.nodeExecutable.get(), "--test", "src/test/client-auth.test.mjs", "src/test/client-pipeline-logs.test.mjs")
+    commandLine(bml.nodeExecutable.get(), "--test", "src/test/client-pipeline-logs.test.mjs")
 }
 
 tasks.named("check") { dependsOn(typecheckClient, testClient) }
@@ -62,12 +66,6 @@ boscaGraphql {
     packageName.set("bosca.git.ui.graphql")
     generateTypeScript.set(false)
     endpoint.set(providers.environmentVariable("BML_GRAPHQL_ENDPOINT").orElse("http://localhost:8080/graphql"))
-}
-
-tasks.named<ProcessResources>("processResources") {
-    from(layout.buildDirectory.dir("generated/bml/js-prod")) {
-        into("git-ui/js")
-    }
 }
 
 tasks.test {

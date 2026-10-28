@@ -22,21 +22,25 @@ internal fun verifyGitUiNativeResources(report: File, retainedReport: File) {
     val resources = Json.parseToJsonElement(report.readText()).jsonArray
         .associateBy { it.jsonObject.getValue("name").jsonPrimitive.content }
     val loader = GitUiNativeHostTest::class.java.classLoader
-    val root = "bml/applications/bml.generated"
-    val manifestPath = "$root/client-manifest.json"
-    val manifestBytes = requireNotNull(loader.getResourceAsStream(manifestPath)).use { it.readAllBytes() }
-    val manifest = Json.decodeFromString(BmlClientManifest.serializer(), manifestBytes.decodeToString())
-    BmlApplicationAssets.validateFiles(manifest.files)
-    val expected = manifest.files.associate { "$root/${it.path}" to it.digest }.toMutableMap()
+    val expected = linkedMapOf<String, String>()
+    var indexedAssets = 0
+    for (root in listOf("bml/applications/bml.generated", "bml/applications/bosca.atlas.ui.generated")) {
+        val manifestPath = "$root/client-manifest.json"
+        val manifestBytes = requireNotNull(loader.getResourceAsStream(manifestPath)).use { it.readAllBytes() }
+        val manifest = Json.decodeFromString(BmlClientManifest.serializer(), manifestBytes.decodeToString())
+        BmlApplicationAssets.validateFiles(manifest.files)
+        indexedAssets += manifest.files.size
+        expected.putAll(manifest.files.associate { "$root/${it.path}" to it.digest })
+        expected[manifestPath] = ContentDigest.sha256(manifestBytes)
+    }
     val buildId = File(requireNotNull(System.getProperty("gitUi.native.buildId"))).readBytes()
     java.time.Instant.parse(buildId.decodeToString())
     expected["META-INF/bosca/bml/build-id"] = ContentDigest.sha256(buildId)
-    expected[manifestPath] = ContentDigest.sha256(manifestBytes)
     for (name in listOf("geist", "lucide", "source-view", "json-editor")) {
         val path = "META-INF/licenses/bml-design/$name.txt"
         expected[path] = requireNotNull(loader.getResourceAsStream(path)).use { ContentDigest.sha256(it.readAllBytes()) }
     }
-    for (name in listOf("git-ui.css", "git-ui.js")) {
+    for (name in listOf("git-ui.css", "atlas-ui.css", "atlas-ui.js")) {
         expected[name] = requireNotNull(loader.getResourceAsStream(name)).use { ContentDigest.sha256(it.readAllBytes()) }
     }
     val verified = expected.mapValues { (path, digest) ->
@@ -58,7 +62,7 @@ internal fun verifyGitUiNativeResources(report: File, retainedReport: File) {
     report.copyTo(retainedReport, overwrite = true)
     File(retainedReport.parentFile, "resource-origins.json").writeText(buildJsonObject {
         put("evidence", "Compiler-reported embedding origins and sizes; SHA-256 values verify those input bytes. HTTP font bytes are verified separately.")
-        put("indexedAssets", manifest.files.size)
+        put("indexedAssets", indexedAssets)
         put("resources", JsonObject(verified))
     }.toString())
 }

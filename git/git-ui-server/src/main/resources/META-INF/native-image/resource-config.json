@@ -11,10 +11,7 @@
         "pattern": "logback\\.xml"
       },
       {
-        "pattern": "git-ui\\.(css|js)"
-      },
-      {
-        "pattern": "git-ui/js/.*\\.js"
+        "pattern": "git-ui\\.css"
       },
       {
         "pattern": "META-INF/services/.*"

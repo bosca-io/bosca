@@ -15,6 +15,7 @@ Artifact storage server for the Bosca platform, providing Docker registry, Maven
 | `artifacts-raw` | Raw artifact handling |
 | `artifacts-ml` | Machine learning artifact handling |
 | `artifacts-admin` | GraphQL admin interface for artifacts |
+| `artifacts-ui` | BML UI scaffold for Bosca Atlas, following the Git UI structure |
 | `artifacts-server` | Standalone server application |
 
 ## Prerequisites

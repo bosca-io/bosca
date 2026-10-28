@@ -5,23 +5,30 @@ import bosca.pubsub.PubSubService
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.AfterTest
 import kotlin.uuid.Uuid
 
 class PipelineGitPushListenerTest {
 
     private val pubSubService = mockk<PubSubService>(relaxed = true)
     private val pipelineGitSyncService = mockk<PipelineGitSyncService>(relaxed = true)
+    private val listeners = mutableListOf<PipelineGitPushListener>()
+
+    @AfterTest
+    fun stopListeners() {
+        listeners.forEach { it.stop() }
+    }
 
     private fun newListener(): PipelineGitPushListener {
-        // PubSub subscribe is wired by the init block; emit nothing so the loop sits idle
-        // while the test drives `handle` directly.
+        // Keep the subscription open while the test drives the event handler directly.
         coEvery {
             pubSubService.subscribe("bosca.git.push", PushEvent.serializer())
-        } returns emptyFlow()
-        return PipelineGitPushListener(pubSubService, pipelineGitSyncService)
+        } returns flow { awaitCancellation() }
+        return PipelineGitPushListener(pubSubService, pipelineGitSyncService).also(listeners::add)
     }
 
     @Test

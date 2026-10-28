@@ -7,7 +7,6 @@ import bosca.artifacts.model.ArtifactType
 import bosca.artifacts.repository.*
 import bosca.artifacts.service.ArtifactRepositoryService
 import bosca.artifacts.service.ArtifactRepositoryServiceImpl
-import bosca.workops.service.RegistryProducedArtifactVerifier
 
 import bosca.db.*
 import bosca.di.*

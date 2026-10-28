@@ -5,6 +5,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bosca/atlas-ui-client": "file:../../server/atlas-ui",
     "@bosca/auth-client-browser": "file:../../web/packages/auth",
     "@bosca/bml": "file:../../bml/bml-runtime",
     "@codemirror/autocomplete": "^6.20.2",

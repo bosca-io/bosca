@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -70,6 +71,11 @@ class PipelineGitPushListener(
                 event.repositoryId, event.afterSha, e.message, e
             )
         }
+    }
+
+    /** Stops this process's broadcast subscription when its host shuts down. */
+    fun stop() {
+        scope.cancel()
     }
 
     companion object {

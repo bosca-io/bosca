@@ -1,0 +1,10 @@
+<page route="/auth/reset-password">
+  <atlas-auth-layout title="Choose a new password.">
+    <atlas-auth-heading
+      eyebrow="Account recovery"
+      title="Choose a new password."
+      sub="Set a new password, then sign in."
+    />
+    <atlas-reset-form />
+  </atlas-auth-layout>
+</page>

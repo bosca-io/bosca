@@ -269,6 +269,7 @@ includeComponent("artifacts", listOf(
     "core-artifacts",
     "artifacts-base",
     "artifacts-admin",
+    "artifacts-ui",
     "artifacts-docker",
     "artifacts-helm",
     "artifacts-maven",
@@ -322,6 +323,9 @@ includeComponent("firebase-scrypt", listOf(
 ))
 
 includeComponent("server", listOf(
+    "atlas-server",
+    "atlas-ui",
+    "atlas-ui-server",
     "bosca-server",
     "bosca-runner",
     "messages-pages",

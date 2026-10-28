@@ -6,9 +6,15 @@ Main server assembly and background job runner for the Bosca platform. This is t
 
 | Module | Description |
 |---|---|
+| `atlas-server` | Bosca Atlas Git/CI and artifacts API/transports with optional embedded UI and workers |
+| `atlas-ui` | Shared Atlas landing/authentication routes, browser session setup, and account actions |
+| `atlas-ui-server` | Standalone BML host and HTTP/subscription/download proxies for Atlas |
 | `bosca-server` | Primary server application -- GraphQL API via Bosca Server (Netty), DI wiring, schema registration |
 | `bosca-runner` | Background job runner application -- processes async jobs using shared domain libraries |
 | `messages-pages` | Message page rendering (JTE templates) |
+
+Atlas can run as one process or as separate API, Git transport, UI, and worker processes.
+The shared Atlas UI provides the landing and authentication routes consumed by Git UI. See [Atlas server](atlas-server/README.md) for the module boundaries.
 
 ## Prerequisites
 

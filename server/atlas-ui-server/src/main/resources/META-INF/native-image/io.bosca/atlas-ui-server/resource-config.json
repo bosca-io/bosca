@@ -1,0 +1,9 @@
+{
+  "resources": {
+    "includes": [
+      { "pattern": "atlas-ui-server\\.yaml" },
+      { "pattern": "META-INF/bosca/bml/build-id" },
+      { "pattern": "META-INF/services/.*" }
+    ]
+  }
+}

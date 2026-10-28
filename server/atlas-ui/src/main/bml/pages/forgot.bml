@@ -1,0 +1,10 @@
+<page route="/auth/forgot">
+  <atlas-auth-layout title="Forgot your password?">
+    <atlas-auth-heading
+      eyebrow="Account recovery"
+      title="Forgot your password?"
+      sub="Enter your email and we’ll send a reset link."
+    />
+    <atlas-forgot-form />
+  </atlas-auth-layout>
+</page>

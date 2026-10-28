@@ -17,6 +17,16 @@ import kotlinx.serialization.json.Json
 @Providers
 class Configuration {
 
+    /** Resolves produced and required CI artifacts through the owning registry service. */
+    @Provider(singleton = true)
+    fun producedArtifactVerifier(artifacts: bosca.artifacts.service.ArtifactRepositoryService): bosca.git.service.ProducedArtifactVerifier =
+        bosca.git.ci.service.RegistryProducedArtifactVerifier(artifacts)
+
+    /** Uses the same registry coordinate rules when evaluating a CI artifact requirement. */
+    @Provider(singleton = true)
+    fun requiredArtifactVerifier(artifacts: bosca.artifacts.service.ArtifactRepositoryService): bosca.git.service.RequiredArtifactVerifier =
+        bosca.git.ci.service.RegistryProducedArtifactVerifier(artifacts)
+
     @Provider
     fun pipelineYamlParser(): PipelineYamlParser = PipelineYamlParser()
 

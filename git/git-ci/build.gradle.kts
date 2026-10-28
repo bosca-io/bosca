@@ -27,6 +27,7 @@ dependencies {
     implementation(project(":bosca-core:core-storage"))
     implementation(project(":bosca-core:core-scheduler"))
     implementation(project(":kubernetes:core-kubernetes"))
+    implementation(project(":artifacts:core-artifacts"))
     // @JobDefinition KSP emits a pipeline-aware enqueue(context, nodeId) → needs core-pipelines
     implementation(project(":pipelines:core-pipelines"))
     implementation(project(":sharedqueue:sharedqueue"))
