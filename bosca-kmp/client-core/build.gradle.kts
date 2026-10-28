@@ -13,6 +13,11 @@ plugins {
 }
 
 val iosDeploymentTarget = "18.2"
+// JVM validation generates providers on desktop to avoid resolving native metadata and CocoaPods.
+val jvmCodegen = providers.gradleProperty("bosca.kmp.jvmCodegen").map(String::toBoolean).getOrElse(false)
+val providerKspConfiguration = if (jvmCodegen) "kspDesktopProviders" else "kspCommonMainMetadata"
+val providerKspTask = if (jvmCodegen) "kspProvidersKotlinDesktop" else "kspCommonMainKotlinMetadata"
+
 val androidEnabled = gradle.extra["androidEnabled"] as Boolean
 if (androidEnabled) {
     apply(plugin = "com.android.kotlin.multiplatform.library")
@@ -40,7 +45,18 @@ kotlin {
         }
     }
 
-    jvm("desktop")
+    jvm("desktop") {
+        if (jvmCodegen) {
+            // A generation-only compilation keeps providers in commonMain without mixing in
+            // platform-specific generators such as Room's expect/actual implementations.
+            val mainCompilation = compilations.getByName("main")
+            val commonSources = this@kotlin.sourceSets.getByName("commonMain").kotlin
+            compilations.create("providers") {
+                defaultSourceSet.kotlin.srcDirs(commonSources.sourceDirectories)
+                compileDependencyFiles = mainCompilation.compileDependencyFiles
+            }
+        }
+    }
 
     js {
         browser()
@@ -65,7 +81,10 @@ kotlin {
 
     sourceSets {
         commonMain {
-            kotlin.srcDir("build/generated/ksp/metadata/commonMain/kotlin")
+            kotlin.srcDir(
+                if (jvmCodegen) "build/generated/ksp/desktop/desktopProviders/kotlin"
+                else "build/generated/ksp/metadata/commonMain/kotlin",
+            )
             kotlin.srcDir("build/generated/bosca-graphql/kotlin") // generated typed GraphQL operations
         }
         commonMain.dependencies {
@@ -120,8 +139,8 @@ kotlin {
 
 dependencies {
     "boscaGraphqlGenerator"(project(":bosca-graphql:bosca-graphql-client"))
-    add("kspCommonMainMetadata", project(":services-di:service-ksp"))
-    add("kspCommonMainMetadata", project(":services-di:di-ksp"))
+    add(providerKspConfiguration, project(":services-di:service-ksp"))
+    add(providerKspConfiguration, project(":services-di:di-ksp"))
 }
 
 java {
@@ -137,8 +156,8 @@ ksp {
 }
 
 tasks.configureEach {
-    if (name.startsWith("ksp") && name != "kspCommonMainKotlinMetadata") {
-        dependsOn("kspCommonMainKotlinMetadata")
+    if (name.startsWith("ksp") && name != providerKspTask) {
+        dependsOn(providerKspTask)
     }
 }
 
@@ -180,8 +199,7 @@ tasks.matching {
     dependsOn("generateBoscaGraphqlClient")
 }
 
-// Publish source jars also collect the generated commonMain dirs (graphql codegen + KSP metadata), so they
-// must run those producers first — Gradle 9 fails the build on an undeclared implicit dependency otherwise.
+// Source jars collect GraphQL operations and providers, so they must run both generators first.
 tasks.matching { it.name == "sourcesJar" || it.name.endsWith("SourcesJar") }.configureEach {
-    dependsOn("generateBoscaGraphqlClient", "kspCommonMainKotlinMetadata")
+    dependsOn("generateBoscaGraphqlClient", providerKspTask)
 }

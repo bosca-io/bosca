@@ -145,6 +145,19 @@ class SharedPostgreSQLContainer(
         }
     }
 
+    /**
+     * Creates a started fixture containing an independent copy of this database, including schema,
+     * seed data, and sequence values. Close all connections to this fixture before copying it;
+     * PostgreSQL rejects copying an in-use template. Stopping either fixture leaves the other intact.
+     */
+    fun copy(): SharedPostgreSQLContainer {
+        val template = requireLease()
+        return SharedPostgreSQLContainer().also { copy ->
+            copy.requestedDatabaseName = requestedDatabaseName
+            copy.lease = template.copy(requestedDatabaseName)
+        }
+    }
+
     override fun stop() {
         lease?.close()
         lease = null
@@ -756,6 +769,17 @@ private class PostgresDatabaseLease(
 ) : AutoCloseable {
     private val closed = AtomicBoolean()
     val jdbcUrl: String = "jdbc:postgresql://${endpoint.host}:${endpoint.port}/$databaseName?sslmode=disable"
+
+    fun copy(prefix: String): PostgresDatabaseLease {
+        check(!closed.get()) { "Cannot copy a closed database lease" }
+        val copyName = uniqueDatabaseName(prefix)
+        DriverManager.getConnection(adminUrl, POSTGRES_USER, POSTGRES_PASSWORD).use { connection ->
+            connection.createStatement().use { statement ->
+                statement.execute("CREATE DATABASE ${quotedIdentifier(copyName)} TEMPLATE ${quotedIdentifier(databaseName)}")
+            }
+        }
+        return PostgresDatabaseLease(endpoint, copyName, adminUrl)
+    }
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return

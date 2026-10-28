@@ -40,6 +40,10 @@ Run these commands from the **workspace root**. `bosca-core` is part of the root
 ./gradlew :bosca-core:core:test :bosca-core:security:test  # Focused tests
 ```
 
+Database tests can use `SharedPostgreSQLContainer.copy()` to create a started, independent copy
+of a migrated fixture, including its seed data and sequence values. Close the source fixture's
+connections before copying it, and stop every copy and its source when the test class finishes.
+
 ## Local Infrastructure
 
 From the workspace root:
