@@ -42,13 +42,10 @@ class ObjectBackupRestoreServiceImpl(
         }
 
         val targets = destinations.toMap()
-        val manifests = ObjectBackupManifestStore(backup, json)
         val selected = inventory.copy(objects = inventory.objects.toList())
         selected.validate()
         val required = selected.restoreObjects()
         validateDestinations(required, targets)
-
-        manifests.verify(selected)
 
         val context = currentCoroutineContext()
         val objects = selected.objects.map { entry ->
@@ -59,7 +56,10 @@ class ObjectBackupRestoreServiceImpl(
                     ObjectBackupOperation.RESTORE, selected.sourceId, destinationId, selected.scope, targetPayload,
                 )
             }
-            val status = inspectTarget(targets.getValue(entry.store), targetPayload, checkpoint)
+            val status = inspectTarget(targets.getValue(entry.store), targetPayload)
+            if (status != ObjectBackupRestoreObjectStatus.MATCHING) {
+                withContext(Dispatchers.IO) { backup.verifyBackupPayload(entry) }
+            }
             ObjectBackupRestoreObject(entry, status, checkpoint)
         }
 
@@ -95,12 +95,6 @@ class ObjectBackupRestoreServiceImpl(
         targets: Map<String, ObjectStorageService>,
         destinationId: String,
     ): ObjectBackupManifest {
-        for (item in inspection.objects) {
-            check(item.status != ObjectBackupRestoreObjectStatus.CONFLICTING) {
-                "Existing destination object conflicts with restore: ${item.payload.store}/${item.payload.key}"
-            }
-        }
-
         val inventory = inspection.inventory
         val required = inventory.restoreObjects()
         val context = currentCoroutineContext()
@@ -155,7 +149,6 @@ class ObjectBackupRestoreServiceImpl(
     private suspend fun inspectTarget(
         destination: ObjectStorageService,
         payload: BackupObject,
-        checkpoint: ObjectBackupProgress?,
     ): ObjectBackupRestoreObjectStatus = withContext(Dispatchers.IO) {
         try {
             destination.verifyBackupPayload(payload)
@@ -163,11 +156,7 @@ class ObjectBackupRestoreServiceImpl(
         } catch (_: ObjectNotFoundException) {
             ObjectBackupRestoreObjectStatus.MISSING
         } catch (_: BackupPayloadMismatchException) {
-            if ((checkpoint?.attempts ?: 0) > 0) {
-                ObjectBackupRestoreObjectStatus.REPAIRABLE
-            } else {
-                ObjectBackupRestoreObjectStatus.CONFLICTING
-            }
+            ObjectBackupRestoreObjectStatus.DIFFERENT
         }
     }
 }

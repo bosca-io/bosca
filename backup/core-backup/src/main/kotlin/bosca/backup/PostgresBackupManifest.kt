@@ -10,8 +10,7 @@ import java.time.format.DateTimeParseException
  * [created] observes the exported boundary and [completed] records pg_dump completion, both on the
  * database clock. [snapshotId] is provenance only: it cannot be imported after capture releases its
  * transaction. [snapshot] records PostgreSQL's logical visibility boundary independently of transfer time.
- * [contentInventory] binds reference evidence from that same view to this artifact; it does not
- * establish retained asset coverage. [requiredKeys] maps known key names to the populated encrypted
+ * [requiredKeys] maps known key names to the populated encrypted
  * tables that require them in that view. It contains no key values and does not prove key availability
  * or cover dependencies of arbitrary modules.
  */
@@ -36,13 +35,11 @@ data class PostgresBackupManifest(
     val version: Int = 2,
     @Required
     val format: String = "bosca-postgres-backup",
-    val contentInventory: PostgresBackupContentInventory? = null,
     @Required
     val requiredKeys: Map<String, List<String>> = emptyMap(),
 ) {
     /** Rejects unsupported formats and incomplete database recovery metadata. */
     fun validate() {
-        contentInventory?.validate()
         require(format == "bosca-postgres-backup" && version == 2) { "Unsupported PostgreSQL backup format/version" }
         require(payloadPath == "database.dump") { "Unsupported PostgreSQL backup payload path: $payloadPath" }
         require(listOf(id, sourceId, database, snapshotId, snapshot, serverVersion, encoding).all { it.isNotBlank() }) {

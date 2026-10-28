@@ -100,7 +100,6 @@ internal class PostgresBackupArtifactStore(
                 if (selected.key == manifest.payloadPath) requireNativePostgresDump(temporary)
                 Files.move(temporary, directory.resolve(selected.key))
             }
-            manifest.contentInventory?.let { PostgresBackupContentInventoryFile(json).verify(directory, it) }
             val metadata = directory.resolve("manifest.json.tmp")
             Files.writeString(metadata, json.encodeToString(PostgresBackupManifest.serializer(), manifest), CREATE_NEW, WRITE)
             currentCoroutineContext().ensureActive()
@@ -115,7 +114,6 @@ internal class PostgresBackupArtifactStore(
                 try {
                     for (name in listOf(
                         "database.dump.tmp", "database.dump",
-                        "content-references.json.tmp", "content-references.json",
                         "manifest.json.tmp", "manifest.json",
                     )) {
                         Files.deleteIfExists(directory.resolve(name))
@@ -139,18 +137,6 @@ internal class PostgresBackupArtifactStore(
                 payloadPath = "$prefix/${manifest.payloadPath}",
             ),
         )
-        manifest.contentInventory?.let { inventory ->
-            add(
-                BackupObject(
-                    store = "postgresql",
-                    key = inventory.path,
-                    revision = manifest.id,
-                    length = inventory.length,
-                    sha256 = inventory.sha256,
-                    payloadPath = "$prefix/${inventory.path}",
-                ),
-            )
-        }
     }
 
     private suspend fun readOrNull(name: String): PostgresBackupManifest? = try {

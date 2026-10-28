@@ -2,73 +2,99 @@ package bosca.backup.graphql
 
 import bosca.backup.ObjectBackupStorageService
 import bosca.backup.PostgresBackupManifest
-import bosca.backup.PostgresBackupContentInventory
-import bosca.backup.PostgresBackupContentSource
 import bosca.backup.PostgresBackupReceipt
 import bosca.backup.PostgresBackupRunRepository
 import bosca.db.transaction
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
+import bosca.security.model.Principal
+import bosca.security.service.ImpersonatedAuthenticationContext
 import bosca.storage.configuration.StorageConfiguration
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /** Real schema, dispatchers, authorization and native backup journal mapping. */
 @OptIn(InternalDI::class)
 class PostgresBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
+    @Test
+    fun `native receipt exposes exact recorded key requirements in single and paginated reads`(): Unit = runBlocking {
+        val keys = linkedMapOf(
+            "security.encryption.key" to listOf("public.configuration_values", "kubernetes.cluster_credential"),
+            "PIPELINE_SECRET_KEY" to listOf("pipelines.pipeline_secret", "git.pipeline_secrets"),
+            "custom.key" to listOf("custom.encrypted_存储"),
+        )
+        saveReceipt(keys)
+        val before = request { provide<PostgresBackupRunRepository>().get("native") }
+        val expected = JsonObject(keys.mapValues { (_, tables) -> JsonArray(tables.map(::JsonPrimitive)) })
+        val values = nativeData(execute("""{ backups {
+            postgresRun(key: "native") { result { manifest { requiredKeys version } } }
+            postgresRuns(sourceId: "source", storageKey: "native-store") { result { manifest { requiredKeys } } }
+        } }"""))
+        val single = values.getValue("postgresRun").jsonObject.getValue("result").jsonObject
+            .getValue("manifest").jsonObject
+        assertEquals(expected, single.getValue("requiredKeys"))
+        assertEquals("2", single.string("version"))
+        val listed = values.getValue("postgresRuns").jsonArray.single().jsonObject.getValue("result").jsonObject
+            .getValue("manifest").jsonObject
+        assertEquals(expected, listed.getValue("requiredKeys"))
+        assertEquals(before, request { provide<PostgresBackupRunRepository>().get("native") })
+    }
+
+    @Test
+    fun `native receipt exposes an empty requirement object when none were recorded`(): Unit = runBlocking {
+        saveReceipt(emptyMap())
+        val value = nativeData(execute("""{ backups { postgresRun(key: "native") {
+            result { manifest { requiredKeys } }
+        } } }""")).getValue("postgresRun").jsonObject.getValue("result").jsonObject.getValue("manifest").jsonObject
+        assertEquals(JsonObject(emptyMap()), value.getValue("requiredKeys"))
+    }
+
+    @Test
+    fun `recorded key requirements remain behind backup administration authorization`(): Unit = runBlocking {
+        saveReceipt(mapOf("security.encryption.key" to listOf("public.configuration_values")))
+        val query = """{ backups { postgresRun(key: "native") { result { manifest { requiredKeys } } } } }"""
+        nativeData(execute(query))
+        nativeData(execute(query, scoped(listOf("security:manage"))))
+        for (caller in listOf(
+            anonymous, ImpersonatedAuthenticationContext(Principal(), emptyList()),
+            scoped(listOf("content:view")), scoped(listOf("security:manage"), emptySet()),
+        )) {
+            val denied = execute(query, caller)
+            assertTrue("errors" in denied)
+            assertFalse("public.configuration_values" in denied.toString())
+            assertFalse("security.encryption.key" in denied.toString())
+        }
+    }
+
+    private suspend fun saveReceipt(keys: Map<String, List<String>>) {
+        running()
+        val manifest = PostgresBackupManifest(
+            "artifact", "source", "database", "2026-10-19T00:00:00Z", "2026-10-19T00:00:01Z",
+            "exported", "1:2:", "18", 180000, "UTF8", emptyMap(), 5, "a".repeat(64), requiredKeys = keys,
+        )
+        val receipt = PostgresBackupReceipt("native", "native-store", "postgresql/native/artifact", manifest)
+        request { transaction {
+            provide<PostgresBackupRunRepository>().complete("native", "observed-token", receipt)
+            provide<PostgresBackupRunRepository>().release("native")
+        } }
+    }
+
     private suspend fun prepare(
         key: String = "native",
-        includeContentReferences: Boolean = false,
-        contentSource: PostgresBackupContentSource? = null,
     ) = request {
         provide<ObjectBackupStorageService>().bind("native-store",
             StorageConfiguration("fs", "", basePath = directory.resolve("native").toString()))
-        provide<PostgresBackupRunRepository>().add(key, "source", "native-store", "postgresql", includeContentReferences, contentSource)
-    }
-
-    @Test
-    fun `content request exposes its fixed source binding without storage access`(): Unit = runBlocking {
-        prepare("plain")
-        prepare("content", true, PostgresBackupContentSource("content", "configured-source", "snapshot"))
-        val plain = nativeData(execute("""{ backups { postgresRun(key: "plain") { contentSource { store } } } }"""))
-            .getValue("postgresRun").jsonObject
-        assertEquals(JsonNull, plain.getValue("contentSource"))
-        val value = nativeData(execute("""{ backups { postgresRun(key: "content") {
-            includeContentReferences contentSource { store storageKey scope }
-        } } }""")).getValue("postgresRun").jsonObject
-        assertEquals("true", value.string("includeContentReferences"))
-        val source = value.getValue("contentSource").jsonObject
-        assertEquals("content", source.string("store"))
-        assertEquals("configured-source", source.string("storageKey"))
-        assertEquals("snapshot", source.string("scope"))
-    }
-
-    @Test
-    fun `content receipt exposes its retained report location`(): Unit = runBlocking {
-        prepare("native", true, PostgresBackupContentSource("content", "configured-source", "snapshot"))
-        val manifest = PostgresBackupManifest("artifact", "source", "database", "2026-10-19T00:00:00Z", "2026-10-19T00:00:01Z",
-            "exported", "1:2:", "18", 180000, "UTF8", emptyMap(), 5, "a".repeat(64))
-        val receipt = PostgresBackupReceipt("native", "native-store", "postgresql/native/artifact", manifest, "reports/artifact")
-        request { transaction {
-            val repository = provide<PostgresBackupRunRepository>()
-            repository.begin("native", "observed-token")
-            repository.claim("native", "native-store")
-            repository.complete("native", "observed-token", receipt)
-            repository.release("native")
-        } }
-        val value = nativeData(execute("""{ backups { postgresRun(key: "native") {
-            result { path contentReportPath }
-        } } }""")).getValue("postgresRun").jsonObject.getValue("result").jsonObject
-        assertEquals(receipt.path, value.string("path"))
-        assertEquals(receipt.contentReportPath, value.string("contentReportPath"))
+        provide<PostgresBackupRunRepository>().add(key, "source", "native-store", "postgresql")
     }
 
     private suspend fun running() {
@@ -77,42 +103,6 @@ class PostgresBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
             provide<PostgresBackupRunRepository>().begin("native", "observed-token")
             provide<PostgresBackupRunRepository>().claim("native", "native-store")
         } }
-    }
-
-    @Test
-    fun `native request exposes persisted content inventory selection`(): Unit = runBlocking {
-        prepare("plain")
-        prepare("selected", includeContentReferences = true)
-        for ((key, expected) in listOf("plain" to "false", "selected" to "true")) {
-            val value = nativeData(execute("""{ backups { postgresRun(key: "$key") { includeContentReferences } } }"""))
-                .getValue("postgresRun").jsonObject
-            assertEquals(expected, value.string("includeContentReferences"))
-        }
-    }
-
-    @Test
-    fun `native receipt exposes the saved content reference inventory descriptor`(): Unit = runBlocking {
-        running()
-        val inventory = PostgresBackupContentInventory(4, 100, "b".repeat(64))
-        val manifest = PostgresBackupManifest(
-            "artifact", "source", "database", "2026-10-19T00:00:00Z", "2026-10-19T00:00:01Z",
-            "exported", "1:2:", "18", 180000, "UTF8", emptyMap(), 5, "a".repeat(64),
-            contentInventory = inventory,
-        )
-        val receipt = PostgresBackupReceipt("native", "native-store", "postgresql/native/artifact", manifest)
-        request { transaction {
-            provide<PostgresBackupRunRepository>().complete("native", "observed-token", receipt)
-            provide<PostgresBackupRunRepository>().release("native")
-        } }
-        val value = nativeData(execute("""{ backups { postgresRun(key: "native") { result { manifest {
-            contentInventory { count length sha256 path version }
-        } } } } }""")).getValue("postgresRun").jsonObject.getValue("result").jsonObject
-            .getValue("manifest").jsonObject.getValue("contentInventory").jsonObject
-        assertEquals("4", value.string("count"))
-        assertEquals("100", value.string("length"))
-        assertEquals(inventory.sha256, value.string("sha256"))
-        assertEquals(inventory.path, value.string("path"))
-        assertEquals("1", value.string("version"))
     }
 
     @Test
@@ -151,32 +141,6 @@ class PostgresBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
     }
 
     @Test
-    fun `completed native receipt exposes the exact manifest and retained location`(): Unit = runBlocking {
-        running()
-        val manifest = PostgresBackupManifest("artifact", "source", "database", "2026-10-19T00:00:00Z", "2026-10-19T00:00:01Z",
-            "exported", "1:2:", "18", 180000, "UTF8", mapOf("vector" to "0.8.0"), 5, "a".repeat(64))
-        val receipt = PostgresBackupReceipt("native", "native-store", "postgresql/native/artifact", manifest)
-        request { transaction {
-            provide<PostgresBackupRunRepository>().complete("native", "observed-token", receipt)
-            provide<PostgresBackupRunRepository>().release("native")
-        } }
-        val value = nativeData(execute("""{ backups { postgresRun(key: "native") { status result {
-            key storageKey path contentReportPath manifest { id sourceId database created completed snapshotId snapshot serverVersion serverVersionNumber encoding extensions length sha256 payloadPath version format contentInventory { count } }
-        } } } }""")).getValue("postgresRun").jsonObject
-        assertEquals("COMPLETED", value.string("status"))
-        val result = value.getValue("result").jsonObject
-        assertEquals(receipt.path, result.string("path"))
-        assertEquals(receipt.storageKey, result.string("storageKey"))
-        assertEquals(JsonNull, result.getValue("contentReportPath"))
-        val actual = result.getValue("manifest").jsonObject
-        assertEquals(manifest.id, actual.string("id"))
-        assertEquals(manifest.sha256, actual.string("sha256"))
-        assertEquals("0.8.0", actual.getValue("extensions").jsonObject.string("vector"))
-        assertEquals("5", actual.string("length"))
-        assertEquals(JsonNull, actual.getValue("contentInventory"))
-    }
-
-    @Test
     fun `native administration rejects unauthorized reads and invalid pages`(): Unit = runBlocking {
         prepare()
         val query = """{ backups { postgresRuns(sourceId: "source", storageKey: "native-store") { key } } }"""
@@ -191,4 +155,28 @@ class PostgresBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
         assertFalse("errors" in response, response.toString())
         return response.getValue("data").jsonObject.getValue("backups").jsonObject
     }
+    @Test
+    fun `completed native receipt exposes the exact manifest and retained location`(): Unit = runBlocking {
+        running()
+        val manifest = PostgresBackupManifest("artifact", "source", "database", "2026-10-19T00:00:00Z", "2026-10-19T00:00:01Z",
+            "exported", "1:2:", "18", 180000, "UTF8", mapOf("vector" to "0.8.0"), 5, "a".repeat(64))
+        val receipt = PostgresBackupReceipt("native", "native-store", "postgresql/native/artifact", manifest)
+        request { transaction {
+            provide<PostgresBackupRunRepository>().complete("native", "observed-token", receipt)
+            provide<PostgresBackupRunRepository>().release("native")
+        } }
+        val value = nativeData(execute("""{ backups { postgresRun(key: "native") { status result {
+            key storageKey path manifest { id sourceId database created completed snapshotId snapshot serverVersion serverVersionNumber encoding extensions length sha256 payloadPath version format }
+        } } } }""")).getValue("postgresRun").jsonObject
+        assertEquals("COMPLETED", value.string("status"))
+        val result = value.getValue("result").jsonObject
+        assertEquals(receipt.path, result.string("path"))
+        assertEquals(receipt.storageKey, result.string("storageKey"))
+        val actual = result.getValue("manifest").jsonObject
+        assertEquals(manifest.id, actual.string("id"))
+        assertEquals(manifest.sha256, actual.string("sha256"))
+        assertEquals("0.8.0", actual.getValue("extensions").jsonObject.string("vector"))
+        assertEquals("5", actual.string("length"))
+    }
+
 }

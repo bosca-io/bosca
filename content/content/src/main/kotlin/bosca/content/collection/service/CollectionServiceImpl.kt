@@ -71,7 +71,6 @@ import bosca.content.collaboration.CollaborationParent
 import bosca.content.collaboration.CollaborationRelationship
 import bosca.content.collaboration.Updater
 import bosca.content.model.ContentRelationship
-import bosca.content.model.ContentStorageReference
 import bosca.content.ordering.Ordering
 import bosca.content.recommendation.service.RecommendationContextClassifier
 import bosca.content.transition.history.model.CollectionTransitionHistory
@@ -265,11 +264,6 @@ class CollectionServiceImpl(
         return repository.getDeleted(offset, limit)
     }
 
-    override suspend fun getStorageReferences(offset: Long, limit: Int): List<ContentStorageReference> {
-        require(offset >= 0) { "offset must be nonnegative" }
-        require(limit > 0) { "limit must be positive" }
-        return repository.getStorageReferences(offset, limit)
-    }
 
     override suspend fun addLanguageVariantsToBatch(batch: Batch<CollectionCacheKeyId, List<CollectionLanguageVariant>>) {
         variantLanguageCache.addToBatch(batch)

@@ -18,7 +18,7 @@ interface ObjectBackupRunService : Service {
      * Changed arguments or mappings fail; execution rejects a manifest that changed after selection.
      * Credentials stay in application configuration. Requires no active caller transaction and no access
      * to the source installation. This does not execute or verify the retained payloads; use
-     * [executeConfigured] afterward. Progress must live outside any database being replaced.
+     * [executeConfigured] afterward. Complete database replacement before preparation and keep this progress database stable during execution.
      */
     suspend fun prepareRestoreConfigured(
         requestKey: String,
@@ -66,7 +66,9 @@ interface ObjectBackupRunService : Service {
      * Requires no active caller transaction. Configured runs in this progress database serialize
      * write destinations. The caller pins source revisions, preserves storage accounts and excludes
      * writers that do not participate in these claims, including other progress databases.
-     * This does not dispatch a job.
+     * A successful BACKUP publishes [BackupCompleted] with its completion transaction;
+     * completed backup replays may redispatch it. RESTORE never emits that event.
+     * This does not dispatch an execution job.
      */
     suspend fun executeConfigured(
         key: String,

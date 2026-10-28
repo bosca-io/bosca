@@ -199,7 +199,8 @@ class CoreMigration : Migration {
                 "V196__bible_chapter_audio.sql",
                 "V197__bible_chapter_retention_hours.sql",
                 "V198__bible_fums_tokens.sql",
-                "V199__guide_step_metadata_index.sql"
+                "V199__guide_step_metadata_index.sql",
+                "V200__metadata_version_archives.sql"
             )
             return base
         }

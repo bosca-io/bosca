@@ -221,13 +221,24 @@ class ObjectBackupCaptureServiceImpl(
                 acquired = true
             }
             currentCoroutineContext().ensureActive()
-            return addresses.withStorages(selected) { opened ->
+            val manifest = addresses.withStorages(selected) { opened ->
                 val sources = mapping.stores.mapValues { (_, storageKey) -> opened.getValue(storageKey) }
                 captureInventory(
                     plan.inventory, plan.destinationId, sources, opened.getValue(mapping.backupKey),
                     plan.payloadPrefix, plan.path, verifiedSince,
                 )
             }
+            currentCoroutineContext().ensureActive()
+            withContext(NonCancellable) {
+                withConnectionManager {
+                    transaction {
+                        releaseWriter(key, token)
+                        BackupCompleted(key, BackupType.OBJECTS, mapping.backupKey, plan.path).dispatch()
+                    }
+                }
+                acquired = false
+            }
+            return manifest
         } catch (cause: Throwable) {
             failure = cause
             throw cause
@@ -260,31 +271,13 @@ class ObjectBackupCaptureServiceImpl(
     }
 
     override suspend fun prepareInventory(
-        selection: PostgresBackupContentSelectionSummary,
-        destinationId: String,
-        payloadPrefix: String,
-        manifestPath: String,
-    ): ObjectBackupCapturePlan = prepare(
-        selection.inventory, destinationId, payloadPrefix, manifestPath, selection.counts.toMap(),
-    )
-
-    override suspend fun prepareInventory(
         inventory: ObjectBackupCaptureInventory,
         destinationId: String,
         payloadPrefix: String,
         manifestPath: String,
-    ): ObjectBackupCapturePlan = prepare(inventory, destinationId, payloadPrefix, manifestPath, null)
-
-    private suspend fun prepare(
-        inventory: ObjectBackupCaptureInventory,
-        destinationId: String,
-        payloadPrefix: String,
-        manifestPath: String,
-        contentSelectionCounts: Map<PostgresBackupContentSelectionStatus, Long>?,
     ): ObjectBackupCapturePlan {
         val selected = canonicalSelection(inventory)
-        if (contentSelectionCounts == null) selected.validate()
-        else PostgresBackupContentSelectionSummary(selected, contentSelectionCounts).validate()
+        selected.validate()
         validateOutputPaths(destinationId, payloadPrefix, manifestPath)
         val key = objectBackupIdentity(
             ObjectBackupOperation.BACKUP, listOf(selected.sourceId, destinationId, selected.scope, selected.id),
@@ -292,13 +285,11 @@ class ObjectBackupCaptureServiceImpl(
         return transaction {
             repository.add(ObjectBackupCapturePlan(
                 key, destinationId, selected, payloadPrefix, manifestPath,
-                contentSelectionCounts = contentSelectionCounts,
             ))
             val plan = checkNotNull(repository.get(key)) { "Prepared capture plan is missing: $key" }
             require(
                 plan.destinationId == destinationId && plan.inventory == selected &&
-                    plan.payloadPrefix == payloadPrefix && plan.path == manifestPath &&
-                    plan.contentSelectionCounts == contentSelectionCounts,
+                    plan.payloadPrefix == payloadPrefix && plan.path == manifestPath,
             ) {
                 "Conflicting capture plan intent: $key"
             }

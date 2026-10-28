@@ -6,6 +6,7 @@ import bosca.configuration.service.getValueAs
 import bosca.db.withConnectionManager
 import bosca.di.AIProviderRegistrar
 import bosca.di.BackupProviderRegistrar
+import bosca.di.CoreBackupProviderRegistrar
 import bosca.di.AnalyticsAIProviderRegistrar
 import bosca.di.AnalyticsProviderRegistrar
 import bosca.di.ArtifactsProviderRegistrar
@@ -179,6 +180,7 @@ suspend fun BoscaApplication.module() {
         FeedsProviderRegistrar(),
         ScriptingProviderRegistrar(),
         ScriptingEngineProviderRegistrar(),
+        CoreBackupProviderRegistrar(),
         BackupProviderRegistrar(),
         FormsProviderRegistrar(),
         SegmentationProviderRegistrar(),

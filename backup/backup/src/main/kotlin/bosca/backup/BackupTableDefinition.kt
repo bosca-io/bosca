@@ -6,8 +6,8 @@ package bosca.backup
  * without violating referential integrity constraints.
  *
  * @property name The SQL table name as it appears in the database.
- * @property primaryKeys The column names forming the table's primary key, used
- *   to build ON CONFLICT clauses during restore.
+ * @property primaryKeys The columns of the table's primary or unique identity constraint,
+ *   used to build ON CONFLICT clauses during restore.
  * @property schema The database schema containing this table, defaults to `public`.
  */
 data class BackupTableDefinition(
@@ -119,10 +119,10 @@ object BackupTables {
 
         // Phase 6: Versioned metadata tables
         BackupTableDefinition("metadata_versions", listOf("id", "version")),
-        BackupTableDefinition("metadata_versions_supplementary", listOf("metadata_id", "version", "key")),
+        BackupTableDefinition("metadata_versions_supplementary", listOf("metadata_id", "version", "key", "id")),
         BackupTableDefinition("metadata_version_traits", listOf("metadata_id", "version", "trait_id")),
         BackupTableDefinition("metadata_version_categories", listOf("metadata_id", "version", "category_id")),
-        BackupTableDefinition("metadata_version_supplementary_traits", listOf("metadata_id", "version", "key", "trait_id")),
+        BackupTableDefinition("metadata_version_supplementary_traits", listOf("metadata_id", "version", "key", "id", "trait_id")),
         BackupTableDefinition("metadata_version_profiles", listOf("metadata_id", "version", "profile_id", "relationship")),
 
         // Phase 7: Template and document tables

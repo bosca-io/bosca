@@ -93,6 +93,18 @@ ID and logical-version storage path and uses the item's current access controls.
 History returns the fields it retained. Upload/ready timestamps, ETags and source URL/status
 were not captured and remain null; they are not inferred from the current version.
 
+When a logical version changes, PostgreSQL archives the prior metadata fields and its traits,
+profiles, categories and supplementary records under the prior version. The new version starts
+without those relationships. Supplementary archives retain their IDs, plan/job IDs, attributes
+and upload evidence, so attachments sharing a key remain distinct. Existing archives keep their
+recorded values; missing historical supplementary IDs remain unknown.
+
+Metadata download links include that logical version in their signed query. Both
+`/api/v1/content/metadata/download` and `/content/file` accept an optional positive
+integer `version`; omitting it reads the current item. An absent requested version
+returns 404, and a malformed or nonpositive version returns 400. Changing or removing
+the version invalidates its signature. Existing permission and streaming checks apply.
+
 ## Finding a guide from a step
 
 When a search result contains a step's metadata ID, query `Metadata.parentGuides`

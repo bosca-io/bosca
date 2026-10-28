@@ -1,15 +1,13 @@
 package bosca.backup
 
-import bosca.content.collection.service.CollectionService
-import bosca.content.metadata.service.MetadataService
 import bosca.db.connection
 import bosca.db.connectionOrNull
 import bosca.db.withConnectionManager
 import bosca.di.ObjectProvider
 import bosca.server.BoscaApplication
 import bosca.service.annotation.ServiceImplementation
-import bosca.storage.service.StorageDispatcher
 import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.StorageDispatcher
 import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
@@ -27,221 +25,11 @@ import kotlinx.serialization.builtins.serializer
 @ServiceImplementation
 class PostgresBackupServiceImpl(
     private val application: BoscaApplication,
-    private val metadataService: ObjectProvider<MetadataService>,
-    private val collectionService: ObjectProvider<CollectionService>,
-    private val captureService: ObjectProvider<ObjectBackupCaptureService>,
-    private val restoreService: ObjectProvider<ObjectBackupRestoreService>,
     private val storageService: ObjectProvider<ObjectBackupStorageService>,
 ) : PostgresBackupService {
-    override suspend fun captureContent(
-        sourceId: String,
-        directory: Path,
-        store: String,
-        scope: String,
-        source: ObjectStorageService,
-        destinationId: String,
-        backup: ObjectStorageService,
-        prefix: String,
-        verifiedSince: OffsetDateTime?,
-    ): PostgresBackupContentReport = withContext(StorageDispatcher) {
-        check(connectionOrNull()?.inTransaction != true) { "Content capture must run outside an active caller transaction" }
-        require(listOf(sourceId, store, scope, destinationId).all { it.isNotBlank() }) {
-            "Content capture source, store, scope and destination identities are required"
-        }
-        require(prefix.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
-            "Invalid content capture prefix: $prefix"
-        }
-        require(source !== backup) { "Backup storage must be independent of the source" }
-        val captures = captureService.get()
-        val database = capture(sourceId, directory, includeContentReferences = true)
-        val selection = selectContent(directory, store, scope, source)
-        val plan = withConnectionManager {
-            captures.prepareInventory(selection, destinationId, "$prefix/assets", "$prefix/objects/${database.id}.json")
-        }
-        val databasePath = "$prefix/databases/${database.id}"
-        upload(directory, backup, databasePath)
-        val objects = captures.captureInventory(plan.key, mapOf(store to source), backup, verifiedSince)
-        val file = directory.resolve("content-report.json")
-        var unverified = 0L
-        var firstGap: String? = null
-        writeContentReport(directory, databasePath, objects, requireNotNull(plan.contentSelectionCounts), store, backup, file) { inspection ->
-            if (inspection.reference.uploaded != null && inspection.status != PostgresBackupContentStatus.VERIFIED) {
-                unverified++
-                if (firstGap == null) {
-                    firstGap = "${inspection.reference.kind} ${inspection.reference.contentId}, " +
-                        "path ${inspection.path ?: "unresolved"}: ${inspection.status}"
-                }
-            }
-        }
-        val reportPath = "$prefix/reports/${database.id}"
-        val report = uploadContentReport(file, backup, reportPath)
-        check(unverified == 0L) {
-            "$unverified uploaded content references are not verified; first: $firstGap; retained report: $reportPath"
-        }
-        report
-    }
-
-    override suspend fun selectContent(
-        directory: Path,
-        store: String,
-        scope: String,
-        source: ObjectStorageService,
-        onReference: suspend (PostgresBackupContentSelection) -> Unit,
-    ): PostgresBackupContentSelectionSummary = withContext(StorageDispatcher) {
-        check(connectionOrNull()?.inTransaction != true) { "Content selection must run outside an active caller transaction" }
-        require(store.isNotBlank() && scope.isNotBlank()) { "Content selection store and scope are required" }
-        val database = verify(directory)
-        requireNotNull(database.contentInventory) { "Database artifact has no content-reference inventory" }
-        PostgresBackupContentSelector(application.json).select(directory, database, store, scope, source, onReference)
-    }
-
-    override suspend fun inspectContent(
-        directory: Path,
-        objects: ObjectBackupManifest,
-        store: String,
-        backup: ObjectStorageService,
-        onReference: suspend (PostgresBackupContentInspection) -> Unit,
-    ): PostgresBackupContentInspectionSummary = withContext(StorageDispatcher) {
-        check(connectionOrNull()?.inTransaction != true) { "Content inspection must run outside an active caller transaction" }
-        require(store.isNotBlank()) { "Content inspection store is required" }
-        val selected = objects.copy(objects = objects.objects.toList()).also { it.validate() }
-        val database = verify(directory)
-        require(database.sourceId == selected.sourceId) { "Database and object backup source identities differ" }
-        requireNotNull(database.contentInventory) { "Database artifact has no content-reference inventory" }
-        PostgresBackupContentInspector(application.json).inspect(directory, database, selected, store, backup, onReference)
-    }
-
-    override suspend fun writeContentReport(
-        directory: Path,
-        databasePath: String,
-        objects: ObjectBackupManifest,
-        selectionCounts: Map<PostgresBackupContentSelectionStatus, Long>,
-        store: String,
-        backup: ObjectStorageService,
-        output: Path,
-        onReference: suspend (PostgresBackupContentInspection) -> Unit,
-    ): PostgresBackupContentReport = withContext(StorageDispatcher) {
-        check(connectionOrNull()?.inTransaction != true) { "Content report must run outside an active caller transaction" }
-        require(store.isNotBlank()) { "Content report store is required" }
-        val selected = objects.copy(objects = objects.objects.toList()).also { it.validate() }
-        val counts = selectionCounts.toMap()
-        val file = PostgresBackupContentReportFile(application.json)
-        val destination = file.destination(output)
-        val retained = PostgresBackupArtifactStore(backup, application.json, databasePath)
-        val database = verify(directory)
-        requireNotNull(database.contentInventory) { "Database artifact has no content-reference inventory" }
-        require(database.id == selected.id && database.sourceId == selected.sourceId) {
-            "Database and content capture identities differ"
-        }
-        require(selected.objects.all { it.store == store }) { "Report requires one matching logical content store" }
-        retained.verify(database)
-        val inspection = PostgresBackupContentInspector(application.json)
-            .inspect(directory, database, selected, store, backup, onReference)
-        val report = PostgresBackupContentReport(databasePath, database, selected, counts, inspection)
-        file.write(destination, report)
-        report
-    }
-
-    override suspend fun readContentReport(file: Path): PostgresBackupContentReport = withContext(StorageDispatcher) {
-        PostgresBackupContentReportFile(application.json).read(file)
-    }
-
-    override suspend fun uploadContentReport(
-        file: Path,
-        backup: ObjectStorageService,
-        prefix: String,
-    ): PostgresBackupContentReport = withContext(StorageDispatcher) {
-        check(connectionOrNull()?.inTransaction != true) { "Content report upload must run outside an active caller transaction" }
-        val retained = PostgresBackupContentReportStore(backup, application.json, prefix)
-        retained.upload(PostgresBackupContentReportFile(application.json).read(file))
-    }
-
-    override suspend fun downloadContentReport(
-        backup: ObjectStorageService,
-        prefix: String,
-        file: Path,
-    ): PostgresBackupContentReport = withContext(StorageDispatcher) {
-        check(connectionOrNull()?.inTransaction != true) { "Content report download must run outside an active caller transaction" }
-        val local = PostgresBackupContentReportFile(application.json)
-        val destination = local.destination(file)
-        val report = PostgresBackupContentReportStore(backup, application.json, prefix).load()
-        local.write(destination, report)
-        report
-    }
-
     override suspend fun preflightRestore(directory: Path): PostgresBackupManifest = withContext(StorageDispatcher) {
         check(connectionOrNull()?.inTransaction != true) { "PostgreSQL restore preflight must run outside an active caller transaction" }
         PostgresBackupRestore(application).preflight(verify(directory))
-    }
-
-    override suspend fun restoreContent(
-        directory: Path,
-        report: PostgresBackupContentReport,
-        backup: ObjectStorageService,
-        destination: ObjectStorageService,
-        destinationId: String,
-    ): PostgresBackupManifest = withContext(StorageDispatcher) {
-        check(connectionOrNull()?.inTransaction != true) { "Content restore must run outside an active caller transaction" }
-        require(destinationId.isNotBlank()) { "Content restore destination identity is required" }
-        require(backup !== destination) { "Backup storage must be independent of the restore destination" }
-        report.validate()
-        val database = verify(directory)
-        require(database == report.database) { "Local database artifact does not match the selected content report" }
-        checkPostgresBackupKeys(database, application.environment.config)
-        val objects = report.objects.copy(objects = report.objects.objects.toList())
-        val store = report.inspection.store
-        var unverified = 0L
-        var firstGap: String? = null
-        PostgresBackupContentInspector(application.json).inspect(directory, database, objects, store, backup) { inspection ->
-            if (inspection.status != PostgresBackupContentStatus.VERIFIED) {
-                unverified++
-                if (firstGap == null) {
-                    firstGap = "${inspection.reference.kind} ${inspection.reference.contentId}, " +
-                        "path ${inspection.path ?: "unresolved"}: ${inspection.status}"
-                }
-            }
-        }
-        check(unverified == 0L) { "$unverified saved content references are not fully verified; first: $firstGap" }
-
-        val restores = restoreService.get()
-        val targets = mapOf(store to destination)
-        val inspection = restores.inspect(objects, backup, targets, destinationId)
-        for (item in inspection.objects) {
-            check(item.status != ObjectBackupRestoreObjectStatus.CONFLICTING) {
-                "Existing destination object conflicts with restore: ${item.payload.store}/${item.payload.key}"
-            }
-        }
-        val native = PostgresBackupRestore(application)
-        native.preflight(database)
-        restores.restore(objects, backup, targets, destinationId)
-        check(verify(directory) == database) { "Local database artifact changed during content restore" }
-        native.restore(directory, database)
-    }
-
-    override suspend fun restoreContentConfigured(
-        reportPath: String,
-        backupStorageKey: String,
-        destinationStorageKey: String,
-    ): PostgresBackupManifest = withContext(StorageDispatcher) {
-        check(connectionOrNull()?.inTransaction != true) { "Configured content restore must run outside an active caller transaction" }
-        require(reportPath.isNotBlank() && reportPath.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
-            "Content report path must be a canonical relative prefix"
-        }
-        require(backupStorageKey.isNotBlank() && destinationStorageKey.isNotBlank() && backupStorageKey != destinationStorageKey) {
-            "Distinct backup and restore storage identities are required"
-        }
-        val storage = storageService.get()
-        val configurations = storage.configurations(setOf(backupStorageKey, destinationStorageKey))
-        withRestoreScratch { scratch ->
-            val directory = scratch.resolve("database")
-            val reportFile = scratch.resolve("report.json")
-            storage.withStorages(configurations) { stores ->
-                val backup = stores.getValue(backupStorageKey)
-                val report = downloadContentReport(backup, reportPath, reportFile)
-                download(backup, report.databasePath, directory)
-                restoreContent(directory, report, backup, stores.getValue(destinationStorageKey), destinationStorageKey)
-            }
-        }
     }
 
     override suspend fun restoreConfigured(path: String, backupStorageKey: String): PostgresBackupManifest = withContext(StorageDispatcher) {
@@ -268,7 +56,6 @@ class PostgresBackupServiceImpl(
         val scratch = if (parent == null) Files.createTempDirectory("postgres-restore-")
             else Files.createTempDirectory(Path.of(parent), "postgres-restore-")
         val directory = scratch.resolve("database")
-        val reportFile = scratch.resolve("report.json")
         var failure: Throwable? = null
         try {
             return block(scratch)
@@ -280,12 +67,10 @@ class PostgresBackupServiceImpl(
                 try {
                     for (name in listOf(
                         "database.dump", "database.dump.tmp", "manifest.json", "manifest.json.tmp",
-                        "content-references.json", "content-references.json.tmp",
                     )) {
                         Files.deleteIfExists(directory.resolve(name))
                     }
                     Files.deleteIfExists(directory)
-                    Files.deleteIfExists(reportFile)
                     Files.delete(scratch)
                 } catch (cleanup: Throwable) {
                     failure?.addSuppressed(cleanup) ?: throw cleanup
@@ -321,8 +106,6 @@ class PostgresBackupServiceImpl(
     override suspend fun capture(
         sourceId: String,
         directory: Path,
-        includeContentReferences: Boolean,
-        onSnapshot: suspend () -> Unit,
     ): PostgresBackupManifest = withContext(StorageDispatcher) {
         check(connectionOrNull()?.inTransaction != true) { "PostgreSQL capture must run outside an active caller transaction" }
         require(sourceId.isNotBlank()) { "PostgreSQL backup source identity is required" }
@@ -372,12 +155,6 @@ class PostgresBackupServiceImpl(
                     }
                     currentCoroutineContext().ensureActive()
                     val requiredKeys = postgresBackupRequiredKeys()
-                    val inventory = if (includeContentReferences) {
-                        PostgresBackupContentInventoryFile(application.json).write(
-                            destination, metadataService.get(), collectionService.get(),
-                        )
-                    } else null
-                    onSnapshot()
                     currentCoroutineContext().ensureActive()
                     runDump(executable, service, serviceFile, metadata.snapshotId, dump, destination.resolve("pg_dump.stderr"))
                     val completed = connection.useStatement("select clock_timestamp()") { statement ->
@@ -386,7 +163,7 @@ class PostgresBackupServiceImpl(
                             rows.getObject(1, OffsetDateTime::class.java).toInstant().toString()
                         }
                     }
-                    metadata.copy(completed = completed, contentInventory = inventory, requiredKeys = requiredKeys)
+                    metadata.copy(completed = completed, requiredKeys = requiredKeys)
                 } catch (error: Throwable) {
                     snapshotFailure = error
                     throw error
@@ -404,9 +181,6 @@ class PostgresBackupServiceImpl(
             val manifest = boundary.copy(length = length, sha256 = digest)
             manifest.validate()
             Files.move(dump, destination.resolve(manifest.payloadPath))
-            manifest.contentInventory?.let { inventory ->
-                Files.move(destination.resolve("${inventory.path}.tmp"), destination.resolve(inventory.path))
-            }
             val manifestFile = destination.resolve("manifest.json.tmp")
             Files.writeString(manifestFile, application.json.encodeToString(PostgresBackupManifest.serializer(), manifest))
             currentCoroutineContext().ensureActive()
@@ -421,7 +195,6 @@ class PostgresBackupServiceImpl(
                 try {
                     for (name in listOf(
                         "database.dump.tmp", "database.dump", "pg_dump.stderr",
-                        "content-references.json.tmp", "content-references.json",
                         "manifest.json.tmp", "manifest.json",
                     )) {
                         Files.deleteIfExists(destination.resolve(name))
@@ -445,7 +218,6 @@ class PostgresBackupServiceImpl(
         val actual = digest(dump, manifest.length)
         if (actual != manifest.sha256) throw BackupPayloadMismatchException("PostgreSQL dump SHA-256 mismatch")
         requireNativePostgresDump(dump)
-        manifest.contentInventory?.let { PostgresBackupContentInventoryFile(application.json).verify(directory, it) }
         manifest
     }
 

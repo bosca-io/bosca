@@ -31,9 +31,9 @@ class BackupPostgresListCommand : BackupRemoteCommand(name = "list") {
         } else if (runs.isEmpty()) {
             echo("No native backup requests found.")
         } else {
-            echo("REQUEST\tSTATUS\tATTEMPTS\tMODIFIED\tCONTENT REPORT")
+            echo("REQUEST\tSTATUS\tATTEMPTS\tMODIFIED\tDATABASE ARTIFACT")
             for (run in runs) {
-                echo("${run.key}\t${run.status}\t${run.attempts}\t${run.modified}\t${run.result?.contentReportPath ?: "-"}")
+                echo("${run.key}\t${run.status}\t${run.attempts}\t${run.modified}\t${run.result?.path ?: "-"}")
             }
         }
     }

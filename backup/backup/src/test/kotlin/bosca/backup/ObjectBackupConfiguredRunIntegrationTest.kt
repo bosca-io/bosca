@@ -592,6 +592,18 @@ class ObjectBackupConfiguredRunIntegrationTest {
         assertEquals(listOf("source-artifacts"), closed)
     }
 
+    @Test
+    fun `completed configured backup redispatches its location without reopening stores`(): Unit = runBlocking {
+        val events = BackupEventTestDispatcher()
+        provides<bosca.pipelines.PipelineEventDispatcher>(singleton = true) { events }
+        val run = configureBackup()
+        val completed = runs.executeConfigured(run.key, configurations)
+        val event = BackupCompleted(run.key, BackupType.OBJECTS, "retained", run.path)
+        assertEquals(listOf(event), events.events)
+        assertEquals(completed, runs.executeConfigured(run.key, emptyMap()))
+        assertEquals(listOf(event, event), events.events)
+    }
+
     private suspend fun prepare(selected: ObjectBackupManifest = inventory): ObjectBackupRun =
         request { runs.prepare(selected, "retained") }
 

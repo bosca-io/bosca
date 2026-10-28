@@ -1,5 +1,6 @@
 plugins {
     id("org.jetbrains.kotlin.jvm")
+    alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.kotlin.plugin.serialization)
 }
 
@@ -12,7 +13,15 @@ java {
 dependencies {
     api(project(":bosca-core:core"))
     api(project(":bosca-core:core-storage"))
-    api(project(":content:core-content"))
+    implementation(project(":bosca-core:core-events"))
+
+    "ksp"(project(":bosca-core:core-ksp"))
+    "ksp"(project(":services-di:service-ksp"))
+    "ksp"(project(":services-di:di-ksp"))
 
     testImplementation(libs.kotlin.test.junit)
+}
+
+ksp {
+    arg("ProviderRegistrarPrefix", "CoreBackup")
 }

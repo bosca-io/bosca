@@ -126,8 +126,13 @@ bosca --profile source backup postgres get --key nightly-1 --json
 
 These queries require backup administration access. `list` reads one exact source/storage scope
 with offset pagination (default 20, maximum 100). `get` includes recorded errors and retained
-database/content-report locations. Both support the usual authentication and endpoint overrides.
+database artifact locations. Both support the usual authentication and endpoint overrides.
 `--json` writes structured state to stdout and notices to stderr.
+
+`get` shows recorded encryption-key names and the
+tables that require them. Native request JSON includes the manifest's `requiredKeys` map, including
+an empty map when none were recorded. These reads do not look up keys or verify decryption.
+Native request queries require a server exposing `PostgresBackupManifest.requiredKeys`.
 
 A query can return a `FAILED` backup with exit status `0`: the status describes the saved request.
 Query errors and missing requests exit `1`; an unknown `get --json` result is `null`.
@@ -187,8 +192,9 @@ instance and its credentials are unnecessary. `--json` returns the saved run.
 Reuse `--request` to retrieve the same prepared intent and historical outcome, including after a
 lost response. Changing its destination, backup ID, manifest path or mappings fails. A new request
 key prepares a distinct run. Preparation does not re-audit a replayed run; execution verifies the
-retained manifest and bytes. Keep retained data immutable, targets isolated, and progress outside
-any application database being replaced. This operation prepares only the declared object restore;
+retained manifest and required payloads. Matching target files are reused, and changed selected files
+are replaced. Keep retained data immutable and targets isolated. Complete database replacement before
+preparing object recovery; keep its progress database stable during the restore attempt. This operation prepares only the declared object restore;
 PostgreSQL, deployment configuration and keys need their own recovery steps.
 
 Control an existing object run with the exact version returned by preparation or `get`:
@@ -210,21 +216,8 @@ administration authorization. Stale versions, incompatible states and API failur
 The CLI does not fetch a newer version or issue a followup action automatically. A failed API
 response can follow a committed change; inspect the run before choosing the next action.
 
-Inspect a downloaded PostgreSQL/content report without connecting to a Bosca instance:
-
-```bash
-bosca backup inspect --report ./content-report.json
-bosca backup inspect --report ./content-report.json --json
-```
-
-The command validates the portable report and shows its database artifact location, identity,
-declared assets and recorded reference outcomes. It requires no profile or authentication and
-leaves local files unchanged. `--json` emits the complete report on stdout; notices go to stderr.
-
-Exit status `0` means every reference was recorded as `VERIFIED`, `2` means recorded inspection
-gaps remain, and `1` indicates unreadable or invalid input. Selection outcomes are shown separately.
-These are recorded results: the command does not contact storage, verify current payload bytes,
-check destination compatibility or establish that the backup is ready to restore.
+Recover PostgreSQL first using the deployment's CloudNativePG or PostgreSQL tooling, then
+prepare and dispatch object recovery. See the [backup runbook](../backup/README.md).
 
 ## Analytics
 

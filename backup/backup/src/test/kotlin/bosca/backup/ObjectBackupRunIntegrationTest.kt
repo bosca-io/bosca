@@ -553,6 +553,33 @@ class ObjectBackupRunIntegrationTest {
         assertTrue(request { service.items(completed.key, 0, 10) }.isEmpty())
     }
 
+    @Test
+    fun `successful object run emits its published manifest and completed replay emits again`(): Unit = runBlocking {
+        val events = BackupEventTestDispatcher()
+        provides<bosca.pipelines.PipelineEventDispatcher>(singleton = true) { events }
+        val prepared = request { service.prepare(inventory, "retained") }
+        events.beforeDispatch = { event ->
+            assertEquals(ObjectBackupRunStatus.COMPLETED, service.get(event.key)?.status)
+            assertEquals(inventory, ObjectBackupManifestStore(destination, Json).load(StringObjectPath(event.path)))
+        }
+        execute(prepared)
+        val event = BackupCompleted(prepared.key, BackupType.OBJECTS, "retained", prepared.path)
+        assertEquals(listOf(event), events.events)
+        execute(prepared)
+        assertEquals(listOf(event, event), events.events)
+    }
+
+    @Test
+    fun `failed object transfer emits no completion event`(): Unit = runBlocking {
+        val events = BackupEventTestDispatcher()
+        provides<bosca.pipelines.PipelineEventDispatcher>(singleton = true) { events }
+        val prepared = request { service.prepare(inventory, "retained") }
+        val failing = delegatingDestination { throw IOException("upload failed") }
+        assertFailsWith<IOException> { execute(prepared, target = failing) }
+        assertTrue(events.events.isEmpty())
+        assertEquals(ObjectBackupRunStatus.FAILED, request { service.get(prepared.key) }?.status)
+    }
+
     private suspend fun execute(
         run: ObjectBackupRun,
         origin: ObjectStorageService = source,

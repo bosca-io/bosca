@@ -1,783 +1,80 @@
-# bosca-backup
-
-Content backup and restore service for the Bosca platform. Provides table-level backup with manifest tracking, conflict resolution strategies, and GraphQL administration for managing backup and restore jobs. Handles PostgreSQL database content backup with configurable table definitions and restore execution.
-
-## Prerequisites
-
-- JDK 25
-
-## Build
-
-Run these commands from the **workspace root**. `backup` is part of the root Gradle build, and its dependency versions live in [gradle/libs.versions.toml](../gradle/libs.versions.toml). Local `io.bosca:*` dependencies resolve to sibling projects without publishing.
-
-```bash
-./gradlew :backup:core-backup:test :backup:backup:test  # Test contracts, backup and restore
-```
-
-## Recurring object-storage backups
-
-Object capture supports ordinary unversioned S3-compatible and filesystem storage. Existing
-metadata IDs, collection IDs and supplementary paths remain unchanged. Capture records source
-change observations and verified retained bytes in backup data; it adds no content-location fields
-and requires no provider versioning. Native database and asset capture can run together with
-retained evidence reports; complete recovery-point classification remains separate.
-
-The **Back Up Object Storage** Pipeline action (`objectBackup.backup`) discovers source
-objects, saves their observed metadata, and runs the incremental capture service.
-It does not require a manually prepared inventory. Use the existing Pipeline schedules to
-choose when it runs; the action installs no schedule and starts no production backup.
-
-Configure independent source and backup IDs under `backup.objectStores`. In the action,
-set a stable source identity, backup scope and destination storage ID. The **Source stores**
-JSON setting maps logical names to configured IDs and literal prefixes, for example:
-
-```json
-{
-  "content": { "storageKey": "source-content", "prefix": "" }
-}
-```
-
-An empty prefix observes the whole configured source namespace. Include every namespace
-needed for the declared scope. Keep the Pipeline's standard Input node, add this action,
-and connect its manifest output to Output. Its optional `verifiedSince` input overrides
-the checksum recheck setting; it can remain unconnected.
-
-Each new backing job creates a distinct inventory and manifest. Retries of that job reuse
-its saved selection and configured capture claim after worker restart. Completed object
-checkpoints keep their verified payloads; interrupted repairs retry from their saved intent.
-Other jobs continue to wait on that destination through the existing queue retry path.
-A changed unversioned object that has not yet been
-copied fails that selection; a new run observes its current contents.
-Discovery uses offset listing and per-object metadata requests without downloading asset
-bodies. Capture reads only new, changed or unfinished source objects; verified unchanged
-payloads retain their existing paths. Older manifests and payloads remain available.
-
-Ordinary runs compare retained metadata with the observation recorded at the last full
-checksum check. Unchanged objects need no asset-body reads at either end. Metadata checks
-preserve the recorded checksum time; they do not count as another integrity check.
-
-Set **Checksum recheck interval (days)** to require full reads once that check is too old.
-Omitting it uses metadata checks until an explicit integrity check. The cutoff derives from
-the Pipeline's saved run time, so a delayed retry does not move it. New copies and restores
-always verify full lengths and SHA-256 digests. Storage without a useful change observation
-still requires full reads.
-
-Unversioned source changes are observed through length, opaque entity tags and modification
-times. An entity tag or modification time is required for incremental selection. Capture checks
-the saved observation before and after ordinary object reads, hashes the actual bytes, and
-verifies the retained copy. Reported changes or disappearance fail capture; changed bytes cannot
-repair an older payload with a different digest. Metadata observations are not immutable source
-versions or content hashes. Available retained provider versions are read directly.
-
-This has been exercised with signed S3 SDK calls against an isolated local endpoint and with
-filesystem storage, not a live Spaces installation. Source writes continue. Metadata checks and
-pagination do not establish an atomic point-in-time snapshot or prove PostgreSQL recovery coverage.
-It does not infer source deletions, remove retained payloads, or copy Bosca database content
-between instances. Exact database/object reference association and retention remain open work.
-
-## Restore object-storage backups
-
-The **Restore Object Backup** Pipeline action (`objectBackup.restore`) reads a retained
-manifest and restores its declared objects to their original keys in configured target
-stores. Configure the independent backup and targets under `backup.objectStores`; the
-source instance, source credentials and source storage configuration are not needed.
-
-Set the action's **Backup storage ID**, **Restore destination identity** and **Target stores**
-JSON mapping. Every logical store in the manifest needs a target, for example:
-
-```json
-{
-  "content": "recovered-content",
-  "artifacts": "recovered-artifacts"
-}
-```
-
-Feed the relative saved manifest path into `manifestPath`. For a JSON Pipeline input,
-connect Input through **To String** to that port, then connect the restored manifest output
-to Output. The action emits a manifest only after the object restore run completes.
-
-Preparation validates the selected addresses, reads only manifest metadata and saves the
-fixed inventory and target mapping atomically. The first selected inventory remains bound
-to that backing job and node across retries. A changed file at the manifest path cannot
-silently select a different snapshot: execution compares it with the prepared inventory.
-No target store is opened during preparation. Credentials remain in runtime configuration.
-
-Execution uses the existing restore service: it verifies retained lengths and SHA-256
-digests, rejects conflicting target data before asset writes, and reuses matching objects.
-A recorded partial failure can retry after service restart without rewriting completed
-objects. Redelivery of an interrupted backing job resumes its saved running inventory and
-object checkpoints, without rewriting completed targets. Redelivery of the same completed
-request returns its historical result without storage work. A fresh request creates a distinct
-run that verifies current targets again,
-reuses matching files and repairs missing owned output through the shared checkpoints.
-Cancelled runs need the existing explicit retry control. A different job or a call without
-the original job checkpoint cannot resume a surviving running writer. The Pipeline action does not report
-cancelled/incomplete outcomes as successful.
-
-`ObjectBackupRestoreService.inspect(inventory, backup, targets, destinationId)` also accepts
-the `objects` inventory embedded in a retained content report. It verifies retained bytes and
-reports current target conflicts/progress without writing assets, intent or checkpoints; no
-separate object manifest file is needed. Use it with `PostgresBackupService.preflightRestore`
-on the downloaded database artifact to check both destinations before recovery writes.
-Both restore operations repeat their checks. Keep targets isolated and backup data immutable;
-these checks reserve nothing and leave the report's content-reference coverage gaps explicit.
-
-Dispatched inventory backups and restores bind their checkpoint to the original job and requested
-run version. A redelivery advances the run version so an older completion cannot release its
-destination claims. An explicit retry needs a new dispatch version; an old delivery cannot
-resume it. Queue execution serializes deliveries; direct service callers must do the same
-when supplying a job checkpoint. Other writers retain their claims.
-
-Use isolated target namespaces and keep restore progress outside any application database
-being replaced. This action restores the declared objects only. PostgreSQL restoration,
-matching database/object recovery points, deployment configuration, keys and whole-instance
-recovery remain separate work. The local integration test captures through signed S3 SDK
-reads, stops the source server, removes its catalog entry and restores through real queued
-Pipeline jobs into independent files. Live cloud-provider and Kubernetes-cluster recovery
-have not been exercised.
-
-## Back up PostgreSQL through Pipelines
-
-The **Back Up PostgreSQL** action (`postgresBackup.backup`) captures the configured primary
-database and retains its verified native artifact in one queued operation. Set **Source identity**,
-**Backup storage ID** (an entry under `backup.objectStores`) and **Backup prefix**. Keep the
-Pipeline's Input node, connect the action's receipt output to Output, and use the existing
-Pipeline run/schedule controls. No new schedule is installed.
-
-Enable **Include content references** to retain `content-references.json` from the same
-exported database view as the dump. The option defaults to false and is saved as fixed
-request intent, so retries and receipt replay cannot change it. It requires Bosca's content
-schema and services. This saves reference evidence; it does not copy the referenced assets.
-
-To copy referenced assets too, set **Content source** to JSON identifying the logical store,
-configured source storage ID and backup scope:
-
-```json
-{ "store": "content", "storageKey": "source-content", "scope": "snapshots" }
-```
-
-This mode includes content references automatically and retains a content evidence report.
-Leave the setting empty for database-only capture. Use the same source identity, logical store,
-backup destination and scope as recurring object backups to reuse their verified payloads.
-Both stores must be configured under `backup.objectStores`, with an independent backup destination.
-Source writes continue; report gaps remain explicit, and a completed request does not declare
-a complete database/object recovery point.
-
-Every saved reference with an upload timestamp must have a verified retained asset, including
-soft-deleted content and supplementary files. Missing, unresolved, ambiguous, length-mismatched
-or corrupt uploaded references fail the combined backup without a receipt or successful Pipeline
-output. The error includes the retained diagnostic report path and the first affected reference.
-The report and captured data remain available; both stores close and owned scratch is cleaned.
-Ordinary Pipeline retry takes a fresh database point and reuses already verified assets.
-The check runs on new capture attempts. Replaying a completed request still returns its
-historical receipt without inspecting retained storage again.
-
-Documents, document-backed guide steps/modules, data, guides and their templates retain their
-content in PostgreSQL. This includes document, data, guide and collection templates. When the exact
-ID/version has its corresponding content row and no binary upload or length is declared, its primary
-needs no object payload. Attachments still use object backup. Missing backing rows and other kinds
-without upload evidence remain explicit gaps; a `bosca/*` content type alone does not exclude a file.
-
-References without upload evidence remain explicit in the report. This includes pending uploads
-and historical metadata whose schema did not save an upload timestamp. They are not declared
-optional or covered. The uploaded-reference check does not prove complete asset coverage or
-that the copied bytes match one database transaction.
-
-Configure `backup.postgres.service` for that same primary database as described below. The
-server and runner images provide PostgreSQL 18 clients. Optional `backup.postgres.scratchDirectory`
-selects an existing writable parent directory; otherwise the Java temporary directory is used.
-Each attempt needs local space for one database dump. It does not need shared scratch between
-workers or ReadWriteMany storage.
-
-A backing job and node identify one fixed request. Its source identity, storage ID, prefix,
-content-reference selection and content-source binding cannot change on retry. A completed
-request returns its receipt without another dump or object-store access; its journal database
-must still be available. A new Pipeline run creates a new request. An unfinished attempt may capture a **new point in time** when retried on any
-worker. The successful receipt records that attempt's actual database boundary, byte identity
-and retained location. It never reports an abandoned attempt's boundary as completed.
-
-Database-only artifacts use a new `<prefix>/<requestKey>/<attemptId>` directory containing `intent.json`,
-`database.dump`, an optional `content-references.json` and, after retained verification,
-`manifest.json`. The receipt's `path` selects that directory for `PostgresBackupService.download`.
-Combined capture uses the same attempt prefix with separate database, asset and report paths.
-Its receipt's `contentReportPath` retrieves the retained report through `downloadContentReport`;
-the report includes the object manifest and inspection gaps. Native-only receipts omit that path.
-Local scratch is removed on ordinary exit or cancellation. Incomplete remote attempts remain
-untouched and need explicit retention cleanup;
-a process crash may also leave local scratch. A receipt is recorded only after storage closes.
-Ordinary retries belong to Pipelines. A completed receipt records the successful attempt's outcome,
-not a continuing audit of retained storage health.
-
-Native requests share destination ownership with configured object backups, object restores and
-capture plans. Contention fails without taking over another writer. Redelivery of the same backing
-job and node resumes its own request, rotates the execution token and starts an independent capture.
-An old acknowledgement cannot publish a receipt or release the replacement's destination claim.
-Other jobs and unqueued calls cannot adopt that running request. Queue execution serializes deliveries;
-direct service callers supplying a job checkpoint must do the same.
-
-Unqueued requests and writers created without a job checkpoint retain their claim after process death.
-An administrator must establish that the process and storage writer stopped before explicit recovery.
-Inspect the request through the existing backup administration namespace:
-
-```graphql
-query {
-  backups {
-    postgresRun(key: "request-key") {
-      key status attempts error writerToken
-      result { storageKey path manifest { created completed length sha256 } }
-    }
-    postgresRuns(sourceId: "instance", storageKey: "retained", offset: 0, limit: 20) {
-      key status
-    }
-  }
-}
-```
-
-After stopping the observed writer, recover its exact token with
-`backups { recoverPostgresRun(key: ..., expectedToken: ...) { key status } }` in a mutation,
-then use the Pipeline's retry control. Tokens do not expire or authorize live-writer takeover.
-All these operations require backup administration access. Runtime credentials stay in
-configuration, outside job definitions and run records.
-
-This action captures database state, optional reference evidence and optional referenced assets.
-Matching database/object recovery points, protected retention and keys, full-instance restore
-and deployment rebinding remain separate work.
-
-## Restore native PostgreSQL backups through Pipelines
-
-The **Restore PostgreSQL** action (`postgresBackup.restore`) restores a retained native database
-artifact into an empty target. Set **Backup storage ID** to an entry under `backup.objectStores`
-and configure the database under `backup.postgres.restore` as described below.
-
-Feed the database directory from a backup receipt's `path` into the action's `path` input. For
-a JSON Pipeline input, connect Input through **To String** to that port, then connect the restored
-manifest output to Output. The action verifies the downloaded components, runs the existing native
-preflight and transactional restore, closes backup storage and removes owned scratch before emitting
-the manifest. Preview records the selection without running recovery.
-
-Run from a recovery instance with a journal outside the offline target database. Keep retained
-input immutable and exclude other target writers. The source database, capture configuration,
-capture tools and original local files are unnecessary. A declared reference inventory is verified
-with the artifact; object assets have their own restore step. The action below restores a database
-and the assets selected by a content report together.
-
-A native acknowledgement or later close/cleanup failure can follow a committed database. Inspect
-the target before retrying; populated targets remain blocked. The action does not reconcile that
-commit or replay a completed restore request. Key identity, deployment configuration, activation
-and full recovery-point classification remain separate.
-
-## Restore PostgreSQL and content through Pipelines
-
-The **Restore PostgreSQL and Content** action (`postgresBackup.restoreContent`) reads a retained
-content report, verifies its database artifact and declared assets, and restores them through
-the existing configured recovery service. Set **Backup storage ID** and **Target content storage ID**
-to independent entries under `backup.objectStores`. Configure the empty database target under
-`backup.postgres.restore` as described below.
-
-Feed the retained report directory from a backup receipt's `contentReportPath` into `reportPath`.
-For a JSON Pipeline input, connect Input through **To String** to that port, then connect the
-restored manifest output to Output. The action emits the native manifest only after the service
-returns successfully, including store closure and scratch cleanup. Preview records the selection
-without running recovery.
-
-Run this from a recovery instance whose journal is outside the database being restored. Keep
-the target application and other destination writers stopped, the target stores isolated, and
-retained input immutable. The source database, source assets and capture configuration are unnecessary.
-The queued action retains the caller's identity and requires backup administration access.
-
-Ordinary Pipeline retries can reuse completed asset checkpoints after a partial transfer or a
-rolled-back database restore. This action does not reconcile a lost native acknowledgement or replay
-a completed restore request. A native acknowledgement, store-close or cleanup failure can follow a
-committed database; inspect that target before retrying. A populated target remains blocked.
-Key identity, deployment rebinding, application activation and full recovery-point classification
-remain separate from restoration of these selected components.
-
-## Native PostgreSQL database artifacts
-
-`PostgresBackupRunService.backupContentConfigured` runs combined capture using
-`backup.objectStores` IDs and the existing PostgreSQL request journal:
-
-```kotlin
-val source = PostgresBackupContentSource("content", "content", "snapshots")
-val receipt = runs.backupContentConfigured("snapshot-request", "instance", source, "retained", "snapshots")
-```
-
-The logical store, source storage ID and scope are saved as fixed request intent. Match the
-source identity, logical store, destination ID and scope used by recurring capture to reuse its
-verified asset checkpoints. Both storage addresses are bound before opening either store; the
-backup destination must be independent.
-The existing destination claim covers the whole attempt. Stores close and local scratch is
-cleaned before a receipt is recorded. `receipt.path` downloads the native artifact, while
-`receipt.contentReportPath` retrieves the retained content report. Report gaps remain explicit;
-completed request status does not declare a complete database/object recovery point.
-
-A matching completed request replays from the journal without source configuration or storage
-access. An unfinished retry captures a fresh database point and can reuse verified assets from
-an earlier attempt. Retained attempts remain untouched, including payloads reused by later
-reports. Source binding/scope or native-only mode cannot change on replay. Queued callers can
-pass their stable checkpoint identity to resume their own interrupted request using the existing
-token fencing; unqueued writers retain explicit stopped-writer recovery. After reclaiming the
-destination, a retry recovers interrupted object checkpoints in its fixed source, destination,
-scope and logical store, allowing repairs to restart while rejecting stale acknowledgements.
-Completed checkpoints and other stores remain unchanged. Exclude external destination writers
-before resuming a stopped request. The PostgreSQL Pipeline action uses this operation when
-its optional content source is set; otherwise it uses the database-only entry point.
-
-`PostgresBackupService.captureContent` combines native capture, saved-reference selection,
-incremental asset capture and retained evidence reporting for one logical content store.
-Supply a new local directory, source identity, store/scope, caller-owned source and independent
-backup stores, a stable backup destination ID and a relative output prefix. It uses the existing
-capture plans and per-object checkpoints. A later call takes a new database point and can reuse
-unchanged retained assets. Source writes continue, and asset I/O runs after the database
-snapshot transaction ends.
-
-Under the prefix, `databases/<capture-id>` holds the native artifact,
-`objects/<capture-id>.json` the object manifest, `reports/<capture-id>` the retained report,
-and `assets` the shared payloads. The local native directory also contains `content-report.json`.
-The report preserves missing references. An unverified reference with a saved upload timestamp
-fails capture after the report is retained. Raw callers keep the captured local files as well;
-configured requests clean their owned scratch. The check uses the existing inspection pass,
-without another asset-body read. Native failure cleans its incomplete attempt; later failures
-preserve retained progress. Use a new local directory to retry the raw operation at a fresh point.
-Callers coordinate exclusive destination writes and close their stores. References without
-upload evidence remain unclassified. This raw operation does not provide queued request recovery
-or declare a complete database/object recovery point. `writeContentReport` remains available
-for exporting diagnostics with gaps independently of capture.
-
-`PostgresBackupService.capture(sourceId, directory)` creates a custom-format `database.dump`
-and a final `manifest.json` in a new local directory. Its parent must already exist. This is
-the database-artifact service used by the **Back Up PostgreSQL** Pipeline action described
-above. Existing scheduled PostgreSQL backups and the legacy ZIP jobs are unchanged.
-
-Configure the native client and a libpq connection service on the process invoking capture:
-
-```yaml
-backup:
-  postgres:
-    service: bosca-backup
-    serviceFile: /run/secrets/pg_service.conf
-    pgDump: /opt/postgresql/bin/pg_dump
-```
-
-`service` is required when capture is invoked. `serviceFile` is optional and otherwise
-libpq uses its ordinary service-file lookup; `pgDump` defaults to `pg_dump` on PATH.
-The service must connect to the same primary database as Bosca's connection pool.
-Keep its authentication and TLS settings in runtime libpq configuration and mounted secrets.
-The server JVM/native and runner images include PostgreSQL 18 clients on PATH. For local
-JVM runs or custom images, install compatible clients or select their executable paths.
-Missing configuration/tools fail on use, not at startup.
-
-Capture exports a read-only REPEATABLE READ snapshot through the pool, passes it to
-`pg_dump --snapshot`, and keeps the exporting transaction alive until the dump exits.
-It captures the single database's schemas and data without the legacy table allowlist.
-Ordinary inserts, updates and deletes continue; conflicting schema operations can make the
-dump fail. Foreign tables need explicit data coverage and are rejected, as are standby
-sources. Cluster-global roles/tablespaces, external data and object-storage bytes are outside
-this artifact. PostgreSQL sequence values follow native dump semantics rather than an
-MVCC history of each counter value.
-
-Native artifact format version 2 requires a `requiredKeys` map. It records known encryption-key
-names and the populated encrypted tables that need them, from that same database view:
-
-- `security.encryption.key`: configuration values, Meilisearch API keys, Kubernetes cluster
-  credentials and private Helm repository credentials.
-- `PIPELINE_SECRET_KEY`: Pipeline node secrets and Git pipeline secrets.
-
-Absent or empty encrypted stores add no dependency; Meilisearch nodes without an API key also
-add none. Every capture writes this map, including `{}`. Version 1 lacks this required dependency
-inventory and is rejected; take a new capture with version 2. Missing headers, blank names, empty
-source lists and duplicate source entries are rejected. Capture reads only table existence and
-whether ciphertext is present; no ciphertext, plaintext, key value, key hash or credential is
-copied into the manifest. An inspection error prevents publication rather than omitting the dependency.
-
-Keep the original keys in independently protected secret storage and supply them to the recovered
-application. This inventory covers the known stores above; it neither proves key availability or
-identity nor inventories dependencies of arbitrary modules. Restore preflight and execution require
-declared `security.encryption.key` configuration. Declared `PIPELINE_SECRET_KEY` requirements need
-an explicit environment value containing base64-encoded AES key bytes of length 16, 24 or 32.
-Unsupported key requirements fail. Checks run before native destination clients; combined restore
-also checks before retained asset reads. Execution repeats them after an earlier preflight.
-
-Capture, verification and artifact transport need no runtime decryption keys. These checks validate
-availability and encoding without copying or transferring key values. They do not prove that available
-keys match the source ciphertext. Confirm application decryption before treating a recovered
-installation as usable.
-
-The optional `onSnapshot` callback on `capture` enumerates database references in that same
-read-only view before `pg_dump` starts. It uses the current connection-manager context;
-caches and other connections are outside the captured view. Callback failure or cancellation
-prevents publication and releases the transaction. Associate the enumerated results with the
-returned manifest only after capture succeeds. This supplies the database view for later
-asset-coverage work; it does not freeze object storage, enumerate all Bosca content references
-by itself, or prove that retained assets match the database.
-
-`MetadataService.getStorageReferences` and `CollectionService.getStorageReferences` read
-reference evidence without content caches, using offset pagination on the caller's connection.
-They include current metadata, historical metadata, supplementary records and soft-deleted
-owners. Records without upload evidence remain visible. Historical supplementary rows contain
-their old key but no supplementary UUID; historical metadata has no upload timestamp. These
-gaps remain explicit, without inventing paths or borrowing current attachment identities.
-Pass `includeContentReferences = true` to `PostgresBackupService.capture` to save
-`content-references.json` alongside the dump. The service reads sequential pages in the exported
-view and writes a JSON array without holding the full inventory in memory. The native manifest
-binds its record count, byte length and SHA-256 to that database artifact. Capture failures and
-cancellation remove staged references before publication. This option requires Bosca's content
-schema and services; ordinary database capture does not resolve those services.
-
-Upload and download include every declared component. A retained manifest is published only
-after the dump and inventory bytes verify. Matching retries reuse verified files and repair
-only missing or damaged owned output. Retrieval verifies the inventory's JSON encoding and
-record count before publishing the local manifest, and needs no source database or configuration.
-The native Pipeline action selects this inventory through **Include content references**;
-database-only capture remains the default. Neither an inventory nor its successful transfer
-establishes that matching asset bytes have been retained.
-
-`PostgresBackupService.selectContent(directory, store, scope, source)` turns a saved database
-reference inventory into input for the existing object capture service. It verifies the local
-native artifact, resolves existing ID paths and observes each distinct source path once.
-It does not list the source bucket or open asset bodies. Its result contains a capture inventory
-and counts for every reference, including duplicate, pending, deleted and historical rows.
-
-| Selection | Meaning |
-| --- | --- |
-| `SELECTED` | Source metadata can be passed to object capture. |
-| `UNRESOLVED` | Saved IDs cannot determine the existing path. |
-| `MISSING` | No source object was found at that path. |
-| `LENGTH_MISMATCH` | The saved database and observed source lengths differ. |
-
-Only selected paths enter the capture inventory, once each in key order. Present objects with
-unknown upload evidence remain selectable. Missing historical supplementary IDs are never
-guessed. Keep the outcome counts with the inventory and evaluate gaps before treating a recovery
-point as covered. Pass the full selection result to `ObjectBackupCaptureService.prepareInventory`
-to persist the inventory and its outcome counts in the same immutable plan. Matching replay keeps
-the counts; changed or omitted counts fail. Existing plans have no invented reference counts.
-`captureInventory` performs the existing incremental transfer and retained verification.
-
-Selection uses the database artifact's ID/source identity and records its own observation start
-time. It writes no storage or progress records, leaves the source store open, and propagates
-backend failures and cancellation. Input files stay immutable; callbacks can receive partial
-rows before failure, so save results only after successful return. Metadata observations do not
-freeze source bytes or prove an atomic database/object snapshot.
-
-`PostgresBackupService.inspectContent(directory, objects, store, backup)` inspects a saved
-inventory against one object-backup manifest and logical content store. It verifies the local
-artifact first, requires the same source identity, then streams reference results to an optional
-callback and returns counts. It uses the caller's retained backup store and needs no source
-database, source storage credentials or content service.
-Internal backup helpers format the existing `ObjectStorageService.getPath` paths;
-contract tests compare them with the storage implementation.
-
-| Result | Meaning |
-| --- | --- |
-| `VERIFIED` | Retained bytes match the selected payload's length and SHA-256. |
-| `UNRESOLVED` | Saved IDs cannot determine the existing path. |
-| `NOT_RETAINED` | The selected store has no manifest entry for that path. |
-| `AMBIGUOUS` | The manifest declares multiple candidates for that path. |
-| `LENGTH_MISMATCH` | The recorded database and payload lengths differ. |
-| `MISSING` | The selected retained payload cannot be found. |
-| `CORRUPT` | Retained bytes differ from their declared length or SHA-256. |
-
-Inspection reads each selected retained payload once per path, closes its streams and writes
-nothing to storage. Pending/deleted rows and absent upload evidence remain in each result;
-their presence does not by itself require an asset. Missing supplementary UUIDs are never
-replaced with current attachment IDs, and ambiguous candidates are never chosen automatically.
-Backend failures, callback failures and cancellation propagate. The caller keeps files and
-retained data immutable and saves results only after the operation returns successfully.
-
-`VERIFIED` checks retained integrity. A matching length or checksum of the retained object does
-not prove which bytes belonged to the database snapshot. This service API does not publish a
-complete recovery set or change Pipeline execution.
-
-`PostgresBackupService.writeContentReport` exports a new local JSON evidence file linking a
-retained native database prefix, its full manifest, the embedded object manifest, saved capture
-plan selection counts and fresh retained-reference inspection counts. Both artifacts use the
-same capture/source identity and independent backup store. The method verifies the exact
-completed retained database artifact and inspects the referenced asset bytes before writing.
-It needs no source database, source object storage or content services, and writes nothing to
-the backup store. Existing local output is never replaced.
-
-Pass `plan.contentSelectionCounts` from the saved reference selection. Missing, unresolved,
-ambiguous and damaged content remains explicit in the report; gaps do not prevent exporting
-evidence. `readContentReport` validates a saved report without storage access. Its database
-prefix can be passed to `download`, and its embedded object manifest to the object restore
-service. Reading the report does not recheck retained bytes. This is a portable diagnostic
-record, not complete recovery-set publication or proof of database/object snapshot consistency.
-
-`uploadContentReport(file, backup, prefix)` retains that evidence under a separate relative
-prefix as `intent.json` and `report.json`. It reads back acknowledged writes and preserves
-the exact report across retries. Matching intent permits repair of partial report output;
-conflicting or unowned malformed metadata fails. Report files cannot replace declared native
-or asset components. The caller coordinates exclusive access to the retained prefix.
-`downloadContentReport(backup, prefix, file)` retrieves a published report into a new local
-file without source access. Intent alone cannot be downloaded as a report. These operations
-transfer recorded evidence without fetching database/asset payloads or refreshing inspection
-counts. They neither publish a completed recovery point nor establish protected retention.
-
-The manifest records the source identity, database, exported/logical snapshot, source-clock
-boundary observation and dump completion, PostgreSQL version/encoding, extension versions,
-and the dump's byte length and SHA-256. The exported snapshot identifier cannot be reused
-after capture ends. A complete custom-format file is checked and hashed before the final
-manifest is published. Credentials and the libpq service configuration are not put in the
-manifest. The dump itself contains sensitive database contents and needs independent storage,
-encryption and keys before it is used as retained recovery data.
-
-`verify(directory)` checks the manifest, regular payload file, length, SHA-256 and native
-archive header without source access or installed database tools. The caller owns the directory
-and prevents concurrent modification. Verification checks integrity, not authenticity or target
-extension compatibility. Capture never replaces an existing output directory. Failures and
-cancellation before publication stop the child process, roll back the exporting transaction and
-remove the attempt's files. Published output remains complete if cancellation arrives afterward.
-A process crash can leave partial output. Before reusing that local directory, stop any surviving
-dump and remove its incomplete output. Queued requests use independent per-attempt directories.
-A dump needs local scratch space for the database artifact,
-without bundling asset bytes.
-
-The integration tests run real `pg_dump` and `pg_restore` with pgvector, restore after dropping
-the source database, verify a different destination owner and application permission rows, and
-prove that later source writes are excluded. Restoration uses `--no-owner --no-acl
---no-tablespaces` under a destination role with extension-creation privileges. Resolving
-references to retained asset bytes, matching recovery-set publication, retention, deployment rebinding
-and a real Kubernetes recovery drill remain open. See the PostgreSQL documentation for
-[pg_dump](https://www.postgresql.org/docs/18/app-pgdump.html),
-[pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html) and
-[libpq services](https://www.postgresql.org/docs/18/libpq-pgservice.html).
-
-`PostgresBackupService.upload(directory, backup, prefix)` transfers the verified local
-artifact through `ObjectStorageService` into independent storage. Use a new relative prefix
-for each captured artifact, such as `postgresql/<manifest.id>`. Keep the local files immutable
-and available until upload completes, and serialize writers to that prefix. Coordinate with
-configured object runs that claim the same destination; this caller-owned transfer does not
-acquire their destination claims. It does not open or close the supplied store.
-
-Upload saves and reads back exact `intent.json` metadata before writing a new payload.
-Matching retry verifies existing bytes and avoids uploading them again. The same verified
-local artifact can repair owned missing/corrupt output; a different capture cannot replace it.
-Unowned pre-existing payloads, changed intent and valid conflicting completion manifests fail.
-The final `manifest.json` is written and read back only after retained length/SHA-256 verification.
-A partial completion manifest can be repaired when exact intent survives. Malformed intent
-or unsupported metadata needs inspection and a fresh prefix; it cannot authorize overwriting
-unknown data. Failure/cancellation preserves unfinished retained data for retry.
-
-`download(backup, prefix, newDirectory)` requires the completed manifest and streams its
-declared components into a new local directory. It verifies lengths, SHA-256, the native header
-and any inventory's encoding/count before publishing the local manifest, without source
-database/configuration access or capture tools.
-It rejects existing output and cleans up failed/cancelled downloads without deleting retained
-data. `restore(newDirectory)` can then execute native restoration under the destination role.
-
-The native integration test uploads through signed S3 SDK multipart calls, drops the source
-database, removes the original local capture, downloads into new files and restores those files
-through the service's native restore operation. This uses an isolated local S3-compatible endpoint,
-not a live cloud provider.
-
-`PostgresBackupService.restoreConfigured(path, backupStorageKey)` downloads a retained native
-artifact and invokes the existing local restore below. Pass the directory from a receipt's `path`
-and its literal `backup.objectStores` ID. The selected address binds before storage opens. The
-service owns downloads under `backup.postgres.scratchDirectory` or the Java temporary directory,
-closes storage and cleans known temporary files on success, failure and cancellation. Retained
-data and caller-owned files remain untouched. Run with a separate recovery journal and exclusive
-offline target access.
-
-`PostgresBackupService.restore(directory)` verifies the completed local artifact before any
-connection to the destination. Configure its destination separately from capture:
-
-```yaml
-backup:
-  postgres:
-    restore:
-      service: bosca-recovery
-      database: recovered_bosca
-      serviceFile: /run/secrets/recovery-pg-service.conf
-      psql: /opt/postgresql/bin/psql
-      pgRestore: /opt/postgresql/bin/pg_restore
-```
-
-`preflightRestore(directory)` verifies the local artifact and runs the same read-only
-destination checks independently of restoration. It returns the verified manifest after checking
-the expected database name, empty primary database, PostgreSQL version, encoding and available
-extension versions. It needs the restore libpq service and `psql`; `pg_restore`, capture
-configuration, source database access and content services are unnecessary. Declared content
-references are checked locally with the other artifact components.
-
-Use this after downloading an artifact to check its database destination before starting
-recovery writes. It leaves the artifact and destination data unchanged. Keep that destination
-offline and exclude concurrent writers. The check reserves nothing, and `restore` repeats it
-before executing `pg_restore`. Object coverage and whole-instance recovery remain separate.
-
-`restoreContent(directory, report, backup, destination, destinationId)` restores a downloaded
-native artifact and the assets declared in its retained content report through one service call.
-The local manifest must match the report exactly. It freshly checks saved references, every
-declared retained payload, target asset conflicts and the empty PostgreSQL destination before
-writing assets. Gaps block the operation, including pending or historical references without
-verified files; missing upload timestamps are not treated as permission to skip them.
-
-Assets are restored first to their original keys through the existing checkpoints. The service
-then rechecks the local artifact and database destination before running the transactional
-native restore. A failed asset copy leaves the database empty. After partial asset failure or a
-rolled-back database restore, retry reuses verified target assets. Keep progress in a separate
-recovery database and keep both destinations isolated with exclusive writers throughout.
-The caller owns immutable input and independent backup storage; supplied stores stay open.
-The source database, capture configuration, content services and standalone object manifest
-are unnecessary. The Restore PostgreSQL and Content action uses the configured entry point below.
-
-If the native acknowledgement is lost, inspect the target before retrying: its commit may have
-succeeded, and a populated database is rejected. Successful return identifies the restored native
-artifact and declared assets. Key identity, deployment configuration, application activation
-and proof of an atomic database/object recovery point remain separate.
-
-`restoreContentConfigured(reportPath, backupStorageKey, destinationStorageKey)` manages the
-downloads and storage lifecycle for that operation. Pass the retained report directory from
-`receipt.contentReportPath` and two literal IDs under `backup.objectStores`. The existing storage
-service binds both addresses atomically before opening either store. The destination storage ID
-also identifies its asset checkpoints, so retain the same IDs when retrying a partial restore.
-The source database, source configuration and original local capture files can be unavailable.
-
-Each call downloads the report and its verified native artifact into owned temporary storage,
-then uses the combined restore above. `backup.postgres.scratchDirectory` selects an existing
-local parent; otherwise Java's temporary directory is used. Both stores close and owned downloads
-are removed before return, including ordinary failure or cancellation. Retained backup data,
-destination assets and checkpoints remain. Keep the destinations offline, exclude other writers
-and use a separate recovery journal. Each call reads the selected report again; this service
-operation has no completed-request replay. A close or cleanup failure can follow a committed
-database, so inspect that target before retrying.
-
-Create the destination database beforehand, preferably from `template0`, under its intended
-owner. Keep the application and other writers stopped on that destination throughout restore.
-Source writes can continue. `service` and `database` are required on use. `serviceFile` uses
-ordinary libpq lookup when omitted; `psql` and `pgRestore` default to the tools on PATH. Capture
-configuration and source database access are unnecessary. The runtime images provide PostgreSQL
-18 clients; custom runtimes need compatible tools. The destination role needs the privileges
-required by the dump, including extension creation. The real pgvector test uses a separate
-privileged destination role.
-
-A read-only `psql` preflight checks the actual database name, writable primary, server major
-version, encoding and extension defaults. The target must use the same encoding, a server
-major version at least as new, and available default extension versions matching the manifest.
-User schemas, public-schema objects, extra extensions, large objects and other checked
-application state make it nonempty and prevent restoration. Keep exclusive destination access:
-preflight and `pg_restore` use separate connections and do not fence concurrent writers.
-
-Restore uses `--single-transaction --exit-on-error --no-owner --no-acl --no-tablespaces`.
-It does not clean/drop existing data, create a database or apply source database grants.
-Restored objects belong to the destination connection role; application permission rows remain
-data. Native failures propagate, and a failure while loading data rolls back the transaction.
-Cancellation stops the local client and removes temporary diagnostics without deleting the
-artifact. Cancellation or lost acknowledgement may arrive after commit; inspect the destination
-before retrying. A populated destination is rejected rather than automatically cleared/replayed.
-Only restore trusted artifacts: checksums verify integrity, not source trust or authenticity.
-
-The service restores selected components. Independently protected retention and encryption,
-a matching committed object inventory and the other recovery requirements remain separate.
-
-## Architecture
-
-`core-backup` defines the object backup service contracts and shared models. `backup` implements persistence, object transfers, manifest publication, GraphQL administration, and background jobs. Service implementations use `@ServiceImplementation` for generated DI registration.
-
-`ObjectBackupCaptureService.capture` streams a selected source object into a new backup payload path, derives its SHA-256 digest, and verifies the retained bytes before returning a `BackupObject` for a manifest. It rejects existing output and active caller transactions. Failures and cancellation attempt cleanup, with cleanup failures attached to the original error. The caller owns independent immutable backup storage, exclusive writers, unique payload paths. Capture does not publish a manifest, track durable capture progress or establish database recovery coverage.
-
-`captureTracked` records verified captures in the existing per-revision progress ledger. A later call or restarted service finds the known digest and reuses its recorded payload path without source reads, or repairs missing/corrupt output from the selected source against its recorded digest and saved observation. Known pending/failed checkpoints resume; running checkpoints require stopped-writer recovery. New completion and payload reservation commit atomically after verification. Before the first digest is known, failures have no durable pending checkpoint; an interrupted write or failed checkpoint commit can leave unreferenced output, requiring a fresh proposed path when no checkpoint committed.
-
-Its required `verifiedSince` argument separates routine checks from full integrity checks.
-A cutoff allows reuse when the saved destination observation still matches and the last
-checksum check is recent enough. Entity tags and timestamps are change observations, not
-content digests. Null forces a full read and checksum check. Metadata-only checks never
-refresh the stored checksum time. Unversioned full checks compare metadata before and after
-reading; observed changes prevent publication. Unknown observations get a full baseline check.
-
-Verification observations are typed `ObjectStorageInfo` values in the existing progress
-record. The registered V16 migration replaces the provider-only field, preserves prior
-provider verification times, and leaves unverified historical records without invented proof.
-Apply V16 with old backup writers stopped and run matching application/schema versions;
-ordinary source content writes can continue.
-GraphQL checkpoint `verified` exposes the last recorded full-check time, or null when unknown.
-The Back Up Object Storage action uses metadata checks by default; its optional interval or
-cutoff requests periodic rechecks. Ordinary manifest `verify` always checks every payload in full.
-
-`ObjectBackupManifestStore.saveTracked` publishes a captured inventory using the same explicit verification cutoff. Every revision must have an exact matching completed backup checkpoint for the source, destination and scope before asset I/O begins. Shared payloads need one metadata/full check, while every associated checkpoint remains required. Full checks refresh the saved destination observation and checksum time; metadata-only checks preserve their age. Missing/corrupt assets invalidate their completed checkpoints and prevent publication. Other storage failures and cancellation propagate without invalidating prior evidence. Checkpoint versions are checked again before writing the manifest, and database contexts end before storage I/O. Call outside an active transaction with the same independent storage and exclusive-writer guarantees as capture. Ordinary `save` and `verify` always read payloads in full. The inventory capture flow and Back Up Object Storage action use this publication path.
-
-`ObjectBackupCaptureService.captureInventory` captures and publishes an explicit `ObjectBackupCaptureInventory` selection. The core model carries identity, scope, creation time and observed object metadata grouped by logical store. The service snapshots caller collections, validates every selection/mapping and known checkpoint before asset I/O, then processes revisions in store/key/version order. Unknown revisions receive new unique paths under the selected payload prefix; known revisions reuse their recorded paths. Successful entries remain available after partial failure, cancellation or a failed manifest write, so retry/restart reads only unfinished source revisions. The same explicit verification cutoff applies to capture and publication. Supplied stores remain caller-owned.
-
-The caller retains this selection and keeps uncopied selected sources readable, provides stable source/destination identities, independent retained storage, exclusive writers and an owned manifest path. This operation accepts a fixed selection; it does not discover or durably close a live source listing, record pending intent before the first unknown digest, establish PostgreSQL recovery coverage or schedule recurring captures. An interrupted first checkpoint commit can leave unreferenced output; retry selects a fresh path when no checkpoint committed.
-
-`ObjectBackupCaptureService.prepareInventory` persists that selection and its destination identity, payload prefix and manifest path as an immutable `ObjectBackupCapturePlan`. It canonicalizes entry order and participates in the caller's database transaction. Repeating matching intent returns the original plan; changing its selection or output locations fails. Preparation opens no storage and creates no transfer checkpoints. `getPlan` and scope-filtered `listPlans` use the caller's database context and ordinary offset pagination. The registered migration creates an empty plan table and preserves historical progress without inventing selections.
-
-The key-based `captureInventory` overload reloads saved intent in a short database context and delegates to the existing capture/publication flow. A restarted service can resume partial work or retry publication using the key and caller-owned stores. `verifiedSince` is chosen for each execution; it is not frozen in the plan. Plans record selected input, while the existing revision ledger records copy progress. Preparing a plan does not bind storage addresses, retain source versions, claim writer ownership, dispatch jobs or establish database recovery coverage. Those existing caller requirements still apply.
-
-`ObjectBackupCaptureService.configureStorage` fixes a plan's logical source mapping to existing bound IDs. Its independent backup ID is the plan's destination identity. Configuration uses the caller's transaction, opens no stores and returns `ObjectBackupCaptureStorage`; `getStorage` reads that mapping. Matching or concurrent replay preserves the saved record, while changed mappings, missing bindings and source/backup aliasing fail atomically. The migration preserves existing plans without inventing storage mappings. Multiple logical stores may intentionally share one bound source namespace.
-
-`captureConfigured` resolves the saved IDs from explicit configurations or selected `backup.objectStores` entries and delegates to capture/publication. The existing storage service checks every selected address before opening any store and closes all operation-scoped stores on success, failure or cancellation. Unrelated configurations are ignored. Credentials remain runtime-only and can rotate while the saved addresses stay fixed. Restart and retry preserve the plan, mapping and verified revision checkpoints. The integrity cutoff remains explicit for each execution. Call outside an active transaction and keep selected sources readable, retain stable storage accounts and own the output namespaces. The Back Up Object Storage action creates selections through `discoverConfigured` and invokes this execution path.
-
-Configured capture shares destination ownership with configured backup and restore runs in the existing `object_store_writers` table. Each execution acquires a fresh token before opening any store and holds it until every opened store closes. Contention, including duplicate execution of the same plan, raises `ObjectBackupDestinationBusyException` before asset I/O. Independent destinations can proceed and source writes continue. Success, failure and cancellation release only that execution's token in short database contexts. A release failure propagates; when capture also failed, it is suppressed on the original failure. Per-revision progress still supports retry without recopying completed source revisions.
-
-Ownership survives a process crash or a failed release. Read `ObjectBackupCaptureService.getWriter(planKey)` and, after establishing that the writer stopped, call `releaseWriter(planKey, observed.key)` in a database context. Recovery participates in the caller's transaction and rejects missing or stale tokens, so an old cleanup cannot delete a replacement claim. This releases destination ownership only; any running per-revision checkpoints still require the existing stopped-writer progress recovery. There is no expiry or automatic takeover. Apply the capture-writer migration with captures from older versions stopped; existing backup/restore ownership is preserved. Exclude writers outside this progress database, including unconfigured capture operations, from the retained destination.
-
-The **Capture Object Backup** Pipeline action (`objectBackup.capture`) executes a saved, configured plan. Connect its required `planKey` string input and, optionally, `verifiedSince` as an ISO offset timestamp string. Omitted or JSON-null cutoffs verify retained payloads in full; malformed timestamps fail. The action calls `captureConfigured` using runtime `backup.objectStores` configuration and emits the typed published `ObjectBackupManifest`. Its generated metadata and serializers join the existing Backup registrar in both API server and runner. A JSON pipeline input can feed the key through the existing To String bridge.
-
-Durable runs park on the framework's ordinary `ExecuteNodeInJob` child and resume through its staged output and parent completion callback. Backing execution checks the run identity with the same `verifyHasSaGroup` authorization as backup mutations; scoped execution contexts also require the existing token scope. Failures and cancellation propagate to the existing job machinery. Durable backing retries use queue policy; the node's inline retry settings do not replace it. A retry reloads the saved plan and reuses completed revision checkpoints. Dry runs trace supplied intent without service calls, storage access or an invented manifest. The action adds no schedule and does not establish a closed live inventory or PostgreSQL recovery coverage; stopped-writer recovery still applies.
-
-Queued object backup, saved capture and restore actions wait five seconds when a destination
-has another writer, then retry through the existing queue. Waiting preserves the job identity
-and failure budget, records no failed node attempt and emits no output. Inline callers receive
-the original destination-busy error. Destination ownership stays with its current writer;
-persisted claims from a crashed worker still require stopped-writer recovery.
-
-`ObjectBackupRestoreService` restores a verified object manifest from independent backup storage to configured logical stores, preserving original object keys. It checks all retained payloads and target conflicts before writing assets, reuses matching files, and resumes interrupted writes through the existing progress service. Callers provide isolated destination namespaces, exclusive writers, and a progress database outside any application database being replaced. Object restore does not restore a PostgreSQL database or establish database recovery-point coverage.
-
-Its `inspect` method verifies the retained payloads and reports each destination object as missing, matching, repairable from an earlier attempt, or conflicting. Inspection does not write assets or create/update progress. Restore repeats the inspection when it runs.
-
-`ObjectBackupRunService.prepareRestore` records a fixed inventory and its input manifest path. `executeRestore` compares the stored manifest with that intent, then restores the selected inventory and records its outcome. Backup and restore operations have separate run and checkpoint identities, filtered histories, and last-success queries. Restore runs reuse the existing partial-result, cancellation, retry and frozen-result behavior; progress storage remains separate from any application database being restored.
-
-Execution rejects a run that is already running before storage access or attempt changes. Recovery requires establishing that the earlier writer stopped, then recording failure through `ObjectBackupRunService.fail` with the observed version before another execution. Configured runs coordinate their bound write destinations in the shared progress database. Callers exclude writers that do not participate in these claims, including writers using another progress database.
-
-Read-only GraphQL queries under `backups.objectRuns` provide operation-filtered `list` and `lastSuccessful` reads and `run(key)` lookup. Run fields include the fixed inventory, paginated `items`, live `summary` and frozen `result`. List, item and inventory-object pages default to 20 entries and are capped at 100. These queries use the existing backup administrator/group and API-token scope checks. `storage(key)` reads a saved address, `dispatch(key, version)` reads one version's saved queue request, and `run.storage` exposes the fixed logical-store mapping. Missing bindings, requests and unconfigured mappings return null.
-
-GraphQL mutations under `backups.objectRuns` accept typed portable inventories through `prepare` and `prepareRestore`. Preparation records immutable run intent and exact checkpoints atomically. Repeating the same intent returns the existing run, including any recorded outcome. Preparation requires backup administration access; it does not capture or pin source revisions, open storage, dispatch transfers, or establish a database recovery point.
-
-After preparation, `bindStorage(keys)` binds selected IDs from `backup.objectStores` without opening storage. `configureStorage(key, backupKey, stores)` fixes the run's mapping using typed `{ store, storageKey }` entries; duplicate logical stores are rejected. Call these as separate operations before `dispatch(key, expectedVersion)`, which records a durable request for that pending version. The same controls support backup sources and restore targets. Configuration and credentials remain application-owned.
-
-Dispatch returns its stable queue `key`, the `runKey`, pinned `version` and creation time. Read `run(key: runKey)` for execution progress. Query `dispatch(key: runKey, version: version)` to retrieve the original request after the run advances. A dispatch response acknowledges saved intent; the background worker performs storage work. All controls and lookups use the existing administrator and API-token scope checks.
-
-`retry(key, expectedVersion)` returns a failed, partial or cancelled run to pending. It keeps the fixed inventory, storage mapping, attempt count and per-object checkpoints, clears the prior run error/result, and advances the version. It does not enqueue work; dispatch the returned version separately. Completed checkpoints remain available for incremental execution. `cancelPending(key, expectedVersion, reason)` cancels only the observed pending version and freezes its current totals without changing checkpoints. The state and version predicate is part of the database update, so a concurrent start prevents cancellation. Existing dispatch requests remain readable, and their stale deliveries cannot start a later retry. Active writers require the existing stopped-writer recovery contract.
-
-Tracked backup preparation reserves each retained destination/path for one length and SHA-256 digest, and each manifest path for its owning run. Matching inventories can share payload bytes across sources and scopes. Conflicting payload claims and manifest/path collisions fail before transfer and roll back preparation. The migration backfills existing backup progress and runs and rejects conflicting historical claims without selecting one. Database references protect reservations while checkpoints or runs use them. Restore target paths keep their separate semantics; destination identities must consistently identify the same storage namespace.
-
-`ObjectStorageServiceFactory` in core storage creates independently configured stores. `ContentConfiguration` uses the injected factory for the shared application store and closes it at application shutdown. `withStorage` closes operation-scoped stores when the callback ends, including failure or cancellation.
-
-`ObjectBackupStorageService` records an immutable configured location for each backup storage identity. It rejects changed locations and duplicate address identities; credentials, URL presentation and bucket creation settings are not persisted. Its `withStorage` captures and checks the location in a short database context, then opens that exact configuration through the factory. `withStorages` checks all selected locations atomically before opening any and closes the opened stores if later setup or work fails. Active caller transactions are rejected before binding or opening storage. Filesystem paths resolve existing symlinks. S3 bindings require an explicit region and endpoint, with `AWS_ENDPOINT` supported as the endpoint fallback; credentials are supplied when opening and can rotate. The migration preserves existing inventories without inventing addresses for historical records. These checks identify configured addresses, not changed mounts, storage accounts or arbitrary endpoint aliases.
-
-`ObjectBackupRunService.configureStorage` saves the independent backup storage ID and an exact logical-store mapping before the first run attempt. Mappings reference bound storage IDs and cannot change on retry. Restore destination IDs keep each logical store at the same location across later inventories, preserving shared checkpoint identity. Logical stores may share a restore location when their object keys are disjoint. `executeConfigured` opens the required caller-supplied configurations, reuses the existing transfer and verification behavior, and closes them after completion, failure or cancellation. Credentials are not saved with the run. The caller still pins source revisions and excludes destination writers that do not participate in these claims.
-
-`backup.objectStores` supplies application-owned configurations by storage ID. `ObjectBackupStorageService.configurations(keys)` reads only the selected entries; IDs are literal map keys, including dots. Missing or malformed selected entries fail when used, while unrelated entries are ignored. `bindConfigured(keys)` validates all selected entries and binds their locations atomically in the caller's database context. Neither method opens a store, and configuration lookup does not access the database. There is no implicit fallback to `content.storage`.
-
-`ObjectBackupRunService.executeConfigured(key)` resolves the saved storage IDs from this application configuration and uses the same scoped execution path as the explicit-configuration overload. Completed or cancelled history returns without catalog access, and an active run remains untouched. Credentials can rotate across application restarts while the location binding stays fixed. The API server and worker must receive matching locations for the selected IDs.
-
-Starting a configured run atomically records ownership of every write destination with its run transition. Backup claims its retained store; restore claims each distinct mapped target. Another run using any claimed destination receives `ObjectBackupDestinationBusyException` without changing its state, version or attempts. Different destinations can proceed. Completion, recorded failure/partial failure, and cancellation release only that run's claims in the same transaction. Ownership survives process restarts and remains held until the prior writer stops and its outcome is recorded. Source writes continue.
-
-Apply the writer-ownership migration with existing object-copy writers stopped. It records the destinations of already-running configured runs and rejects overlapping historical owners. Resolve conflicting records through the previous version's `ObjectBackupRunService.fail` after their writers stop, then retry the upgrade. After upgrade, a stopped run that remains `RUNNING` can be recovered with `fail` using its observed version. Unconfigured historical runs keep their caller-owned destination contract.
-
-`ObjectBackupDispatchService.request(key, expectedVersion)` records a stable queue ID for one configured, pending run version and publishes through the existing backup queue. Repeating that request reuses its ID. The caller's transaction owns preparation, configuration and dispatch; rollback removes the request and delivery, while commit precedes publication. If publication fails after commit, the transaction layer logs it and the durable request remains available for recovery. A request response acknowledges saved intent, not worker completion.
-
-`ObjectBackupRunJob` contains only the run key and expected version. Its generated helper and `ObjectBackupRunExecutor` use the existing backup queue. The worker checks the pinned pending version before configuration lookup and again atomically when starting the attempt. An old delivery cannot start a later retry or rerun a failed attempt. The queue's per-run executor lock serializes duplicate deliveries. Destination contention delays the job for five seconds without consuming a run attempt or job failure. Ordinary failures and cancellation propagate; the run records its outcome, and another attempt requires explicit retry and a new dispatch request.
-
-`ObjectBackupDispatchService.recover(offset, limit)` republishes a page of requests whose exact run version is still pending, using `enqueueIfAbsent` with the original queue ID. It preserves existing queue state and excludes changed, running and terminal versions. Recovery uses a short database context, rejects an active caller transaction, and propagates publication failure or cancellation.
-
-`ObjectBackupDispatchRecoveryJob` is a fallback for interrupted queue publication after a dispatch request commits. It scans pages on the existing common queue, independently of backup workers, and preserves queue retry state without restarting failed or cancelled run versions. The API server's maintenance package installs its enabled, nonconcurrent daily schedule (`0 0 * * *`) without catch-up runs. Existing disabled or edited schedules are preserved. Each sweep starts at offset zero; requests skipped when completed runs shrink the pending list are revisited by a later sweep. Recovery uses the selected job page size, defaulting to 100. Both applications already configure the common and backup runners and the scheduler; their existing enable settings still apply.
-
-Storage's `getObjectInfo(path)` provides lightweight length, timestamp and available provider identifiers without fetching asset bodies. `listObjects(prefix, offset, limit)` discovers literal object keys and listing metadata through existing offset pagination, without per-object requests. These capabilities support source capture and destination checks. Listing positions can shift while source writes continue, and metadata alone is not a digest or retained revision. Ordinary transfer/publication verification still reads and verifies payloads. Associating database recovery points with complete retained object coverage remains separate work.
-
-Storage also provides `getInputStream(path, version)` for exact retained S3 versions and Google generations, with no current-content fallback. Filesystem storage uses ordinary reads and modification metadata. Capture uses exact reads when a retained provider version is selected; unversioned capture instead checks its saved observation before and after an ordinary read. Neither path establishes database recovery coverage. Existing run transfer still reads caller-pinned source keys; capture orchestration is not yet connected to run preparation.
-
-A configuration failure before the attempt leaves the run pending. If that job exhausts its queue retries, correct configuration, then use `cancelPending`, `retry` and `dispatch` with each returned version to obtain a new queue ID. A crashed `RUNNING` writer retains its ownership and still requires stopped-writer recovery. Studio/CLI actions and recurring backup creation remain separate work.
-
-For example, application configuration can declare a source filesystem and independent S3-compatible retained storage. Supply credentials through the existing environment substitution:
+# Backup and recovery
+
+Recover Bosca in two steps: **restore PostgreSQL, then restore object storage**.
+The destination database may be replaced. Source writes continue during backups.
+
+Store the initial backup on the configured object-storage service. A **Backup completed**
+event can trigger a separate Pipeline to copy it elsewhere. Backup creation
+works without an external copy destination. For recovery after losing the original
+storage, use the externally copied backup. Save deployment configuration and
+encryption/signing keys separately; manifests record key names, never secret values.
+
+## Back up
+
+Keep the deployment's existing PostgreSQL backups. CloudNativePG recovery uses its
+own base backups and WAL. Docker and Swarm deployments can retain a custom-format
+`pg_dump` archive. The **Back Up PostgreSQL** Pipeline action also produces an
+independent `database.dump` and `manifest.json` using the configured libpq service.
+It records lengths, SHA-256, PostgreSQL/extensions and known encryption-key requirements.
+
+For assets, create a Pipeline with **Back Up Object Storage** (`objectBackup.backup`):
+
+1. Set a stable source identity, scope and independent backup storage ID.
+2. Map logical stores to configured source IDs in **Source stores**:
+   `{"content":{"storageKey":"source-content","prefix":""}}`.
+3. Connect its manifest output to Output. Use the existing Pipeline schedules and
+   run controls; choose the backup interval for the deployment.
+
+An empty prefix includes the configured namespace. Each run saves a new manifest.
+New, changed and unfinished objects are copied; unchanged retained objects reuse
+verified payloads. Retries use saved selections and checkpoints. Full checksum
+rechecks can be scheduled with **Checksum recheck interval (days)**.
+
+No provider versioning is required. Unversioned capture compares the observed
+length, entity tag and modification time around reads. A source object that changes
+before it is copied fails that selection; start a new capture to select its new state.
+A failure remains visible in Pipeline history, and completed payloads survive retries.
+
+Database and object backups have separate capture times. Record the database
+backup and object manifest selected for each recovery. Object listing during active
+writes is not an atomic database/object snapshot. Confirm important content through
+the recovered application before opening the destination to traffic.
+
+## Copy a completed backup
+
+Managed PostgreSQL and object backups emit the standard **Backup completed** event
+(`bosca.backup.BackupCompleted`). It appears in the Event Catalog and can trigger a
+Pipeline. Its payload contains `key`, `type`, `storageKey` and `path`, without credentials
+or the object inventory:
+
+- `POSTGRES`: `path` is the directory containing `manifest.json` and `database.dump`.
+- `OBJECTS`: `path` is the object manifest. Copy it and every payload it references,
+  including files shared with earlier manifests. Preserve their relative keys.
+
+The event is dispatched with the completion transaction after publication and storage
+close. Failed or partial backups and object restores do not emit it. Replayed completed
+requests can emit again, so consumers identify an artifact by type, storage ID and path
+and reuse completed copy work. Filter the copy Pipeline to the initial backup storage ID
+so copying a backup does not start another copy of that result.
+
+Backup completion and the external copy have separate outcomes. The copy Pipeline
+owns its destination, retries and run history; retrying that copy does not require a new
+database dump. A backup bucket on the existing object-storage service is sufficient for
+initial publication. Keep source content and retained backups in separate buckets so
+source discovery cannot include its own backup output. CloudNativePG's backups continue
+to use the operator's existing mechanisms; this event covers Bosca's managed operations.
+
+## Configure the recovery instance
+
+Configure independent retained storage and the new content destination in
+`backup.objectStores`. Storage IDs are literal map keys. Credentials stay in runtime
+configuration. If a retained backup was copied to a different location, configure a
+new storage ID for that copy and select it with `--backup`. Existing IDs stay bound
+to their original locations, including bindings restored with PostgreSQL. For example:
 
 ```yaml
 backup:
   objectStores:
-    content:
-      type: fs
-      urlPrefix: ""
-      basePath: "${CONTENT_STORAGE_PATH}"
     retained:
       type: s3
       urlPrefix: ""
@@ -786,29 +83,145 @@ backup:
       endpoint: "${BACKUP_ENDPOINT}"
       accessKeyId: "${BACKUP_ACCESS_KEY_ID}"
       accessKeySecret: "${BACKUP_ACCESS_KEY_SECRET}"
+    recovered-content:
+      type: fs
+      urlPrefix: ""
+      basePath: "${RECOVERED_CONTENT_PATH}"
 ```
 
-ZIP backup and restore operations run as jobs (`BackupJob`/`RestoreJob`) using an executor pattern. Each backup records a `BackupManifest` with metadata about backed-up tables and records. Restore operations use a configurable `ConflictStrategy` for handling existing data. `BackupTableDefinition` describes which tables to include and how to serialize them. GraphQL controllers provide admin access to backup and restore operations.
+Backup stores support filesystem and S3-compatible storage through the existing
+storage factory. Configure `content.storage` to address the same destination used
+for the logical `content` store. The API server and backup worker need matching
+storage locations. Filesystem deployments must place the worker with the volume;
+no shared ReadWriteMany volume is assumed.
 
-## Dependencies
+## 1. Restore PostgreSQL
 
-- `io.bosca:core-backup` -- object backup service contracts and shared models
-- `io.bosca:core` -- Bosca Core (platform framework)
-- `io.bosca:core-content` -- Bosca Core Content (content model interfaces)
-- `io.bosca:core-storage` -- Bosca Core Storage (object storage abstraction)
-- `io.bosca:core-security` -- Bosca Core Security (authentication)
-- `io.bosca:content` -- Bosca Content (content implementation)
-- `io.bosca:storage` -- Bosca Storage (storage implementation)
-- `io.bosca:sharedqueue` -- Bosca SharedQueue (job queue)
+Keep destination application workloads stopped while replacing the database. The
+source instance can keep running.
 
-## Use in this workspace
+For Kubernetes, use the deployment's existing
+[CloudNativePG recovery procedure](https://cloudnative-pg.io/docs/1.29/recovery/)
+to bootstrap the replacement database. Use the guide for the installed operator
+version and its configured backup method. Physical backups require a compatible
+PostgreSQL major version and machine architecture. Use
+[`pg_dump`](https://www.postgresql.org/docs/17/backup-dump.html) when moving between
+architectures.
 
-Depend on the root project path for the modules you need. For example:
+For Docker or Swarm, retrieve the selected dump using the backup provider's client.
+A native Pipeline receipt supplies its configured storage ID and artifact prefix:
 
-```kotlin
-dependencies {
-    implementation(project(":backup:backup"))
-}
+```bash
+bosca --profile source backup postgres list --source primary --storage retained
+bosca --profile source backup postgres get --key nightly-1 --json
 ```
 
-Published `io.bosca:*` coordinates used by existing catalogs also resolve to these local projects in the root build.
+Save the receipt's artifact path outside the source so recovery does not require
+these queries. For S3-compatible retained storage, an example download is:
+
+```bash
+aws --endpoint-url "$BACKUP_ENDPOINT" s3 cp \
+  "s3://$BACKUP_BUCKET/$DATABASE_ARTIFACT_PATH/" ./database-backup/ --recursive
+```
+
+Check the downloaded dump's length and SHA-256 against `manifest.json`, and inspect
+its archive with `pg_restore --list`. For an existing plain SQL dump, use `psql`
+instead. Provision a compatible PostgreSQL server with the required extensions and
+restore role. Replace the destination database with an empty database owned by
+that role, then restore the custom-format archive:
+
+```bash
+pg_restore --dbname="$RECOVERY_DATABASE_URL" --single-transaction --exit-on-error \
+  --no-owner --no-acl --no-tablespaces ./database-backup/database.dump
+```
+
+This restores database objects and Bosca's application data, including its stored
+permissions. Database roles/ownership and infrastructure settings belong to the
+destination deployment. Restore the original keys required by encrypted data.
+See the PostgreSQL [pg_dump](https://www.postgresql.org/docs/current/app-pgdump.html)
+and [pg_restore](https://www.postgresql.org/docs/current/app-pgrestore.html) references.
+
+If using Bosca's standalone PostgreSQL restore service or Pipeline action, configure
+`backup.postgres.restore.service`, `database` and optional `serviceFile`, `pgRestore`
+and `psql` executable paths. It requires an empty, operator-owned destination and
+uses a separate libpq connection. It does not replace a running application's database.
+
+## 2. Restore object storage
+
+After database recovery, start the destination API and backup worker against the
+recovered database while keeping normal traffic and unrelated background work
+stopped. Set `runners.enabled` to `[backupQueueRunner]` and `scheduler.enabled` to
+`false` for this recovery deployment. Use a separate queue service for recovery.
+Authenticate to the destination; source credentials are unnecessary.
+Prepare a restore from the independently retained object manifest:
+
+```bash
+bosca --profile recovery backup objects prepare-restore \
+  --request recovery-1 --destination recovery --backup retained \
+  --manifest manifests/inventory.json --store content=recovered-content
+```
+
+Map every logical store in the manifest with another `--store name=storage-ID`.
+Preparation saves the selection and returns a run key and version. Dispatch that
+exact returned version, then inspect progress:
+
+```bash
+bosca --profile recovery backup objects dispatch --key "$RUN_KEY" --expected-version "$RUN_VERSION"
+bosca --profile recovery backup objects get --key "$RUN_KEY" --json
+bosca --profile recovery backup objects items --key "$RUN_KEY" --offset 0 --limit 20
+```
+
+Matching target files are reused without downloading their retained bodies again.
+Missing and differing selected files are restored at their original keys. Files
+outside the selected manifest remain untouched. Required payloads are checked
+before asset writes; each copy verifies its final length and checksum.
+
+After a failed or partial run, correct the cause, use `retry` with its observed
+version, then dispatch the returned pending version. Completed files are reused.
+A redelivered Pipeline job resumes its own checkpoints after interruption. Do not
+recover a recorded active writer until its process has stopped.
+
+Studio's **System → Backups** page shows native artifacts, object-run status,
+current checkpoints and the last successful result. It can prepare, dispatch,
+retry and cancel pending object restores. Manual and recurring captures use the
+existing Pipeline editor, schedules and run history.
+
+## Refresh and verify
+
+A later recovery can replace PostgreSQL again, then restore a newer object manifest
+with a new request key. Keep the same destination identity for the same storage
+location. Replacing the database may discard prior restore progress; actual matching
+target bytes still avoid another copy. Finish database replacement before preparing
+new object work, and keep the progress database stable for that restore attempt.
+
+Before serving traffic, check representative images, supplementary files, logical
+historical versions, collections, documents, relationships and permissions. Verify
+that encrypted configuration can be read with the restored keys. Record both backup
+identities, their times, the object run outcome and any missing content. A completed
+object run reports only the objects selected by its manifest.
+
+The integration suite exercises real pg_dump/pg_restore, database replacement,
+source removal, application reads and incremental object recovery against isolated
+PostgreSQL, NATS, filesystem and S3Proxy stores.
+
+## Development
+
+Run from the workspace root:
+
+```bash
+./gradlew :backup:core-backup:test :backup:backup:test
+```
+
+The S3Proxy recovery test starts isolated PostgreSQL and S3Proxy containers and
+removes them afterward. It verifies an unchanged capture transfers no asset bodies,
+copies the retained files to a second S3Proxy, then restores PostgreSQL and objects
+after the original storage stops. A later recovery
+replaces PostgreSQL again and copies only the changed file.
+
+```bash
+./gradlew :backup:backup:test --tests 'bosca.backup.PostgresBackupIntegrationTest.S3Proxy*'
+```
+
+`core-backup` owns contracts/models. `backup` owns repositories, workers, GraphQL
+and Pipeline actions. The existing ZIP export/import remains a separate archive
+feature; it is not the native database recovery path described here.

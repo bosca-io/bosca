@@ -16,6 +16,7 @@ import bosca.di.CalendarProviderRegistrar
 import bosca.di.AnalyticsAIProviderRegistrar
 import bosca.di.AnalyticsProviderRegistrar
 import bosca.di.BackupProviderRegistrar
+import bosca.di.CoreBackupProviderRegistrar
 import bosca.di.BoscaProviderRegistrar
 import bosca.di.CommentsProviderRegistrar
 import bosca.di.CommunityProviderRegistrar
@@ -197,6 +198,7 @@ suspend fun BoscaApplication.module() {
         MuxProviderRegistrar(),
         DiagnosticsProviderRegistrar(),
         ScriptingProviderRegistrar(),
+        CoreBackupProviderRegistrar(),
         BackupProviderRegistrar(),
         FormsProviderRegistrar(),
         LocalizationProviderRegistrar(),

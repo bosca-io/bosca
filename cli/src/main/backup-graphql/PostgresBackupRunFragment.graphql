@@ -3,8 +3,6 @@ fragment PostgresBackupRunFragment on PostgresBackupRun {
     sourceId
     storageKey
     prefix
-    includeContentReferences
-    contentSource { store storageKey scope }
     status
     attempts
     writerToken
@@ -16,12 +14,10 @@ fragment PostgresBackupRunFragment on PostgresBackupRun {
         key
         storageKey
         path
-        contentReportPath
         manifest {
             id sourceId database created completed snapshotId snapshot
-            serverVersion serverVersionNumber encoding extensions
+            serverVersion serverVersionNumber encoding extensions requiredKeys
             length sha256 payloadPath version format
-            contentInventory { count length sha256 path version }
         }
     }
 }

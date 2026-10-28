@@ -34,7 +34,7 @@ dependencies {
     implementation(project(":bosca-core:core-storage"))
     implementation(project(":bosca-core:core-security"))
     implementation(project(":pipelines:core-pipelines"))
-    implementation(project(":content:content"))
+    testImplementation(project(":content:content"))
     implementation(project(":bosca-core:storage"))
 
     implementation(project(":sharedqueue:sharedqueue"))

@@ -54,6 +54,8 @@ interface ObjectBackupCaptureService : Service {
      * and exclusion of writers outside this progress database. [verifiedSince] remains an
      * explicit execution-time cutoff. A failed ownership release is loud and preserves the claim;
      * if capture also failed, the release failure is suppressed on that original failure.
+     * Successful publication dispatches [BackupCompleted] after stores close and writer ownership
+     * is released, using the completion transaction. Replays may redispatch the same artifact.
      * A queued job may supply its stable [checkpointKey] to resume its own interrupted capture.
      * The caller serializes deliveries of that job. Completed object checkpoints are retained;
      * unfinished selected checkpoints are retried. Another job's claim is never resumed.
@@ -82,19 +84,6 @@ interface ObjectBackupCaptureService : Service {
      */
     suspend fun prepareInventory(
         inventory: ObjectBackupCaptureInventory,
-        destinationId: String,
-        payloadPrefix: String,
-        manifestPath: String,
-    ): ObjectBackupCapturePlan
-
-    /**
-     * Saves [selection]'s inventory and every reference-outcome count as immutable capture intent.
-     * Matching replay preserves these counts; changing or omitting them for the same plan fails.
-     * Validates counts before persistence. Participates in the caller's transaction, performs no
-     * storage access and does not classify required coverage or publish a recovery point.
-     */
-    suspend fun prepareInventory(
-        selection: PostgresBackupContentSelectionSummary,
         destinationId: String,
         payloadPrefix: String,
         manifestPath: String,

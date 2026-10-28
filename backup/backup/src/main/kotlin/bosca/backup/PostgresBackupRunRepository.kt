@@ -17,18 +17,16 @@ interface PostgresBackupRunRepository {
     """)
     suspend fun list(sourceId: String, storageKey: String, offset: Long, limit: Int): List<PostgresBackupRun>
 
-    /** Inserts fixed intent, including reference selection, without replacing an existing request. */
+    /** Inserts fixed intent, without replacing an existing request. */
     @Query("""
-        insert into backup.postgres_runs (key, source_id, storage_key, prefix, include_content_references, content_source)
-        values (:key, :sourceId, :storageKey, :prefix, :includeContentReferences, :contentSource) on conflict (key) do nothing
+        insert into backup.postgres_runs (key, source_id, storage_key, prefix)
+        values (:key, :sourceId, :storageKey, :prefix) on conflict (key) do nothing
     """, returnUpdateCount = true)
     suspend fun add(
         key: String,
         sourceId: String,
         storageKey: String,
         prefix: String,
-        includeContentReferences: Boolean = false,
-        contentSource: PostgresBackupContentSource? = null,
     ): Int
 
     /** Starts only an unfinished idle request and records its exclusive execution token. */

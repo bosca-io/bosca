@@ -274,7 +274,7 @@ class RestoreExecutor : AbstractJobExecutor<RestoreJob>(RestoreJob.serializer())
 
             when {
                 value == null || value is JsonNull -> stmt.setNull(paramIndex, Types.OTHER)
-                value is JsonPrimitive && value.isString -> stmt.setString(paramIndex, value.content)
+                value is JsonPrimitive && value.isString -> stmt.setObject(paramIndex, value.content, Types.OTHER)
                 value is JsonPrimitive && value.booleanOrNull != null -> stmt.setBoolean(paramIndex, value.boolean)
                 value is JsonPrimitive && value.longOrNull != null -> stmt.setLong(paramIndex, value.long)
                 value is JsonPrimitive && value.doubleOrNull != null -> stmt.setDouble(paramIndex, value.double)

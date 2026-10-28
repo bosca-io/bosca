@@ -315,8 +315,8 @@ interface ObjectStorageService : AutoCloseable {
     suspend fun delete(path: ObjectPath)
 
     /**
-     * Generates a pre-signed download URL for a metadata item's content, allowing
-     * direct client downloads without proxying through the application server.
+     * Generates a signed download URL for the selected logical metadata version.
+     * Application download links include the metadata ID and version in the signed query.
      *
      * @param path the storage path of the object to download
      * @param principal the authenticated principal requesting the download, or `null` for anonymous access

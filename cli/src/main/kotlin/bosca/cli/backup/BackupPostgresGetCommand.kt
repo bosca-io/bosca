@@ -7,6 +7,9 @@ import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.options.check
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
 /** Reads one native backup request and its optional retained receipt. */
@@ -37,18 +40,16 @@ class BackupPostgresGetCommand : BackupRemoteCommand(name = "get") {
         echo("Created: ${run.created}")
         echo("Modified: ${run.modified}")
         echo("Error: ${run.error ?: "-"}")
-        echo("Reference inventory requested: ${run.includeContentReferences}")
-        echo("Content source: ${run.contentSource?.storageKey ?: "-"}")
-        echo("Logical store: ${run.contentSource?.store ?: "-"}")
-        echo("Scope: ${run.contentSource?.scope ?: "-"}")
         echo("Database artifact: ${run.result?.path ?: "-"}")
-        echo("Content report: ${run.result?.contentReportPath ?: "-"}")
         run.result?.manifest?.let { manifest ->
             echo("Database: ${manifest.database}")
             echo("PostgreSQL: ${manifest.serverVersion}")
             echo("Dump bytes: ${manifest.length}")
             echo("SHA-256: ${manifest.sha256}")
-            echo("References: ${manifest.contentInventory?.count ?: "-"}")
+            val requiredKeys = Json.decodeFromJsonElement(
+                MapSerializer(String.serializer(), ListSerializer(String.serializer())), manifest.requiredKeys,
+            )
+            for (line in backupKeyRequirementsLines(requiredKeys)) echo(line)
         }
     }
 }

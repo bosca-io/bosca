@@ -10,11 +10,13 @@ import kotlinx.coroutines.withContext
 
 /** Checks and restores an operator-owned, offline destination through its independent libpq service. */
 internal class PostgresBackupRestore(private val application: BoscaApplication) {
-    suspend fun preflight(manifest: PostgresBackupManifest): PostgresBackupManifest = execute(null, manifest)
+    suspend fun preflight(manifest: PostgresBackupManifest, directory: Path? = null): PostgresBackupManifest =
+        execute(directory, manifest, restore = false)
 
-    suspend fun restore(directory: Path, manifest: PostgresBackupManifest): PostgresBackupManifest = execute(directory, manifest)
+    suspend fun restore(directory: Path, manifest: PostgresBackupManifest): PostgresBackupManifest =
+        execute(directory, manifest, restore = true)
 
-    private suspend fun execute(directory: Path?, manifest: PostgresBackupManifest): PostgresBackupManifest {
+    private suspend fun execute(directory: Path?, manifest: PostgresBackupManifest, restore: Boolean): PostgresBackupManifest {
         currentCoroutineContext().ensureActive()
         val config = application.environment.config
         checkPostgresBackupKeys(manifest, config)
@@ -50,15 +52,21 @@ internal class PostgresBackupRestore(private val application: BoscaApplication) 
             )
             if (directory != null) {
                 val pgRestore = checkNotNull(optional("pgRestore", "pg_restore"))
+                val archive = directory.toAbsolutePath().resolve(manifest.payloadPath).toString()
                 runPostgresBackupProcess(
-                    "pg_restore", pgRestore,
-                    listOf(
-                        "--no-password", connection, "--single-transaction", "--exit-on-error",
-                        "--no-owner", "--no-acl", "--no-tablespaces",
-                        directory.toAbsolutePath().resolve(manifest.payloadPath).toString(),
-                    ),
+                    "pg_restore archive preflight", pgRestore, listOf("--list", archive),
                     serviceFile, scratch.resolve("pg_restore.stderr"),
                 )
+                if (restore) {
+                    runPostgresBackupProcess(
+                        "pg_restore", pgRestore,
+                        listOf(
+                            "--no-password", connection, "--single-transaction", "--exit-on-error",
+                            "--no-owner", "--no-acl", "--no-tablespaces", archive,
+                        ),
+                        serviceFile, scratch.resolve("pg_restore.stderr"),
+                    )
+                }
             }
             return manifest
         } catch (error: Throwable) {

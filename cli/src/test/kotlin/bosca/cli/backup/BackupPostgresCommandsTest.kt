@@ -41,22 +41,17 @@ class BackupPostgresCommandsTest {
     private val run = Json.parseToJsonElement("""
         {
           "key":"nightly-1", "sourceId":"old-instance", "storageKey":"retained", "prefix":"snapshots",
-          "includeContentReferences":true,
-          "contentSource":{"store":"content","storageKey":"spaces-source","scope":"content"},
           "status":"COMPLETED", "attempts":2, "writerToken":null, "error":null, "version":9007199254740993,
           "created":"2026-10-21T18:00:17Z", "modified":"2026-10-21T18:01:19Z",
           "result":{
             "key":"nightly-1", "storageKey":"retained", "path":"snapshots/databases/capture",
-            "contentReportPath":"snapshots/reports/capture",
             "manifest":{
               "id":"capture", "sourceId":"old-instance", "database":"bosca",
               "created":"2026-10-21T18:00:17Z", "completed":"2026-10-21T18:01:19Z",
               "snapshotId":"exported", "snapshot":"1:2:", "serverVersion":"18.0",
               "serverVersionNumber":180000, "encoding":"UTF8", "extensions":{"vector":"0.8.1"},
               "length":9007199254740995, "sha256":"${"a".repeat(64)}", "payloadPath":"database.dump",
-              "version":1, "format":"bosca-postgres-backup",
-              "contentInventory":{"count":3,"length":256,"sha256":"${"b".repeat(64)}",
-                                  "path":"content-references.json","version":1}
+              "version":2, "format":"bosca-postgres-backup", "requiredKeys":{}
             }
           }
         }
@@ -110,6 +105,61 @@ class BackupPostgresCommandsTest {
     private fun getArgs(vararg extra: String) =
         listOf("backup", "postgres", "get", "--key", "nightly-1", *extra)
 
+    private fun withRequiredKeys(keys: JsonObject): JsonObject {
+        val receipt = run.getValue("result").jsonObject
+        val manifest = receipt.getValue("manifest").jsonObject
+        val recordedManifest = JsonObject(manifest + mapOf("requiredKeys" to keys, "version" to JsonPrimitive(2)))
+        val recordedReceipt = JsonObject(receipt + ("manifest" to recordedManifest))
+        return JsonObject(run + ("result" to recordedReceipt))
+    }
+
+    @Test
+    fun `get shows recorded key requirements without checking runtime keys or exposing authentication`() {
+        val keys = Json.parseToJsonElement("""{
+            "security.encryption.key":["public.configuration_values","kubernetes.cluster_credential"],
+            "PIPELINE_SECRET_KEY":["pipelines.pipeline_secret","git.pipeline_secrets"],
+            "custom.key":["custom.encrypted_存储"]
+        }""").jsonObject
+        answer("postgresRun", withRequiredKeys(keys))
+        val result = cli().test(getArgs())
+
+        assertEquals(0, result.statusCode, result.output)
+        for (expected in listOf(
+            "Recorded encryption key requirements:",
+            "security.encryption.key: public.configuration_values, kubernetes.cluster_credential",
+            "PIPELINE_SECRET_KEY: pipelines.pipeline_secret, git.pipeline_secrets",
+            "custom.key: custom.encrypted_存储",
+        )) assertTrue(expected in result.stdout, result.output)
+        assertFalse("stored-api-key" in result.output)
+        assertTrue(notice in result.stderr, result.output)
+    }
+
+    @Test
+    fun `get and list JSON retain recorded key requirements and request the field`() {
+        val item = withRequiredKeys(Json.parseToJsonElement("""{
+            "security.encryption.key":["public.configuration_values"],"PIPELINE_SECRET_KEY":["pipelines.pipeline_secret"]
+        }""").jsonObject)
+        answer("postgresRun", item)
+        val single = cli().test(getArgs("--json"))
+        assertEquals(0, single.statusCode, single.output)
+        assertEquals(item, Json.parseToJsonElement(single.stdout))
+        assertTrue("requiredKeys" in requests.single().getValue("query").jsonPrimitive.content)
+        answer("postgresRuns", JsonArray(listOf(item)))
+        val listed = cli().test(listArgs("--json"))
+        assertEquals(0, listed.statusCode, listed.output)
+        assertEquals(JsonArray(listOf(item)), Json.parseToJsonElement(listed.stdout))
+        assertTrue("requiredKeys" in requests.last().getValue("query").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `get distinguishes an empty recorded key inventory from verified decryption`() {
+        answer("postgresRun", withRequiredKeys(JsonObject(emptyMap())))
+        val result = cli().test(getArgs())
+        assertEquals(0, result.statusCode, result.output)
+        assertTrue("Recorded encryption key requirements:\n  None recorded." in result.stdout, result.output)
+        assertTrue(notice in result.stderr, result.output)
+    }
+
     @Test
     fun `list uses saved authentication and exact source storage pagination without writing remote state`() {
         answer("postgresRuns", JsonArray(listOf(run)))
@@ -121,7 +171,7 @@ class BackupPostgresCommandsTest {
         assertEquals("ListPostgresBackupRuns", sent.getValue("operationName").jsonPrimitive.content)
         assertEquals(Json.parseToJsonElement("""{"sourceId":"old-instance","storageKey":"retained","offset":40,"limit":7}"""), sent["variables"])
         assertTrue(sent.getValue("query").jsonPrimitive.content.startsWith("query ListPostgresBackupRuns"))
-        for (value in listOf("nightly-1", "COMPLETED", "2", "snapshots/reports/capture")) {
+        for (value in listOf("nightly-1", "COMPLETED", "2", "snapshots/databases/capture")) {
             assertTrue(value in result.stdout, result.output)
         }
         assertTrue(notice in result.stderr, result.output)
@@ -155,7 +205,7 @@ class BackupPostgresCommandsTest {
     }
 
     @Test
-    fun `get reports the selected native artifact and content evidence without claiming recovery readiness`() {
+    fun `get reports the selected native artifact`() {
         answer("postgresRun", run)
         val result = cli().test(getArgs())
 
@@ -165,10 +215,9 @@ class BackupPostgresCommandsTest {
         assertEquals(Json.parseToJsonElement("""{"key":"nightly-1"}"""), request["variables"])
         for (value in listOf(
             "Request: nightly-1", "Source: old-instance", "Backup storage: retained", "Status: COMPLETED",
-            "Attempts: 2", "Version: 9007199254740993", "Reference inventory requested: true",
-            "Content source: spaces-source", "Logical store: content", "Scope: content",
-            "Database artifact: snapshots/databases/capture", "Content report: snapshots/reports/capture",
-            "Database: bosca", "Dump bytes: 9007199254740995", "References: 3",
+            "Attempts: 2", "Version: 9007199254740993",
+            "Database artifact: snapshots/databases/capture",
+            "Database: bosca", "Dump bytes: 9007199254740995",
         )) assertTrue(value in result.stdout, result.output)
         assertTrue(notice in result.stderr, result.output)
     }
@@ -199,46 +248,6 @@ class BackupPostgresCommandsTest {
         assertEquals(run, Json.parseToJsonElement(result.stdout))
         assertTrue(notice in result.stderr, result.output)
         assertFalse(notice in result.stdout)
-    }
-
-    @Test
-    fun `every request status is returned as recorded including failed attempts without a receipt`() {
-        for (state in listOf("PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED")) {
-            val item = JsonObject(run + mapOf(
-                "status" to JsonPrimitive(state), "result" to JsonNull, "contentSource" to JsonNull,
-                "includeContentReferences" to JsonPrimitive(false), "error" to JsonPrimitive("previous attempt interrupted"),
-            ))
-            answer("postgresRun", item)
-            val human = cli().test(getArgs())
-            assertEquals(0, human.statusCode, human.output)
-            assertTrue("Status: $state" in human.stdout, human.output)
-            assertTrue("Error: previous attempt interrupted" in human.stdout, human.output)
-            assertTrue("Database artifact: -" in human.stdout, human.output)
-            assertTrue("Content report: -" in human.stdout, human.output)
-            val json = cli().test(getArgs("--json"))
-            assertEquals(0, json.statusCode, json.output)
-            assertEquals(item, Json.parseToJsonElement(json.stdout))
-        }
-    }
-
-    @Test
-    fun `native only receipt preserves absent reference inventory and content report`() {
-        val receipt = run.getValue("result").jsonObject
-        val manifest = receipt.getValue("manifest").jsonObject
-        val item = JsonObject(run + mapOf(
-            "includeContentReferences" to JsonPrimitive(false), "contentSource" to JsonNull,
-            "result" to JsonObject(receipt + mapOf("contentReportPath" to JsonNull,
-                "manifest" to JsonObject(manifest + ("contentInventory" to JsonNull)))),
-        ))
-        answer("postgresRun", item)
-        val human = cli().test(getArgs())
-        val json = cli().test(getArgs("--json"))
-
-        assertEquals(0, human.statusCode, human.output)
-        assertTrue("Content report: -" in human.stdout, human.output)
-        assertTrue("References: -" in human.stdout, human.output)
-        assertEquals(0, json.statusCode, json.output)
-        assertEquals(item, Json.parseToJsonElement(json.stdout))
     }
 
     @Test
@@ -357,4 +366,23 @@ class BackupPostgresCommandsTest {
         assertTrue("--key" in get.stdout, get.output)
         assertTrue(requests.isEmpty())
     }
+    @Test
+    fun `every request status is returned as recorded including failed attempts without a receipt`() {
+        for (state in listOf("PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED")) {
+            val item = JsonObject(run + mapOf(
+                "status" to JsonPrimitive(state), "result" to JsonNull,
+                "error" to JsonPrimitive("previous attempt interrupted"),
+            ))
+            answer("postgresRun", item)
+            val human = cli().test(getArgs())
+            assertEquals(0, human.statusCode, human.output)
+            assertTrue("Status: $state" in human.stdout, human.output)
+            assertTrue("Error: previous attempt interrupted" in human.stdout, human.output)
+            assertTrue("Database artifact: -" in human.stdout, human.output)
+            val json = cli().test(getArgs("--json"))
+            assertEquals(0, json.statusCode, json.output)
+            assertEquals(item, Json.parseToJsonElement(json.stdout))
+        }
+    }
+
 }

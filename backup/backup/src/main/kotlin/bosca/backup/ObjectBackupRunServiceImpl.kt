@@ -198,7 +198,19 @@ class ObjectBackupRunServiceImpl(
         }
         if (!matchesDispatch(prepared, expectedVersion, checkpoint)) return prepared
         when (prepared.status) {
-            ObjectBackupRunStatus.COMPLETED, ObjectBackupRunStatus.CANCELLED -> return prepared
+            ObjectBackupRunStatus.COMPLETED -> {
+                if (prepared.operation == ObjectBackupOperation.BACKUP) {
+                    withConnectionManager {
+                        transaction {
+                            BackupCompleted(
+                                prepared.key, BackupType.OBJECTS, prepared.destinationId, prepared.path,
+                            ).dispatch()
+                        }
+                    }
+                }
+                return prepared
+            }
+            ObjectBackupRunStatus.CANCELLED -> return prepared
             ObjectBackupRunStatus.RUNNING -> check(checkpoint != null && prepared.checkpointKey == checkpoint) {
                 "Object run is already running: $key"
             }
@@ -459,12 +471,31 @@ class ObjectBackupRunServiceImpl(
                 }
             }
         }
-        if (!started) return running
+        if (!started) {
+            if (operation == ObjectBackupOperation.BACKUP && running.status == ObjectBackupRunStatus.COMPLETED) {
+                withConnectionManager {
+                    transaction {
+                        BackupCompleted(
+                            running.key, BackupType.OBJECTS, running.destinationId, running.path,
+                        ).dispatch()
+                    }
+                }
+            }
+            return running
+        }
         return try {
             transfer(running)
             currentCoroutineContext().ensureActive()
 
-            withConnectionManager { complete(running.key, running.version) }
+            withConnectionManager {
+                transaction {
+                    val completed = complete(running.key, running.version)
+                    if (operation == ObjectBackupOperation.BACKUP) {
+                        BackupCompleted(completed.key, BackupType.OBJECTS, completed.destinationId, completed.path).dispatch()
+                    }
+                    completed
+                }
+            }
         } catch (failure: Exception) {
             try {
                 withContext(NonCancellable) {

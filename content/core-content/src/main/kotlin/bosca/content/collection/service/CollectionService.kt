@@ -21,7 +21,6 @@ import bosca.content.collection.model.CollectionWorkflowPlan
 import bosca.content.collection.model.ICollection
 import bosca.content.find.FindQueryInput
 import bosca.content.model.ContentRelationship
-import bosca.content.model.ContentStorageReference
 import bosca.content.transition.service.TransitioningService
 import bosca.graphql.Batch
 import bosca.security.model.PermissionAction
@@ -76,16 +75,6 @@ interface CollectionService : PermissionService<ICollection, UUID>, Transitionin
      */
     suspend fun getDeleted(offset: Long, limit: Int): List<Collection>
 
-    /**
-     * Enumerates storage-reference evidence directly from the current database connection,
-     * bypassing content caches. Includes soft-deleted owners and records without upload evidence.
-     * Enumerates supplementary records; collections have no primary-object upload record.
-     *
-     * Uses deterministic offset pagination: [offset] must be nonnegative and [limit] positive.
-     * Run all pages in one caller-owned database snapshot for a consistent inventory. This method
-     * neither opens a transaction nor reads asset bodies or proves backup coverage.
-     */
-    suspend fun getStorageReferences(offset: Long, limit: Int): List<ContentStorageReference>
 
     /**
      * Registers a batch loader for efficiently fetching language variants by collection cache key.

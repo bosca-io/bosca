@@ -21,12 +21,6 @@ class PostgresBackupRunController : GraphQLController<PostgresBackupRun> {
     fun prefix(value: PostgresBackupRun) = value.prefix
 
     @Field
-    fun includeContentReferences(value: PostgresBackupRun) = value.includeContentReferences
-
-    @Field
-    fun contentSource(value: PostgresBackupRun) = value.contentSource
-
-    @Field
     fun status(value: PostgresBackupRun) = value.status
 
     @Field

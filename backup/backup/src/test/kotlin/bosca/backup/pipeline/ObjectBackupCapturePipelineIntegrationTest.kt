@@ -488,7 +488,7 @@ class ObjectBackupCapturePipelineIntegrationTest {
         val initial = start()
         executeNext()
         val failed = failNext(retry = true)
-        assertEquals(listOf("a@null", "b@null"), requests.toList())
+        assertEquals(listOf("a@null", "b@null"), requests.toList(), failed.second.stackTraceToString())
         assertNull(get(initial.id).output)
         failedKey = null
         requests.clear()

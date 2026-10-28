@@ -75,8 +75,8 @@ interface ObjectBackupCaptureRepository {
     @Query(
         """
         insert into backup.object_capture_plans
-            (key, destination_id, inventory, payload_prefix, path, discovery, content_selection_counts)
-        values (:key, :destinationId, :inventory, :payloadPrefix, :path, :discovery, :contentSelectionCounts)
+            (key, destination_id, inventory, payload_prefix, path, discovery)
+        values (:key, :destinationId, :inventory, :payloadPrefix, :path, :discovery)
         on conflict (key) do nothing
         """,
         returnUpdateCount = true,

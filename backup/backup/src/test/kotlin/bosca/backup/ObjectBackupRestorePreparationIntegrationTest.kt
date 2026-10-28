@@ -277,7 +277,7 @@ class ObjectBackupRestorePreparationIntegrationTest {
         assertEquals(ObjectBackupRunStatus.PENDING, fresh.status)
         assertEquals(ObjectBackupRunStatus.COMPLETED, runs.executeConfigured(fresh.key).status)
         assertTrue(writes.isEmpty())
-        assertTrue(requests.any { it == "GET ${inventory.objects.first().payloadPath}" })
+        assertTrue(requests.none { request -> inventory.objects.any { request == "GET ${it.payloadPath}" } })
         assertEquals(2, history().size)
     }
 
@@ -314,15 +314,17 @@ class ObjectBackupRestorePreparationIntegrationTest {
     }
 
     @Test
-    fun `destination conflicts and missing retained payloads fail before any writes`(): Unit = runBlocking {
-        val target = directory.resolve("target-artifacts/packages/item").toFile().apply { parentFile.mkdirs(); writeText("conflict") }
+    fun `missing required retained payloads fail before selected target replacement`(): Unit = runBlocking {
+        val target = directory.resolve("target-artifacts/packages/item").toFile().apply { parentFile.mkdirs(); writeText("old bytes") }
         val run = prepare()
-        assertFailsWith<IllegalStateException> { runs.executeConfigured(run.key) }
-        assertTrue(writes.isEmpty())
-        target.delete()
-        data.remove(inventory.objects.last().payloadPath)
+        val retainedPath = inventory.objects.last().payloadPath
+        val retainedData = data.remove(retainedPath)
         assertFailsWith<Exception> { runs.executeConfigured(run.key) }
         assertTrue(writes.isEmpty())
+        assertEquals("old bytes", target.readText())
+        data[retainedPath] = assertNotNull(retainedData)
+        assertEquals(ObjectBackupRunStatus.COMPLETED, runs.executeConfigured(run.key).status)
+        assertEquals("more", target.readText())
     }
 
     @Test

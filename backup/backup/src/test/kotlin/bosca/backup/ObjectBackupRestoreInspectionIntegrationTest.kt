@@ -114,7 +114,7 @@ class ObjectBackupRestoreInspectionIntegrationTest {
         val inspection = inspect(artifactTarget = target)
 
         assertEquals(
-            listOf(ObjectBackupRestoreObjectStatus.MATCHING, ObjectBackupRestoreObjectStatus.CONFLICTING),
+            listOf(ObjectBackupRestoreObjectStatus.MATCHING, ObjectBackupRestoreObjectStatus.DIFFERENT),
             inspection.objects.map { it.status },
         )
         assertEquals("independent data", read(artifacts, second.key))
@@ -133,7 +133,7 @@ class ObjectBackupRestoreInspectionIntegrationTest {
 
         val item = inspect().objects.first()
 
-        assertEquals(ObjectBackupRestoreObjectStatus.REPAIRABLE, item.status)
+        assertEquals(ObjectBackupRestoreObjectStatus.DIFFERENT, item.status)
         assertEquals(failed, item.progress)
         assertEquals(listOf(failed), checkpoints())
         assertEquals("da", read(content, first.key))
@@ -148,7 +148,7 @@ class ObjectBackupRestoreInspectionIntegrationTest {
 
         val item = inspect().objects.first()
 
-        assertEquals(ObjectBackupRestoreObjectStatus.CONFLICTING, item.status)
+        assertEquals(ObjectBackupRestoreObjectStatus.DIFFERENT, item.status)
         assertEquals(pending, item.progress)
         assertEquals(listOf(pending), checkpoints())
     }
@@ -171,13 +171,13 @@ class ObjectBackupRestoreInspectionIntegrationTest {
     }
 
     @Test
-    fun `corrupt backup data fails inspection before reading destination storage`(): Unit = runBlocking {
+    fun `corrupt required backup data fails before destination writes`(): Unit = runBlocking {
         write(backup, second.payloadPath, "oops")
-        val target = mockk<ObjectStorageService>()
+        val target = delegate(content)
 
         assertFailsWith<BackupPayloadMismatchException> { inspect(contentTarget = target) }
 
-        coVerify(exactly = 0) { target.getInputStream(any()) }
+        coVerify(exactly = 0) { target.setInputStream(any(), any(), any()) }
         assertTrue(checkpoints().isEmpty())
     }
 
@@ -244,13 +244,10 @@ class ObjectBackupRestoreInspectionIntegrationTest {
         assertTrue(inspect().objects.all { it.status == ObjectBackupRestoreObjectStatus.MISSING })
         write(artifacts, second.key, "new independent data")
 
-        val failure = assertFailsWith<IllegalStateException> {
-            service.restore(path, backup, targets(), "new-instance")
-        }
-
-        assertTrue(failure.message.orEmpty().contains(second.key))
-        assertMissing(content, first.key)
-        assertTrue(checkpoints().isEmpty())
+        assertEquals(inventory, service.restore(path, backup, targets(), "new-instance"))
+        assertEquals("more", read(artifacts, second.key))
+        assertEquals("data", read(content, first.key))
+        assertTrue(checkpoints().all { it.status == ObjectBackupProgressStatus.COMPLETED })
     }
 
     @Test
@@ -309,7 +306,7 @@ class ObjectBackupRestoreInspectionIntegrationTest {
         val inspection = provide<ObjectBackupRestoreService>().inspect(inventory, backup, targets(), "new-instance")
 
         assertEquals(
-            listOf(ObjectBackupRestoreObjectStatus.REPAIRABLE, ObjectBackupRestoreObjectStatus.CONFLICTING),
+            listOf(ObjectBackupRestoreObjectStatus.DIFFERENT, ObjectBackupRestoreObjectStatus.DIFFERENT),
             inspection.objects.map { it.status },
         )
         assertEquals(failed, inspection.objects.first().progress)
@@ -341,9 +338,9 @@ class ObjectBackupRestoreInspectionIntegrationTest {
     }
 
     @Test
-    fun `selected inventory checks retained bytes before destinations on every inspection`(): Unit = runBlocking {
+    fun `selected inventory verifies required retained bytes on every inspection`(): Unit = runBlocking {
         service.inspect(inventory, backup, targets(), "new-instance")
-        val target = mockk<ObjectStorageService>()
+        val target = delegate(content)
         backup.delete(StringObjectPath(second.payloadPath))
         assertFailsWith<ObjectNotFoundException> {
             service.inspect(inventory, backup, mapOf("content" to target, "artifacts" to target), "new-instance")
@@ -352,7 +349,6 @@ class ObjectBackupRestoreInspectionIntegrationTest {
         assertFailsWith<BackupPayloadMismatchException> {
             service.inspect(inventory, backup, mapOf("content" to target, "artifacts" to target), "new-instance")
         }
-        coVerify(exactly = 0) { target.getInputStream(any()) }
         coVerify(exactly = 0) { target.setInputStream(any(), any(), any()) }
         assertTrue(checkpoints().isEmpty())
     }
@@ -380,13 +376,13 @@ class ObjectBackupRestoreInspectionIntegrationTest {
         })
         write(artifacts, second.key, "new independent data")
 
-        assertFailsWith<IllegalStateException> { service.restore(inventory, backup, targets(), "new-instance") }
+        assertEquals(inventory, service.restore(inventory, backup, targets(), "new-instance"))
 
         val inspection = service.inspect(inventory, backup, targets(), "new-instance")
-        assertEquals(ObjectBackupRestoreObjectStatus.CONFLICTING, inspection.objects.last().status)
-        assertEquals("new independent data", read(artifacts, second.key))
-        assertMissing(content, first.key)
-        assertTrue(checkpoints().isEmpty())
+        assertTrue(inspection.objects.all { it.status == ObjectBackupRestoreObjectStatus.MATCHING })
+        assertEquals("more", read(artifacts, second.key))
+        assertEquals("data", read(content, first.key))
+        assertTrue(checkpoints().all { it.status == ObjectBackupProgressStatus.COMPLETED })
     }
 
     private suspend fun inspect(

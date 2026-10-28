@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
+import BackupRecovery from '~/components/backups/BackupRecovery.vue'
 import type { GlassTableColumn, OverflowMenuItem } from '@bosca/ui'
 
 const { accent } = useCurrentSubsystem()
@@ -95,7 +96,7 @@ function formatDate(d: string): string { return new Date(d).toLocaleString(undef
         :accent="accent"
         :breadcrumb="buildBreadcrumb('System', 'Backups')"
         title="Backups"
-        :subtitle="`${backups.length} backups`">
+        :subtitle="`${backups.length} archive backups`">
         <template #actions>
           <Button size="sm" icon="pulse" @click="refresh()">Refresh</Button>
           <Button
@@ -103,12 +104,14 @@ function formatDate(d: string): string { return new Date(d).toLocaleString(undef
             icon="plus"
             size="sm"
             :accent="accent"
-            @click="showCreate = true">Create Backup</Button>
+            @click="showCreate = true">Create archive</Button>
         </template>
       </PageHeader>
     </template>
 
-    <SectionCard title="Backups">
+    <BackupRecovery />
+
+    <SectionCard title="Archive backups">
       <GlassTable
         :columns="columns"
         :rows="backups"
@@ -128,7 +131,7 @@ function formatDate(d: string): string { return new Date(d).toLocaleString(undef
 
     <Modal
       v-if="showCreate"
-      title="Create Backup"
+      title="Create archive"
       icon="database"
       :accent="accent"
       @close="showCreate = false">

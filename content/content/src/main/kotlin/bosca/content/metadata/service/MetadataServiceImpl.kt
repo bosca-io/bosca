@@ -62,7 +62,6 @@ import bosca.content.metadata.repository.MetadataRepository
 import bosca.content.metadata.repository.MetadataSupplementaryRepository
 import bosca.content.metadata.repository.MetadataTraitRepository
 import bosca.content.metadata.repository.MetadataWorkflowPlanRepository
-import bosca.content.model.ContentStorageReference
 import bosca.content.recommendation.service.RecommendationContextClassifier
 import bosca.content.transition.history.model.MetadataTransitionHistory
 import bosca.content.transition.history.service.TransitionHistoryService
@@ -304,11 +303,6 @@ class MetadataServiceImpl(
         return repository.getDeleted(offset, limit)
     }
 
-    override suspend fun getStorageReferences(offset: Long, limit: Int): List<ContentStorageReference> {
-        require(offset >= 0) { "offset must be nonnegative" }
-        require(limit > 0) { "limit must be positive" }
-        return repository.getStorageReferences(offset, limit)
-    }
 
     override suspend fun getById(id: UUID) = metadataCacheById.get(MetadataCacheKeyId(id))
 

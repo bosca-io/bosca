@@ -1,7 +1,6 @@
 package bosca.content.collection.repository
 
 import bosca.content.collection.model.Collection
-import bosca.content.model.ContentStorageReference
 import bosca.db.annotation.Query
 import bosca.db.annotation.Repository
 import bosca.serialization.OffsetDateTime
@@ -11,15 +10,6 @@ import kotlinx.serialization.json.JsonElement
 @Repository
 interface CollectionRepository {
 
-    /** Reads all storage-reference evidence in a stable order using the caller's database view. */
-    @Query("""
-        select 'collection_supplementary' as kind, c.id as content_id, null::integer as version,
-               s.id as supplementary_id, s.key as supplementary_key, s.content_length, s.uploaded, c.deleted
-        from collection_supplementary s join collections c on c.id = s.collection_id
-        order by c.id, s.key, s.id
-        limit :limit offset :offset
-    """)
-    suspend fun getStorageReferences(offset: Long, limit: Int): List<ContentStorageReference>
 
     @Query("insert into collections (id, name, type, description, attributes, system_attributes, labels, recommendation_contexts, created, modified, ready, etag, enabled, ordering, delete_workflow_id, public, public_list, public_supplementary, locked, items_locked, template_metadata_id, template_metadata_version, searchable, recommendable) values ('00000000-0000-0000-0000-000000000000', :name, :type, :description, :attributes, :systemAttributes, :labels, :recommendationContexts, :created, :modified, :ready, :etag, :enabled, :ordering, :deleteWorkflowId, :public, :publicList, :publicSupplementary, :locked, :itemsLocked, :templateMetadataId, :templateMetadataVersion, :searchable, :recommendable) returning *")
     suspend fun addRoot(collection: Collection): Collection

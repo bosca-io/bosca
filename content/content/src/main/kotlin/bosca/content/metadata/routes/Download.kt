@@ -82,7 +82,22 @@ open class Download(
 
     override suspend fun execute(call: ServerCall, authenticationContext: AuthenticationContext) {
         val id = UUID.parse(call.request.queryParameters["id"] ?: error("missing id"))
-        val metadata = metadataService.getById(id) ?: error("Metadata not found")
+        val version = call.request.queryParameters["version"]?.let {
+            val value = it.toIntOrNull()
+            if (value == null || value <= 0) {
+                call.respond(HttpStatusCode.BadRequest, "version must be a positive integer")
+                return
+            }
+            value
+        }
+        val metadata = if (version == null) {
+            metadataService.getById(id) ?: error("Metadata not found")
+        } else {
+            metadataService.getById(id, version) ?: run {
+                call.respond(HttpStatusCode.NotFound, "Metadata version not found")
+                return
+            }
+        }
         var urlSigned = false
         if (!metadataPermissionEvaluator.isContentAllowed(authenticationContext, metadata, PermissionAction.VIEW)) {
             if (!urlSigner.verify(URI.create(call.request.uri))) {

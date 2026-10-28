@@ -54,6 +54,7 @@ import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.slug.service.SlugService
 import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.UrlSigner
 import bosca.storage.service.download
 import bosca.test.resources.SharedNatsContainer
 import io.mockk.mockk
@@ -91,6 +92,9 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
     private val collection = UUID.parse("20000000-0000-0000-0000-000000000001")
     private val supplementary = UUID.parse("30000000-0000-0000-0000-000000000001")
     private val collectionSupplementary = UUID.parse("30000000-0000-0000-0000-000000000002")
+    private val versionedImage = UUID.parse("10000000-0000-0000-0000-000000000012")
+    private val archivedFirst = UUID.parse("30000000-0000-0000-0000-000000000003")
+    private val archivedSecond = UUID.parse("30000000-0000-0000-0000-000000000004")
     private val readers = UUID.parse("40000000-0000-0000-0000-000000000001")
     private val reader = UUID.parse("50000000-0000-0000-0000-000000000001")
     private val outsider = UUID.parse("50000000-0000-0000-0000-000000000002")
@@ -161,8 +165,25 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
                 values ('$collection', '$readers', 'view');
         """.trimIndent())
         asset("metadata/$image/6/content", "earlier")
+        sql("update metadata set etag = 'recovered-current-etag' where id = '$image'")
         asset("metadata/$image/7/supplementary/$supplementary", "thumbnail")
         asset("collection/$collection/supplementary/$collectionSupplementary", "cover")
+        sql("""
+            insert into metadata (id, version, name, content_type, content_length, uploaded)
+                values ('$versionedImage', 6, 'Archived through trigger', 'image/png', 8, now());
+            insert into traits (id, name, description) values ('recovery.archived', 'Archived', 'Archived attachment');
+            insert into metadata_supplementary (id, metadata_id, key, name, content_type, content_length, uploaded)
+                values ('$archivedFirst', '$versionedImage', 'thumbnail', 'First', 'image/png', 5, now()),
+                       ('$archivedSecond', '$versionedImage', 'thumbnail', 'Second', 'image/png', 6, now());
+            insert into metadata_supplementary_traits (id, trait_id)
+                values ('$archivedFirst', 'recovery.archived'), ('$archivedSecond', 'recovery.archived');
+            update metadata set version = 7, name = 'Current after trigger', content_length = 6, uploaded = now()
+                where id = '$versionedImage';
+        """.trimIndent())
+        asset("metadata/$versionedImage/6/content", "archived")
+        asset("metadata/$versionedImage/7/content", "latest")
+        asset("metadata/$versionedImage/6/supplementary/$archivedFirst", "first")
+        asset("metadata/$versionedImage/6/supplementary/$archivedSecond", "second")
     }
 
     private fun asset(key: String, value: String) {
@@ -212,6 +233,12 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
                 val thumbnail = metadata.getSupplementary(image).single()
                 assertEquals(supplementary, thumbnail.id)
                 assertEquals("thumbnail", storage.download(current, thumbnail.id).use { it.reader().readText() })
+                val triggeredHistory = assertNotNull(metadata.getById(versionedImage, 6))
+                assertEquals("Archived through trigger", triggeredHistory.name)
+                assertEquals("archived", storage.download(triggeredHistory).use { it.reader().readText() })
+                assertEquals("first", storage.download(triggeredHistory, archivedFirst).use { it.reader().readText() })
+                assertEquals("second", storage.download(triggeredHistory, archivedSecond).use { it.reader().readText() })
+                assertTrue(metadata.getSupplementary(versionedImage).isEmpty())
                 val restoredDocument = assertNotNull(documents.getDocument(document, 1))
                 assertEquals("Recovered document", restoredDocument.title)
                 assertEquals(json.parseToJsonElement(body), json.encodeToJsonElement(Content.serializer(), assertNotNull(restoredDocument.content)))
@@ -306,6 +333,14 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
                 val url = assertNotNull(urls.download(null, MetadataContentUrls(public), false)).url
                 assertTrue(url.startsWith("https://recovered.invalid/"), url)
                 assertFalse(url.contains("source.invalid"), url)
+                PostgresContentRecoveryHttpFixture(metadata, metadataPermissions, storage, provide<UrlSigner>()).verify(
+                    history,
+                    mapOf(
+                        "reader" to identity,
+                        "outsider" to assertNotNull(denied.principal()),
+                        "scoped" to assertNotNull(restricted.principal()),
+                    ),
+                )
             }
             assertEquals(0, pool.activeConnections)
         }

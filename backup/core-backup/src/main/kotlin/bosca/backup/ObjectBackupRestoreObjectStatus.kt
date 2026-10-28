@@ -8,9 +8,6 @@ enum class ObjectBackupRestoreObjectStatus {
     /** Destination bytes match the declared length and SHA-256 digest. */
     MATCHING,
 
-    /** Bytes differ and an earlier started checkpoint owns this restore output. */
-    REPAIRABLE,
-
-    /** Bytes differ without a started checkpoint authorizing repair. */
-    CONFLICTING,
+    /** Destination bytes differ; explicit recovery replaces this selected file. */
+    DIFFERENT,
 }

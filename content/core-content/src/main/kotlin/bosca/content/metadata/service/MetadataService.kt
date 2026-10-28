@@ -20,7 +20,6 @@ import bosca.content.metadata.model.MetadataSupplementary
 import bosca.content.metadata.model.MetadataSupplementaryInput
 import bosca.content.metadata.model.MetadataWorkflowPlan
 import bosca.content.metadata.model.SourceStatus
-import bosca.content.model.ContentStorageReference
 import bosca.content.transition.service.TransitioningService
 import bosca.graphql.Batch
 import bosca.security.model.EntityPermission
@@ -65,22 +64,6 @@ interface MetadataService : PermissionService<Metadata, UUID>, TransitioningServ
      */
     suspend fun getDeleted(offset: Long, limit: Int): List<Metadata>
 
-    /**
-     * Enumerates storage-reference evidence directly from the current database connection,
-     * bypassing content caches. Includes soft-deleted owners and records without upload evidence.
-     * Includes current primary/supplementary records and historical primary/supplementary records;
-     * historical supplementary UUIDs are unavailable and are returned as null, never inferred.
-     * Document, guide-step, guide-step-module, data, guide and template primaries with an exact
-     * ID/version row in their corresponding content table and no binary length or upload are
-     * excluded. Historical primaries use the matching content version and length evidence.
-     * Supplementary assets remain included; missing backing rows, other kinds and unknown types
-     * remain possible storage references.
-     *
-     * Uses deterministic offset pagination: [offset] must be nonnegative and [limit] positive.
-     * Run all pages in one caller-owned database snapshot for a consistent inventory. This method
-     * neither opens a transaction nor reads asset bodies or proves backup coverage.
-     */
-    suspend fun getStorageReferences(offset: Long, limit: Int): List<ContentStorageReference>
 
     /**
      * Looks up a metadata entry by its identifier, returning the latest version.

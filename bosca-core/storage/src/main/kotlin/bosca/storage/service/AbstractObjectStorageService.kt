@@ -47,8 +47,8 @@ abstract class AbstractObjectStorageService(
         filename: Boolean,
     ): SignedUrl {
         var url = supplementaryId?.let {
-            "$urlPrefix/api/v1/content/metadata/download?id=${metadata.id}&supplementaryId=$it"
-        } ?: "$urlPrefix/api/v1/content/metadata/download?id=${metadata.id}"
+            "$urlPrefix/api/v1/content/metadata/download?id=${metadata.id}&version=${metadata.version}&supplementaryId=$it"
+        } ?: "$urlPrefix/api/v1/content/metadata/download?id=${metadata.id}&version=${metadata.version}"
         if (filename) {
             url += "&filename=true"
         }

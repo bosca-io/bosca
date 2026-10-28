@@ -39,7 +39,6 @@ class BackupPostgresRecoverCommandTest {
     private val endpoint get() = "http://127.0.0.1:${server.address.port}/graphql"
     private val recovered = Json.parseToJsonElement("""
         {"key":"native-1","sourceId":"source","storageKey":"retained","prefix":"snapshots",
-         "includeContentReferences":true,"contentSource":{"store":"content","storageKey":"source-content","scope":"content"},
          "status":"FAILED","attempts":2,"writerToken":null,"error":"Stopped PostgreSQL backup writer recovered",
          "version":9007199254740993,"created":"2026-10-21T18:00:17Z","modified":"2026-10-21T18:01:19Z","result":null}
     """.trimIndent()).jsonObject
@@ -115,16 +114,6 @@ class BackupPostgresRecoverCommandTest {
         assertEquals(0, result.statusCode, result.output)
         assertEquals(recovered, Json.parseToJsonElement(result.stdout))
         assertTrue("Request completion does not establish full recovery coverage" in result.stderr, result.output)
-        assertEquals(1, requests.size)
-    }
-
-    @Test
-    fun `database only requests preserve null content selections and absence of a receipt`() {
-        val plain = JsonObject(recovered + mapOf("includeContentReferences" to JsonPrimitive(false), "contentSource" to JsonNull))
-        answer("recoverPostgresRun", plain)
-        val result = cli().test(args("--json"))
-        assertEquals(0, result.statusCode, result.output)
-        assertEquals(plain, Json.parseToJsonElement(result.stdout))
         assertEquals(1, requests.size)
     }
 

@@ -168,6 +168,54 @@ class ObjectBackupCaptureConfiguredIntegrationTest {
         withConnectionManager { storage.bindConfigured(configurations.keys) }
     }
 
+    @Test
+    fun `published capture emits its manifest only after stores close and ownership releases`(): Unit = runBlocking {
+        val events = BackupEventTestDispatcher()
+        provides<bosca.pipelines.PipelineEventDispatcher>(singleton = true) { events }
+        val plan = withConnectionManager {
+            val prepared = service.prepareInventory(selection, "retained", "payloads", "manifests/event.json")
+            service.configureStorage(prepared.key, mapping)
+            prepared
+        }
+        events.beforeDispatch = { event ->
+            assertEquals(opened.sorted(), closed.sorted())
+            assertNull(service.getWriter(plan.key))
+            assertTrue(directory.resolve("retained/${event.path}").exists())
+        }
+        val result = service.captureConfigured(plan.key, configurations, null)
+        assertEquals(selection.id, result.id)
+        assertEquals(listOf(BackupCompleted(plan.key, BackupType.OBJECTS, "retained", plan.path)), events.events)
+    }
+
+    @Test
+    fun `capture event failure releases ownership and retry reuses retained payloads`(): Unit = runBlocking {
+        val events = BackupEventTestDispatcher()
+        provides<bosca.pipelines.PipelineEventDispatcher>(singleton = true) { events }
+        val plan = prepare()
+        withConnectionManager { service.configureStorage(plan.key, mapping) }
+        events.beforeDispatch = { throw IOException("event unavailable") }
+        assertFailsWith<IOException> { service.captureConfigured(plan.key, configurations, null) }
+        assertNull(withConnectionManager { service.getWriter(plan.key) })
+        assertTrue(events.events.isEmpty())
+        val before = requests.toList()
+        events.beforeDispatch = {}
+        service.captureConfigured(plan.key, configurations, null)
+        assertEquals(before, requests.toList())
+        assertEquals(listOf(BackupCompleted(plan.key, BackupType.OBJECTS, "retained", plan.path)), events.events)
+    }
+
+    @Test
+    fun `failed capture does not announce a completed backup`(): Unit = runBlocking {
+        val events = BackupEventTestDispatcher()
+        provides<bosca.pipelines.PipelineEventDispatcher>(singleton = true) { events }
+        val plan = prepare()
+        withConnectionManager { service.configureStorage(plan.key, mapping) }
+        failRead = "/artifacts/asset"
+        assertFailsWith<Exception> { service.captureConfigured(plan.key, configurations, null) }
+        assertTrue(events.events.isEmpty())
+        assertNull(withConnectionManager { service.getWriter(plan.key) })
+    }
+
     @AfterTest
     fun tearDown(): Unit = runBlocking {
         try {

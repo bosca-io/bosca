@@ -97,6 +97,8 @@ class ObjectBackupRestoreIntegrationTest {
 
     @Test
     fun `restores original keys across logical stores without any live source`(): Unit = runBlocking {
+        val events = BackupEventTestDispatcher()
+        provides<bosca.pipelines.PipelineEventDispatcher>(singleton = true) { events }
         val target = delegate(content)
         coEvery { target.setInputStream(any(), any(), any()) } coAnswers {
             assertEquals(0, pool.activeConnections)
@@ -113,6 +115,7 @@ class ObjectBackupRestoreIntegrationTest {
         assertTrue(checkpoints().all { it.status == ObjectBackupProgressStatus.COMPLETED })
         assertEquals(setOf(first.key, second.key), checkpoints().map { it.payload.payloadPath }.toSet())
         assertEquals(inventory, ObjectBackupManifestStore(backup, Json).load(path))
+        assertTrue(events.events.isEmpty())
     }
 
     @Test
@@ -182,15 +185,14 @@ class ObjectBackupRestoreIntegrationTest {
     }
 
     @Test
-    fun `conflicting preexisting target data is rejected before writing other assets`(): Unit = runBlocking {
+    fun `explicit recovery replaces preexisting bytes at selected target keys`(): Unit = runBlocking {
         write(artifacts, second.key, "independent data")
 
-        val failure = assertFailsWith<IllegalStateException> { restore() }
+        restore()
 
-        assertTrue(failure.message.orEmpty().contains(second.key))
-        assertMissing(content, first.key)
-        assertEquals("independent data", read(artifacts, second.key))
-        assertTrue(checkpoints().all { it.attempts == 0 })
+        assertEquals("data", read(content, first.key))
+        assertEquals("more", read(artifacts, second.key))
+        assertTrue(checkpoints().all { it.status == ObjectBackupProgressStatus.COMPLETED })
     }
 
     @Test
@@ -362,6 +364,64 @@ class ObjectBackupRestoreIntegrationTest {
         assertEquals(inventory, restored)
         assertEquals("data", read(content, first.key))
         assertEquals("more", read(artifacts, second.key))
+    }
+
+    @Test
+    fun `a later recovery replaces changed files while reusing unchanged files`(): Unit = runBlocking {
+        restore()
+        val changed = entry("content", first.key, "new data").copy(revision = "second-recovery", payloadPath = "assets/updated")
+        write(backup, changed.payloadPath, "new data")
+        val later = inventory.copy(id = "snapshot-2", objects = listOf(changed, second))
+        save(later)
+        write(content, "outside-selection", "keep this")
+        val unchanged = delegate(artifacts)
+        coEvery { unchanged.setInputStream(any(), any(), any()) } throws AssertionError("Unchanged files must be reused")
+
+        assertEquals(later, restore(artifactTarget = unchanged))
+
+        assertEquals("new data", read(content, first.key))
+        assertEquals("more", read(artifacts, second.key))
+        assertEquals("keep this", read(content, "outside-selection"))
+        coVerify(exactly = 0) { unchanged.setInputStream(any(), any(), any()) }
+    }
+
+    @Test
+    fun `unchanged recovery does not download retained asset bodies again`(): Unit = runBlocking {
+        restore()
+        val retained = delegate(backup)
+        coEvery { retained.getInputStream(any()) } coAnswers {
+            val requested = firstArg<bosca.storage.service.ObjectPath>()
+            check(requested.toString() == path.toString()) { "Matching assets must not be downloaded: $requested" }
+            backup.getInputStream(requested)
+        }
+
+        assertEquals(inventory, service.restore(path, retained, mapOf("content" to content, "artifacts" to artifacts), "new-instance"))
+    }
+
+    @Test
+    fun `changed recovery resumes after partial writes without rewriting completed files`(): Unit = runBlocking {
+        restore()
+        val changed = entry("content", first.key, "new data").copy(revision = "second-recovery", payloadPath = "assets/updated")
+        val laterArtifact = entry("artifacts", second.key, "new package").copy(revision = "second-recovery", payloadPath = "assets/package")
+        write(backup, changed.payloadPath, "new data")
+        write(backup, laterArtifact.payloadPath, "new package")
+        save(inventory.copy(id = "snapshot-2", objects = listOf(changed, laterArtifact)))
+        val failed = delegate(artifacts)
+        coEvery { failed.setInputStream(any(), any(), any()) } coAnswers {
+            artifacts.setInputStream(firstArg(), "partial".byteInputStream(), 7)
+            throw IOException("connection lost")
+        }
+
+        assertFailsWith<IOException> { restore(artifactTarget = failed) }
+        assertEquals("new data", read(content, first.key))
+        BackupProviderRegistrar().register()
+        service = provide()
+        val completed = delegate(content)
+        coEvery { completed.setInputStream(any(), any(), any()) } throws AssertionError("Completed files must be reused")
+        restore(contentTarget = completed)
+
+        assertEquals("new package", read(artifacts, second.key))
+        coVerify(exactly = 0) { completed.setInputStream(any(), any(), any()) }
     }
 
     private suspend fun restore(

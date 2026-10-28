@@ -95,6 +95,20 @@ internal class PostgresBackupPipelineFixture private constructor(
         pipelines = provide()
     }
 
+    suspend fun backupCompletionTrigger(): UUID = withConnectionManager {
+        bosca.di.CoreBackupProviderRegistrar().register()
+        coEvery { security.getPrincipalByIdentifier(any()) } returns caller
+        val eventType = "bosca.backup.BackupCompleted"
+        val graph = Pipeline(id = UUID.NIL, name = "copy completed backup", acceptedInputType = eventType,
+            nodes = listOf(InputNode("in", acceptedType = eventType), OutputNode("out")),
+            edges = listOf(PipelineEdge("result", source = "in", target = "out")))
+        val saved = provide<PipelineRepository>().add(PipelineRecord(name = graph.name, acceptedInputType = eventType,
+            triggered = true, graph = pipelines.graphAsJsonElement(graph)))
+        saved.id
+    }
+
+    suspend fun history(pipelineId: UUID) = withConnectionManager { runs.listRunHistory(pipelineId, 0, 20) }
+
     suspend fun start(input: PipelineValue = PipelineValue.ofJson(JsonPrimitive("snapshot"))): PipelineRun = withConnectionManager {
         assertNotNull(runs.start(pipeline, input, "", OffsetDateTime.now(),
             ImpersonatedAuthenticationContext(caller, listOf(administrator))))
@@ -153,8 +167,6 @@ internal class PostgresBackupPipelineFixture private constructor(
             application: BoscaApplication,
             pool: ConnectionPool,
             directory: Path,
-            includeContentReferences: Boolean = false,
-            contentSource: String = "",
             graph: Pipeline? = null,
         ): PostgresBackupPipelineFixture {
             val json = application.json
@@ -185,8 +197,7 @@ internal class PostgresBackupPipelineFixture private constructor(
                 FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "pipelines-migrations")))
                 val declared = graph ?: Pipeline(id = UUID.NIL, name = "native database backup", acceptedInputType = "JSON",
                     nodes = listOf(InputNode("in", acceptedType = "JSON"),
-                        PostgresBackupNode("backup", sourceId = "instance", storageKey = "retained",
-                            includeContentReferences = includeContentReferences, contentSource = contentSource), OutputNode("out")),
+                        PostgresBackupNode("backup", sourceId = "instance", storageKey = "retained"), OutputNode("out")),
                     edges = listOf(PipelineEdge("result", source = "backup", target = "out")))
                 fixture.pipeline = withConnectionManager {
                     val saved = provide<PipelineRepository>().add(PipelineRecord(name = declared.name,

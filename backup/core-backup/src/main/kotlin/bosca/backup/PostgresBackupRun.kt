@@ -6,7 +6,7 @@ import bosca.db.mapper.JsonbMapper
 import java.time.OffsetDateTime
 
 /**
- * Fixed request intent, including reference selection, and the last attempt's state.
+ * Fixed database backup request intent and the last attempt's state.
  * Only completed requests have a receipt.
  */
 data class PostgresBackupRun(
@@ -16,8 +16,6 @@ data class PostgresBackupRun(
     @ColumnName("storage_key")
     val storageKey: String,
     val prefix: String,
-    @ColumnName("include_content_references")
-    val includeContentReferences: Boolean = false,
     val status: PostgresBackupRunStatus = PostgresBackupRunStatus.PENDING,
     val attempts: Int = 0,
     @ColumnName("writer_token")
@@ -28,7 +26,4 @@ data class PostgresBackupRun(
     val version: Long = 0,
     val created: OffsetDateTime = OffsetDateTime.now(),
     val modified: OffsetDateTime = created,
-    @ColumnName("content_source")
-    @property:DbMapper(JsonbMapper::class)
-    val contentSource: PostgresBackupContentSource? = null,
 )

@@ -4,6 +4,7 @@ import bosca.backup.PostgresBackupManifest
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -56,8 +57,10 @@ class PostgresBackupManifestController : GraphQLController<PostgresBackupManifes
     fun format(value: PostgresBackupManifest) = value.format
 
     @Field
-    fun contentInventory(value: PostgresBackupManifest) = value.contentInventory
+    fun extensions(value: PostgresBackupManifest) = JsonObject(value.extensions.mapValues { JsonPrimitive(it.value) })
 
     @Field
-    fun extensions(value: PostgresBackupManifest) = JsonObject(value.extensions.mapValues { JsonPrimitive(it.value) })
+    fun requiredKeys(value: PostgresBackupManifest) = JsonObject(value.requiredKeys.mapValues { (_, tables) ->
+        JsonArray(tables.map(::JsonPrimitive))
+    })
 }
