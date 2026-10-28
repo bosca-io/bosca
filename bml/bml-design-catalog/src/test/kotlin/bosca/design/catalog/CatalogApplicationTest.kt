@@ -1,6 +1,7 @@
 package bosca.design.catalog
 
 import bosca.bml.library.BmlLibraryManifest
+import com.sun.net.httpserver.HttpServer
 import java.io.File
 import java.net.CookieManager
 import java.net.CookiePolicy
@@ -14,6 +15,7 @@ import java.net.http.HttpResponse
 import java.nio.channels.ServerSocketChannel
 import java.time.Duration
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.jar.JarFile
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -316,11 +318,45 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `catalog JVM fixtures never accept another IPv4 listener as their server`() {
+        val requests = AtomicInteger()
+        val listener = HttpServer.create(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 0)
+        listener.createContext("/") { exchange ->
+            requests.incrementAndGet()
+            exchange.use {
+                val body = "Bosca Design Library".toByteArray()
+                it.sendResponseHeaders(200, body.size.toLong())
+                it.responseBody.write(body)
+            }
+        }
+        listener.start()
+        try {
+            val port = listener.address.port
+            for (development in listOf(false, true)) {
+                try {
+                    withServer(development, requestedPort = port) { base, client ->
+                        assertEquals("[::1]", URI(base).host)
+                        val response = request(client, base, "/components")
+                        assertEquals(200, response.statusCode(), response.body())
+                        assertTrue("Bosca Design Library" in response.body(), response.body())
+                    }
+                } catch (failure: AssertionError) {
+                    // Some hosts reject wildcard/specific-address port sharing at bind time.
+                    assertTrue(failure.suppressed.any { it.message.orEmpty().contains("could not bind port $port") }, failure.toString())
+                }
+            }
+            assertEquals(0, requests.get(), "Readiness must never probe the other listener")
+        } finally {
+            listener.stop(0)
+        }
+    }
+
+    @Test
     fun `catalog children bind distinct ports alongside occupied IPv4 and IPv6 endpoints`() {
         ServerSocketChannel.open(StandardProtocolFamily.INET).use { ipv4 ->
             ipv4.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
             ServerSocketChannel.open(StandardProtocolFamily.INET6).use { ipv6 ->
-                ipv6.bind(InetSocketAddress(InetAddress.getByName("::1"), 0))
+                ipv6.bind(InetSocketAddress(InetAddress.getByName("::1"), (ipv4.localAddress as InetSocketAddress).port))
                 val occupied = listOf(ipv4, ipv6).map { (it.localAddress as InetSocketAddress).port }
                 withServer(false) { production, productionClient ->
                     withServer(true) { development, developmentClient ->
@@ -379,11 +415,13 @@ class CatalogApplicationTest {
         }
     }
 
-    private fun withServer(development: Boolean, executable: File? = null, test: (String, HttpClient) -> Unit) {
+    private fun withServer(development: Boolean, executable: File? = null, requestedPort: Int = 0, test: (String, HttpClient) -> Unit) {
         var base: String? = null
         val log = File.createTempFile("catalog-server-", ".log")
-        val command = if (executable == null) listOf(System.getProperty("catalog.java"), "-Dbml.dev=$development", "-cp", classpath,
-            "bosca.design.catalog.MainKt", "0") else listOf(executable.absolutePath, "0")
+        val command = if (executable == null) listOf(System.getProperty("catalog.java"),
+            "-Djava.net.preferIPv4Stack=false", "-Djava.net.preferIPv6Addresses=true",
+            "-Dbml.dev=$development", "-cp", classpath, "bosca.design.catalog.MainKt", requestedPort.toString())
+        else listOf(executable.absolutePath, requestedPort.toString())
         val builder = ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log)
         if (executable != null) {
             builder.directory(executable.parentFile)
@@ -399,7 +437,8 @@ class CatalogApplicationTest {
                 Thread.sleep(25)
             }
             val port = requireNotNull(boundPort) { "Catalog did not report a successful bind: ${log.readText()}" }
-            val endpoint = "http://localhost:$port"
+            val host = if (executable == null) "[::1]" else "localhost"
+            val endpoint = "http://$host:$port"
             base = endpoint
             // Match Chromium's HTTP/1.1 transport on the loopback fixture origin.
             HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)

@@ -284,8 +284,9 @@ serial execution). The full-document accessibility tests cover every route in bo
 runtime modes at desktop and phone widths, including editor, visualization, dashboard and tree
 states. Each combination is audited once, with contrast evidence required for each group of routes.
 Each child binds its own ephemeral port; readiness requires its successful bind log
-and a catalog HTTP response. JVM fixture requests use HTTP/1.1, matching Chromium on the loopback
-origin. Fixture checks also run both modes together beside occupied IPv4 and
+and a catalog HTTP response. Catalog JVM fixtures bind and connect through IPv6 loopback, keeping
+them separate from Chromium's IPv4 debugging listener. JVM fixture requests use HTTP/1.1, matching
+Chromium on the loopback origin. Fixture checks also run both modes together beside occupied IPv4 and
 IPv6 endpoints. They check navigation, rejected-draft retention, pending and saved form state,
 independent instances, saved light/dark appearance, two palettes, narrow layouts, native fallbacks and
 the 11 packaged Geist/Geist Mono assets. Notification regressions cover dismissed/expired/visible
