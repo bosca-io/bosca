@@ -48,6 +48,8 @@ validation. The aggregate task reuses those results, and its worker count is bou
 with unchanged JavaScript and a retained browser cache, for both filesystem and packaged assets.
 It covers shared, nested, lazy and compiled-library imports and runs in the CI and release browser
 phase. It uses the same managed browser and `BML_DESIGN_CHROME_BINARY` override described above.
+The browser stays open across deployments and waits for module completion through DevTools.
+Browser logs remain under `bml/bml-server/build/reports/chunk-cache-browser/` for diagnostics.
 
 BML Maven libraries and the `io.bosca.bml` and `io.bosca.bml.host` Gradle plugins publish with the workspace tag through
 the root `publishExceptFirebaseScrypt` task. This includes `bml-server`, which applications embed

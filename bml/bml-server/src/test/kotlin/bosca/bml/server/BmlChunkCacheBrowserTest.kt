@@ -20,9 +20,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Files
-import java.time.Duration
 import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -40,14 +38,17 @@ class BmlChunkCacheBrowserTest {
         for (packaged in listOf(false, true)) {
             val directory = Files.createTempDirectory("bml-chunk-cache-").toFile()
             try {
-                verifyDeployments(chrome, directory, packaged)
+                val log = File("build/reports/chunk-cache-browser/${if (packaged) "packaged" else "filesystem"}.log")
+                BmlChunkTestBrowser(chrome, directory.resolve("browser-profile"), log).use { browser ->
+                    verifyDeployments(browser, directory, packaged)
+                }
             } finally {
                 directory.deleteRecursively()
             }
         }
     }
 
-    private fun verifyDeployments(chrome: File, directory: File, packaged: Boolean) {
+    private fun verifyDeployments(browser: BmlChunkTestBrowser, directory: File, packaged: Boolean) {
         val scripts = mapOf(
             "prod/index.page.js" to """
                 import { urls } from './chunks/shared-ABCDEFGH.js';
@@ -113,15 +114,15 @@ class BmlChunkCacheBrowserTest {
                 }
                 val token = checkNotNull(Regex("_ts=([0-9a-f]+)").find(html)?.groupValues?.get(1)) { html }
                 if (previousToken != null) assertNotEquals(previousToken, token, "A deployment changes tokens even with identical module bytes")
-                val dom = dumpDom(chrome, directory, port, version)
-                val result = checkNotNull(Regex("<pre id=\"result\">([^<]+)</pre>").find(dom)?.groupValues?.get(1)) { dom }
+                val result = browser.result("http://localhost:$port/?visit=$version")
                 val urls = Json.parseToJsonElement(result).jsonArray.map { URI(it.jsonPrimitive.content) }
                 assertEquals(expectedPaths, urls.map { it.path }.toSet())
                 urls.forEach { assertEquals("_ts=$token", it.rawQuery, it.toString()) }
                 assertEquals(expectedPaths, requests.map { it.first }.toSet(), "Every module is downloaded after each deployment")
                 requests.forEach { assertEquals(token, it.second, it.first) }
                 requests.clear()
-                dumpDom(chrome, directory, port, "$version-cached")
+                val cached = browser.result("http://localhost:$port/?visit=$version-cached")
+                assertEquals(result, cached, "Cached navigation executes the same complete module graph")
                 assertTrue(requests.isEmpty(), "The retained browser cache reuses modules within a deployment: $requests")
                 previousToken = token
             } finally {
@@ -140,22 +141,5 @@ class BmlChunkCacheBrowserTest {
             }
         }
         error("Browser fixture did not start on $port")
-    }
-
-    private fun dumpDom(chrome: File, directory: File, port: Int, version: String): String {
-        val output = directory.resolve("$version.html")
-        val errors = directory.resolve("$version.log")
-        val process = ProcessBuilder(
-            chrome.absolutePath, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check",
-            "--user-data-dir=${directory.resolve("browser-profile").absolutePath}", "--virtual-time-budget=5000", "--dump-dom",
-            "http://localhost:$port/",
-        ).redirectOutput(output).redirectError(errors).start()
-        try {
-            assertTrue(process.waitFor(Duration.ofSeconds(45).toMillis(), TimeUnit.MILLISECONDS), "Browser timed out: ${errors.readText()}")
-            assertEquals(0, process.exitValue(), errors.readText())
-            return output.readText()
-        } finally {
-            process.destroyForcibly()
-        }
     }
 }
