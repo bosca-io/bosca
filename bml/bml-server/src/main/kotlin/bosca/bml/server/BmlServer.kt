@@ -602,7 +602,10 @@ class BmlServer(
         }
         html = BmlClientAssets.injectPageContext(html, page.route, context.requestPath, context.lang)
         val cacheToken = current.assetCacheToken.takeUnless { current.development }
-        html = BmlClientAssets.injectImportMap(html, current.moduleImportMap)
+        val pageJsFile = current.productionPlan?.pageJsFile?.get(page.route)
+        if (current.globalJs != null || pageJsFile != null) {
+            html = BmlClientAssets.injectImportMap(html, current.moduleImportMap)
+        }
         val libraryAssets = (page as? BmlBundledPage)?.assets
         html = BmlStyleAssets.injectLibraryStyles(html, libraryAssets?.stylesByRoute?.get(page.route).orEmpty(), cacheToken)
         // CSS: in production, at most two links — the normalized global stylesheet and the page's
@@ -631,7 +634,7 @@ class BmlServer(
         }
         if (current.productionPlan != null) {
             // The entry imports this page's components and content-hashed shared modules.
-            current.productionPlan.pageJsFile[page.route]?.let {
+            pageJsFile?.let {
                 html = BmlClientAssets.inject(html, it, cacheToken)
             }
         } else {

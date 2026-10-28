@@ -17,10 +17,23 @@ import java.net.http.HttpResponse
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class BmlProductionCacheBustingTest {
+
+    @Test
+    fun `page using only the global script retains the deployment import map`() {
+        val page = client.send(
+            HttpRequest.newBuilder(URI.create("http://localhost:$port/plain")).GET().build(),
+            HttpResponse.BodyHandlers.ofString(),
+        )
+        assertEquals(200, page.statusCode())
+        assertTrue("type=\"importmap\"" in page.body(), page.body())
+        assertTrue("src=\"/_bml/app.js?_ts=" in page.body(), page.body())
+        assertFalse("src=\"/_bml/js/index.page.js" in page.body(), page.body())
+    }
 
     @Test
     fun `development server does not traverse client assets for a production token`() {
