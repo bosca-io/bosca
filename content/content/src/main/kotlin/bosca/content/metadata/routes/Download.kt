@@ -123,8 +123,9 @@ open class Download(
             // Open the object before describing it: a 404 must carry none of this object's headers (a
             // Content-Length would leave the client waiting for bytes never sent).
             objectService.download(metadata, supplementary?.id, range).use { inputStream ->
+                val contentType = ContentType.parse(supplementary?.contentType ?: metadata.contentType)
                 if (call.request.queryParameters["filename"] == "true" || call.request.queryParameters["download"] == "true") {
-                    val name = supplementary?.name ?: metadata.name
+                    val name = downloadFilename(supplementary?.name ?: metadata.name, contentType)
                     call.response.header(
                         HttpHeaders.ContentDisposition,
                         "attachment; filename=\"${name.replace("\"", "\\\"").replace("\n", " ").replace("\r", " ")}\""
@@ -144,7 +145,7 @@ open class Download(
                 // No time limit: a large download on a slow link may take long; a client that stops
                 // reading altogether is ended by the streaming response's stall timeout.
                 call.respondStreaming(
-                    contentType = ContentType.parse(supplementary?.contentType ?: metadata.contentType),
+                    contentType = contentType,
                     status = rangeLength?.let { HttpStatusCode.PartialContent } ?: HttpStatusCode.OK,
                     timeLimit = null,
                 ) { stream ->
@@ -158,6 +159,19 @@ open class Download(
             call.respond(HttpStatusCode.NotFound, "File not found")
         }
     }
+}
+
+/** Adds a media extension to display names while preserving existing filename extensions. */
+private fun downloadFilename(name: String, contentType: ContentType): String {
+    if (name.substringAfterLast('.', "").isNotEmpty()) return name
+    if (contentType.contentType !in setOf("audio", "video", "image")) return name
+    val extension = when (contentType.withoutParameters().toString()) {
+        "audio/mpeg" -> "mp3"
+        "audio/x-wav" -> "wav"
+        "image/svg+xml" -> "svg"
+        else -> contentType.contentSubtype
+    }
+    return "$name.$extension"
 }
 
 /**
