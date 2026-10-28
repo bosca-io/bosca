@@ -84,27 +84,6 @@ In CI (`CI=true`), missing bundle configuration or a failed download fails the b
 
 The project follows a core/impl split where `core-*` modules define contracts (interfaces, models, annotations) and implementation modules provide PostgreSQL-backed repositories with GraphQL exposure. Content items move through states via a workflow engine with permission-gated transitions and job history tracking. Collections and metadata support supplementary attachments with source tracking. All content is language-tagged with localization as a first-class concern. The Bible compiler is a specialized module for parsing and compiling Bible text into the platform's content model.
 
-## Metadata versions
-
-`MetadataService.getById(id, version)` reads the matching current or archived logical version.
-Omitting the version reads the current item; an absent explicit version returns null.
-Batched metadata reads follow the same rules. Archived content keeps its original metadata
-ID and logical-version storage path and uses the item's current access controls.
-History returns the fields it retained. Upload/ready timestamps, ETags and source URL/status
-were not captured and remain null; they are not inferred from the current version.
-
-When a logical version changes, PostgreSQL archives the prior metadata fields and its traits,
-profiles, categories and supplementary records under the prior version. The new version starts
-without those relationships. Supplementary archives retain their IDs, plan/job IDs, attributes
-and upload evidence, so attachments sharing a key remain distinct. Existing archives keep their
-recorded values; missing historical supplementary IDs remain unknown.
-
-Metadata download links include that logical version in their signed query. Both
-`/api/v1/content/metadata/download` and `/content/file` accept an optional positive
-integer `version`; omitting it reads the current item. An absent requested version
-returns 404, and a malformed or nonpositive version returns 400. Changing or removing
-the version invalidates its signature. Existing permission and streaming checks apply.
-
 ## Finding a guide from a step
 
 When a search result contains a step's metadata ID, query `Metadata.parentGuides`
@@ -129,6 +108,27 @@ It returns an empty list when there are no accessible parents and includes each 
 once if it uses the same content more than once. Content can belong to multiple guides.
 When already querying a `GuideStep`, use `guide { id name slug }` to retrieve its parent;
 that field returns null if the parent is missing or inaccessible.
+
+## Metadata versions
+
+`MetadataService.getById(id, version)` reads the matching current or archived logical version.
+Omitting the version reads the current item; an absent explicit version returns null.
+Batched metadata reads follow the same rules. Archived content keeps its original metadata
+ID and logical-version storage path and uses the item's current access controls.
+History returns the fields it retained. Upload/ready timestamps, ETags and source URL/status
+were not captured and remain null; they are not inferred from the current version.
+
+When a logical version changes, PostgreSQL archives the prior metadata fields and its traits,
+profiles, categories and supplementary records under the prior version. The new version starts
+without those relationships. Supplementary archives retain their IDs, plan/job IDs, attributes
+and upload evidence, so attachments sharing a key remain distinct. Existing archives keep their
+recorded values; missing historical supplementary IDs remain unknown.
+
+Metadata download links include that logical version in their signed query. Both
+`/api/v1/content/metadata/download` and `/content/file` accept an optional positive
+integer `version`; omitting it reads the current item. An absent requested version
+returns 404, and a malformed or nonpositive version returns 400. Changing or removing
+the version invalidates its signature. Existing permission and streaming checks apply.
 
 ## Dependencies
 
