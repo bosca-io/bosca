@@ -25,6 +25,23 @@ class WorkspaceCiBrowserTest {
         verifySetup(provisionBrowser = false)
     }
 
+    @Test
+    fun `CI and release generate JVM providers within the shared worker budget`() {
+        for (pipeline in listOf("ci", "release")) {
+            val pipelineSteps = PipelineYamlParser().parse(File("../.bosca/pipelines/$pipeline.yaml").readText())
+                .jobs.getValue("test-jvm").steps
+            val command = pipelineSteps.single { it.name == "Run JVM Tests" }.run.orEmpty()
+                .split(Regex("\\s+"))
+            assertTrue("-Pbosca.kmp.jvmCodegen=true" in command, pipeline)
+            assertTrue("-Pbosca.ios.enabled=false" in command, pipeline)
+            assertTrue("--max-workers=4" in command, pipeline)
+            assertTrue("test" in command, pipeline)
+            for (step in pipelineSteps.filter { it.run?.startsWith("./gradlew ") == true }) {
+                assertTrue("-Pbosca.ios.enabled=false" in step.run.orEmpty(), "$pipeline: ${step.name}")
+            }
+        }
+    }
+
     private suspend fun verifySetup(provisionBrowser: Boolean) {
         assertTrue(steps.indexOf(install) < steps.indexOf(browsers))
         assertTrue(steps.indexOf(browsers) < steps.indexOf(tests))
