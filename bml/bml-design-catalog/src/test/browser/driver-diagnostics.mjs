@@ -113,6 +113,17 @@ export function driverDiagnostics({ browser, cdp, artifacts, mode, call }) {
       }
       report.followupOperations = structuredClone(operations);
       await save();
+      const navigation = report.events.findLast(event => event.method === 'Page.frameNavigated');
+      console.error(`Catalog ${mode} driver evidence: ${JSON.stringify({
+        error: report.error,
+        failedOperation: report.failedOperation,
+        page: navigation?.params?.frame?.url,
+        renderer: report.probes.renderer,
+        rendererError: report.probes.rendererError,
+        paused: report.probes.paused,
+        debuggerError: report.probes.debuggerError,
+        processes: report.processes,
+      })}`);
       return path;
     },
   };
