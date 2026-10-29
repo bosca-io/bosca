@@ -23,13 +23,13 @@ import org.gradle.testkit.runner.TaskOutcome
 import java.io.File
 import java.net.CookieManager
 import java.net.CookiePolicy
-import java.net.ServerSocket
 import java.net.URI
 import java.net.URLClassLoader
 import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.time.Duration
 import java.util.jar.JarFile
 import kotlin.concurrent.thread
 import kotlin.io.path.createTempDirectory
@@ -202,7 +202,7 @@ class BmlLibraryDiConsumerTest {
                 }
                 for (override in listOf(false, true)) {
                     ProviderRegistry.clear(); call("reset"); call("host")
-                    val port = ServerSocket(0).use { it.localPort }
+                    val port = 0
                     val host = server(port)
                     val application = app(port)
                     host.install(application)
@@ -212,46 +212,48 @@ class BmlLibraryDiConsumerTest {
                     val engine = NettyServerEngine(application, port)
                     thread(isDaemon = true, name = "bml-ksp-di-test") { engine.start() }
                     try {
-                        awaitServer(port)
-                        val client = HttpClient.newBuilder().cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build()
-                        fun request(path: String, body: String? = null): HttpResponse<String> {
-                            val request = HttpRequest.newBuilder(URI("http://localhost:$port$path"))
-                            if (body == null) request.GET() else request.POST(HttpRequest.BodyPublishers.ofString(body))
-                            return client.send(request.build(), HttpResponse.BodyHandlers.ofString())
+                        val boundPort = awaitServer(engine)
+                        HttpClient.newBuilder().cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL))
+                            .connectTimeout(Duration.ofSeconds(5)).version(HttpClient.Version.HTTP_1_1).build().use { client ->
+                            fun request(path: String, body: String? = null): HttpResponse<String> {
+                                val request = HttpRequest.newBuilder(URI("http://[::1]:$boundPort$path")).timeout(Duration.ofSeconds(10))
+                                if (body == null) request.GET() else request.POST(HttpRequest.BodyPublishers.ofString(body))
+                                return client.send(request.build(), HttpResponse.BodyHandlers.ofString())
+                            }
+                            val label = if (override) "OVERRIDE" else "HOST"
+                            assertTrue("$label:0" in request("/").body())
+                            val id = BmlLibraryArtifacts.componentId("example:design", "counter")
+                            for (key in listOf("one", "two", "three")) {
+                                val action = request("/_bml/action", """{"page":"/","path":"/","stateKey":"$id.counter:$key","method":"increment"}""")
+                                assertEquals(200, action.statusCode(), action.body())
+                                assertTrue("$label:1" in action.body(), action.body())
+                            }
+                            assertTrue("$label:0" in request("/next").body())
+                            val fragment = request("/_bml/render/$id", """{"id":"fragment"}""")
+                            assertEquals(200, fragment.statusCode(), fragment.body())
+                            assertTrue("$label:0" in fragment.body(), fragment.body())
+                            val deferred = request("/_bml/deferred/" + URLEncoder.encode("component:$id:details", Charsets.UTF_8),
+                                """{"page":"/","path":"/","query":{},"props":{}}""")
+                            assertEquals(200, deferred.statusCode(), deferred.body())
+                            assertTrue("DETAIL HOST" in deferred.body(), deferred.body())
+                            assertEquals(1, call("factories"), "The generated singleton must survive page navigation and requests")
+                            assertEquals(listOf("design", "other", "wrapper"), call("registrations"))
                         }
-                        val label = if (override) "OVERRIDE" else "HOST"
-                        assertTrue("$label:0" in request("/").body())
-                        val id = BmlLibraryArtifacts.componentId("example:design", "counter")
-                        for (key in listOf("one", "two", "three")) {
-                            val action = request("/_bml/action", """{"page":"/","path":"/","stateKey":"$id.counter:$key","method":"increment"}""")
-                            assertEquals(200, action.statusCode(), action.body())
-                            assertTrue("$label:1" in action.body(), action.body())
-                        }
-                        assertTrue("$label:0" in request("/next").body())
-                        val fragment = request("/_bml/render/$id", """{"id":"fragment"}""")
-                        assertEquals(200, fragment.statusCode(), fragment.body())
-                        assertTrue("$label:0" in fragment.body(), fragment.body())
-                        val deferred = request("/_bml/deferred/" + URLEncoder.encode("component:$id:details", Charsets.UTF_8),
-                            """{"page":"/","path":"/","query":{},"props":{}}""")
-                        assertEquals(200, deferred.statusCode(), deferred.body())
-                        assertTrue("DETAIL HOST" in deferred.body(), deferred.body())
-                        assertEquals(1, call("factories"), "The generated singleton must survive page navigation and requests")
-                        assertEquals(listOf("design", "other", "wrapper"), call("registrations"))
                     } finally { engine.stopWithoutHalting() }
                 }
             }
         } finally { ProviderRegistry.clear(); work.deleteRecursively() }
     }
 
-    private fun awaitServer(port: Int) {
+    private fun awaitServer(engine: NettyServerEngine): Int {
         repeat(100) {
-            try { java.net.Socket("localhost", port).use { return } }
-            catch (_: java.net.ConnectException) { Thread.sleep(25) }
+            engine.boundPort?.let { return it }
+            Thread.sleep(25)
         }
         error("BML DI fixture server did not start")
     }
 
     private fun runner(project: File, vararg tasks: String): GradleRunner = GradleRunner.create()
         .withProjectDir(project).withPluginClasspath()
-        .withArguments(*tasks, "--stacktrace", "--configuration-cache", "--max-workers=2")
+        .withArguments(*tasks, "--stacktrace", "--configuration-cache", "--no-watch-fs", "--max-workers=2")
 }

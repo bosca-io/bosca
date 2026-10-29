@@ -33,6 +33,10 @@ The IntelliJ plugin is documented in [bml-ide/README.md](bml-ide/README.md).
 The TypeScript browser runtime lives in `bml-runtime/` and uses npm; install its dependencies
 there before running tasks that bundle BML client code.
 
+The BML Gradle-plugin suite runs independent TestKit classes in two isolated test JVMs and
+logs completed tests. Fixture builds that edit files between invocations disable filesystem
+watching while retaining configuration-cache and up-to-date checks.
+
 The Design Library catalog, consumer and Notifications Web tests launch isolated headless profiles.
 Gradle prepares Chromium through the catalog's pinned private Playwright dependency before these
 tests, so a system Chrome installation is unnecessary. The first run requires network access;
