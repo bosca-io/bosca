@@ -7,7 +7,7 @@
   <prop name="disabled" type="Boolean" default="false" />
   <div class="file-drop" data-file-drop :ref="ref.takeIf(String::isNotBlank)" :data-disabled="disabled" {...attrs}>
     <label class="file-drop-target">
-      <html:input ref="files" type="file" :aria-label="label" :accept="accept" :multiple="multiple" :disabled="disabled" />
+      <html:input type="file" :aria-label="label" :accept="accept" :multiple="multiple" :disabled="disabled" />
       <span class="file-drop-icon" aria-hidden="true"><icon name="upload" :size="20" /></span>
       <span class="file-drop-copy">
         <strong>{ label }</strong>

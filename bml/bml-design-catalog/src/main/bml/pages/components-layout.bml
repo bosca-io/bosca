@@ -18,6 +18,11 @@
       <a href="#ref-profile">profile</a>
       <a href="#ref-profile-menu">profile-menu</a>
       <a href="#ref-tabs">tabs</a>
+      <a href="#ref-form-body">form-body</a>
+      <a href="#ref-form-actions">form-actions</a>
+      <a href="#ref-pagination">pagination</a>
+      <a href="#ref-subsystem-links">subsystem-links</a>
+      <a href="#ref-subsystem-switcher">subsystem-switcher</a>
     </nav>
     <reference-entry name="app-shell"
       :api='""'
@@ -44,16 +49,16 @@
       <profile-menu label="Account" name="Alex Example" subtitle="@alex"><a role="menuitem" href="/shell"><span class="menu-icon"><icon name="users" /></span>Profile</a><button role="menuitem" icon="moon" disabled>Dark appearance</button></profile-menu>
     </reference-entry>
     <reference-entry name="card"
-      :api='"title: String = \"\"\npadded: Boolean = true"'
-      :contract='"Native section with an optional heading and a default child body. Only named props and children are consumed."'
+      :api='"title: String = \"\"\npadded: Boolean = true\ndescription: String = \"\""'
+      :contract='"Native section with an optional heading, description and default child body. Additional root attributes and classes are forwarded."'
       :keyboard='"A structural surface with an optional title, padded by default. It adds no keyboard interaction; use normal heading order in its child content."'
       :css='"Palette and typography inherit from the consuming application. Component hooks: --bg-1, --line. Forward an application class only through the documented native target; generated scope markers are private."'
       :snippet='"<card title=\"Preferences\"><div class=\"catalog-stack\"><p class=\"catalog-description\">Content belongs to this application.</p><button size=\"sm\">Save preferences</button></div></card>"'>
       <card title="Preferences"><div class="catalog-stack"><p class="catalog-description">Content belongs to this application.</p><button size="sm">Save preferences</button></div></card>
     </reference-entry>
     <reference-entry name="page-shell"
-      :api='"fill: Boolean = false\nnarrow: Boolean = false"'
-      :contract='"Native main with default children, merged classes, and additional attributes. fill allocates a flex column; narrow uses a centered 400px form surface."'
+      :api='"fill: Boolean = false\nnarrow: Boolean = false\nflush: Boolean = false"'
+      :contract='"Native main with default children, merged classes, and additional attributes. fill allocates a flex column; narrow uses a centered 400px form surface; flush removes the outer page padding."'
       :keyboard='"Native main landmark. A document should contain one main landmark; this embedded illustration uses aria-hidden and inert. fill and narrow are layout variants."'
       :css='"Palette and typography inherit from the consuming application. Child controls use their own documented tokens; icon strokes inherit currentColor. Forward an application class only through the documented native target; generated scope markers are private."'
       :snippet='"<div class=\"reference-shell\" aria-hidden=\"true\" inert><page-shell narrow><p>A narrow page surface.</p></page-shell></div>"'>
@@ -141,5 +146,50 @@
       </form-body></form>
       <pagination :page="paginationPage" :previousHref='if (paginationPage != 1L) "/components/layout?page=" + (paginationPage - 1) else ""' :nextHref='if (paginationPage != 3L) "/components/layout?page=" + (paginationPage + 1) else ""' label="Example pages" />
     </card>
+
+    <reference-entry name="form-body"
+      :api='"padded: Boolean = false"'
+      :contract='"A structural wrapper for form fields, with consistent vertical spacing. padded supplies an inset body for unpadded cards. Root attributes/classes and default children are forwarded."'
+      :keyboard='"Fields retain their native keyboard order; the wrapper adds no interaction."'
+      :css='"Form spacing is library-owned. Child fields inherit the caller palette and control tokens; padded supplies the library form inset."'
+      :snippet='"<form-body padded><field label=\"Display name\"><input name=\"displayName\" value=\"Alex Example\" /></field><field label=\"Summary\"><input name=\"summary\" /></field></form-body>"'>
+      <form-body padded><field label="Display name"><input name="displayName" value="Alex Example" /></field><field label="Summary"><input name="summary" /></field></form-body>
+    </reference-entry>
+
+    <reference-entry name="form-actions"
+      :api='"bordered: Boolean = false\nalign: String = \"end\""'
+      :contract='"A wrapping row of caller-owned controls. align accepts end, start or between; bordered supplies a card footer. Root attributes/classes and default children are forwarded."'
+      :keyboard='"Projected buttons and links retain native focus and activation behavior. The application owns submission and navigation."'
+      :css='"Uses --line and --bg-2 for bordered footers; child controls retain their own control tokens."'
+      :snippet='"<form-actions bordered align=\"between\"><button-link href=\"/foundation\" icon=\"arrow-left\">Back</button-link><button primary>Save example</button></form-actions>"'>
+      <form-actions bordered align="between"><button-link href="/foundation" icon="arrow-left">Back</button-link><button primary>Save example</button></form-actions>
+    </reference-entry>
+
+    <reference-entry name="pagination"
+      :api='"page: Long = 1L\npreviousHref: String = \"\"\nnextHref: String = \"\"\nhasPrevious: Boolean = false\nhasNext: Boolean = false\nlabel: String = \"Pages\""'
+      :contract='"A labelled native navigation region with a page number and previous/next links. It hides when no navigation is available. hasPrevious/hasNext support caller-projected action controls; root attributes/classes and default children are forwarded."'
+      :keyboard='"Native links navigate with Enter. Applications supply offset-based destinations or project their own server-action buttons."'
+      :css='"Uses --line and --fg-3; previous/next links use button-link control tokens."'
+      :snippet='"<pagination :page=\"2L\" previousHref=\"/components/layout?page=1\" nextHref=\"/components/layout?page=3\" label=\"Example pages\" />"'>
+      <pagination :page="paginationPage" :previousHref='if (paginationPage > 1L) "/components/layout?page=" + (paginationPage - 1) else ""' :nextHref='if (paginationPage < 3L) "/components/layout?page=" + (paginationPage + 1) else ""' label="Example pages" />
+    </reference-entry>
+
+    <reference-entry name="subsystem-links"
+      :api='"items: List<bosca.design.model.SubsystemNavigationItem> (required)\ncurrentId: String = \"\"\nvariant: String = \"home\"\nrecent: Boolean = false"'
+      :contract='"Native subsystem destinations supplied as typed SubsystemNavigationItem values. Each item supplies its identity, label, description, icon, accent, href and category. home, menu and recent variants share the same destinations; recent filters to browser history. Only named props are consumed."'
+      :keyboard='"Links retain native keyboard behavior. currentId supplies the current-system indication; the application owns destinations and the catalog."'
+      :css='"Uses each item accent for its icon and selected presentation, together with --fg-1, --fg-3, --line and the current palette."'
+      :snippet='"<script server provides=\"systems\">listOf(bosca.design.model.SubsystemNavigationItem(\"controls\", \"Controls\", \"Inputs and actions\", \"code\", \"#64748b\", \"/components/controls\", \"Build\"))</script>\n<subsystem-links :items=\"systems\" currentId=\"controls\" />"'>
+      <subsystem-links :items="bosca.design.catalog.CatalogNavigation.subsystems()" currentId="catalog-controls" />
+    </reference-entry>
+
+    <reference-entry name="subsystem-switcher"
+      :api='"items: List<bosca.design.model.SubsystemNavigationItem> (required)\ncurrentId: String = \"\"\nbrand: String = \"Bosca\"\nproduct: String (required)\nhomeHref: String = \"/\""'
+      :contract='"A shared subsystem trigger and categorized dialog using caller-owned SubsystemNavigationItem values. brand/product identify the host; homeHref supplies its home link. Search, recents and current-system state use the same supplied catalog. Only named props are consumed."'
+      :keyboard='"Enter or Space opens the dialog and focuses search. Arrow keys choose a visible destination; Enter navigates, Escape closes and restores trigger focus. The backdrop stays transparent."'
+      :css='"Uses per-item accents and the current palette for the opaque dialog. The design library owns spacing, focus and responsive sizing."'
+      :snippet='"<script server provides=\"systems\">listOf(bosca.design.model.SubsystemNavigationItem(\"controls\", \"Controls\", \"Inputs and actions\", \"code\", \"#64748b\", \"/components/controls\", \"Build\"))</script>\n<subsystem-switcher :items=\"systems\" currentId=\"controls\" product=\"Example\" homeHref=\"/\" />"'>
+      <subsystem-switcher :items="bosca.design.catalog.CatalogNavigation.subsystems()" currentId="catalog-controls" product="Catalog" homeHref="/" />
+    </reference-entry>
   </catalog-document>
 </page>

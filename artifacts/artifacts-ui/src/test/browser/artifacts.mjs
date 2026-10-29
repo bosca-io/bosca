@@ -53,11 +53,18 @@ try {
       uploadAttempts.set(request.url, (uploadAttempts.get(request.url) ?? 0) + 1);
       const fail = failUploadOnce && new URL(request.url).pathname.endsWith("/retry.zip");
       if (fail) { failUploadOnce = false; expectedNetworkFailures.add(request.url); }
-      void call(fail ? "Fetch.fulfillRequest" : "Fetch.continueRequest", fail ? {
-        requestId, responseCode: 503,
-        responseHeaders: [{name:"Content-Type",value:"text/plain"}],
-        body: Buffer.from("Temporarily unavailable").toString("base64"),
-      } : { requestId }).catch(error => errors.push(String(error)));
+      void (async () => {
+        try {
+          const state = await call("Runtime.evaluate", {expression:"[...document.querySelectorAll('[data-bml-ref=files] input, [data-bml-ref=files] [data-file-remove]')].every(e => e.disabled)",returnByValue:true});
+          assert.equal(state.result.value, true, "Filenames and remove controls must be disabled during uploads.");
+        } finally {
+          await call(fail ? "Fetch.fulfillRequest" : "Fetch.continueRequest", fail ? {
+            requestId, responseCode: 503,
+            responseHeaders: [{name:"Content-Type",value:"text/plain"}],
+            body: Buffer.from("Temporarily unavailable").toString("base64"),
+          } : { requestId });
+        }
+      })().catch(error => errors.push(String(error)));
     }
     if (message.id) { const item = pending.get(message.id); pending.delete(message.id); if (message.error) item?.reject(new Error(JSON.stringify(message.error))); else item?.resolve(message.result); }
   });
@@ -131,11 +138,25 @@ try {
   let fileInput = await call("DOM.querySelector", { nodeId: document.root.nodeId, selector: '[data-file-drop] input[type=file]' });
   await call("DOM.setFileInputFiles", { nodeId: fileInput.nodeId, files: [localFile, retryFile] });
   await until("location.pathname === '/artifacts/repositories/upload' && document.querySelector('[data-bml-ref=files] input[name=filename]')?.value === 'browser.zip'", "staged file survives navigation");
+  assert.equal(await evaluate("[...document.querySelectorAll('[data-bml-ref=files] input[name=filename]')].every(input => input.getBoundingClientRect().width > 0)"), true, "Staged filename fields must be visible.");
+  await evaluate(`(() => {
+    const file = new File(["discarded-upload"], "discard.zip");
+    window.removedUploadFile = new WeakRef(file);
+    const data = new DataTransfer(); data.items.add(file);
+    document.querySelector("[data-file-drop]").dispatchEvent(new DragEvent("drop", {bubbles:true,cancelable:true,dataTransfer:data}));
+  })()`);
+  assert.equal(await evaluate("document.querySelectorAll('[data-bml-ref=files] [data-file-remove]').length"), 3);
+  await click("[data-bml-ref=files] .artifact-file:last-child [data-file-remove]");
+  assert.equal(await evaluate("document.querySelectorAll('[data-bml-ref=files] [data-file-remove]').length"), 2);
+  await call("HeapProfiler.collectGarbage");
+  assert.equal(await evaluate("window.removedUploadFile.deref() === undefined"), true, "Removed uploads must release their File objects while the page stays open.");
+  await evaluate("delete window.removedUploadFile");
   await fill("input[name=version]", "browser-1");
   await call("Fetch.enable", {patterns:[{urlPattern:base+"/_artifacts/raw/*",requestStage:"Request"}]});
   await click("button[data-bml-ref=upload]");
   await until("document.querySelector('[data-bml-ref=message]')?.textContent.includes('Some files failed.') && !document.querySelector('button[data-bml-ref=upload]').disabled", "partial upload exposes a retry");
   assert.deepEqual(await evaluate("[...document.querySelectorAll('[data-bml-ref=files] [data-file-status]')].map(e=>e.textContent)"), ["Uploaded","Temporarily unavailable"]);
+  assert.equal(await evaluate("[...document.querySelectorAll('[data-bml-ref=files] input, [data-bml-ref=files] [data-file-remove]')].every(e => !e.disabled)"), true, "Retry restores filename editing and file removal.");
   await screenshot("upload-partial-retry");
   await click("button[data-bml-ref=upload]");
   await until(`location.pathname === '/artifacts/repositories/${repositoryId}' && document.body.innerText.includes('browser-1')`, "browser upload completes and returns to repository");

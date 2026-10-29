@@ -68,3 +68,7 @@ The browser option starts a separate Chrome profile against isolated production 
 It never uses a deployed authenticated session. Screenshots and width measurements are written to
 `artifacts/artifacts-ui/build/reports/browser`. See the [Studio inventory](docs/studio-ui-inventory.md).
 Native compilation and external provider operations require separate validation.
+
+Browser upload acceptance also requires visible staged filename fields, disabled filename/removal
+controls during transfer, and release of removed File objects before navigating away. The same
+checks run against JVM and native Atlas hosts.

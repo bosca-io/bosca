@@ -492,3 +492,11 @@ disabled and re-enabled selection, picker hints, bubbling file events and applic
 ```sh
 ./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.file drops retain native selection and disabled behavior across palettes'
 ```
+
+The packaged reference acceptance compares the index, rendered examples and every prop declaration
+with all exports in the current design-library manifest. It includes form bodies/actions, button
+links, pagination, progress and typed subsystem navigation as independent library controls:
+
+```sh
+./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.packaged catalog serves isolated examples assets and real browser actions'
+```

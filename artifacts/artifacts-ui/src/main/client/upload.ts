@@ -3,7 +3,7 @@ import { consumeArtifactFiles } from "./staging";
 
 type Target = Record<string, string>;
 type ResolveTarget = (repositoryId: string, namespaceId: string, name: string) => Promise<Target>;
-type UploadFile = { file: File; row: HTMLElement; filename: HTMLInputElement; status: HTMLElement; progress: HTMLProgressElement; completedTarget?: string };
+type UploadFile = { file: File; row: HTMLElement; filename: HTMLInputElement; status: HTMLElement; progress: HTMLProgressElement; remove: HTMLButtonElement; completedTarget?: string };
 
 /** Reuses resolved repositories when a partial upload returns to earlier coordinates. */
 export function artifactTargetResolver(resolve: ResolveTarget): ResolveTarget {
@@ -60,9 +60,8 @@ export function mountArtifactUpload(ctx: ClientContext, resolve: ResolveTarget):
       if (!filename || !status || !progress || !remove || !info) continue;
       filename.value = file.name;
       info.textContent = `${file.size} bytes · ${file.type || "application/octet-stream"}`;
-      const item = { file, row, filename, status, progress };
+      const item = { file, row, filename, status, progress, remove };
       files.push(item);
-      ctx.on(remove, "click", () => { if (!controller) { files.splice(files.indexOf(item), 1); row.remove(); } });
       filesRoot.append(row);
     }
   };
@@ -71,6 +70,14 @@ export function mountArtifactUpload(ctx: ClientContext, resolve: ResolveTarget):
     upload.disabled = true;
     void consumeArtifactFiles(staging).then(add).catch(error => { showMessage(error instanceof Error ? error.message : "Choose the files again.", "error"); }).finally(() => { upload.disabled = false; });
   }
+  ctx.on<MouseEvent>(filesRoot, "click", event => {
+    if (controller || !(event.target instanceof Element)) return;
+    const remove = event.target.closest("[data-file-remove]");
+    const index = remove ? files.findIndex(item => item.row.contains(remove)) : -1;
+    if (index < 0) return;
+    const [removed] = files.splice(index, 1);
+    removed?.row.remove();
+  });
   ctx.on<CustomEvent<File[]>>(drop, "filesselected", event => add(event.detail));
   ctx.on(cancel, "click", () => controller?.abort());
   ctx.on(form, "submit", async event => {
@@ -80,6 +87,7 @@ export function mountArtifactUpload(ctx: ClientContext, resolve: ResolveTarget):
     drop.setAttribute("data-disabled", "");
     const signal = controller.signal;
     upload.disabled = true;
+    for (const item of files) { item.filename.disabled = true; item.remove.disabled = true; }
     cancel.hidden = false;
     showMessage("Preparing upload…", "info");
     const data = new FormData(form);
@@ -124,7 +132,13 @@ export function mountArtifactUpload(ctx: ClientContext, resolve: ResolveTarget):
       location.assign("/artifacts/repositories/" + encodeURIComponent(target.id ?? ""));
     } catch (error) {
       showMessage(signal.aborted ? "Upload cancelled. Uploaded files are kept; retry to upload the remaining files." : error instanceof Error ? error.message : "Upload failed.", "error");
-    } finally { drop.removeAttribute("data-disabled"); controller = undefined; upload.disabled = false; cancel.hidden = true; }
+    } finally {
+      drop.removeAttribute("data-disabled");
+      controller = undefined;
+      for (const item of files) { item.filename.disabled = false; item.remove.disabled = false; }
+      upload.disabled = false;
+      cancel.hidden = true;
+    }
   });
   ctx.onUnmount(() => controller?.abort());
 }

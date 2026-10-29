@@ -371,7 +371,8 @@ class GitUiRoutesTest {
             assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$resource")?.use { it.readBytes() })
         }
         paths.forEach { path ->
-            val resource = path.removePrefix("/_")
+            val resource = "bml/applications/bml.generated/" + path.removePrefix("/_bml/")
+            assertTrue(nativePatterns.any { it.matches(resource) }, resource)
             assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$resource")?.use { it.readBytes() })
             val response =
                 client.send(

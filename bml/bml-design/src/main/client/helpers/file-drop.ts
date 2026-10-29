@@ -2,7 +2,7 @@ import type { ClientContext } from "@bosca/bml";
 
 /** Selects local files; the caller owns validation, storage and transport. */
 export function fileDrop(ctx: ClientContext): void {
-  const input = ctx.ref<HTMLInputElement>("files");
+  const input = ctx.root.querySelector<HTMLInputElement>('input[type="file"]');
   if (!input) return;
   const disabled = () => ctx.root.hasAttribute("data-disabled");
   const sync = () => {

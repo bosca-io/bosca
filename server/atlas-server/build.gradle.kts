@@ -87,6 +87,31 @@ tasks.test {
         .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
 }
 
+tasks.register<Test>("nativeHostTest") {
+    group = "verification"
+    description = "Exercise native Atlas API, registry, workers, and BML hosts with isolated infrastructure."
+    dependsOn(tasks.testClasses, "nativeCompile", ":server:atlas-ui-server:nativeCompile")
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter {
+        includeTestsMatching("bosca.atlas.server.AtlasServerIntegrationTest")
+        includeTestsMatching("bosca.atlas.server.AtlasArtifactsIntegrationTest")
+    }
+    val extension = if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else ""
+    val backend = layout.buildDirectory.file("native/nativeCompile/bosca-atlas-server$extension")
+    val ui = project(":server:atlas-ui-server").layout.buildDirectory.file("native/nativeCompile/bosca-atlas-ui-server$extension")
+    inputs.file(backend).withPropertyName("nativeBackend").withPathSensitivity(PathSensitivity.NONE)
+    inputs.file(ui).withPropertyName("nativeUi").withPathSensitivity(PathSensitivity.NONE)
+    inputs.file(rootProject.file("artifacts/artifacts-ui/src/test/browser/artifacts.mjs"))
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    environment("ATLAS_SERVER_TEST_BINARY", backend.get().asFile.absolutePath)
+    environment("ATLAS_UI_TEST_BINARY", ui.get().asFile.absolutePath)
+    systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
+    systemProperty("atlas.artifacts.browser", "true")
+    systemProperty("atlas.native.artifacts", layout.buildDirectory.dir("reports/native-host").get().asFile.absolutePath)
+    outputs.upToDateWhen { false }
+}
+
 configurations.all {
     exclude(group = "org.jline", module = "jline")
     exclude(group = "io.netty", module = "netty-all")

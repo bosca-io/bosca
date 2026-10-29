@@ -1,7 +1,6 @@
 package bosca.git.ui
 
 import bosca.bml.library.BmlApplicationAssets
-import bosca.bml.library.BmlLibraryClientManifest
 import bosca.bml.library.BmlClientManifest
 import bosca.bml.project.ContentDigest
 import java.io.File
@@ -24,25 +23,15 @@ internal fun verifyGitUiNativeResources(report: File, retainedReport: File) {
         .associateBy { it.jsonObject.getValue("name").jsonPrimitive.content }
     val loader = GitUiNativeHostTest::class.java.classLoader
     val expected = linkedMapOf<String, String>()
-    var indexedAssets = 0
-    for (root in listOf("bml/applications/bml.generated")) {
-        val manifestPath = "$root/client-manifest.json"
-        val manifestBytes = requireNotNull(loader.getResourceAsStream(manifestPath)).use { it.readAllBytes() }
-        val manifest = Json.decodeFromString(BmlClientManifest.serializer(), manifestBytes.decodeToString())
-        BmlApplicationAssets.validateFiles(manifest.files)
-        indexedAssets += manifest.files.size
-        expected.putAll(manifest.files.associate { "$root/${it.path}" to it.digest })
-        expected[manifestPath] = ContentDigest.sha256(manifestBytes)
-    }
-    val libraries = loader.getResources("META-INF/bml/client-manifest.json").toList()
-    for (resource in libraries) {
-        val manifest = resource.openStream().use {
-            Json.decodeFromString(BmlLibraryClientManifest.serializer(), it.readAllBytes().decodeToString())
-        }
-        BmlApplicationAssets.validateFiles(manifest.files)
-        indexedAssets += manifest.files.size
-        expected.putAll(manifest.files.associate { "${manifest.resourcePrefix}/${it.path}" to it.digest })
-    }
+    // The host manifest includes consumed library assets under the application resource root.
+    val root = "bml/applications/bml.generated"
+    val manifestPath = "$root/client-manifest.json"
+    val manifestBytes = requireNotNull(loader.getResourceAsStream(manifestPath)).use { it.readAllBytes() }
+    val manifest = Json.decodeFromString(BmlClientManifest.serializer(), manifestBytes.decodeToString())
+    BmlApplicationAssets.validateFiles(manifest.files)
+    val indexedAssets = manifest.files.size
+    expected.putAll(manifest.files.associate { "$root/${it.path}" to it.digest })
+    expected[manifestPath] = ContentDigest.sha256(manifestBytes)
     val buildId = File(requireNotNull(System.getProperty("gitUi.native.buildId"))).readBytes()
     java.time.Instant.parse(buildId.decodeToString())
     expected["META-INF/bosca/bml/build-id"] = ContentDigest.sha256(buildId)

@@ -14,6 +14,7 @@
       <a href="#ref-copy-field">copy-field</a>
       <a href="#ref-toast">toast</a>
       <a href="#ref-time">time</a>
+      <a href="#ref-progress-bar">progress-bar</a>
     </nav>
     <reference-entry name="alert"
       :api='"ref: String = \"\"\nhidden: Boolean = false\ntone: String = \"error\"\ncompact: Boolean = false"'
@@ -32,8 +33,8 @@
       <div class="example-actions"><badge>Neutral</badge><badge tone="accent">Accent</badge><badge tone="purple">Purple</badge><badge tone="info">Information</badge><badge tone="success">Success</badge><badge tone="warning">Warning</badge><badge tone="error">Error</badge></div>
     </reference-entry>
     <reference-entry name="empty-state"
-      :api='"message: String = \"\"\ntitle: String = \"\"\nicon: String = \"folder\""'
-      :contract='"Native div with forwarded attributes/classes, decorative icon, optional title/message and default action children."'
+      :api='"message: String = \"\"\ntitle: String = \"\"\nicon: String = \"folder\"\ncompact: Boolean = false"'
+      :contract='"Native div with forwarded attributes/classes, decorative icon, optional title/message and default action children. compact reduces padding for embedded status panels."'
       :keyboard='"Noninteractive icon/title/message, with optional caller-owned action children. The icon is decorative."'
       :css='"Palette and typography inherit from the consuming application. Component hooks: --bg-2, --fg-3, --line. Forward an application class only through the documented native target; generated scope markers are private."'
       :snippet='"<empty-state title=\"No examples selected\" message=\"Choose an example to see its details.\"><a class=\"catalog-link\" href=\"/foundation\">Explore foundations</a></empty-state>"'>
@@ -110,6 +111,15 @@
       :css='"Palette and typography inherit from the consuming application. Component hooks: --fg-2. Forward an application class only through the documented native target; generated scope markers are private."'
       :snippet='"<div class=\"example-stack\"><time value=\"2026-10-18T08:15:00Z\" /><time value=\"2026-10-18T08:15:00Z\" format=\"yyyy-MM-dd HH:mm XXX\" /><time value=\"invalid timestamp\" /></div>"'>
       <div class="example-stack"><time value="2026-10-18T08:15:00Z" /><time value="2026-10-18T08:15:00Z" format="yyyy-MM-dd HH:mm XXX" /><time value="invalid timestamp" /></div>
+    </reference-entry>
+
+    <reference-entry name="progress-bar"
+      :api='"value: Double = 0.0\nmax: Double = 100.0\nlabel: String (required)"'
+      :contract='"Native determinate progress with an accessible label, value and max. Additional attributes/classes reach the progress element. Applications own progress updates and transport."'
+      :keyboard='"A display-only progress indicator. Screen readers receive its label and native progress values; it adds no focus stop."'
+      :css='"Uses --accent for progress and --bg-3 for its track, with --r-xs corners."'
+      :snippet='"<progress-bar label=\"Example upload progress\" :value=\"65.0\" :max=\"100.0\" />"'>
+      <progress-bar label="Example upload progress" :value="65.0" :max="100.0" />
     </reference-entry>
   </catalog-document>
 </page>

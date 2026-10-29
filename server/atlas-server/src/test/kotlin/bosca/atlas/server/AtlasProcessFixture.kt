@@ -47,11 +47,8 @@ internal class AtlasProcessFixture : AutoCloseable {
             .replace("cookie-prefixes: []", "cookie-prefixes:\n    - prefix: _atlas_test\n      domains: [localhost]") +
             "\ninitialization:\n  password:\n    admin: atlas-admin-password\n    sa: atlas-sa-password\n")
         val log = File(directory, "$name.log")
-        val process = ProcessBuilder(
-            File(System.getProperty("java.home"), "bin/java").absolutePath,
-            "--enable-native-access=ALL-UNNAMED", "-cp", requireNotNull(System.getProperty("atlasServerClasspath")),
-            "bosca.atlas.server.ApplicationKt", "-config=${config.absolutePath}",
-        ).directory(directory).apply {
+        val process = ProcessBuilder(command("ATLAS_SERVER_TEST_BINARY", "bosca.atlas.server.ApplicationKt", config))
+            .directory(directory).apply {
             environment().putAll(mapOf(
                 "ATLAS_HTTP_PORT" to apiPort.toString(), "ATLAS_UI_HTTP_PORT" to uiPort.toString(),
                 "ATLAS_DEVELOPMENT" to "true", "BML_AUTH_COOKIE_PREFIX" to "_atlas_test",
@@ -113,11 +110,8 @@ internal class AtlasProcessFixture : AutoCloseable {
               authCookiePrefix: "_atlas_test"
         """.trimIndent())
         val log = File(directory, "ui.log")
-        val process = ProcessBuilder(
-            File(System.getProperty("java.home"), "bin/java").absolutePath,
-            "--enable-native-access=ALL-UNNAMED", "-cp", requireNotNull(System.getProperty("atlasServerClasspath")),
-            "bosca.atlas.ui.server.ApplicationKt", "-config=${config.absolutePath}",
-        ).directory(directory).apply {
+        val process = ProcessBuilder(command("ATLAS_UI_TEST_BINARY", "bosca.atlas.ui.server.ApplicationKt", config))
+            .directory(directory).apply {
             environment().putAll(mapOf("ATLAS_ARTIFACTS_URL" to publicArtifactsOrigin, "BML_ARTIFACTS_ENDPOINT" to ""))
         }.redirectErrorStream(true).redirectOutput(log).start()
         processes += process
@@ -155,6 +149,24 @@ internal class AtlasProcessFixture : AutoCloseable {
     fun logs(): String = directory.listFiles().orEmpty().filter { it.extension == "log" }
         .joinToString("\n") { "${it.name}:\n${it.readText().takeLast(8_000)}" }
 
+    private fun command(binaryVariable: String, mainClass: String, config: File): List<String> {
+        val binary = System.getenv(binaryVariable)?.takeIf(String::isNotBlank)?.let(::File)
+        val launcher = if (binary == null) {
+            listOf(File(System.getProperty("java.home"), "bin/java").absolutePath,
+                "--enable-native-access=ALL-UNNAMED", "-cp",
+                requireNotNull(System.getProperty("atlasServerClasspath")), mainClass)
+        } else {
+            require(binary.isFile && binary.canExecute()) { "Invalid native fixture executable: $binary" }
+            val copied = File(directory, binary.name)
+            if (!copied.exists()) {
+                binary.copyTo(copied)
+                check(copied.setExecutable(true)) { "Cannot run native fixture executable: $copied" }
+            }
+            listOf(copied.absolutePath)
+        }
+        return launcher + "-config=${config.absolutePath}"
+    }
+
     override fun close() {
         val failed = mutableListOf<String>()
         for (process in processes.asReversed()) {
@@ -168,6 +180,12 @@ internal class AtlasProcessFixture : AutoCloseable {
         search.stop()
         nats.stop()
         postgres.stop()
+        System.getProperty("atlas.native.artifacts")?.let { root ->
+            val retained = File(root, directory.name).apply { mkdirs() }
+            directory.listFiles().orEmpty().filter { it.extension in setOf("log", "yaml") }.forEach {
+                it.copyTo(File(retained, it.name), overwrite = true)
+            }
+        }
         assertTrue(failed.isEmpty(), failed.joinToString() + "\n" + logs())
         directory.deleteRecursively()
     }

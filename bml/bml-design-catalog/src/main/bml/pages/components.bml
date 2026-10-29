@@ -9,6 +9,7 @@
           <ul class="reference-index">
             <li><a href="/components/controls#ref-button" data-export-link="button"><code>button</code></a></li>
             <li><a href="/components/controls#ref-input" data-export-link="input"><code>input</code></a></li>
+            <li><a href="/components/controls#ref-button-link" data-export-link="button-link"><code>button-link</code></a></li>
             <li><a href="/components/controls#ref-file-drop" data-export-link="file-drop"><code>file-drop</code></a></li>
             <li><a href="/components/controls#ref-field" data-export-link="field"><code>field</code></a></li>
             <li><a href="/components/controls#ref-checkbox" data-export-link="checkbox"><code>checkbox</code></a></li>
@@ -27,6 +28,11 @@
           <p class="catalog-description">Surfaces, headings and caller-owned destinations.</p>
           <ul class="reference-index">
             <li><a href="/components/layout#ref-card" data-export-link="card"><code>card</code></a></li>
+            <li><a href="/components/layout#ref-subsystem-switcher" data-export-link="subsystem-switcher"><code>subsystem-switcher</code></a></li>
+            <li><a href="/components/layout#ref-subsystem-links" data-export-link="subsystem-links"><code>subsystem-links</code></a></li>
+            <li><a href="/components/layout#ref-pagination" data-export-link="pagination"><code>pagination</code></a></li>
+            <li><a href="/components/layout#ref-form-actions" data-export-link="form-actions"><code>form-actions</code></a></li>
+            <li><a href="/components/layout#ref-form-body" data-export-link="form-body"><code>form-body</code></a></li>
             <li><a href="/components/layout#ref-page-shell" data-export-link="page-shell"><code>page-shell</code></a></li>
             <li><a href="/components/layout#ref-workspace" data-export-link="workspace"><code>workspace</code></a></li>
             <li><a href="/components/layout#ref-fullscreen-button" data-export-link="fullscreen-button"><code>fullscreen-button</code></a></li>
@@ -51,6 +57,7 @@
             <li><a href="/components/feedback#ref-badge" data-export-link="badge"><code>badge</code></a></li>
             <li><a href="/components/feedback#ref-empty-state" data-export-link="empty-state"><code>empty-state</code></a></li>
             <li><a href="/components/feedback#ref-loading-state" data-export-link="loading-state"><code>loading-state</code></a></li>
+            <li><a href="/components/feedback#ref-progress-bar" data-export-link="progress-bar"><code>progress-bar</code></a></li>
             <li><a href="/components/feedback#ref-spinner" data-export-link="spinner"><code>spinner</code></a></li>
             <li><a href="/components/feedback#ref-icon" data-export-link="icon"><code>icon</code></a></li>
             <li><a href="/components/feedback#ref-bosca-mark" data-export-link="bosca-mark"><code>bosca-mark</code></a></li>

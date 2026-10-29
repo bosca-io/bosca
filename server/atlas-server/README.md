@@ -147,3 +147,17 @@ Git and the artifact registry remain independent domain modules. Atlas selects t
 CI registry adapter and its generated providers; standalone Git does not load registry modules.
 Atlas also supplies the subsystem catalog to the imported Git UI. Shared authentication lives in
 `bml-auth-ui`, while each host owns its login branding and landing routes.
+
+Native process acceptance uses isolated PostgreSQL, NATS, search and file storage, and copies both
+executables into fresh fixture directories. It exercises the combined host, a separate worker,
+split registry/UI hosts, authentication, CI artifact completion, and the browser workflows:
+
+```bash
+./gradlew --no-configuration-cache --no-parallel \
+  :server:atlas-server:nativeCompile --build-args=-Ob \
+  :server:atlas-ui-server:nativeCompile --build-args=-Ob \
+  :server:atlas-server:nativeHostTest
+```
+
+`-Ob` selects a quick native validation build; omit it for release optimization. The acceptance task
+always executes and retains process logs/configuration under `build/reports/native-host/`.
