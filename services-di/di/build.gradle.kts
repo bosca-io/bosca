@@ -10,6 +10,8 @@ plugins {
 
 apply(plugin = "com.android.kotlin.multiplatform.library")
 
+val iosEnabled = gradle.extra["iosEnabled"] as Boolean
+
 kotlin {
     applyDefaultHierarchyTemplate {
         common {
@@ -53,13 +55,15 @@ kotlin {
         binaries.executable()
     }
 
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64()
-    ).forEach {
-        it.binaries.framework {
-            baseName = "BoscaDiKit"
-            isStatic = true
+    if (iosEnabled) {
+        listOf(
+            iosArm64(),
+            iosSimulatorArm64()
+        ).forEach {
+            it.binaries.framework {
+                baseName = "BoscaDiKit"
+                isStatic = true
+            }
         }
     }
 

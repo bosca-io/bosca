@@ -9,6 +9,8 @@ plugins {
 
 apply(plugin = "com.android.kotlin.multiplatform.library")
 
+val iosEnabled = gradle.extra["iosEnabled"] as Boolean
+
 kotlin {
     extensions.configure<com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget>("androidLibrary") {
         namespace = "io.bosca.yks"
@@ -43,13 +45,15 @@ kotlin {
         binaries.executable()
     }
 
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64()
-    ).forEach {
-        it.binaries.framework {
-            baseName = "BoscaYks"
-            isStatic = true
+    if (iosEnabled) {
+        listOf(
+            iosArm64(),
+            iosSimulatorArm64()
+        ).forEach {
+            it.binaries.framework {
+                baseName = "BoscaYks"
+                isStatic = true
+            }
         }
     }
 

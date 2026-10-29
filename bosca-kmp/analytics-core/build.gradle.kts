@@ -16,15 +16,12 @@ plugins {
 }
 
 val iosDeploymentTarget = "18.2"
-// JVM validation generates providers on desktop to avoid resolving native metadata and CocoaPods.
-val jvmCodegen = providers.gradleProperty("bosca.kmp.jvmCodegen").map(String::toBoolean).getOrElse(false)
-val providerKspConfiguration = if (jvmCodegen) "kspDesktopProviders" else "kspCommonMainMetadata"
-val providerKspTask = if (jvmCodegen) "kspProvidersKotlinDesktop" else "kspCommonMainKotlinMetadata"
-
 val androidEnabled = gradle.extra["androidEnabled"] as Boolean
 if (androidEnabled) {
     apply(plugin = "com.android.kotlin.multiplatform.library")
 }
+
+val iosEnabled = gradle.extra["iosEnabled"] as Boolean
 
 kotlin {
     applyDefaultHierarchyTemplate()
@@ -43,35 +40,23 @@ kotlin {
         }
     }
 
-    jvm("desktop") {
-        if (jvmCodegen) {
-            // A generation-only compilation keeps providers in commonMain without mixing in
-            // platform-specific generators such as Room's expect/actual implementations.
-            val mainCompilation = compilations.getByName("main")
-            val commonSources = this@kotlin.sourceSets.getByName("commonMain").kotlin
-            compilations.create("providers") {
-                defaultSourceSet.kotlin.srcDirs(commonSources.sourceDirectories)
-                compileDependencyFiles = mainCompilation.compileDependencyFiles
-            }
-        }
-    }
+    jvm("desktop")
 
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64(),
-    ).forEach {
-        it.binaries.framework {
-            baseName = "BoscaAnalyticsKit"
-            isStatic = true
+    if (iosEnabled) {
+        listOf(
+            iosArm64(),
+            iosSimulatorArm64(),
+        ).forEach {
+            it.binaries.framework {
+                baseName = "BoscaAnalyticsKit"
+                isStatic = true
+            }
         }
     }
 
     sourceSets {
         commonMain {
-            kotlin.srcDir(
-                if (jvmCodegen) "build/generated/ksp/desktop/desktopProviders/kotlin"
-                else "build/generated/ksp/metadata/commonMain/kotlin",
-            )
+            kotlin.srcDir("build/generated/ksp/metadata/commonMain/kotlin")
         }
         commonMain.dependencies {
             api(project(":bosca-kmp:client-core"))
@@ -107,9 +92,11 @@ kotlin {
             }
         }
 
-        val iosMain by getting {
-            dependencies {
-                api(libs.ktor.client.darwin)
+        if (iosEnabled) {
+            val iosMain by getting {
+                dependencies {
+                    api(libs.ktor.client.darwin)
+                }
             }
         }
 
@@ -120,16 +107,18 @@ kotlin {
         }
     }
 
-    cocoapods {
-        version = "1.0"
-        ios.deploymentTarget = iosDeploymentTarget
-        // client-core exposes auth-shared, whose native implementation links
-        // GoogleSignIn. The final analytics framework/test binary must own the
-        // pod search path as well as the transitive linker option.
-        pod("GoogleSignIn")
-        framework {
-            baseName = "BoscaAnalyticsKit"
-            isStatic = true
+    if (iosEnabled) {
+        cocoapods {
+            version = "1.0"
+            ios.deploymentTarget = iosDeploymentTarget
+            // client-core exposes auth-shared, whose native implementation links
+            // GoogleSignIn. The final analytics framework/test binary must own the
+            // pod search path as well as the transitive linker option.
+            pod("GoogleSignIn")
+            framework {
+                baseName = "BoscaAnalyticsKit"
+                isStatic = true
+            }
         }
     }
 }
@@ -139,13 +128,15 @@ tasks.withType<PodBuildTask>().configureEach {
 }
 
 dependencies {
-    add(providerKspConfiguration, project(":services-di:di-ksp"))
+    add("kspCommonMainMetadata", project(":services-di:di-ksp"))
     if (androidEnabled) {
         add("kspAndroid", libs.androidx.room3.compiler)
     }
     add("kspDesktop", libs.androidx.room3.compiler)
-    add("kspIosArm64", libs.androidx.room3.compiler)
-    add("kspIosSimulatorArm64", libs.androidx.room3.compiler)
+    if (iosEnabled) {
+        add("kspIosArm64", libs.androidx.room3.compiler)
+        add("kspIosSimulatorArm64", libs.androidx.room3.compiler)
+    }
 }
 
 ksp {
@@ -155,14 +146,14 @@ ksp {
 }
 
 tasks.configureEach {
-    if (name.startsWith("ksp") && name != providerKspTask) {
-        dependsOn(providerKspTask)
+    if (name.startsWith("ksp") && name != "kspCommonMainKotlinMetadata") {
+        dependsOn("kspCommonMainKotlinMetadata")
     }
 }
 
-// Source jars must run the selected provider generator before collecting its output.
+// The sources jar includes generated commonMain metadata, so its KSP producer must run first.
 tasks.matching { it.name == "sourcesJar" || it.name.endsWith("SourcesJar") }.configureEach {
-    dependsOn(providerKspTask)
+    dependsOn("kspCommonMainKotlinMetadata")
 }
 
 room3 {
@@ -170,14 +161,6 @@ room3 {
 }
 
 kover {
-    if (jvmCodegen) {
-        currentProject {
-            sources {
-                // KSP analyzes main's sources in this compilation; coverage comes from main's bytecode.
-                excludedSourceSets.add("providers")
-            }
-        }
-    }
     reports {
         filters {
             excludes {
@@ -210,10 +193,9 @@ tasks.named("koverVerify") {
 }
 
 val verifyAnalyticsProviderBindings by tasks.registering {
-    dependsOn(providerKspTask)
+    dependsOn("kspCommonMainKotlinMetadata")
     val registrar = layout.buildDirectory.file(
-        (if (jvmCodegen) "generated/ksp/desktop/desktopProviders/kotlin" else "generated/ksp/metadata/commonMain/kotlin") +
-            "/bosca/di/AnalyticsProviderRegistrar.kt",
+        "generated/ksp/metadata/commonMain/kotlin/bosca/di/AnalyticsProviderRegistrar.kt",
     )
     inputs.file(registrar)
     doLast {

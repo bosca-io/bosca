@@ -18,6 +18,8 @@ if (androidEnabled) {
     apply(plugin = "com.android.kotlin.multiplatform.library")
 }
 
+val iosEnabled = gradle.extra["iosEnabled"] as Boolean
+
 kotlin {
     applyDefaultHierarchyTemplate {
         common {
@@ -67,13 +69,15 @@ kotlin {
         binaries.executable()
     }
 
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64(),
-    ).forEach {
-        it.binaries.framework {
-            baseName = "BoscaAuthKit"
-            isStatic = true
+    if (iosEnabled) {
+        listOf(
+            iosArm64(),
+            iosSimulatorArm64(),
+        ).forEach {
+            it.binaries.framework {
+                baseName = "BoscaAuthKit"
+                isStatic = true
+            }
         }
     }
 
@@ -101,9 +105,11 @@ kotlin {
             }
         }
 
-        val iosMain by getting {
-            dependencies {
-                api(libs.ktor.client.darwin)
+        if (iosEnabled) {
+            val iosMain by getting {
+                dependencies {
+                    api(libs.ktor.client.darwin)
+                }
             }
         }
 
@@ -131,11 +137,13 @@ java {
 val iosDeploymentTarget = "18.2"
 
 kotlin {
-    cocoapods {
-        version = "1.0"
-        ios.deploymentTarget = iosDeploymentTarget
+    if (iosEnabled) {
+        cocoapods {
+            version = "1.0"
+            ios.deploymentTarget = iosDeploymentTarget
 
-        pod("GoogleSignIn")
+            pod("GoogleSignIn")
+        }
     }
 }
 
