@@ -3,11 +3,11 @@ package bosca.cli.ci
 import com.github.ajalt.clikt.core.CliktError
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.options.default
-import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
-import kotlinx.coroutines.delay
+import com.github.ajalt.clikt.parameters.types.long
+import com.github.ajalt.clikt.parameters.types.restrictTo
 import kotlin.uuid.Uuid
 
 class RunTriggerCommand : CiSubcommand("trigger") {
@@ -28,23 +28,33 @@ class RunTriggerCommand : CiSubcommand("trigger") {
 }
 
 class RunListCommand : CiSubcommand("list") {
-    override fun help(context: Context) = "List pipeline runs for a repository"
+    override fun help(context: Context) = "List runs for a repository or one pipeline"
 
     private val repoId by option("--repo-id", help = "Repository ID").required()
-    private val limit by option("--limit", help = "Max results").int().default(20)
+    private val pipelineId by option("--pipeline-id", help = "Only list runs for this pipeline")
+    private val offset by option("--offset", help = "Number of runs to skip").long().restrictTo(min = 0).default(0)
+    private val limit by option("--limit", help = "Max results").int().restrictTo(1, 100).default(20)
 
     override suspend fun execute(api: CiApi) {
-        val runs = api.listPipelineRuns(Uuid.parse(repoId), limit = limit)
-        if (runs.isEmpty()) {
+        val selectedPipeline = pipelineId
+        val rows = if (selectedPipeline == null) {
+            api.listPipelineRuns(Uuid.parse(repoId), offset = offset, limit = limit).map {
+                "${it.id}  #${it.number}  ${it.status}  ${it.pipelineId}  ${it.ref}  ${it.triggerType}  ${it.created}  ${it.commitSha}"
+            }
+        } else {
+            val runs = api.listPipelineRunsForPipeline(Uuid.parse(repoId), Uuid.parse(selectedPipeline), offset, limit)
+                ?: throw CliktError("Pipeline not found in repository: $selectedPipeline")
+            runs.map {
+                "${it.id}  #${it.number}  ${it.status}  ${it.pipelineId}  ${it.ref}  ${it.triggerType}  ${it.created}  ${it.commitSha}"
+            }
+        }
+        if (rows.isEmpty()) {
             echo("No pipeline runs found.")
             return
         }
-        echo("%-5s  %-10s  %-12s  %-20s  %s".format("#", "STATUS", "TRIGGER", "CREATED", "COMMIT"))
-        for (r in runs) {
-            echo("%-5d  %-10s  %-12s  %-20s  %s".format(
-                r.number, r.status, r.triggerType,
-                r.created.toString().take(19), r.commitSha.take(8)
-            ))
+        echo("RUN ID  #  STATUS  PIPELINE ID  REF  TRIGGER  CREATED  COMMIT")
+        for (row in rows) {
+            echo(row)
         }
     }
 }
@@ -97,49 +107,5 @@ class RunRerunCommand : CiSubcommand("rerun") {
             }
             else -> throw CliktError("Exactly one of --id or --job-id is required.")
         }
-    }
-}
-
-class RunLogsCommand : CiSubcommand("logs") {
-    override fun help(context: Context) = "View or stream step logs"
-
-    private val stepId by option("--step-id", help = "Step ID").required()
-    private val runId by option("--run-id", help = "Pipeline run ID (required for --follow to detect completion)")
-    private val follow by option("--follow", "-f", help = "Stream logs continuously until step completes").flag()
-
-    override suspend fun execute(api: CiApi) {
-        val id = Uuid.parse(stepId)
-        var offset = 0
-
-        while (true) {
-            val logs = api.getPipelineLogs(id, offset = offset, limit = 200)
-            for (log in logs) {
-                val ts = log.timestamp.toString().take(19)
-                val stream = if (log.stream == "stderr") " [ERR]" else ""
-                echo("$ts$stream ${log.content}")
-            }
-            offset += logs.size
-
-            if (!follow) break
-
-            if (logs.isEmpty()) {
-                if (isStepFinished(api)) break
-                delay(2000)
-            }
-        }
-    }
-
-    private suspend fun isStepFinished(api: CiApi): Boolean {
-        if (runId == null) return false
-        val run = api.getPipelineRun(Uuid.parse(runId!!)) ?: return true
-        for (job in run.jobs) {
-            for (step in job.steps) {
-                if (step.id.toString() == stepId) {
-                    val status = step.status.name
-                    return status == "SUCCESS" || status == "FAILURE" || status == "CANCELLED" || status == "SKIPPED"
-                }
-            }
-        }
-        return true
     }
 }
