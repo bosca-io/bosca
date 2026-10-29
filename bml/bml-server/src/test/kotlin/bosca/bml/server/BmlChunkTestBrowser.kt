@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -89,13 +90,15 @@ internal class BmlChunkTestBrowser(chrome: File, profile: File, private val log:
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
         while (System.nanoTime() < deadline) {
             val evaluated = command("Runtime.evaluate", mapOf(
-                "expression" to JsonPrimitive("({url: location.href, value: document.getElementById('result')?.textContent})"),
+                "expression" to JsonPrimitive("({url: location.href, complete: document.getElementById('result')?.dataset.complete === 'true', " +
+                    "value: document.getElementById('result')?.textContent})"),
                 "returnByValue" to JsonPrimitive(true),
             ))
             check("exceptionDetails" !in evaluated) { "Evaluation failed: $evaluated; ${diagnostics()}" }
             val document = evaluated["result"]?.jsonObject?.get("value")?.jsonObject
             val value = document?.get("value")?.jsonPrimitive?.contentOrNull
-            if (document?.get("url")?.jsonPrimitive?.content == url && value != null && value != "pending") return value
+            if (document?.get("url")?.jsonPrimitive?.content == url &&
+                document?.get("complete")?.jsonPrimitive?.booleanOrNull == true && value != null) return value
             Thread.sleep(50)
         }
         error("Module result did not become ready at $url: ${diagnostics()}")

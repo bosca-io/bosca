@@ -48,6 +48,13 @@ cookies; focused checks use distinct report names. Set `-Pbml.browser.workers=1`
 serially, or choose another pool size for the available machine. The aggregate task reuses those
 results, and its Gradle worker count is bounded independently.
 
+Run the CI browser phase from the workspace root with
+`./gradlew -Pbosca.ios.enabled=false --parallel --max-workers=4 testBmlBrowser`.
+This builds independent suites in parallel, then runs chunk-cache, Notifications Web,
+Design Library consumer and catalog tests in sequence. Catalog test completions appear
+in the Gradle log. Local choices, feedback and surfaces run in their dedicated JVM
+cases; native catalog qualification retains them in its single browser entry point.
+
 `./gradlew :bml:bml-server:chunkCacheBrowserTest` checks module requests across two deployments
 with unchanged JavaScript and a retained browser cache, for both filesystem and packaged assets.
 It covers shared, nested, lazy and compiled-library imports and runs in the CI and release browser

@@ -98,9 +98,10 @@ try {
     return result.result.value;
   }
   async function until(expression) {
-    for (let attempt = 0; attempt < 100; attempt++) {
+    // Observe immediate DOM updates promptly, retaining 100 slower polls for delayed actions.
+    for (let attempt = 0; attempt < 120; attempt++) {
       if (await evaluate(expression)) return;
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise(resolve => setTimeout(resolve, attempt < 20 ? 5 : 50));
     }
     const context = await evaluate(`({ url: location.href, ready: document.readyState,
       active: document.activeElement?.outerHTML.slice(0, 1500),

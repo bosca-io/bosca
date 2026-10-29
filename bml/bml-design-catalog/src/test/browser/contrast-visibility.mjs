@@ -21,7 +21,11 @@ export async function checkContrastVisibility({ navigate, evaluate, until: poll,
       const measure = async (path, selector, state, scroll = true) => {
         await until(`document.querySelector(${JSON.stringify(selector)})`);
         const before = await inspect(selector);
-        if (scroll) await evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',inline:'nearest'})`);
+        if (scroll) await poll(`(async () => {
+          document.querySelector(${JSON.stringify(selector)}).scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});
+          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+          return (${inspectContrast.toString()})(${JSON.stringify(selector)}).visibleText;
+        })()`);
         const visible = await inspect(selector), result = await scan(selector);
         const row = { path, width, appearance, state, selector, before, visible, ...result }; reports.push(row);
         assertContrast(visible); assert.ok(visible.visibleText, `No unoccluded text: ${JSON.stringify(row)}`);
