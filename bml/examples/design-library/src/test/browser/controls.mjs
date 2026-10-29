@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { launchTestBrowser } from '../../../../../../gradle/bml-test-browser.mjs';
 import { checkLayout } from './layout-checks.mjs';
 import { checkIconActions } from './icon-action-checks.mjs';
 import { checkOverlays } from './overlay-checks.mjs';
@@ -29,29 +28,15 @@ if (!base || !['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostnam
 }
 const artifacts = resolve('build/reports/browser');
 await mkdir(artifacts, { recursive: true });
-const profile = await mkdtemp(join(tmpdir(), 'bosca-design-browser-'));
 const listener = createServer();
 await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
 const port = listener.address().port;
 await new Promise(resolve => listener.close(resolve));
 const cdp = `http://127.0.0.1:${port}`;
-const browser = spawn(process.env.BML_DESIGN_CHROME_BINARY ?? (process.platform === 'darwin'
-  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : 'google-chrome'), [
-  '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-  `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank',
-], { stdio: 'ignore' });
-let launchError;
-browser.on('error', error => { launchError = error; });
+const ownedBrowser = await launchTestBrowser(port);
+const browser = ownedBrowser.process;
 let ws;
 try {
-  let ready = false;
-  for (let attempt = 0; attempt < 100; attempt++) {
-    if (launchError) throw launchError;
-    try { ready = (await fetch(`${cdp}/json/version`)).ok; } catch { /* Starting our own browser. */ }
-    if (ready) break;
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
-  assert.ok(ready, 'The isolated Chrome instance did not start.');
   const targets = await (await fetch(`${cdp}/json`)).json();
   ws = new WebSocket(targets.find(target => target.type === 'page').webSocketDebuggerUrl);
   await new Promise(resolve => ws.addEventListener('open', resolve, { once: true }));
@@ -415,10 +400,5 @@ try {
   }
 } finally {
   ws?.close();
-  browser.kill('SIGTERM');
-  await new Promise(resolve => {
-    if (browser.exitCode !== null) resolve();
-    else { browser.once('exit', resolve); setTimeout(resolve, 3000).unref(); }
-  });
-  await rm(profile, { recursive: true, force: true });
+  await ownedBrowser.close();
 }

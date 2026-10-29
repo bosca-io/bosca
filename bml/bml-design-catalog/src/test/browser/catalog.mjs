@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { launchTestBrowser } from '../../../../../gradle/bml-test-browser.mjs';
 import { checkReferences } from './references.mjs';
 import { checkPresentation } from './presentation.mjs';
 import { checkPickers } from './picker.mjs';
@@ -48,29 +47,15 @@ if (!base || !['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostnam
 }
 const artifacts = resolve('build/reports/browser');
 await mkdir(artifacts, { recursive: true });
-const profile = await mkdtemp(join(tmpdir(), 'bosca-catalog-browser-'));
 const listener = createServer();
 await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
 const port = listener.address().port;
 await new Promise(resolve => listener.close(resolve));
 const cdp = `http://127.0.0.1:${port}`;
-const browser = spawn(process.env.BML_DESIGN_CHROME_BINARY ?? (process.platform === 'darwin'
-  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : 'google-chrome'), [
-  '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-  `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank',
-], { stdio: 'ignore' });
-let launchError;
-browser.on('error', error => { launchError = error; });
+const ownedBrowser = await launchTestBrowser(port);
+const browser = ownedBrowser.process;
 let ws, diagnostics;
 try {
-  let ready = false;
-  for (let attempt = 0; attempt < 100; attempt++) {
-    if (launchError) throw launchError;
-    try { ready = (await fetch(`${cdp}/json/version`)).ok; } catch { /* Starting our own browser. */ }
-    if (ready) break;
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
-  assert.ok(ready, 'The isolated Chrome instance did not start.');
   const targets = await (await fetch(`${cdp}/json`)).json();
   ws = new WebSocket(targets.find(target => target.type === 'page').webSocketDebuggerUrl);
   await new Promise(resolve => ws.addEventListener('open', resolve, { once: true }));
@@ -302,13 +287,7 @@ try {
   throw error;
 } finally {
   checkpoint('cleanup started');
-  if(ws)ws.close();browser.kill('SIGTERM');
-  await new Promise(resolve => {
-    if (browser.exitCode !== null || browser.signalCode !== null) return resolve();
-    const timeout = setTimeout(resolve, 2000);
-    browser.once('exit', () => { clearTimeout(timeout); resolve(); });
-  });
-  checkpoint('browser wait finished');
-  await rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});
-  checkpoint('profile removed');
+  ws?.close();
+  await ownedBrowser.close();
+  checkpoint('browser closed');
 }

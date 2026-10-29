@@ -53,6 +53,9 @@ in parallel. Each method owns its server, browser profile and cookies; focused c
 report names. Set `-Pbml.browser.workers=1` to run methods
 serially, or choose another pool size for the available machine. CI's later JVM phase excludes these
 suites so they run once even when that phase uses a different Gradle worker count.
+Fixture JVMs size their internal pools for one check; Gradle's worker budget controls concurrent
+checks. The pinned Playwright launcher owns each isolated Chromium process tree and profile,
+including forced cleanup when the browser stops responding.
 
 Run the CI browser phase from the workspace root with
 `./gradlew -Pbosca.ios.enabled=false --parallel --max-workers=4 testBmlBrowser`.

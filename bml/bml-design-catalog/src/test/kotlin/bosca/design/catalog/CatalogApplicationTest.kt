@@ -425,7 +425,9 @@ class CatalogApplicationTest {
     private fun withServer(development: Boolean, executable: File? = null, requestedPort: Int = 0, test: (String, HttpClient) -> Unit) {
         var base: String? = null
         val log = File.createTempFile("catalog-server-", ".log")
+        // The runner owns test concurrency; this child serves a single browser check.
         val command = if (executable == null) listOf(System.getProperty("catalog.java"),
+            "-XX:ActiveProcessorCount=1",
             "-Djava.net.preferIPv4Stack=false", "-Djava.net.preferIPv6Addresses=true",
             "-Dbml.dev=$development", "-cp", classpath, "bosca.design.catalog.MainKt", requestedPort.toString())
         else listOf(executable.absolutePath, requestedPort.toString())

@@ -163,7 +163,9 @@ class PublishedDesignLibraryTest {
 
     private fun withServer(classpath: String, development: Boolean, log: File, check: (String) -> Unit) {
         var base: String? = null
+        // The runner owns test concurrency; this child serves a single browser check.
         val process = ProcessBuilder(System.getProperty("design.fixture.java"),
+            "-XX:ActiveProcessorCount=1",
             "-Djava.net.preferIPv4Stack=false", "-Djava.net.preferIPv6Addresses=true", "-Dbml.dev=$development", "-cp", classpath,
             "bosca.design.example.MainKt", "0").redirectErrorStream(true).redirectOutput(log).start()
         try {
