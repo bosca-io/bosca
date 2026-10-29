@@ -48,13 +48,13 @@ data class ObjectBackupManifest(
             throw IllegalArgumentException("Invalid object backup creation time: $created", error)
         }
 
-        val revisions = mutableSetOf<Triple<String, String, String>>()
+        val keys = mutableSetOf<Pair<String, String>>()
         val payloads = mutableMapOf<String, Pair<Long, String>>()
 
         for (entry in objects) {
             entry.validate()
-            require(revisions.add(Triple(entry.store, entry.key, entry.revision))) {
-                "Duplicate object revision: ${entry.store}/${entry.key}@${entry.revision}"
+            require(keys.add(entry.store to entry.key)) {
+                "Duplicate object key: ${entry.store}/${entry.key}"
             }
 
             val identity = entry.length to entry.sha256

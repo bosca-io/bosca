@@ -64,6 +64,7 @@ database dump. A backup bucket on the existing object-storage service is suffici
 initial publication. Keep source content and retained backups in separate buckets so
 source discovery cannot include its own backup output. CloudNativePG's backups continue
 to use the operator's existing mechanisms; this event covers Bosca's managed operations.
+For filesystem storage, keep retained backups outside every selected source directory.
 
 ## Configure the recovery instance
 

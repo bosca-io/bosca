@@ -10,8 +10,8 @@ import kotlinx.coroutines.withContext
 
 /** Checks and restores an operator-owned, offline destination through its independent libpq service. */
 internal class PostgresBackupRestore(private val application: BoscaApplication) {
-    suspend fun preflight(manifest: PostgresBackupManifest, directory: Path? = null): PostgresBackupManifest =
-        execute(directory, manifest, restore = false)
+    suspend fun preflight(manifest: PostgresBackupManifest): PostgresBackupManifest =
+        execute(null, manifest, restore = false)
 
     suspend fun restore(directory: Path, manifest: PostgresBackupManifest): PostgresBackupManifest =
         execute(directory, manifest, restore = true)

@@ -201,7 +201,7 @@ type ObjectBackupManifest {
 type BackupObject {
     store: String!
     key: String!
-    "Backup change identity from observed source metadata or a selected provider version."
+    "Backup change identity from observed source metadata, including a provider version when reported."
     revision: String!
     length: Long!
     sha256: String!

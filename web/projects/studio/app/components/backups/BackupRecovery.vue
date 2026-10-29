@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
+import { defineAsyncComponent } from 'vue'
+import 'vanilla-jsoneditor/themes/jse-theme-dark.css'
+
+const JsonEditorVue = defineAsyncComponent(async () => (await import('json-editor-vue')).default)
 
 interface Totals { total: number; pending: number; running: number; completed: number; failed: number; totalBytes: number; verifiedBytes: number }
 interface Run {
@@ -27,7 +31,8 @@ const requestKey = ref('')
 const restoreDestination = ref('')
 const backupKey = ref('')
 const manifestPath = ref('')
-const targetMapping = ref('{"content":"recovered-content"}')
+const targetMapping = ref<unknown>({ content: 'recovered-content' })
+const restoreOpen = ref(false)
 const nativeSource = ref('')
 const nativeStorage = ref('')
 const nativeRuns = ref<NativeRun[]>([])
@@ -104,7 +109,7 @@ async function loadItems(run: Run, page = 0) {
 async function prepare() {
   await perform(async () => {
     if (![requestKey.value, restoreDestination.value, backupKey.value, manifestPath.value].every(v => v.trim())) throw new Error('Complete the restore settings')
-    const mapping: unknown = JSON.parse(targetMapping.value)
+    const mapping = targetMapping.value
     if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping) || Object.entries(mapping).some(([store, value]) => !store.trim() || typeof value !== 'string' || !value.trim())) {
       throw new Error('Map each logical store to a storage ID')
     }
@@ -176,7 +181,7 @@ function date(value: string) { return new Date(value).toLocaleString() }
       <Button :disabled="busy || nativeOffset === 0" @click="loadNative(nativeOffset - 20)">Previous database backups</Button>
       <Button :disabled="busy || nativeRuns.length < 20" @click="loadNative(nativeOffset + 20)">Next database backups</Button>
     </details>
-    <details>
+    <details @toggle="restoreOpen = ($event.target as HTMLDetailsElement).open">
       <summary>Prepare an object restore</summary>
       <div class="filters">
         <TextInput v-model="requestKey" label="Request key" />
@@ -185,7 +190,15 @@ function date(value: string) { return new Date(value).toLocaleString() }
         <TextInput v-model="manifestPath" label="Manifest path" />
       </div>
       <p>Map logical store names to storage IDs configured on this instance.</p>
-      <CodeEditor v-model="targetMapping" language="json" :rows="4" />
+      <JsonEditorVue
+        v-if="restoreOpen"
+        v-model="targetMapping"
+        mode="tree"
+        :stringified="false"
+        :main-menu-bar="false"
+        :navigation-bar="false"
+        class="jse-theme-dark json-editor"
+      />
       <p>Matching files are reused. Selected files with different bytes are replaced. Preparation saves the request; dispatch starts copying.</p>
       <Button :disabled="busy" @click="prepare">Prepare object restore</Button>
     </details>
@@ -233,5 +246,6 @@ summary { cursor: pointer; padding: 0.75rem 0; }
 .filters { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; margin: 0.75rem 0; }
 .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .run { padding: 1rem 0; border-bottom: 1px solid var(--line); }
+.json-editor { min-height: 160px; }
 .error, [role='alert'] { color: var(--danger, #ff5d6c); }
 </style>

@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import Recovery from './BackupRecovery.vue'
 
+vi.mock('json-editor-vue', () => ({
+  default: {
+    name: 'JsonEditorVue',
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<div data-testid="target-mapping" />',
+  },
+}))
+
 enableAutoUnmount(afterEach)
 const query = vi.fn()
 const mutation = vi.fn()
@@ -15,11 +24,17 @@ const stubs = {
   Select: { template: '<label>{{ label }}<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option v-for="o in options" :key="o.value" :value="o.value">{{ o.label }}</option></select></label>', props: ['label', 'modelValue', 'options'] },
   Button: { template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>', props: ['disabled'] },
   NuxtLink: { template: '<a><slot /></a>', props: ['to'] },
-  CodeEditor: { template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />', props: ['modelValue'] },
 }
 function page() { return mount(Recovery, { global: { stubs } }) }
 async function field(wrapper: ReturnType<typeof page>, label: string, value: string) {
   await wrapper.findAll('label').find(l => l.text().startsWith(label))!.get('input').setValue(value)
+}
+async function openRestore(wrapper: ReturnType<typeof page>) {
+  const details = wrapper.findAll('details').find(d => d.get('summary').text() === 'Prepare an object restore')!
+  const element = details.element as HTMLDetailsElement
+  element.open = true
+  await details.trigger('toggle')
+  await flushPromises()
 }
 async function click(wrapper: ReturnType<typeof page>, label: string) {
   await wrapper.findAll('button').find(b => b.text() === label)!.trigger('click')
@@ -32,6 +47,13 @@ beforeEach(() => {
 })
 
 describe('independent backup recovery', () => {
+  it('starts the JSON editor only when the restore form is opened', async () => {
+    const wrapper = page()
+    expect(wrapper.findComponent({ name: 'JsonEditorVue' }).exists()).toBe(false)
+    await openRestore(wrapper)
+    expect(wrapper.findComponent({ name: 'JsonEditorVue' }).exists()).toBe(true)
+  })
+
   it('loads an exact scope with offset pagination and shows partial work separately from last success', async () => {
     const wrapper = page()
     expect(query).not.toHaveBeenCalled()
@@ -96,7 +118,8 @@ describe('independent backup recovery', () => {
     await field(wrapper, 'Restore destination', 'recovery')
     await field(wrapper, 'Backup storage', 'retained')
     await field(wrapper, 'Manifest path', 'manifests/later.json')
-    await wrapper.get('textarea').setValue('{"content":"recovered-content"}')
+    await openRestore(wrapper)
+    wrapper.getComponent({ name: 'JsonEditorVue' }).vm.$emit('update:modelValue', { content: 'recovered-content' })
     mutation.mockResolvedValue({ backups: { objectRuns: { prepareRestoreConfigured: { ...run, status: 'PENDING' } } } })
     await click(wrapper, 'Prepare object restore')
     expect(mutation.mock.calls[0]![1]).toEqual({ requestKey: 'restore-2', destinationId: 'recovery', backupKey: 'retained', path: 'manifests/later.json', stores: [{ store: 'content', storageKey: 'recovered-content' }] })
@@ -110,7 +133,8 @@ describe('independent backup recovery', () => {
     await field(wrapper, 'Restore destination', 'recovery')
     await field(wrapper, 'Backup storage', 'retained')
     await field(wrapper, 'Manifest path', 'manifests/later.json')
-    await wrapper.get('textarea').setValue('{"content":42}')
+    await openRestore(wrapper)
+    wrapper.getComponent({ name: 'JsonEditorVue' }).vm.$emit('update:modelValue', { content: 42 })
     await click(wrapper, 'Prepare object restore')
     expect(mutation).not.toHaveBeenCalled()
     expect(wrapper.get('[role="alert"]').text()).toContain('storage ID')

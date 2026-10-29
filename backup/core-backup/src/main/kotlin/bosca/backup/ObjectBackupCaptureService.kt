@@ -14,9 +14,9 @@ interface ObjectBackupCaptureService : Service {
      * the saved selection without rediscovery; changed intent fails. Partial discovery never
      * publishes a plan. Requires no active caller transaction and independent retained storage.
      * Source writes continue, so this is an observation over time, not a closed database snapshot.
-     * Unversioned selections require an entity tag or modification time. Capture checks those
-     * observations before and after reading current bytes. Selected provider versions, when
-     * available, are read directly. Missing or changed source objects fail capture.
+     * Selections require source change metadata. Capture compares the saved observations before
+     * and after reading current bytes. Provider versions, when reported, are change identities;
+     * capture always reads the current object key. Missing or changed source objects fail capture.
      */
     suspend fun discoverConfigured(request: ObjectBackupDiscoveryRequest): ObjectBackupCapturePlan
 
@@ -118,12 +118,12 @@ interface ObjectBackupCaptureService : Service {
      * Captures all selected objects and publishes their verified portable manifest.
      *
      * Snapshots and validates [inventory] and required [sources] before asset I/O. Results are
-     * ordered by logical store, key and optional provider version. Completed entries survive partial
+     * ordered by logical store and key. Completed entries survive partial
      * failure/restart and reuse their recorded paths. Unknown revisions use new paths under
      * [payloadPrefix]; the caller owns [manifestPath] and independent [destination] storage.
      * [verifiedSince] applies to both capture reuse and publication; null forces full checks.
      *
-     * Unversioned sources must still match their saved observations when read; a changed or
+     * Sources must still match their saved observations when read; a changed or
      * missing source fails rather than substituting different content. Requires stable source and
      * destination identities, exclusive writers and no active caller transaction. No source writes are paused. This
      * neither discovers a closed snapshot, persists initial unknown-digest intent, establishes
@@ -145,7 +145,7 @@ interface ObjectBackupCaptureService : Service {
      * Uses stable [sourceId], [destinationId] and [scope] identities. Known revisions retain their
      * recorded payload path, even if a different new [payloadPath] is proposed. Completed bytes
      * are verified without opening the source; missing/corrupt known output is repaired from the
-     * selected source against the recorded digest. Unversioned repair also checks the saved
+     * current source against the recorded digest. Repair also checks the saved
      * source observation before and after transfer. A running checkpoint is rejected;
      * the caller must establish that its writer stopped before recording failure and retrying.
      *
@@ -175,10 +175,10 @@ interface ObjectBackupCaptureService : Service {
      * Captures [entry] through its existing object key and returns a manifest-ready [BackupObject].
      *
      * Derives the SHA-256 digest while streaming, checks the exact declared length and EOF,
-     * then verifies retained bytes before acknowledging the entry. Unversioned objects are read
-     * normally, checking their selected length, entity tag and modification time before and after
+     * then verifies retained bytes before acknowledging the entry. Reads the current object key,
+     * checking its selected length and available change metadata before and after
      * copying. These observations detect reported changes; they do not freeze source bytes or
-     * establish an atomic snapshot. A selected provider version is read directly when available.
+     * establish an atomic snapshot or select a historical provider version.
      * Requires a nonblank logical [store], source change metadata, and canonical relative object
      * key and [payloadPath]. Existing output is rejected before opening the source.
      *

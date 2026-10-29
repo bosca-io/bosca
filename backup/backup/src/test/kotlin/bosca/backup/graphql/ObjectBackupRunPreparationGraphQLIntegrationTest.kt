@@ -238,7 +238,8 @@ class ObjectBackupRunPreparationGraphQLIntegrationTest : ObjectBackupGraphQLTest
             inventory.copy(id = "bad-digest", objects = listOf(first.copy(sha256 = "etag-2"))) to "Invalid SHA-256 digest",
             inventory.copy(id = "bad-length", objects = listOf(first.copy(length = -1))) to "Invalid object length",
             inventory.copy(id = "bad-key", objects = listOf(first.copy(payloadPath = "objects/../payload"))) to "Invalid backup payload path",
-            inventory.copy(id = "duplicate", objects = listOf(first, first)) to "Duplicate object revision",
+            inventory.copy(id = "duplicate", objects = listOf(first, first)) to "Duplicate object key",
+            inventory.copy(id = "duplicate-revision", objects = listOf(first, first.copy(revision = "revision-2"))) to "Duplicate object key",
             inventory.copy(id = "conflicting-payload", objects = listOf(first, second.copy(payloadPath = first.payloadPath))) to "Conflicting payload identity",
         )
         for ((declared, error) in invalid) assertError(submit(declared), error)
@@ -254,7 +255,7 @@ class ObjectBackupRunPreparationGraphQLIntegrationTest : ObjectBackupGraphQLTest
             assertError(submit(inventory, restorePath = path), if (path == first.payloadPath) "conflicts with a payload" else "manifest path")
         }
         val duplicateTarget = inventory.copy(id = "ambiguous", objects = listOf(first, first.copy(revision = "revision-2")))
-        assertError(submit(duplicateTarget, restorePath = "recovery/ambiguous.json"), "Multiple revisions target the same object")
+        assertError(submit(duplicateTarget, restorePath = "recovery/ambiguous.json"), "Duplicate object key")
         val traversal = inventory.copy(id = "bad-original", objects = listOf(first.copy(key = "../outside")))
         assertError(submit(traversal, restorePath = "recovery/traversal.json"), "Invalid backup payload path")
 

@@ -560,7 +560,7 @@ class ObjectBackupCaptureServiceImpl(
 
     private fun canonicalSelection(inventory: ObjectBackupCaptureInventory): ObjectBackupCaptureInventory =
         inventory.copy(stores = inventory.stores.toSortedMap().mapValues { (_, entries) ->
-            entries.sortedWith(compareBy({ it.key }, { it.info.version }))
+            entries.sortedBy { it.key }
         })
 
     private fun validateOutputPaths(destinationId: String, payloadPrefix: String, manifestPath: String) {
@@ -598,11 +598,8 @@ class ObjectBackupCaptureServiceImpl(
         return revision
     }
 
-    private fun retainedVersion(entry: ObjectStorageEntry): String? =
-        entry.info.version?.takeIf { it.isNotBlank() && it != "null" }
-
     private fun captureRevision(entry: ObjectStorageEntry): String {
-        retainedVersion(entry)?.let { return it }
+        entry.info.version?.takeIf { it.isNotBlank() && it != "null" }?.let { return it }
         val etag = entry.info.etag?.takeIf { it.isNotBlank() }.orEmpty()
         val modified = entry.info.modified?.toInstant()?.toString().orEmpty()
         require(etag.isNotEmpty() || modified.isNotEmpty()) { "Source change metadata is required: ${entry.key}" }

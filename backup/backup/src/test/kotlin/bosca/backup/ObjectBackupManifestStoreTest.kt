@@ -131,7 +131,7 @@ class ObjectBackupManifestStoreTest {
     fun `shared payload is verified once`() = runTest {
         val backend = mockk<ManagedObjectStorageService>()
         coEvery { backend.getInputStream(any()) } answers { data.inputStream() }
-        val shared = manifest.copy(objects = listOf(revision, revision.copy(revision = "revision-2")))
+        val shared = manifest.copy(objects = listOf(revision, revision.copy(key = "other", revision = "revision-2")))
 
         ObjectBackupManifestStore(backend, Json).verify(shared)
 

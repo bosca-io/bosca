@@ -15,8 +15,7 @@ class ContentConfiguration {
 
     @Provider(singleton = true)
     fun urlSigner(application: BoscaApplication): UrlSigner {
-        val secretKey = application.environment.config.propertyOrNull("content.urlSigner.secretKey")?.getString()
-            ?: error("Missing 'content.urlSigner.secretKey' property")
+        val secretKey = application.environment.config.propertyOrNull("content.urlSigner.secretKey")?.getString() ?: error("Missing 'content.urlSigner.secretKey' property")
         return UrlSignerImpl(secretKey)
     }
 

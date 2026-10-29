@@ -80,8 +80,20 @@ class ObjectBackupManifestTest {
     }
 
     @Test
-    fun `historical revisions and matching shared payloads are allowed`() {
-        manifest.copy(objects = listOf(objectRevision, objectRevision.copy(revision = "revision-2"))).validate()
+    fun `different revision labels cannot repeat a logical object key`() {
+        assertFailsWith<IllegalArgumentException> {
+            manifest.copy(objects = listOf(objectRevision, objectRevision.copy(revision = "revision-2"))).validate()
+        }
+    }
+
+    @Test
+    fun `distinct historical object keys can share matching retained payloads`() {
+        manifest.copy(
+            objects = listOf(
+                objectRevision,
+                objectRevision.copy(key = "metadata/item/2/content", revision = "revision-2"),
+            ),
+        ).validate()
     }
 
     @Test

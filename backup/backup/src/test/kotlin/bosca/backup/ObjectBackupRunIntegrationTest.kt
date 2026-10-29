@@ -142,6 +142,14 @@ class ObjectBackupRunIntegrationTest {
     }
 
     @Test
+    fun `ambiguous source revisions are rejected before recording a backup run`(): Unit = runBlocking {
+        val ambiguous = inventory.copy(objects = listOf(first, first.copy(revision = "later")))
+        assertFailsWith<IllegalArgumentException> { request { service.prepare(ambiguous, "destination-1") } }
+        assertTrue(request { service.list(BACKUP, inventory.sourceId, "destination-1", inventory.scope, 0, 20) }.isEmpty())
+        assertTrue(request { progress.list(BACKUP, inventory.sourceId, "destination-1", inventory.scope, 0, 20) }.isEmpty())
+    }
+
+    @Test
     fun `conflicting intent rolls back new run and checkpoint associations`(): Unit = runBlocking {
         val prepared = request { service.prepare(inventory, "destination-1") }
         assertFailsWith<IllegalArgumentException> {

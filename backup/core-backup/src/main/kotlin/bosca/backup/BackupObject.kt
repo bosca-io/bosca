@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  *
  * [store] identifies a logical source namespace and [key] is its existing object key.
  * [revision] is the backup checkpoint's change identity, derived from observed source metadata
- * or a selected provider version. An observation does not freeze an unversioned source.
+ * including a provider version when reported. An observation does not freeze source bytes.
  * [sha256] and [length] identify the captured bytes independently of source metadata;
  * [payloadPath] is their retained destination object key.
  */

@@ -175,8 +175,9 @@ class ObjectBackupRestoreIntegrationTest {
     }
 
     @Test
-    fun `multiple revisions for the same target key require an unambiguous selection`(): Unit = runBlocking {
-        save(inventory.copy(objects = listOf(first, first.copy(revision = "other-revision"))))
+    fun `an external manifest repeating a target key is rejected before restoration`(): Unit = runBlocking {
+        val ambiguous = inventory.copy(objects = listOf(first, first.copy(revision = "other-revision")))
+        write(backup, path.toString(), Json.encodeToString(ObjectBackupManifest.serializer(), ambiguous))
 
         assertFailsWith<IllegalArgumentException> { restore() }
 
