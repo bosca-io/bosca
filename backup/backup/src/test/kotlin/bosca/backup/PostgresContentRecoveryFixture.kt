@@ -32,6 +32,8 @@ import bosca.content.video.service.VideoService
 import bosca.db.ConnectionManager
 import bosca.db.ConnectionPool
 import bosca.db.asCoroutineContext
+import bosca.db.connection
+import bosca.db.withConnectionManager
 import bosca.di.ConfigurationProviderRegistrar
 import bosca.di.ContentProviderRegistrar
 import bosca.di.SecurityProviderRegistrar
@@ -54,6 +56,7 @@ import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.slug.service.SlugService
 import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.StringObjectPath
 import bosca.storage.service.UrlSigner
 import bosca.storage.service.download
 import bosca.test.resources.SharedNatsContainer
@@ -65,6 +68,7 @@ import javax.crypto.AEADBadTagException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlin.io.path.writeText
@@ -92,9 +96,7 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
     private val collection = UUID.parse("20000000-0000-0000-0000-000000000001")
     private val supplementary = UUID.parse("30000000-0000-0000-0000-000000000001")
     private val collectionSupplementary = UUID.parse("30000000-0000-0000-0000-000000000002")
-    private val versionedImage = UUID.parse("10000000-0000-0000-0000-000000000012")
     private val archivedFirst = UUID.parse("30000000-0000-0000-0000-000000000003")
-    private val archivedSecond = UUID.parse("30000000-0000-0000-0000-000000000004")
     private val readers = UUID.parse("40000000-0000-0000-0000-000000000001")
     private val reader = UUID.parse("50000000-0000-0000-0000-000000000001")
     private val outsider = UUID.parse("50000000-0000-0000-0000-000000000002")
@@ -104,6 +106,8 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
     private val configuration = """{"theme":"light"}"""
     private val recurrence = "RRULE:FREQ=DAILY;COUNT=2"
     private val configurationValue = """{"token":"local-recovery-private-value"}"""
+
+    private lateinit var historicalRows: JsonElement
 
     suspend fun seed(sql: (String) -> Unit) {
         val encrypted = EncryptionServiceImpl(provide()).encrypt(configurationValue.toByteArray(), configurationId)
@@ -169,21 +173,11 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
         asset("metadata/$image/7/supplementary/$supplementary", "thumbnail")
         asset("collection/$collection/supplementary/$collectionSupplementary", "cover")
         sql("""
-            insert into metadata (id, version, name, content_type, content_length, uploaded)
-                values ('$versionedImage', 6, 'Archived through trigger', 'image/png', 8, now());
-            insert into traits (id, name, description) values ('recovery.archived', 'Archived', 'Archived attachment');
-            insert into metadata_supplementary (id, metadata_id, key, name, content_type, content_length, uploaded)
-                values ('$archivedFirst', '$versionedImage', 'thumbnail', 'First', 'image/png', 5, now()),
-                       ('$archivedSecond', '$versionedImage', 'thumbnail', 'Second', 'image/png', 6, now());
-            insert into metadata_supplementary_traits (id, trait_id)
-                values ('$archivedFirst', 'recovery.archived'), ('$archivedSecond', 'recovery.archived');
-            update metadata set version = 7, name = 'Current after trigger', content_length = 6, uploaded = now()
-                where id = '$versionedImage';
+            insert into metadata_versions_supplementary (metadata_id, version, key, name, content_type, content_length, uploaded)
+                values ('$image', 6, 'thumbnail', 'Earlier thumbnail', 'image/png', 5, now());
         """.trimIndent())
-        asset("metadata/$versionedImage/6/content", "archived")
-        asset("metadata/$versionedImage/7/content", "latest")
-        asset("metadata/$versionedImage/6/supplementary/$archivedFirst", "first")
-        asset("metadata/$versionedImage/6/supplementary/$archivedSecond", "second")
+        asset("metadata/$image/6/supplementary/$archivedFirst", "first")
+        historicalRows = withConnectionManager { readHistoricalRows() }
     }
 
     private fun asset(key: String, value: String) {
@@ -221,24 +215,17 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
                 assertEquals("Saved image", current.name)
                 assertEquals("image", storage.download(current).use { it.reader().readText() })
                 assertEquals(current, metadata.getById(image, null))
-                assertEquals(current, metadata.getById(image, 7))
-                val history = assertNotNull(metadata.getById(image, 6))
-                assertEquals(image, history.id)
-                assertEquals(6, history.version)
-                assertEquals("Earlier image", history.name)
-                assertEquals(7L, history.contentLength)
-                assertEquals("metadata/$image/6/content", storage.getPath(history).toString())
-                assertEquals("earlier", storage.download(history).use { it.reader().readText() })
-                assertNull(metadata.getById(image, 5))
+                assertEquals(historicalRows, readHistoricalRows())
+                for ((key, expected) in mapOf(
+                    "metadata/$image/6/content" to "earlier",
+                    "metadata/$image/6/supplementary/$archivedFirst" to "first",
+                )) {
+                    assertEquals(expected, storage.getInputStream(StringObjectPath(key)).use { it.reader().readText() })
+                }
                 val thumbnail = metadata.getSupplementary(image).single()
                 assertEquals(supplementary, thumbnail.id)
+                assertEquals(thumbnail, metadata.getSupplementaryById(supplementary))
                 assertEquals("thumbnail", storage.download(current, thumbnail.id).use { it.reader().readText() })
-                val triggeredHistory = assertNotNull(metadata.getById(versionedImage, 6))
-                assertEquals("Archived through trigger", triggeredHistory.name)
-                assertEquals("archived", storage.download(triggeredHistory).use { it.reader().readText() })
-                assertEquals("first", storage.download(triggeredHistory, archivedFirst).use { it.reader().readText() })
-                assertEquals("second", storage.download(triggeredHistory, archivedSecond).use { it.reader().readText() })
-                assertTrue(metadata.getSupplementary(versionedImage).isEmpty())
                 val restoredDocument = assertNotNull(documents.getDocument(document, 1))
                 assertEquals("Recovered document", restoredDocument.title)
                 assertEquals(json.parseToJsonElement(body), json.encodeToJsonElement(Content.serializer(), assertNotNull(restoredDocument.content)))
@@ -301,9 +288,6 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
                 assertTrue(metadataPermissions.isContentAllowed(allowed, current, PermissionAction.VIEW))
                 assertFalse(metadataPermissions.isContentAllowed(denied, current, PermissionAction.VIEW))
                 assertFalse(metadataPermissions.isContentAllowed(null, current, PermissionAction.VIEW))
-                assertTrue(metadataPermissions.isContentAllowed(allowed, history, PermissionAction.VIEW))
-                assertFalse(metadataPermissions.isContentAllowed(denied, history, PermissionAction.VIEW))
-                assertFalse(metadataPermissions.isContentAllowed(null, history, PermissionAction.VIEW))
                 assertTrue(collectionPermissions.isAllowed(allowed, parent, PermissionAction.VIEW))
                 assertFalse(collectionPermissions.isAllowed(denied, parent, PermissionAction.VIEW))
                 val public = assertNotNull(metadata.getById(publicImage))
@@ -314,35 +298,43 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
                     override fun principal() = ScopedAuthenticatedPrincipal(identity.asPrincipal(), restoredGroups, listOf("collections:view"), null, 1)
                 }
                 assertFalse(metadataPermissions.isContentAllowed(restricted, current, PermissionAction.VIEW))
-                assertFalse(metadataPermissions.isContentAllowed(restricted, history, PermissionAction.VIEW))
                 val content = ContentController(
                     provide<SlugService>(), metadata.asProvider(), metadataPermissions.asProvider(),
                     collections.asProvider(), collectionPermissions.asProvider(), mockk(), mockk(), mockk(), groups,
                 )
-                assertEquals(history, content.metadata(allowed, image, 6))
                 assertEquals(current, content.metadata(allowed, image, null))
-                assertNull(content.metadata(allowed, image, 5))
-                assertNull(content.metadata(denied, image, 6))
-                assertNull(content.metadata(null, image, 6))
-                assertNull(content.metadata(restricted, image, 6))
+                assertNull(content.metadata(denied, image, null))
+                assertNull(content.metadata(null, image, null))
+                assertNull(content.metadata(restricted, image, null))
                 val urls = MetadataContentUrlsController(metadataPermissions, storage)
-                assertNull(urls.download(denied, MetadataContentUrls(history), false))
-                assertNull(urls.download(null, MetadataContentUrls(history), false))
                 assertNull(urls.download(denied, MetadataContentUrls(current), false))
                 assertNull(urls.download(null, MetadataContentUrls(current), false))
                 val url = assertNotNull(urls.download(null, MetadataContentUrls(public), false)).url
                 assertTrue(url.startsWith("https://recovered.invalid/"), url)
                 assertFalse(url.contains("source.invalid"), url)
                 PostgresContentRecoveryHttpFixture(metadata, metadataPermissions, storage, provide<UrlSigner>()).verify(
-                    history,
+                    current,
                     mapOf(
                         "reader" to identity,
                         "outsider" to assertNotNull(denied.principal()),
                         "scoped" to assertNotNull(restricted.principal()),
                     ),
+                    supplementary,
                 )
             }
             assertEquals(0, pool.activeConnections)
+        }
+    }
+
+    private suspend fun readHistoricalRows(): JsonElement = connection().useStatement("""
+        select jsonb_build_object(
+            'metadata', (select to_jsonb(v) from metadata_versions v where id = '$image' and version = 6),
+            'supplementary', (select to_jsonb(s) from metadata_versions_supplementary s where metadata_id = '$image' and version = 6)
+        )
+    """.trimIndent()) { statement ->
+        statement.executeQuery().use { rows ->
+            assertTrue(rows.next())
+            json.parseToJsonElement(assertNotNull(rows.getString(1)))
         }
     }
 

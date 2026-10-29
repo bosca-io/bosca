@@ -2,7 +2,7 @@ package bosca.backup
 
 import bosca.service.Service
 import bosca.storage.configuration.StorageConfiguration
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 
 /** Associates backup storage identities with fixed configured addresses, independently of credentials. */
 interface ObjectBackupStorageService : Service {
@@ -45,7 +45,7 @@ interface ObjectBackupStorageService : Service {
     suspend fun <T> withStorage(
         key: String,
         configuration: StorageConfiguration,
-        block: suspend (ObjectStorageService) -> T,
+        block: suspend (ManagedObjectStorageService) -> T,
     ): T
 
     /**
@@ -57,6 +57,6 @@ interface ObjectBackupStorageService : Service {
      */
     suspend fun <T> withStorages(
         configurations: Map<String, StorageConfiguration>,
-        block: suspend (Map<String, ObjectStorageService>) -> T,
+        block: suspend (Map<String, ManagedObjectStorageService>) -> T,
     ): T
 }

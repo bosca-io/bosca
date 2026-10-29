@@ -60,17 +60,21 @@ docker compose down                # Stop all services
 
 The project follows a core/implementation split where `core-*` modules define contracts (interfaces, models, annotations). Other workspace projects depend on these contracts through the root Gradle build. KSP code generation processes annotations in `core-annotations/` to generate GraphQL controllers, repository implementations, job executors, and route handlers. Database access uses the `@Repository` pattern with `@Query`-annotated methods. Each module manages its own Flyway migrations. DI uses the `di` and `service` projects in `services-di` with KSP-generated wiring.
 
-`core-storage` contains `StorageConfiguration` and the `ObjectStorageServiceFactory` contract. The factory creates independent filesystem, S3-compatible or no-op stores. Callers of `create` own and close their stores; `withStorage` closes them after work, failure or cancellation. Stores and open streams stay within the callback. `ContentConfiguration` passes the application storage settings to the injected factory and closes its singleton store at application shutdown. Bucket creation is optional.
+`ObjectStorageServiceFactory` creates independently owned stores through the new
+`ManagedObjectStorageService` contract. It adds inventory metadata and listing to
+Bosca's existing storage operations. Filesystem and S3 adapters delegate reads and
+writes to the existing implementations. The existing `ObjectStorageService`
+contract and its implementations are unchanged.
 
-`ObjectStorageService.getObjectInfo(path)` reads an object's byte length and optional modification time, entity tag and provider version without reading its body. Filesystem storage reads regular-file attributes, S3 uses `HeadObject`, and Google storage reads blob metadata. Missing objects raise `ObjectNotFoundException`; access/backend errors and known S3 missing-bucket errors propagate. Blocking lookups use `StorageDispatcher`. Entity tags are opaque values, not SHA-256 digests. These observations do not pin revisions, guarantee unchanged content or establish backup recovery coverage.
+Callers of `create` close the returned store; `withStorage` closes it after success,
+failure or cancellation. `ContentConfiguration` passes application storage settings
+to the injected factory and closes its shared store at shutdown. Bucket creation is
+optional. Backup stores use filesystem or S3-compatible storage.
 
-`listObjects(prefix, offset, limit)` enumerates literal keys and their `ObjectStorageInfo` metadata without asset bodies or per-object lookups. Public pagination uses nonnegative Long offsets and positive limits; provider continuation tokens stay internal. Filesystem enumeration sorts regular-file keys, follows directory aliases, prunes unrelated prefixes and retains at most the requested offset/limit window of metadata. Selected link/traversal failures and missing roots fail explicitly. S3 listing has no immutable version IDs; Google includes available generations. Source changes can shift page positions, so enumeration alone is not a closed snapshot.
-
-`getInputStream(path, version)` reads an explicitly selected retained provider revision. S3 sends the opaque version ID and rejects responses that omit or substitute it; its mutable `null` version is invalid. Google addresses a canonical positive Long generation directly. Neither operation looks up or falls back to current content. Missing revisions raise `ObjectNotFoundException`, including lazy Google read failures; other provider failures and cancellation propagate. Callers close returned streams. Filesystem storage rejects version reads because it has no retained provider revisions; no-op storage reports absence. This operation does not enable retention or associate an object version with a database reference.
-
-`setInputStream` reports the number of uploaded bytes. Streamed S3 writes abort their owned multipart upload on failure and preserve cleanup errors; explicit native multipart uploads remain caller-owned on finalization failure. Default multipart completion validates the assembled length and cleans staged parts and local scratch, including cancellation. Google uploads use bounded streaming and preserve existing editable content settings. Caller-owned input streams remain open.
-
-Content addressing uses the existing metadata IDs and `getPath` convention. Content records do not persist provider write references.
+`getObjectInfo` observes length and available provider metadata without reading the
+body. `listObjects(prefix, offset, limit)` returns ordered keys and metadata using
+existing offset pagination. These observations detect changes; they do not pin
+provider versions or make a listing atomic. Failures and cancellation propagate.
 
 ## Dependencies
 

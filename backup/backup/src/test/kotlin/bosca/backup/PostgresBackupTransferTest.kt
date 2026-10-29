@@ -1,15 +1,11 @@
 package bosca.backup
 
-import bosca.content.collection.model.Collection
-import bosca.content.metadata.model.Metadata
-import bosca.content.metadata.model.MetadataType
-import bosca.serialization.UUID
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
-import bosca.storage.service.FileSystemObjectStorageService
+import bosca.storage.service.ManagedFileSystemObjectStorageService
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageInfo
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import io.mockk.mockk
 import java.io.FilterInputStream
 import java.io.IOException
@@ -27,14 +23,11 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
 
 /** Real filesystem stores with fault injection at the object-storage boundary. */
 class PostgresBackupTransferTest {
@@ -43,8 +36,8 @@ class PostgresBackupTransferTest {
     private lateinit var retained: Path
     private lateinit var application: BoscaApplication
     private lateinit var service: PostgresBackupService
-    private lateinit var storage: FileSystemObjectStorageService
-    private lateinit var backup: ObjectStorageService
+    private lateinit var storage: ManagedFileSystemObjectStorageService
+    private lateinit var backup: ManagedObjectStorageService
     private val prefix = "postgres/capture"
     private val bytes = "PGDMP".toByteArray() + ByteArray(65537) { (it % 251).toByte() }
     private val manifest = PostgresBackupManifest(
@@ -75,8 +68,8 @@ class PostgresBackupTransferTest {
         local.resolve("manifest.json").writeText(encoded())
         application = BoscaApplication(ApplicationConfig.load("{}".byteInputStream()), ownsServices = false)
         service = PostgresBackupServiceImpl(application, mockk())
-        storage = FileSystemObjectStorageService("", "", mockk(), retained.toString(), mockk())
-        backup = object : ObjectStorageService by storage {
+        storage = ManagedFileSystemObjectStorageService("", "", mockk(), retained.toString(), mockk())
+        backup = object : ManagedObjectStorageService by storage {
             override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
                 stats.add(path.toString())
                 return storage.getObjectInfo(path)
@@ -115,18 +108,6 @@ class PostgresBackupTransferTest {
         if (::application.isInitialized) application.shutdown()
         if (::root.isInitialized) root.toFile().deleteRecursively()
     }
-
-
-
-
-
-
-
-
-
-
-
-
 
     @Test
     fun `verified native artifacts round trip through independent storage`(): Unit = runBlocking {

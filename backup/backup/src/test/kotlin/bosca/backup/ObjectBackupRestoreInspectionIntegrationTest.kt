@@ -12,9 +12,9 @@ import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provides
-import bosca.storage.service.FileSystemObjectStorageService
+import bosca.storage.service.ManagedFileSystemObjectStorageService
 import bosca.storage.service.ObjectNotFoundException
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
 import io.mockk.coEvery
@@ -43,9 +43,9 @@ class ObjectBackupRestoreInspectionIntegrationTest {
     private lateinit var service: ObjectBackupRestoreService
     private lateinit var progress: ObjectBackupProgressService
     private lateinit var directory: Path
-    private lateinit var backup: FileSystemObjectStorageService
-    private lateinit var content: FileSystemObjectStorageService
-    private lateinit var artifacts: FileSystemObjectStorageService
+    private lateinit var backup: ManagedFileSystemObjectStorageService
+    private lateinit var content: ManagedFileSystemObjectStorageService
+    private lateinit var artifacts: ManagedFileSystemObjectStorageService
     private val path = StringObjectPath("manifests/recovery.json")
     private val first = entry("content", "metadata/a/1/content", "data")
     private val second = entry("artifacts", "packages/b", "more")
@@ -213,7 +213,7 @@ class ObjectBackupRestoreInspectionIntegrationTest {
 
     @Test
     fun `mapping validation precedes destination reads and progress creation`(): Unit = runBlocking {
-        val target = mockk<ObjectStorageService>()
+        val target = mockk<ManagedObjectStorageService>()
         assertFailsWith<IllegalArgumentException> {
             service.inspect(path, backup, mapOf("content" to target), "new-instance")
         }
@@ -317,8 +317,8 @@ class ObjectBackupRestoreInspectionIntegrationTest {
 
     @Test
     fun `selected inventory validates identity keys revisions and mappings before storage access`(): Unit = runBlocking {
-        val retained = mockk<ObjectStorageService>()
-        val target = mockk<ObjectStorageService>()
+        val retained = mockk<ManagedObjectStorageService>()
+        val target = mockk<ManagedObjectStorageService>()
         val targets = mapOf("content" to target, "artifacts" to target)
         assertFailsWith<IllegalArgumentException> { service.inspect(inventory, retained, targets, " ") }
         assertFailsWith<IllegalArgumentException> { service.inspect(inventory, retained, emptyMap(), "new-instance") }
@@ -386,13 +386,13 @@ class ObjectBackupRestoreInspectionIntegrationTest {
     }
 
     private suspend fun inspect(
-        contentTarget: ObjectStorageService = content,
-        artifactTarget: ObjectStorageService = artifacts,
+        contentTarget: ManagedObjectStorageService = content,
+        artifactTarget: ManagedObjectStorageService = artifacts,
     ): ObjectBackupRestoreInspection = service.inspect(
         path, backup, mapOf("content" to contentTarget, "artifacts" to artifactTarget), "new-instance",
     )
 
-    private fun targets(): Map<String, ObjectStorageService> = mapOf("content" to content, "artifacts" to artifacts)
+    private fun targets(): Map<String, ManagedObjectStorageService> = mapOf("content" to content, "artifacts" to artifacts)
 
     private fun restorePayload(entry: BackupObject): BackupObject = entry.copy(payloadPath = entry.key)
 
@@ -404,27 +404,27 @@ class ObjectBackupRestoreInspectionIntegrationTest {
         ObjectBackupManifestStore(backup, Json).save(path, manifest)
     }
 
-    private fun delegate(storage: ObjectStorageService): ObjectStorageService =
-        mockk<ObjectStorageService>().also { target ->
+    private fun delegate(storage: ManagedObjectStorageService): ManagedObjectStorageService =
+        mockk<ManagedObjectStorageService>().also { target ->
             coEvery { target.getInputStream(any()) } coAnswers { storage.getInputStream(firstArg()) }
             coEvery { target.setInputStream(any(), any(), any()) } coAnswers {
                 storage.setInputStream(firstArg(), secondArg(), thirdArg())
             }
         }
 
-    private fun storage(name: String): FileSystemObjectStorageService = FileSystemObjectStorageService(
+    private fun storage(name: String): ManagedFileSystemObjectStorageService = ManagedFileSystemObjectStorageService(
         "", "", mockk(), directory.resolve(name).toString(), mockk(),
     )
 
-    private suspend fun write(storage: ObjectStorageService, key: String, value: String) {
+    private suspend fun write(storage: ManagedObjectStorageService, key: String, value: String) {
         val bytes = value.toByteArray()
         storage.setInputStream(StringObjectPath(key), bytes.inputStream(), bytes.size.toLong())
     }
 
-    private suspend fun read(storage: ObjectStorageService, key: String): String =
+    private suspend fun read(storage: ManagedObjectStorageService, key: String): String =
         storage.getInputStream(StringObjectPath(key)).use { it.readBytes().decodeToString() }
 
-    private suspend fun assertMissing(storage: ObjectStorageService, key: String) {
+    private suspend fun assertMissing(storage: ManagedObjectStorageService, key: String) {
         assertFailsWith<ObjectNotFoundException> { storage.getInputStream(StringObjectPath(key)) }
     }
 

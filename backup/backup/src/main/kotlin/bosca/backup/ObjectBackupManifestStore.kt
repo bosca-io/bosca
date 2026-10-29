@@ -5,7 +5,7 @@ import bosca.db.transaction
 import bosca.db.withConnectionManager
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StorageDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -21,7 +21,7 @@ import java.time.OffsetDateTime
  * The caller owns source selection, retention, and immutable destination payload paths.
  */
 class ObjectBackupManifestStore(
-    private val storage: ObjectStorageService,
+    private val storage: ManagedObjectStorageService,
     private val json: Json,
 ) {
     /**

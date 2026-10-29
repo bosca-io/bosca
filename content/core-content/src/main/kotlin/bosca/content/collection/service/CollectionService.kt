@@ -75,7 +75,6 @@ interface CollectionService : PermissionService<ICollection, UUID>, Transitionin
      */
     suspend fun getDeleted(offset: Long, limit: Int): List<Collection>
 
-
     /**
      * Registers a batch loader for efficiently fetching language variants by collection cache key.
      *

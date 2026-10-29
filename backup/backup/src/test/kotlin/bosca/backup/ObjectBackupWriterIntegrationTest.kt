@@ -16,7 +16,7 @@ import bosca.di.provides
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.storage.configuration.StorageConfiguration
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
@@ -383,7 +383,7 @@ class ObjectBackupWriterIntegrationTest {
         val tracked = object : ObjectStorageServiceFactory by factory {
             override suspend fun <T> withStorage(
                 configuration: StorageConfiguration,
-                block: suspend (ObjectStorageService) -> T,
+                block: suspend (ManagedObjectStorageService) -> T,
             ): T = try {
                 factory.withStorage(configuration) {
                     if (Path.of(requireNotNull(configuration.basePath)).fileName.toString() == "source") {

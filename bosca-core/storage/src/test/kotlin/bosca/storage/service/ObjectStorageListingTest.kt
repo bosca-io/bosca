@@ -1,10 +1,5 @@
 package bosca.storage.service
 
-import com.google.api.gax.paging.Page
-import com.google.cloud.storage.Blob
-import com.google.cloud.storage.BlobId
-import com.google.cloud.storage.Storage
-import com.google.cloud.storage.StorageException
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -94,14 +89,12 @@ class ObjectStorageListingTest {
     @Test
     fun `all backends reject invalid page bounds before enumeration`() = runTest {
         val s3 = mockk<S3Client>()
-        val google = mockk<Storage>()
-        for (storage in listOf(filesystem(), s3(s3), google(google), NoOpObjectStorageService())) {
+        for (storage in listOf(filesystem(), s3(s3), ManagedNoOpObjectStorageService())) {
             for ((offset, limit) in listOf(-1L to 1, 0L to 0, 0L to -1)) {
                 assertFailsWith<IllegalArgumentException> { storage.listObjects("", offset, limit) }
             }
         }
         verify(exactly = 0) { s3.listObjectsV2(any<ListObjectsV2Request>()) }
-        verify(exactly = 0) { google.list(any<String>(), *anyVararg()) }
     }
 
     @Test
@@ -196,84 +189,14 @@ class ObjectStorageListingTest {
     }
 
     @Test
-    fun `Google consumes only the requested metadata window and preserves generation identity`() = runTest {
-        val client = mockk<Storage>()
-        var reads = 0
-        val page = mockk<Page<Blob>>()
-        every { page.iterateAll() } returns Iterable {
-            val entries = listOf(blob("assets/a"), blob("assets/b"), blob("assets/c"))
-            object : Iterator<Blob> {
-                override fun hasNext(): Boolean = reads < entries.size
-                override fun next(): Blob = entries[reads++].also { check(reads <= 2) { "Read beyond requested page" } }
-            }
-        }
-        every { client.list("bucket", *anyVararg()) } returns page
-        val entries = google(client).listObjects("assets/", 1, 1)
-        assertEquals(listOf("assets/b"), entries.map { it.key })
-        assertEquals(ObjectStorageInfo(7, "tag", "42"), entries.single().info)
-        assertEquals(2, reads)
-        verify(exactly = 1) { client.list("bucket", Storage.BlobListOption.prefix("assets/"), any<Storage.BlobListOption>()) }
-        verify(exactly = 0) { client.get(any<BlobId>()) }
-        verify(exactly = 0) { client.reader(any<BlobId>(), *anyVararg()) }
-    }
-
-    @Test
-    fun `Google large offsets finish at the available inventory without truncation`() = runTest {
-        val client = mockk<Storage>()
-        val page = mockk<Page<Blob>>()
-        every { page.iterateAll() } returns listOf(blob("a"), blob("b"))
-        every { client.list("bucket", *anyVararg()) } returns page
-        assertTrue(google(client).listObjects("", Long.MAX_VALUE, Int.MAX_VALUE).isEmpty())
-    }
-
-    @Test
-    fun `Google missing namespace and later-page failures propagate`() = runTest {
-        val client = mockk<Storage>()
-        for (status in listOf(404, 403, 503)) {
-            val failure = StorageException(status, "listing failed")
-            every { client.list("bucket", *anyVararg()) } throws failure
-            assertSame(failure, assertFailsWith<StorageException> { google(client).listObjects("", 0, 1) })
-        }
-        val failure = StorageException(503, "later page failed")
-        val page = mockk<Page<Blob>>()
-        every { page.iterateAll() } returns Iterable {
-            object : Iterator<Blob> {
-                var first = true
-                override fun hasNext(): Boolean = if (first) true else throw failure
-                override fun next(): Blob = blob("a").also { first = false }
-            }
-        }
-        every { client.list("bucket", *anyVararg()) } returns page
-        assertSame(failure, assertFailsWith<StorageException> { google(client).listObjects("", 0, 2) })
-    }
-
-    @Test
-    fun `Google cancellation during provider iteration stays cancellation`() = runTest {
-        val client = mockk<Storage>()
-        val cancelled = CancellationException("listing cancelled")
-        val page = mockk<Page<Blob>>()
-        every { page.iterateAll() } returns Iterable {
-            object : Iterator<Blob> {
-                override fun hasNext(): Boolean = throw cancelled
-                override fun next(): Blob = error("no entry available")
-            }
-        }
-        every { client.list("bucket", *anyVararg()) } returns page
-        val observed = assertFailsWith<CancellationException> { google(client).listObjects("", 0, 1) }
-        assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === cancelled })
-    }
-
-    @Test
     fun `no-op storage exposes an empty inventory for valid pages`() = runTest {
-        assertTrue(NoOpObjectStorageService().listObjects("assets/", 0, 100).isEmpty())
+        assertTrue(ManagedNoOpObjectStorageService().listObjects("assets/", 0, 100).isEmpty())
     }
 
     private fun filesystem(base: String = temporaryFolder.root.path) =
-        FileSystemObjectStorageService("", "", mockk(), base, mockk())
+        ManagedFileSystemObjectStorageService("", "", mockk(), base, mockk())
 
-    private fun s3(client: S3Client) = S3ObjectStorageService("bucket", client, "", "", mockk(), mockk())
-
-    private fun google(client: Storage) = GoogleObjectStorageService("bucket", client, "", "", mockk(), mockk())
+    private fun s3(client: S3Client) = ManagedS3ObjectStorageService("bucket", client, "", "", mockk(), mockk())
 
     private fun write(key: String, value: String) {
         temporaryFolder.root.resolve(key).apply {
@@ -288,11 +211,4 @@ class ObjectStorageListingTest {
     private fun page(entries: List<S3Object>, next: String? = null): ListObjectsV2Response =
         ListObjectsV2Response.builder().contents(entries).isTruncated(next != null).nextContinuationToken(next).build()
 
-    private fun blob(key: String): Blob = mockk {
-        every { name } returns key
-        every { size } returns 7L
-        every { etag } returns "tag"
-        every { generation } returns 42L
-        every { updateTimeOffsetDateTime } returns null
-    }
 }

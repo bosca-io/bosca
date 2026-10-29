@@ -6,7 +6,7 @@ import bosca.db.withConnectionManager
 import bosca.server.BoscaApplication
 import bosca.service.annotation.ServiceImplementation
 import bosca.storage.configuration.StorageConfiguration
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StorageDispatcher
 import java.io.File
@@ -47,7 +47,7 @@ class ObjectBackupStorageServiceImpl(
 
     override suspend fun <T> withStorages(
         configurations: Map<String, StorageConfiguration>,
-        block: suspend (Map<String, ObjectStorageService>) -> T,
+        block: suspend (Map<String, ManagedObjectStorageService>) -> T,
     ): T {
         val captured = configurations.toMap()
         check(connectionOrNull()?.inTransaction != true) {
@@ -69,8 +69,8 @@ class ObjectBackupStorageServiceImpl(
     private suspend fun <T> openStorages(
         entries: List<Map.Entry<String, StorageConfiguration>>,
         index: Int,
-        opened: MutableMap<String, ObjectStorageService>,
-        block: suspend (Map<String, ObjectStorageService>) -> T,
+        opened: MutableMap<String, ManagedObjectStorageService>,
+        block: suspend (Map<String, ManagedObjectStorageService>) -> T,
     ): T {
         currentCoroutineContext().ensureActive()
         if (index == entries.size) return block(opened.toMap())
@@ -96,7 +96,7 @@ class ObjectBackupStorageServiceImpl(
     override suspend fun <T> withStorage(
         key: String,
         configuration: StorageConfiguration,
-        block: suspend (ObjectStorageService) -> T,
+        block: suspend (ManagedObjectStorageService) -> T,
     ): T {
         return withStorages(mapOf(key to configuration)) { block(it.getValue(key)) }
     }

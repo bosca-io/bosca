@@ -25,8 +25,8 @@ class ObjectStorageServiceFactoryImpl(
     private val urlSigner: ObjectProvider<UrlSigner>,
     private val securityService: ObjectProvider<SecurityService>,
 ) : ObjectStorageServiceFactory {
-    override suspend fun create(configuration: StorageConfiguration): ObjectStorageService {
-        var opened: ObjectStorageService? = null
+    override suspend fun create(configuration: StorageConfiguration): ManagedObjectStorageService {
+        var opened: ManagedObjectStorageService? = null
         try {
             return withContext(StorageDispatcher) {
                 createStorage(configuration).also {
@@ -47,7 +47,7 @@ class ObjectStorageServiceFactoryImpl(
 
     override suspend fun <T> withStorage(
         configuration: StorageConfiguration,
-        block: suspend (ObjectStorageService) -> T,
+        block: suspend (ManagedObjectStorageService) -> T,
     ): T = withContext(StorageDispatcher) {
         create(configuration).use { storage ->
             currentCoroutineContext().ensureActive()
@@ -55,20 +55,20 @@ class ObjectStorageServiceFactoryImpl(
         }
     }
 
-    private fun createStorage(configuration: StorageConfiguration): ObjectStorageService = when (configuration.type) {
+    private fun createStorage(configuration: StorageConfiguration): ManagedObjectStorageService = when (configuration.type) {
         "s3" -> createS3Storage(configuration)
-        "fs" -> FileSystemObjectStorageService(
+        "fs" -> ManagedFileSystemObjectStorageService(
             urlPrefix = configuration.urlPrefix,
             urlUploadPrefix = configuration.urlUploadPrefix ?: configuration.urlPrefix,
             urlSigner = urlSigner,
             basePath = requireNotNull(configuration.basePath) { "Object storage filesystem base path is required" },
             securityService = securityService,
         )
-        "noop" -> NoOpObjectStorageService()
+        "noop" -> ManagedNoOpObjectStorageService()
         else -> throw IllegalArgumentException("Unsupported storage type: ${configuration.type}")
     }
 
-    private fun createS3Storage(configuration: StorageConfiguration): ObjectStorageService {
+    private fun createS3Storage(configuration: StorageConfiguration): ManagedObjectStorageService {
         val bucket = requireNotNull(configuration.bucket) { "Object storage bucket is required" }
         val client = createS3Client(configuration)
         try {
@@ -79,7 +79,7 @@ class ObjectStorageServiceFactoryImpl(
                     client.createBucket(CreateBucketRequest.builder().bucket(bucket).build())
                 }
             }
-            return S3ObjectStorageService(
+            return ManagedS3ObjectStorageService(
                 bucket = bucket,
                 client = client,
                 urlPrefix = configuration.urlPrefix,

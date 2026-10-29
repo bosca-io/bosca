@@ -2,7 +2,7 @@ package bosca.backup
 
 import bosca.service.Service
 import bosca.storage.service.ObjectPath
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 
 /** Materializes a retained object inventory using independent recovery storage. */
 interface ObjectBackupRestoreService : Service {
@@ -17,8 +17,8 @@ interface ObjectBackupRestoreService : Service {
      */
     suspend fun inspect(
         path: ObjectPath,
-        backup: ObjectStorageService,
-        destinations: Map<String, ObjectStorageService>,
+        backup: ManagedObjectStorageService,
+        destinations: Map<String, ManagedObjectStorageService>,
         destinationId: String,
     ): ObjectBackupRestoreInspection
 
@@ -32,8 +32,8 @@ interface ObjectBackupRestoreService : Service {
      */
     suspend fun inspect(
         inventory: ObjectBackupManifest,
-        backup: ObjectStorageService,
-        destinations: Map<String, ObjectStorageService>,
+        backup: ManagedObjectStorageService,
+        destinations: Map<String, ManagedObjectStorageService>,
         destinationId: String,
     ): ObjectBackupRestoreInspection
 
@@ -55,8 +55,8 @@ interface ObjectBackupRestoreService : Service {
      */
     suspend fun restore(
         path: ObjectPath,
-        backup: ObjectStorageService,
-        destinations: Map<String, ObjectStorageService>,
+        backup: ManagedObjectStorageService,
+        destinations: Map<String, ManagedObjectStorageService>,
         destinationId: String,
     ): ObjectBackupManifest
 
@@ -69,8 +69,8 @@ interface ObjectBackupRestoreService : Service {
      */
     suspend fun restore(
         inventory: ObjectBackupManifest,
-        backup: ObjectStorageService,
-        destinations: Map<String, ObjectStorageService>,
+        backup: ManagedObjectStorageService,
+        destinations: Map<String, ManagedObjectStorageService>,
         destinationId: String,
     ): ObjectBackupManifest
 }

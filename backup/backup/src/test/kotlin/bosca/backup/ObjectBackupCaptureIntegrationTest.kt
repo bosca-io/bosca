@@ -14,12 +14,12 @@ import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provides
 import bosca.storage.configuration.StorageConfiguration
-import bosca.storage.service.FileSystemObjectStorageService
+import bosca.storage.service.ManagedFileSystemObjectStorageService
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageInfo
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
@@ -56,7 +56,7 @@ class ObjectBackupCaptureIntegrationTest {
     private lateinit var postgres: SharedPostgreSQLContainer
     private lateinit var pool: ConnectionPool
     private lateinit var directory: Path
-    private lateinit var retained: ObjectStorageService
+    private lateinit var retained: ManagedObjectStorageService
     private lateinit var capture: ObjectBackupCaptureService
     private lateinit var endpoint: HttpServer
     private val requests = CopyOnWriteArrayList<String>()
@@ -90,13 +90,18 @@ class ObjectBackupCaptureIntegrationTest {
                     URLDecoder.decode(it.substringBefore('='), Charsets.UTF_8) to
                         URLDecoder.decode(it.substringAfter('=', ""), Charsets.UTF_8)
                 }
-                requests.add("${exchange.requestMethod} ${exchange.requestURI.path} ${query["versionId"]}")
                 authorizations.add(exchange.requestHeaders.getFirst("Authorization").orEmpty())
-                if (exchange.requestMethod == "GET" && exchange.requestURI.path == "/bucket/asset" && query["versionId"] == version) {
+                if (exchange.requestURI.path == "/bucket/asset" && query["versionId"] == null) {
                     val bytes = content.toByteArray()
                     exchange.responseHeaders.add("x-amz-version-id", version)
-                    exchange.sendResponseHeaders(200, bytes.size.toLong())
-                    exchange.responseBody.write(bytes)
+                    exchange.responseHeaders.add("Content-Length", bytes.size.toString())
+                    if (exchange.requestMethod == "HEAD") {
+                        exchange.sendResponseHeaders(200, -1)
+                    } else {
+                        requests.add("${exchange.requestMethod} ${exchange.requestURI.path}")
+                        exchange.sendResponseHeaders(200, bytes.size.toLong())
+                        exchange.responseBody.write(bytes)
+                    }
                 } else {
                     exchange.sendResponseHeaders(404, -1)
                 }
@@ -123,8 +128,8 @@ class ObjectBackupCaptureIntegrationTest {
         val result = provide<ObjectStorageServiceFactory>().withStorage(configuration()) { source ->
             capture.capture("content", selected, source, retained, payloadPath)
         }
-        assertEquals(listOf("GET /bucket/asset $version"), requests.toList())
-        assertTrue(authorizations.single().contains("Credential=CAPTURE_KEY/"))
+        assertEquals(listOf("GET /bucket/asset"), requests.toList())
+        assertTrue(authorizations.all { it.contains("Credential=CAPTURE_KEY/") })
         endpoint.stop(0)
 
         val inventory = ObjectBackupManifest("capture-1", "old-instance", "content", "2026-10-17T00:00:00Z", listOf(result))
@@ -141,25 +146,25 @@ class ObjectBackupCaptureIntegrationTest {
             )
         }
         assertEquals(ObjectBackupProgressStatus.COMPLETED, progress?.status)
-        assertEquals(listOf("GET /bucket/asset $version"), requests.toList())
+        assertEquals(listOf("GET /bucket/asset"), requests.toList())
     }
 
     @Test
     fun `an active caller transaction is rejected before storage lookup or payload reads`(): Unit = runBlocking {
-        val source = mockk<ObjectStorageService>()
-        val target = mockk<ObjectStorageService>()
+        val source = mockk<ManagedObjectStorageService>()
+        coEvery { source.getObjectInfo(any()) } returns selected.info
+        val target = mockk<ManagedObjectStorageService>()
         assertFailsWith<IllegalStateException> {
             withConnectionManager {
                 transaction { capture.capture("content", selected, source, target, payloadPath) }
             }
         }
         coVerify(exactly = 0) { target.getObjectInfo(any()) }
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
     }
 
     @Test
     fun `capture keeps database connections free while opening writing and verifying payloads`(): Unit = runBlocking {
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
                 assertEquals(0, pool.activeConnections)
                 return retained.getObjectInfo(path)
@@ -182,7 +187,7 @@ class ObjectBackupCaptureIntegrationTest {
 
     @Test
     fun `actual coroutine cancellation during verification removes the unacknowledged capture`(): Unit = runBlocking {
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun getInputStream(path: ObjectPath): InputStream {
                 currentCoroutineContext().cancel(CancellationException("capture verification cancelled"))
                 return retained.getInputStream(path)
@@ -216,11 +221,11 @@ class ObjectBackupCaptureIntegrationTest {
         writeRetained(proposed, "unrelated")
         BackupProviderRegistrar().register()
         capture = provide()
-        val source = mockk<ObjectStorageService>()
+        val source = mockk<ManagedObjectStorageService>()
+        coEvery { source.getObjectInfo(any()) } returns selected.info
         assertEquals(first, tracked(source, path = proposed))
         assertEquals("unrelated", retained.getString(StringObjectPath(proposed)))
         assertEquals(first, checkpoint())
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
         coVerify(exactly = 0) { source.getInputStream(any()) }
     }
 
@@ -257,13 +262,13 @@ class ObjectBackupCaptureIntegrationTest {
             val prepared = prepareKnown()
             provide<ObjectBackupProgressService>().start(prepared.key, prepared.version)
         }
-        val source = mockk<ObjectStorageService>()
-        val target = mockk<ObjectStorageService>()
+        val source = mockk<ManagedObjectStorageService>()
+        coEvery { source.getObjectInfo(any()) } returns selected.info
+        val target = mockk<ManagedObjectStorageService>()
         assertFailsWith<IllegalStateException> { tracked(source, target) }
         assertEquals(running, checkpoint())
         coVerify(exactly = 0) { target.getInputStream(any()) }
         coVerify(exactly = 0) { target.getObjectInfo(any()) }
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
     }
 
     @Test
@@ -285,47 +290,49 @@ class ObjectBackupCaptureIntegrationTest {
     fun `pending matching output reconciles a lost acknowledgement without source access`(): Unit = runBlocking {
         withConnectionManager { prepareKnown() }
         writeRetained(payloadPath, content)
-        val source = mockk<ObjectStorageService>()
+        val source = mockk<ManagedObjectStorageService>()
+        coEvery { source.getObjectInfo(any()) } returns selected.info
         val result = tracked(source)
         assertEquals(ObjectBackupProgressStatus.COMPLETED, result.status)
         assertEquals(1, result.attempts)
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
     }
 
     @Test
     fun `a conflicting selected length cannot alter known revision intent`(): Unit = runBlocking {
         val prepared = withConnectionManager { prepareKnown() }
-        val source = mockk<ObjectStorageService>()
-        val target = mockk<ObjectStorageService>()
+        val source = mockk<ManagedObjectStorageService>()
+        coEvery { source.getObjectInfo(any()) } returns selected.info
+        val target = mockk<ManagedObjectStorageService>()
         assertFailsWith<IllegalArgumentException> {
             tracked(source, target, entry = selected.copy(info = selected.info.copy(length = selected.info.length + 1)))
         }
         assertEquals(prepared, checkpoint())
         coVerify(exactly = 0) { target.getInputStream(any()) }
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
     }
 
     @Test
     fun `known source failure remains a failed checkpoint and preserves its original cause`(): Unit = runBlocking {
         withConnectionManager { prepareKnown() }
         val failure = IOException("retained source denied")
-        val source = mockk<ObjectStorageService>()
-        coEvery { source.getInputStream(any(), version) } throws failure
+        val source = mockk<ManagedObjectStorageService>()
+        coEvery { source.getObjectInfo(any()) } returns selected.info
+        coEvery { source.getInputStream(any()) } throws failure
         val observed = assertFailsWith<IOException> { tracked(source) }
         assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
         val failed = checkpoint()
         assertEquals(ObjectBackupProgressStatus.FAILED, failed?.status)
         assertEquals(1, failed?.attempts)
         assertEquals(failure.message, failed?.error)
-        coVerify(exactly = 0) { source.getInputStream(any()) }
+        coVerify(exactly = 1) { source.getInputStream(any()) }
     }
 
     @Test
     fun `known capture cancellation records failed work that can resume`(): Unit = runBlocking {
         withConnectionManager { prepareKnown() }
         val cancellation = CancellationException("capture cancelled")
-        val source = mockk<ObjectStorageService>()
-        coEvery { source.getInputStream(any(), version) } throws cancellation
+        val source = mockk<ManagedObjectStorageService>()
+        coEvery { source.getObjectInfo(any()) } returns selected.info
+        coEvery { source.getInputStream(any()) } throws cancellation
         assertFailsWith<CancellationException> { tracked(source) }
         assertEquals(ObjectBackupProgressStatus.FAILED, checkpoint()?.status)
         provide<ObjectStorageServiceFactory>().withStorage(configuration()) { realSource ->
@@ -339,24 +346,24 @@ class ObjectBackupCaptureIntegrationTest {
     fun `unavailable completed output cannot be invalidated as though it were corrupt`(): Unit = runBlocking {
         val first = provide<ObjectStorageServiceFactory>().withStorage(configuration()) { tracked(it) }
         val failure = IOException("retained storage offline")
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun getInputStream(path: ObjectPath): InputStream = throw failure
         }
-        val source = mockk<ObjectStorageService>()
+        val source = mockk<ManagedObjectStorageService>()
+        coEvery { source.getObjectInfo(any()) } returns selected.info
         val observed = assertFailsWith<IOException> { tracked(source, target, cutoff = null) }
         assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
         assertEquals(first, checkpoint())
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
     }
 
     @Test
     fun `tracked capture rejects caller transactions before storage I O`(): Unit = runBlocking {
-        val source = mockk<ObjectStorageService>()
-        val target = mockk<ObjectStorageService>()
+        val source = mockk<ManagedObjectStorageService>()
+        coEvery { source.getObjectInfo(any()) } returns selected.info
+        val target = mockk<ManagedObjectStorageService>()
         assertFailsWith<IllegalStateException> { withConnectionManager { transaction { tracked(source, target) } } }
         assertEquals(null, checkpoint())
         coVerify(exactly = 0) { target.getObjectInfo(any()) }
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
     }
 
     @Test
@@ -404,8 +411,10 @@ class ObjectBackupCaptureIntegrationTest {
         val first = provide<ObjectStorageServiceFactory>().withStorage(configuration()) { tracked(it) }
         val replacement = "replacement content".toByteArray()
         val changed = selected.copy(info = selected.info.copy(length = replacement.size.toLong(), version = "v2"))
-        val source = mockk<ObjectStorageService>()
-        coEvery { source.getInputStream(any(), "v2") } answers { replacement.inputStream() }
+        val source = mockk<ManagedObjectStorageService>()
+        coEvery { source.getObjectInfo(any()) } returns selected.info
+        coEvery { source.getObjectInfo(any()) } returns changed.info
+        coEvery { source.getInputStream(any()) } answers { replacement.inputStream() }
         val next = tracked(source, path = "payloads/v2", entry = changed)
         assertTrue(first.key != next.key)
         assertEquals("v2", next.payload.revision)
@@ -417,8 +426,9 @@ class ObjectBackupCaptureIntegrationTest {
     @Test
     fun `known revision repair rejects changed source bytes without changing its recorded digest`(): Unit = runBlocking {
         val prepared = withConnectionManager { prepareKnown() }
-        val source = mockk<ObjectStorageService>()
-        coEvery { source.getInputStream(any(), version) } answers { "x".repeat(content.length).byteInputStream() }
+        val source = mockk<ManagedObjectStorageService>()
+        coEvery { source.getObjectInfo(any()) } returns selected.info
+        coEvery { source.getInputStream(any()) } answers { "x".repeat(content.length).byteInputStream() }
         assertFailsWith<BackupPayloadMismatchException> { tracked(source) }
         assertEquals(ObjectBackupProgressStatus.FAILED, checkpoint()?.status)
         assertEquals(prepared.payload, checkpoint()?.payload)
@@ -431,8 +441,9 @@ class ObjectBackupCaptureIntegrationTest {
 
     @Test
     fun `tracked capture validates identities before source or destination access`(): Unit = runBlocking {
-        val source = mockk<ObjectStorageService>()
-        val target = mockk<ObjectStorageService>()
+        val source = mockk<ManagedObjectStorageService>()
+        coEvery { source.getObjectInfo(any()) } returns selected.info
+        val target = mockk<ManagedObjectStorageService>()
         val identity = listOf("old-instance", "retained-store", "content")
         for (i in identity.indices) {
             val changed = identity.toMutableList().apply { this[i] = " " }
@@ -442,12 +453,11 @@ class ObjectBackupCaptureIntegrationTest {
         }
         assertEquals(null, checkpoint())
         coVerify(exactly = 0) { target.getObjectInfo(any()) }
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
     }
 
     @Test
     fun `tracked capture releases database connections during creation reuse and repair`(): Unit = runBlocking {
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
                 assertEquals(0, pool.activeConnections)
                 return retained.getObjectInfo(path)
@@ -474,24 +484,24 @@ class ObjectBackupCaptureIntegrationTest {
         val first = provide<ObjectStorageServiceFactory>().withStorage(configuration()) { tracked(it) }
         endpoint.stop(0)
         var reads = 0
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun getInputStream(path: ObjectPath): InputStream {
                 reads++
                 return retained.getInputStream(path)
             }
         }
-        val source = mockk<ObjectStorageService>()
+        val source = mockk<ManagedObjectStorageService>()
+        coEvery { source.getObjectInfo(any()) } returns selected.info
         val reused = capture.captureTracked(
             "old-instance", "retained-store", "content", "content", selected, source, target, payloadPath, OffsetDateTime.MIN,
         )
         assertEquals(first, reused)
         assertEquals(0, reads)
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
     }
 
     private suspend fun tracked(
-        source: ObjectStorageService,
-        target: ObjectStorageService = retained,
+        source: ManagedObjectStorageService,
+        target: ManagedObjectStorageService = retained,
         path: String = payloadPath,
         entry: ObjectStorageEntry = selected,
         cutoff: OffsetDateTime? = OffsetDateTime.MIN,
@@ -524,5 +534,5 @@ class ObjectBackupCaptureIntegrationTest {
     )
 
     private fun filesystem(name: String) =
-        FileSystemObjectStorageService("", "", mockk(), directory.resolve(name).toString(), mockk())
+        ManagedFileSystemObjectStorageService("", "", mockk(), directory.resolve(name).toString(), mockk())
 }

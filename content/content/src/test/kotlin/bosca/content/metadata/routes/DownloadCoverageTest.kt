@@ -21,7 +21,6 @@ import bosca.server.StreamingResponse
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageService
-import bosca.storage.service.StringObjectPath
 import bosca.storage.service.UrlSigner
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
@@ -35,7 +34,6 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.FileNotFoundException
 import java.io.InputStream
-import java.net.URI
 import java.time.OffsetDateTime
 import kotlin.reflect.full.callSuspend
 import kotlin.reflect.full.declaredMemberFunctions
@@ -689,110 +687,4 @@ class DownloadCoverageTest {
             if (range != null) assertEquals("bytes 0-3/20", recorded.headers[HttpHeaders.ContentRange])
         }
     }
-
-    private fun versionedContent(): Metadata {
-        val earlier = metadata(name = "Earlier image", contentLength = 7).copy(version = 6)
-        val current = metadata(name = "Saved image", contentLength = 5, etag = "current-etag").copy(version = 7)
-        coEvery { metadataService.getById(testId) } returns current
-        coEvery { metadataService.getById(testId, 6) } returns earlier
-        coEvery { metadataService.getById(testId, 5) } returns null
-        coEvery { metadataPermissionEvaluator.isContentAllowed(any(), any<Metadata>(), PermissionAction.VIEW) } returns true
-        coEvery { objectService.getPath(any<Metadata>(), null) } answers {
-            StringObjectPath("metadata/$testId/${firstArg<Metadata>().version}/content")
-        }
-        coEvery { objectService.getInputStream(any()) } answers {
-            val body = if (firstArg<ObjectPath>().toString().contains("/6/")) "earlier" else "image"
-            ByteArrayInputStream(body.toByteArray())
-        }
-        return earlier
-    }
-
-    @Test
-    fun `versioned download streams the requested history and its headers`() = runTest {
-        val earlier = versionedContent()
-        val (call, recorded) = recordedCall(mapOf("id" to testId.toString(), "version" to "6", "filename" to "true"))
-        executeRoute(call, authenticationContext)
-        assertEquals(HttpStatusCode.OK, recorded.status)
-        assertEquals("earlier", recorded.streamed.toString())
-        assertEquals("7", recorded.headers[HttpHeaders.ContentLength])
-        assertEquals("attachment; filename=\"Earlier image\"", recorded.headers[HttpHeaders.ContentDisposition])
-        assertNull(recorded.headers[HttpHeaders.ETag])
-        coVerify(exactly = 1) { metadataService.getById(testId, 6) }
-        coVerify(exactly = 0) { metadataService.getById(testId) }
-        coVerify { objectService.getPath(earlier, null) }
-    }
-
-    @Test
-    fun `versioned download returns not found for an absent version without reading current bytes`() = runTest {
-        versionedContent()
-        val (call, recorded) = recordedCall(mapOf("id" to testId.toString(), "version" to "5"))
-        executeRoute(call, authenticationContext)
-        assertEquals(HttpStatusCode.NotFound, recorded.status)
-        assertEquals(0, recorded.streamed.size())
-        coVerify(exactly = 0) { metadataService.getById(testId) }
-        coVerify(exactly = 0) { objectService.getInputStream(any()) }
-    }
-
-    @Test
-    fun `versioned download rejects malformed or nonpositive versions before metadata reads`() = runTest {
-        versionedContent()
-        for (version in listOf("", "invalid", "0", "-1", "2147483648")) {
-            val (call, recorded) = recordedCall(mapOf("id" to testId.toString(), "version" to version))
-            executeRoute(call, authenticationContext)
-            assertEquals(HttpStatusCode.BadRequest, recorded.status)
-            assertEquals(0, recorded.streamed.size())
-        }
-        coVerify(exactly = 0) { metadataService.getById(any()) }
-        coVerify(exactly = 0) { metadataService.getById(any(), any()) }
-        coVerify(exactly = 0) { objectService.getInputStream(any()) }
-    }
-
-    @Test
-    fun `versioned download checks access to the selected history`() = runTest {
-        val earlier = versionedContent()
-        coEvery { metadataPermissionEvaluator.isContentAllowed(any(), any<Metadata>(), PermissionAction.VIEW) } returns false
-        every { urlSigner.verify(any()) } returns false
-        val (call, recorded) = recordedCall(mapOf("id" to testId.toString(), "version" to "6"))
-        executeRoute(call, authenticationContext)
-        assertEquals(HttpStatusCode.Forbidden, recorded.status)
-        coVerify { metadataPermissionEvaluator.isContentAllowed(authenticationContext, earlier, PermissionAction.VIEW) }
-        coVerify(exactly = 0) { objectService.getInputStream(any()) }
-    }
-
-    @Test
-    fun `versioned download verifies the complete signed URI before serving history`() = runTest {
-        versionedContent()
-        coEvery { metadataPermissionEvaluator.isContentAllowed(any(), any<Metadata>(), PermissionAction.VIEW) } returns false
-        val uri = "/api/v1/content/metadata/download?id=$testId&version=6&signature=fixture"
-        every { urlSigner.verify(URI.create(uri)) } returns true
-        val (call, recorded) = recordedCall(mapOf("id" to testId.toString(), "version" to "6"), uri = uri)
-        executeRoute(call, authenticationContext)
-        assertEquals(HttpStatusCode.OK, recorded.status)
-        assertEquals("earlier", recorded.streamed.toString())
-    }
-
-    @Test
-    fun `versioned file downloads retain the requested history and filename`() = runTest {
-        versionedContent()
-        val (call, recorded) = recordedCall(
-            mapOf("id" to testId.toString(), "version" to "6", "download" to "true"),
-            uri = "/content/file?id=$testId&version=6&download=true",
-        )
-        executeRoute(call, authenticationContext, DownloadFile(metadataService, metadataPermissionEvaluator, objectService, urlSigner))
-        assertEquals("earlier", recorded.streamed.toString())
-        assertEquals("attachment; filename=\"Earlier image\"", recorded.headers[HttpHeaders.ContentDisposition])
-    }
-
-    @Test
-    fun `versioned download does not use the current etag for historical bytes`() = runTest {
-        versionedContent()
-        val (call, recorded) = recordedCall(
-            mapOf("id" to testId.toString(), "version" to "6"), headers = mapOf(HttpHeaders.IfNoneMatch to "\"current-etag\""),
-        )
-        executeRoute(call, authenticationContext)
-        assertEquals(HttpStatusCode.OK, recorded.status)
-        assertEquals("earlier", recorded.streamed.toString())
-        assertNull(recorded.headers[HttpHeaders.ETag])
-    }
-
 }

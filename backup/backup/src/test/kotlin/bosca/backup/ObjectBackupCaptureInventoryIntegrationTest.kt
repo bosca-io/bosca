@@ -18,7 +18,7 @@ import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageInfo
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
@@ -51,9 +51,9 @@ class ObjectBackupCaptureInventoryIntegrationTest {
     private lateinit var postgres: SharedPostgreSQLContainer
     private lateinit var pool: ConnectionPool
     private lateinit var directory: Path
-    private lateinit var target: ObjectStorageService
+    private lateinit var target: ManagedObjectStorageService
     private lateinit var service: ObjectBackupCaptureService
-    private lateinit var sources: Map<String, ObjectStorageService>
+    private lateinit var sources: Map<String, ManagedObjectStorageService>
     private val requests = mutableListOf<String>()
     private val writes = mutableListOf<String>()
     private val data = mutableMapOf("artifacts/a@v1" to "aaaa", "content/b@v1" to "bbbb")
@@ -84,7 +84,7 @@ class ObjectBackupCaptureInventoryIntegrationTest {
         FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations")))
         directory = createTempDirectory("bosca-capture-inventory-")
         val filesystem = filesystem("retained")
-        target = object : ObjectStorageService by filesystem {
+        target = object : ManagedObjectStorageService by filesystem {
             override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
                 assertEquals(0, pool.activeConnections)
                 return filesystem.getObjectInfo(path)
@@ -103,10 +103,16 @@ class ObjectBackupCaptureInventoryIntegrationTest {
             }
         }
         sources = listOf("content", "artifacts").associateWith { store ->
-            mockk<ObjectStorageService>().also { source ->
-                coEvery { source.getInputStream(any(), any<String>()) } coAnswers {
+            mockk<ManagedObjectStorageService>().also { source ->
+                coEvery { source.getObjectInfo(any()) } answers {
+                    val prefix = "$store/${firstArg<ObjectPath>()}@"
+                    val key = data.keys.filter { it.startsWith(prefix) }.maxOrNull() ?: prefix + "v1"
+                    ObjectStorageInfo((data[key]?.length ?: 4).toLong(), version = key.substringAfterLast('@'))
+                }
+                coEvery { source.getInputStream(any()) } coAnswers {
                     assertEquals(0, pool.activeConnections)
-                    val key = "$store/${firstArg<ObjectPath>()}@${secondArg<String>()}"
+                    val prefix = "$store/${firstArg<ObjectPath>()}@"
+                    val key = data.keys.filter { it.startsWith(prefix) }.maxOrNull() ?: prefix + "v1"
                     requests.add(key)
                     onSourceRead?.also { onSourceRead = null }?.invoke()
                     if (key == failSource) {
@@ -394,15 +400,14 @@ class ObjectBackupCaptureInventoryIntegrationTest {
     }
 
     @Test
-    fun `multiple retained versions of one key remain distinct selected manifest entries`(): Unit = runBlocking {
-        data["artifacts/a@v2"] = "newer"
-        val historical = selected.copy(stores = mapOf("artifacts" to listOf(
+    fun `one current key cannot select multiple provider observations`(): Unit = runBlocking {
+        val duplicate = selected.copy(stores = mapOf("artifacts" to listOf(
             first.copy(info = ObjectStorageInfo(5, version = "v2")), first,
         )))
-        val result = capture(historical)
-        assertEquals(listOf("v1", "v2"), result.objects.map { it.revision })
-        assertEquals(listOf("artifacts/a@v1", "artifacts/a@v2"), requests)
-        assertEquals(2, result.objects.map { it.payloadPath }.toSet().size)
+        assertFailsWith<IllegalArgumentException> { capture(duplicate) }
+        assertTrue(requests.isEmpty())
+        assertTrue(writes.isEmpty())
+        assertTrue(checkpoints().isEmpty())
     }
 
     @Test

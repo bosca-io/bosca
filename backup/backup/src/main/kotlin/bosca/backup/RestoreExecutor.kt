@@ -64,9 +64,7 @@ class RestoreExecutor : AbstractJobExecutor<RestoreJob>(RestoreJob.serializer())
                     BackupManifest.serializer(),
                     zipFile.getInputStream(manifestEntry).bufferedReader().readText()
                 )
-                require(manifest.format == "bosca-backup") { "Unsupported backup format: ${manifest.format}" }
                 require(manifest.version == 1) { "Unsupported backup format version: ${manifest.version}" }
-                val fileEntries = validateArchive(zipFile, manifest, json)
 
                 log.info("Restoring backup created at {} with {} tables", manifest.createdAt, manifest.counts.size)
 
@@ -109,14 +107,26 @@ class RestoreExecutor : AbstractJobExecutor<RestoreJob>(RestoreJob.serializer())
                 }
 
                 // Phase 3: Restore binary files
+                val fileEntries = zipFile.entries().asSequence()
+                    .filter { it.name.startsWith("files/") && !it.isDirectory }
+                    .toList()
+
                 for (entry in fileEntries) {
                     val storagePath = entry.name.removePrefix("files/")
-                    zipFile.getInputStream(entry).use { input ->
-                        objectStorage.setInputStream(
-                            StringObjectPath(storagePath),
-                            input,
-                            entry.size
-                        )
+                    if (storagePath.contains("..") || storagePath.startsWith("/")) {
+                        log.error("Skipping suspicious path in archive: {}", storagePath)
+                        continue
+                    }
+                    try {
+                        zipFile.getInputStream(entry).use { input ->
+                            objectStorage.setInputStream(
+                                StringObjectPath(storagePath),
+                                input,
+                                entry.size
+                            )
+                        }
+                    } catch (e: Exception) {
+                        log.warn("Failed to restore file {}", storagePath, e)
                     }
                 }
 
@@ -125,46 +135,6 @@ class RestoreExecutor : AbstractJobExecutor<RestoreJob>(RestoreJob.serializer())
         } finally {
             tempFile.deleteIfExists()
         }
-    }
-
-    /** Validates declared table payloads and file paths before opening a destination transaction. */
-    private fun validateArchive(zipFile: ZipFile, manifest: BackupManifest, json: Json): List<ZipEntry> {
-        val supportedTables = BackupTables.ordered.map { it.name }.toSet()
-        val declaredEntries = mutableSetOf<String>()
-        for ((table, expectedCount) in manifest.counts) {
-            require(table in supportedTables) { "Unsupported table in backup manifest: $table" }
-            require(expectedCount >= 0) { "Invalid record count for $table: $expectedCount" }
-            val entryName = "data/$table.jsonl"
-            val entry = requireNotNull(zipFile.getEntry(entryName)) { "Backup archive missing $entryName" }
-            declaredEntries += entryName
-            var count = 0L
-            zipFile.getInputStream(entry).bufferedReader().useLines { lines ->
-                for (line in lines) {
-                    if (line.isBlank()) continue
-                    json.decodeFromString(JsonObject.serializer(), line)
-                    count++
-                }
-            }
-            require(count == expectedCount) {
-                "Record count mismatch for $table: expected $expectedCount, found $count"
-            }
-        }
-
-        val files = mutableListOf<ZipEntry>()
-        for (entry in zipFile.entries()) {
-            if (entry.isDirectory) continue
-            if (entry.name.startsWith("data/")) {
-                require(entry.name in declaredEntries) { "Undeclared database payload: ${entry.name}" }
-            }
-            if (entry.name.startsWith("files/")) {
-                val storagePath = entry.name.removePrefix("files/")
-                require(!storagePath.contains("..") && !storagePath.startsWith("/")) {
-                    "Invalid file path in backup archive: ${entry.name}"
-                }
-                files += entry
-            }
-        }
-        return files
     }
 
     /**
@@ -254,9 +224,16 @@ class RestoreExecutor : AbstractJobExecutor<RestoreJob>(RestoreJob.serializer())
         val conn = connection()
         var inserted = 0
         for (row in batch) {
-            conn.useStatement(sql) { stmt ->
-                bindJsonValues(stmt, columns, row)
-                inserted += stmt.executeUpdate()
+            try {
+                conn.useStatement(sql) { stmt ->
+                    bindJsonValues(stmt, columns, row)
+                    inserted += stmt.executeUpdate()
+                }
+            } catch (e: Exception) {
+                if (conflictStrategy == ConflictStrategy.FAIL) {
+                    throw e
+                }
+                log.warn("Failed to insert row into {}: {}", table.name, e.message)
             }
         }
 
@@ -274,7 +251,7 @@ class RestoreExecutor : AbstractJobExecutor<RestoreJob>(RestoreJob.serializer())
 
             when {
                 value == null || value is JsonNull -> stmt.setNull(paramIndex, Types.OTHER)
-                value is JsonPrimitive && value.isString -> stmt.setObject(paramIndex, value.content, Types.OTHER)
+                value is JsonPrimitive && value.isString -> stmt.setString(paramIndex, value.content)
                 value is JsonPrimitive && value.booleanOrNull != null -> stmt.setBoolean(paramIndex, value.boolean)
                 value is JsonPrimitive && value.longOrNull != null -> stmt.setLong(paramIndex, value.long)
                 value is JsonPrimitive && value.doubleOrNull != null -> stmt.setDouble(paramIndex, value.double)

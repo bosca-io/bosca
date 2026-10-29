@@ -9,7 +9,7 @@ import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageInfo
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StorageDispatcher
 import bosca.storage.service.StringObjectPath
 import kotlinx.coroutines.NonCancellable
@@ -319,8 +319,8 @@ class ObjectBackupCaptureServiceImpl(
 
     override suspend fun captureInventory(
         key: String,
-        sources: Map<String, ObjectStorageService>,
-        destination: ObjectStorageService,
+        sources: Map<String, ManagedObjectStorageService>,
+        destination: ManagedObjectStorageService,
         verifiedSince: OffsetDateTime?,
     ): ObjectBackupManifest {
         check(connectionOrNull()?.inTransaction != true) {
@@ -338,8 +338,8 @@ class ObjectBackupCaptureServiceImpl(
     override suspend fun captureInventory(
         inventory: ObjectBackupCaptureInventory,
         destinationId: String,
-        sources: Map<String, ObjectStorageService>,
-        destination: ObjectStorageService,
+        sources: Map<String, ManagedObjectStorageService>,
+        destination: ManagedObjectStorageService,
         payloadPrefix: String,
         manifestPath: String,
         verifiedSince: OffsetDateTime?,
@@ -393,8 +393,8 @@ class ObjectBackupCaptureServiceImpl(
         scope: String,
         store: String,
         entry: ObjectStorageEntry,
-        source: ObjectStorageService,
-        destination: ObjectStorageService,
+        source: ManagedObjectStorageService,
+        destination: ManagedObjectStorageService,
         payloadPath: String,
         verifiedSince: OffsetDateTime?,
     ): ObjectBackupProgress {
@@ -457,8 +457,7 @@ class ObjectBackupCaptureServiceImpl(
         return try {
             withContext(StorageDispatcher) { verifySourceObservation(entry, source) }
             val transfer = ObjectBackupTransfer(mapOf(store to source), destination)
-            val version = retainedVersion(entry)
-            if (version == null) transfer.copy(known.payload) else transfer.copyVersion(known.payload, version)
+            transfer.copy(known.payload)
             val observed = withContext(StorageDispatcher) {
                 val observed = destination.observeBackupPayload(known.payload)
                 destination.verifyBackupPayload(known.payload, observed)
@@ -487,16 +486,16 @@ class ObjectBackupCaptureServiceImpl(
     override suspend fun capture(
         store: String,
         entry: ObjectStorageEntry,
-        source: ObjectStorageService,
-        destination: ObjectStorageService,
+        source: ManagedObjectStorageService,
+        destination: ManagedObjectStorageService,
         payloadPath: String,
     ): BackupObject = capturePayload(store, entry, source, destination, payloadPath).first
 
     private suspend fun capturePayload(
         store: String,
         entry: ObjectStorageEntry,
-        source: ObjectStorageService,
-        destination: ObjectStorageService,
+        source: ManagedObjectStorageService,
+        destination: ManagedObjectStorageService,
         payloadPath: String,
     ): Pair<BackupObject, ObjectStorageInfo> {
         val revision = validateCapture(store, entry, source, destination, payloadPath)
@@ -514,9 +513,8 @@ class ObjectBackupCaptureServiceImpl(
                 currentCoroutineContext().ensureActive()
                 verifySourceObservation(entry, source)
                 val sourcePath = StringObjectPath(entry.key)
-                val version = retainedVersion(entry)
                 val input = BackupPayloadInputStream(
-                    if (version == null) source.getInputStream(sourcePath) else source.getInputStream(sourcePath, version),
+                    source.getInputStream(sourcePath),
                     entry.info.length,
                     payloadPath,
                     currentCoroutineContext(),
@@ -580,8 +578,8 @@ class ObjectBackupCaptureServiceImpl(
     private suspend fun validateCapture(
         store: String,
         entry: ObjectStorageEntry,
-        source: ObjectStorageService,
-        destination: ObjectStorageService,
+        source: ManagedObjectStorageService,
+        destination: ManagedObjectStorageService,
         payloadPath: String,
     ): String {
         require(store.isNotBlank() && entry.key.isNotBlank()) { "Object store and key are required" }
@@ -613,10 +611,9 @@ class ObjectBackupCaptureServiceImpl(
         )
     }
 
-    private suspend fun verifySourceObservation(entry: ObjectStorageEntry, source: ObjectStorageService) {
-        if (retainedVersion(entry) != null) return
+    private suspend fun verifySourceObservation(entry: ObjectStorageEntry, source: ManagedObjectStorageService) {
         val current = source.getObjectInfo(StringObjectPath(entry.key))
-        if (captureRevision(entry.copy(info = current)) != captureRevision(entry)) {
+        if (!entry.info.matchesObservation(current)) {
             throw BackupPayloadMismatchException("Source object changed after selection: ${entry.key}")
         }
     }

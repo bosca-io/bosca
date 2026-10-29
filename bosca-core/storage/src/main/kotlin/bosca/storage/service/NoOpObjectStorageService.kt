@@ -11,14 +11,6 @@ import kotlin.uuid.ExperimentalUuidApi
 
 class NoOpObjectStorageService : ObjectStorageService {
 
-    override suspend fun listObjects(prefix: String, offset: Long, limit: Int): List<ObjectStorageEntry> {
-        require(offset >= 0) { "Object listing offset must not be negative" }
-        require(limit > 0) { "Object listing limit must be positive" }
-        return emptyList()
-    }
-
-    override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo = throw ObjectNotFoundException(path)
-
     override suspend fun getPath(metadata: Metadata, supplementaryId: UUID?): ObjectPath {
         TODO("Not yet implemented")
     }
@@ -33,11 +25,6 @@ class NoOpObjectStorageService : ObjectStorageService {
 
     override suspend fun getInputStream(path: ObjectPath): InputStream {
         TODO("Not yet implemented")
-    }
-
-    override suspend fun getInputStream(path: ObjectPath, version: String): InputStream {
-        require(version.isNotBlank()) { "An object version is required" }
-        throw ObjectNotFoundException(path)
     }
 
     override suspend fun getInputStreamRange(path: ObjectPath, range: LongRange): InputStream {

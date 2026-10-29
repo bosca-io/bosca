@@ -19,7 +19,7 @@ import bosca.server.config.ApplicationConfig
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageInfo
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
@@ -147,13 +147,13 @@ class ObjectBackupDiscoveryIntegrationTest {
         val factory = provide<ObjectStorageServiceFactory>()
         provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) {
             object : ObjectStorageServiceFactory by factory {
-                override suspend fun create(configuration: StorageConfiguration): ObjectStorageService {
+                override suspend fun create(configuration: StorageConfiguration): ManagedObjectStorageService {
                     assertNull(connectionOrNull())
                     if (checkPool) assertEquals(0, pool.activeConnections)
                     val actual = factory.create(configuration)
                     val identity = configuration.bucket ?: "retained"
                     opened.add(identity)
-                    return object : ObjectStorageService by actual {
+                    return object : ManagedObjectStorageService by actual {
                         override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
                             assertNull(connectionOrNull())
                             if (path.toString() == cancelKey) throw CancellationException("discovery cancelled")
@@ -171,7 +171,7 @@ class ObjectBackupDiscoveryIntegrationTest {
                     }
                 }
                 override suspend fun <T> withStorage(
-                    configuration: StorageConfiguration, block: suspend (ObjectStorageService) -> T,
+                    configuration: StorageConfiguration, block: suspend (ManagedObjectStorageService) -> T,
                 ): T = create(configuration).use { block(it) }
             }
         }
@@ -242,21 +242,21 @@ class ObjectBackupDiscoveryIntegrationTest {
         requests.clear()
         val later = service.discoverConfigured(request("later"))
         val after = service.captureConfigured(later.key, OffsetDateTime.MIN)
-        assertEquals(listOf("GET media/b?versionId=v2", "GET media/c?versionId=v1"), requests.filter { it.startsWith("GET media/") })
+        assertEquals(listOf("GET media/b", "GET media/c"), requests.filter { it.startsWith("GET media/") })
         assertEquals(before.objects.first(), after.objects.first())
         assertEquals(3, after.objects.size)
         assertTrue(directory.resolve("retained/manifests/first.json").toFile().exists())
     }
 
     @Test
-    fun `saved selection reads the old retained revision after current content changes`(): Unit = runBlocking {
+    fun `a changed source fails its saved selection before reading replacement bytes`(): Unit = runBlocking {
         val plan = service.discoverConfigured(request())
         put("media/a", "v2", "replacement")
         current.remove("media/b")
         requests.clear()
-        val result = service.captureConfigured(plan.key, null)
-        assertEquals(setOf("v1"), result.objects.map { it.revision }.toSet())
-        assertEquals(listOf("GET media/a?versionId=v1", "GET media/b?versionId=v1"), requests.filter { it.startsWith("GET media/") })
+        assertFailsWith<BackupPayloadMismatchException> { service.captureConfigured(plan.key, null) }
+        assertTrue(requests.none { it.startsWith("GET media/") })
+        assertTrue(!directory.resolve("retained/manifests/first.json").toFile().exists())
     }
 
     @Test

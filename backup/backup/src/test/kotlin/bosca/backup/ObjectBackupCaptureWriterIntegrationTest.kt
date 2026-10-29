@@ -19,7 +19,7 @@ import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageInfo
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.test.resources.SharedPostgreSQLContainer
 import java.io.IOException
@@ -91,14 +91,18 @@ class ObjectBackupCaptureWriterIntegrationTest {
         StorageProviderRegistrar().register()
         val factory = provide<ObjectStorageServiceFactory>()
         observedFactory = object : ObjectStorageServiceFactory by factory {
-            override suspend fun create(configuration: StorageConfiguration): ObjectStorageService {
+            override suspend fun create(configuration: StorageConfiguration): ManagedObjectStorageService {
                 val id = Path.of(checkNotNull(configuration.basePath)).fileName.toString()
                 onOpen(id)
                 val actual = factory.create(configuration)
                 opened.add(id)
-                return object : ObjectStorageService by actual {
-                    override suspend fun getInputStream(path: ObjectPath, version: String): InputStream {
-                        check(id == "source" && path.toString() == "asset" && version == "v1")
+                return object : ManagedObjectStorageService by actual {
+                    override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo =
+                        if (id == "source") ObjectStorageInfo(4, version = "v1") else actual.getObjectInfo(path)
+
+                    override suspend fun getInputStream(path: ObjectPath): InputStream {
+                        if (id != "source") return actual.getInputStream(path)
+                        check(id == "source" && path.toString() == "asset")
                         onRead()
                         return "data".byteInputStream()
                     }
@@ -118,7 +122,7 @@ class ObjectBackupCaptureWriterIntegrationTest {
 
             override suspend fun <T> withStorage(
                 configuration: StorageConfiguration,
-                block: suspend (ObjectStorageService) -> T,
+                block: suspend (ManagedObjectStorageService) -> T,
             ): T = create(configuration).use { block(it) }
         }
         restart()

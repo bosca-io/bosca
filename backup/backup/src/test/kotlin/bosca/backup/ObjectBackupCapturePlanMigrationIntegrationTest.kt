@@ -16,14 +16,11 @@ import java.sql.DriverManager
 import java.time.OffsetDateTime
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Registered plan migration preserves historical object progress without inventing source selections. */
@@ -108,6 +105,5 @@ class ObjectBackupCapturePlanMigrationIntegrationTest {
         }
         assertEquals(before, withConnectionManager { progress.get(before.key) })
     }
-
 
 }

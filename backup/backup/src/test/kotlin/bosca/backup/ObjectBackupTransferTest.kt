@@ -1,8 +1,8 @@
 package bosca.backup
 
-import bosca.storage.service.FileSystemObjectStorageService
+import bosca.storage.service.ManagedFileSystemObjectStorageService
 import bosca.storage.service.ObjectNotFoundException
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StringObjectPath
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -29,8 +29,8 @@ import kotlin.test.assertTrue
 
 class ObjectBackupTransferTest {
     private lateinit var directory: Path
-    private lateinit var source: FileSystemObjectStorageService
-    private lateinit var destination: FileSystemObjectStorageService
+    private lateinit var source: ManagedFileSystemObjectStorageService
+    private lateinit var destination: ManagedFileSystemObjectStorageService
     private lateinit var transfer: ObjectBackupTransfer
     private val data = "data".toByteArray()
     private val entry = BackupObject(
@@ -81,7 +81,7 @@ class ObjectBackupTransferTest {
         val manifestPath = StringObjectPath("manifests/retained.json")
         store.save(manifestPath, inventory)
 
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } answers {
             object : ByteArrayInputStream(data) {
                 private var reads = 0
@@ -114,8 +114,8 @@ class ObjectBackupTransferTest {
 
     @Test
     fun `destination probe read failure cannot trigger an overwrite`() = runTest {
-        val origin = mockk<ObjectStorageService>(relaxed = true)
-        val target = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>(relaxed = true)
+        val target = mockk<ManagedObjectStorageService>()
         val expected = IOException("destination unavailable")
         coEvery { target.getInputStream(any()) } throws expected
 
@@ -130,8 +130,8 @@ class ObjectBackupTransferTest {
 
     @Test
     fun `unrelated destination state failure cannot trigger an overwrite`() = runTest {
-        val origin = mockk<ObjectStorageService>(relaxed = true)
-        val target = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>(relaxed = true)
+        val target = mockk<ManagedObjectStorageService>()
         val expected = IllegalStateException("storage not ready")
         coEvery { target.getInputStream(any()) } throws expected
 
@@ -146,8 +146,8 @@ class ObjectBackupTransferTest {
 
     @Test
     fun `cancelled destination probe cannot trigger an overwrite`() = runTest {
-        val origin = mockk<ObjectStorageService>(relaxed = true)
-        val target = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>(relaxed = true)
+        val target = mockk<ManagedObjectStorageService>()
         coEvery { target.getInputStream(any()) } throws CancellationException("cancelled")
 
         assertFailsWith<CancellationException> {
@@ -181,8 +181,8 @@ class ObjectBackupTransferTest {
 
     @Test
     fun `invalid declared revision fails before storage access`() = runTest {
-        val origin = mockk<ObjectStorageService>(relaxed = true)
-        val target = mockk<ObjectStorageService>(relaxed = true)
+        val origin = mockk<ManagedObjectStorageService>(relaxed = true)
+        val target = mockk<ManagedObjectStorageService>(relaxed = true)
 
         assertFailsWith<IllegalArgumentException> {
             ObjectBackupTransfer(mapOf("content" to origin), target).copy(entry.copy(sha256 = "multipart-etag-2"))
@@ -348,7 +348,7 @@ class ObjectBackupTransferTest {
     @Test
     fun `empty writers may acknowledge zero bytes without consuming the source`() = runTest {
         writeSource(ByteArray(0))
-        val target = mockk<ObjectStorageService>()
+        val target = mockk<ManagedObjectStorageService>()
         coEvery { target.setInputStream(any(), any(), any()) } returns 0
         payloadAfterInitialMiss(target) { ByteArray(0).inputStream() }
 
@@ -374,9 +374,9 @@ class ObjectBackupTransferTest {
                 super.close()
             }
         }
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } returns input
-        val target = mockk<ObjectStorageService>()
+        val target = mockk<ManagedObjectStorageService>()
         coEvery { target.setInputStream(any(), any(), any()) } coAnswers {
             secondArg<InputStream>().copyTo(ByteArrayOutputStream(), 65536)
         }
@@ -398,9 +398,9 @@ class ObjectBackupTransferTest {
                 super.close()
             }
         }
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } returns input
-        val target = mockk<ObjectStorageService>()
+        val target = mockk<ManagedObjectStorageService>()
         coEvery { target.getInputStream(any()) } throws ObjectNotFoundException(destinationPath)
         coEvery { target.setInputStream(any(), any(), any()) } throws IOException("write failed")
 
@@ -426,7 +426,7 @@ class ObjectBackupTransferTest {
                 super.close()
             }
         }
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } returns input
 
         assertFailsWith<IOException> {
@@ -438,9 +438,9 @@ class ObjectBackupTransferTest {
 
     @Test
     fun `cancellation opening the source propagates without a destination write`() = runTest {
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } throws CancellationException("cancelled")
-        val target = mockk<ObjectStorageService>(relaxed = true)
+        val target = mockk<ManagedObjectStorageService>(relaxed = true)
         coEvery { target.getInputStream(any()) } throws ObjectNotFoundException(destinationPath)
 
         assertFailsWith<CancellationException> {
@@ -453,7 +453,7 @@ class ObjectBackupTransferTest {
     @Test
     fun `cancellation during source reads stops the copy and closes the stream`() = runTest {
         var closed = false
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } coAnswers {
             val job = currentCoroutineContext().job
             object : ByteArrayInputStream(data) {
@@ -501,7 +501,7 @@ class ObjectBackupTransferTest {
         assertTrue(closed)
     }
 
-    private fun storage(name: String): FileSystemObjectStorageService = FileSystemObjectStorageService(
+    private fun storage(name: String): ManagedFileSystemObjectStorageService = ManagedFileSystemObjectStorageService(
         "", "", mockk(), directory.resolve(name).toString(), mockk()
     )
 
@@ -509,8 +509,8 @@ class ObjectBackupTransferTest {
         source.setInputStream(sourcePath, bytes.inputStream(), bytes.size.toLong())
     }
 
-    private fun acknowledgingDestination(bytes: ByteArray): ObjectStorageService {
-        val target = mockk<ObjectStorageService>()
+    private fun acknowledgingDestination(bytes: ByteArray): ManagedObjectStorageService {
+        val target = mockk<ManagedObjectStorageService>()
         coEvery { target.setInputStream(any(), any(), any()) } coAnswers {
             assertEquals(entry.payloadPath, firstArg<StringObjectPath>().toString())
             assertEquals(entry.length, thirdArg<Long?>())
@@ -520,42 +520,12 @@ class ObjectBackupTransferTest {
         return target
     }
 
-    private fun payloadAfterInitialMiss(target: ObjectStorageService, open: () -> InputStream) {
+    private fun payloadAfterInitialMiss(target: ManagedObjectStorageService, open: () -> InputStream) {
         var reads = 0
         coEvery { target.getInputStream(any()) } answers {
             if (reads++ == 0) throw ObjectNotFoundException(destinationPath)
             open()
         }
-    }
-
-    @Test
-    fun `version transfer selects the exact provider version when known bytes need repair`() = runTest {
-        val origin = mockk<ObjectStorageService>()
-        coEvery { origin.getInputStream(any(), "provider-1") } answers { data.inputStream() }
-        ObjectBackupTransfer(mapOf(entry.store to origin), destination).copyVersion(entry, "provider-1")
-        assertEquals("data", destination.getString(destinationPath))
-        coVerify(exactly = 1) { origin.getInputStream(match { it.toString() == entry.key }, "provider-1") }
-        coVerify(exactly = 0) { origin.getInputStream(any()) }
-    }
-
-    @Test
-    fun `version transfer reuses known matching output without opening source content`() = runTest {
-        val origin = mockk<ObjectStorageService>()
-        destination.setInputStream(destinationPath, data.inputStream(), data.size.toLong())
-        ObjectBackupTransfer(mapOf(entry.store to origin), destination).copyVersion(entry, "provider-1")
-        coVerify(exactly = 0) { origin.getInputStream(any(), any<String>()) }
-        coVerify(exactly = 0) { origin.getInputStream(any()) }
-        assertEquals("data", destination.getString(destinationPath))
-    }
-
-    @Test
-    fun `version transfer rejects blank versions before storage access`() = runTest {
-        val origin = mockk<ObjectStorageService>()
-        val target = mockk<ObjectStorageService>()
-        assertFailsWith<IllegalArgumentException> {
-            ObjectBackupTransfer(mapOf(entry.store to origin), target).copyVersion(entry, " ")
-        }
-        coVerify(exactly = 0) { target.getInputStream(any()) }
     }
 
     private fun digest(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")

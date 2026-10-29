@@ -10,7 +10,6 @@ import kotlinx.serialization.json.JsonElement
 @Repository
 interface CollectionRepository {
 
-
     @Query("insert into collections (id, name, type, description, attributes, system_attributes, labels, recommendation_contexts, created, modified, ready, etag, enabled, ordering, delete_workflow_id, public, public_list, public_supplementary, locked, items_locked, template_metadata_id, template_metadata_version, searchable, recommendable) values ('00000000-0000-0000-0000-000000000000', :name, :type, :description, :attributes, :systemAttributes, :labels, :recommendationContexts, :created, :modified, :ready, :etag, :enabled, :ordering, :deleteWorkflowId, :public, :publicList, :publicSupplementary, :locked, :itemsLocked, :templateMetadataId, :templateMetadataVersion, :searchable, :recommendable) returning *")
     suspend fun addRoot(collection: Collection): Collection
 

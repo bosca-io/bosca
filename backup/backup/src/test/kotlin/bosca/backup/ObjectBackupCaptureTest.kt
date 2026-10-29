@@ -1,11 +1,11 @@
 package bosca.backup
 
-import bosca.storage.service.FileSystemObjectStorageService
+import bosca.storage.service.ManagedFileSystemObjectStorageService
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageInfo
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StringObjectPath
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -34,8 +34,8 @@ import kotlin.test.assertTrue
 /** Derive verified retained payloads from selected revisions without a precomputed source digest. */
 class ObjectBackupCaptureTest {
     private lateinit var directory: Path
-    private lateinit var retained: ObjectStorageService
-    private lateinit var source: ObjectStorageService
+    private lateinit var retained: ManagedObjectStorageService
+    private lateinit var source: ManagedObjectStorageService
     private lateinit var service: ObjectBackupCaptureService
     private lateinit var closed: AtomicBoolean
     private val bytes = "captured content 🖼".toByteArray()
@@ -45,11 +45,12 @@ class ObjectBackupCaptureTest {
     @BeforeTest
     fun setUp() {
         directory = createTempDirectory("bosca-object-capture-")
-        retained = FileSystemObjectStorageService("", "", mockk(), directory.toString(), mockk())
+        retained = ManagedFileSystemObjectStorageService("", "", mockk(), directory.toString(), mockk())
         source = mockk()
         service = ObjectBackupCaptureServiceImpl(mockk(), Json, mockk(), mockk())
         closed = AtomicBoolean()
-        coEvery { source.getInputStream(any(), "old") } answers { stream(bytes) }
+        coEvery { source.getInputStream(any()) } answers { stream(bytes) }
+        coEvery { source.getObjectInfo(any()) } returns selected.info
     }
 
     @AfterTest
@@ -58,15 +59,14 @@ class ObjectBackupCaptureTest {
     }
 
     @Test
-    fun `derives a manifest-ready digest and verifies retained bytes using the exact selected version`() = runTest {
+    fun `derives a manifest-ready digest and verifies observed source and retained bytes`() = runTest {
         val result = capture()
         assertEquals(BackupObject("content", "asset", "old", bytes.size.toLong(), sha256(bytes), payload), result)
         result.validate()
         assertEquals(bytes.decodeToString(), retained.getString(StringObjectPath(payload)))
         assertTrue(closed.get())
-        coVerify(exactly = 1) { source.getInputStream(match { it.toString() == "asset" }, "old") }
-        coVerify(exactly = 0) { source.getInputStream(any()) }
-        coVerify(exactly = 0) { source.getObjectInfo(any()) }
+        coVerify(exactly = 1) { source.getInputStream(match { it.toString() == "asset" }) }
+        coVerify(exactly = 2) { source.getObjectInfo(any()) }
         verify(exactly = 0) { source.close() }
     }
 
@@ -81,7 +81,6 @@ class ObjectBackupCaptureTest {
         assertEquals(bytes.size.toLong(), result.length)
         assertEquals(bytes.decodeToString(), retained.getString(StringObjectPath(payload)))
         coVerify(exactly = 1) { source.getInputStream(match { it.toString() == entry.key }) }
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
         coVerify(exactly = 2) { source.getObjectInfo(any()) }
         assertTrue(closed.get())
     }
@@ -132,12 +131,13 @@ class ObjectBackupCaptureTest {
     @Test
     fun `streams a large body with bounded source reads`() = runTest {
         val large = ByteArray(1024 * 1024 + 37) { (it % 251).toByte() }
-        coEvery { source.getInputStream(any(), "old") } returns object : ByteArrayInputStream(large) {
+        coEvery { source.getInputStream(any()) } returns object : ByteArrayInputStream(large) {
             override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
                 assertTrue(length <= DEFAULT_BUFFER_SIZE, "Capture must not request an asset-sized buffer")
                 return super.read(buffer, offset, length)
             }
         }
+        coEvery { source.getObjectInfo(any()) } returns selected.info.copy(length = large.size.toLong())
         val result = capture(entry = selected.copy(info = selected.info.copy(length = large.size.toLong())))
         assertEquals(sha256(large), result.sha256)
         assertEquals(large.size.toLong(), result.length)
@@ -145,7 +145,7 @@ class ObjectBackupCaptureTest {
 
     @Test
     fun `invalid capture intent fails before reading or writing any storage`() = runTest {
-        val destination = mockk<ObjectStorageService>()
+        val destination = mockk<ManagedObjectStorageService>()
         for ((store, entry, path) in listOf(
             Triple(" ", selected, payload),
             Triple("content", selected.copy(key = " "), payload),
@@ -162,7 +162,6 @@ class ObjectBackupCaptureTest {
                 service.capture(store, entry, source, destination, path)
             }
         }
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
         coVerify(exactly = 0) { destination.getObjectInfo(any()) }
         coVerify(exactly = 0) { destination.setInputStream(any(), any(), any()) }
     }
@@ -171,7 +170,6 @@ class ObjectBackupCaptureTest {
     fun `capture rejects the same source and destination service before storage access`() = runTest {
         assertFailsWith<IllegalArgumentException> { capture(target = source) }
         coVerify(exactly = 0) { source.getObjectInfo(any()) }
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
     }
 
     @Test
@@ -179,36 +177,35 @@ class ObjectBackupCaptureTest {
         write(payload, "already retained")
         assertFailsWith<IllegalStateException> { capture() }
         assertEquals("already retained", retained.getString(StringObjectPath(payload)))
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
     }
 
     @Test
     fun `destination lookup failures propagate before the source is opened`() = runTest {
         val failure = IOException("retained store denied")
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo = throw failure
         }
         assertOriginalFailure(failure, assertFailsWith<IOException> { capture(target = target) })
-        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
     }
 
     @Test
-    fun `a missing retained source version never falls back or starts a destination write`() = runTest {
+    fun `a missing source object never starts a destination write`() = runTest {
         val failure = ObjectNotFoundException(StringObjectPath("asset"))
-        coEvery { source.getInputStream(any(), "old") } throws failure
+        coEvery { source.getInputStream(any()) } throws failure
         var deletes = 0
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun delete(path: ObjectPath) { deletes++ }
         }
         assertSame(failure, assertFailsWith<ObjectNotFoundException> { capture(target = target) })
         assertMissing()
         assertEquals(0, deletes)
-        coVerify(exactly = 0) { source.getInputStream(any()) }
+        coVerify(exactly = 1) { source.getInputStream(any()) }
     }
 
     @Test
     fun `short and long source bodies cannot produce manifest entries and their partial outputs are removed`() = runTest {
         for (length in listOf(bytes.size - 1L, bytes.size + 1L, Long.MAX_VALUE)) {
+            coEvery { source.getObjectInfo(any()) } returns selected.info.copy(length = length)
             assertFailsWith<BackupPayloadMismatchException> {
                 capture(entry = selected.copy(info = selected.info.copy(length = length)))
             }
@@ -219,7 +216,7 @@ class ObjectBackupCaptureTest {
 
     @Test
     fun `a writer stopping early cannot acknowledge a successful capture`() = runTest {
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                 write(path.toString(), "partial")
                 stream.read()
@@ -233,7 +230,7 @@ class ObjectBackupCaptureTest {
 
     @Test
     fun `an incorrect write count cannot acknowledge a successful capture`() = runTest {
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long =
                 retained.setInputStream(path, stream, length) - 1
         }
@@ -243,7 +240,7 @@ class ObjectBackupCaptureTest {
 
     @Test
     fun `acknowledged corrupt output fails read-back verification and is removed`() = runTest {
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                 val copied = retained.setInputStream(path, stream, length)
                 write(path.toString(), "x".repeat(bytes.size))
@@ -257,7 +254,7 @@ class ObjectBackupCaptureTest {
     @Test
     fun `a source read failure closes its stream and removes attempted output`() = runTest {
         val failure = IOException("source read failed")
-        coEvery { source.getInputStream(any(), "old") } returns object : FilterInputStream(stream(bytes)) {
+        coEvery { source.getInputStream(any()) } returns object : FilterInputStream(stream(bytes)) {
             override fun read(buffer: ByteArray, offset: Int, length: Int): Int = throw failure
         }
         assertOriginalFailure(failure, assertFailsWith<IOException> { capture() })
@@ -268,7 +265,7 @@ class ObjectBackupCaptureTest {
     @Test
     fun `a failed destination write retains its failure and removes its partial output`() = runTest {
         val failure = IOException("write failed")
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                 write(path.toString(), "partial")
                 throw failure
@@ -282,7 +279,7 @@ class ObjectBackupCaptureTest {
     @Test
     fun `source cancellation propagates while cleaning newly attempted output`() = runTest {
         val cancellation = CancellationException("capture cancelled")
-        coEvery { source.getInputStream(any(), "old") } returns object : FilterInputStream(stream(bytes)) {
+        coEvery { source.getInputStream(any()) } returns object : FilterInputStream(stream(bytes)) {
             override fun read(buffer: ByteArray, offset: Int, length: Int): Int = throw cancellation
         }
         val observed = assertFailsWith<CancellationException> { capture() }
@@ -294,7 +291,7 @@ class ObjectBackupCaptureTest {
     @Test
     fun `a read-back storage failure cannot acknowledge a retained entry`() = runTest {
         val failure = IOException("retained read failed")
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun getInputStream(path: ObjectPath): InputStream = throw failure
         }
         assertOriginalFailure(failure, assertFailsWith<IOException> { capture(target = target) })
@@ -305,7 +302,7 @@ class ObjectBackupCaptureTest {
     fun `cleanup failure remains attached to the original capture failure`() = runTest {
         val failure = IOException("write failed")
         val cleanup = IOException("delete failed")
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long = throw failure
             override suspend fun delete(path: ObjectPath) = throw cleanup
         }
@@ -320,7 +317,7 @@ class ObjectBackupCaptureTest {
     @Test
     fun `a source close failure prevents acknowledgement and removes the output`() = runTest {
         val failure = IOException("source close failed")
-        coEvery { source.getInputStream(any(), "old") } returns object : ByteArrayInputStream(bytes) {
+        coEvery { source.getInputStream(any()) } returns object : ByteArrayInputStream(bytes) {
             override fun close() { throw failure }
         }
         assertOriginalFailure(failure, assertFailsWith<IOException> { capture() })
@@ -330,7 +327,7 @@ class ObjectBackupCaptureTest {
     @Test
     fun `a silently unsuccessful delete is reported alongside the original capture failure`() = runTest {
         val failure = IOException("write failed")
-        val target = object : ObjectStorageService by retained {
+        val target = object : ManagedObjectStorageService by retained {
             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                 write(path.toString(), "partial")
                 throw failure
@@ -352,7 +349,7 @@ class ObjectBackupCaptureTest {
 
     private suspend fun capture(
         entry: ObjectStorageEntry = selected,
-        target: ObjectStorageService = retained,
+        target: ManagedObjectStorageService = retained,
     ) = service.capture("content", entry, source, target, payload)
 
     private fun stream(content: ByteArray): InputStream = object : ByteArrayInputStream(content) {

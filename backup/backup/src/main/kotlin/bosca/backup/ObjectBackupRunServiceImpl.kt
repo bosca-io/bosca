@@ -6,7 +6,7 @@ import bosca.db.withConnectionManager
 import bosca.service.annotation.ServiceImplementation
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectNotFoundException
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StringObjectPath
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -410,16 +410,16 @@ class ObjectBackupRunServiceImpl(
 
     override suspend fun execute(
         key: String,
-        sources: Map<String, ObjectStorageService>,
-        destination: ObjectStorageService,
+        sources: Map<String, ManagedObjectStorageService>,
+        destination: ManagedObjectStorageService,
     ): ObjectBackupRun = executeRun(key, ObjectBackupOperation.BACKUP) { run ->
         backup(run, sources, destination)
     }
 
     private suspend fun backup(
         run: ObjectBackupRun,
-        sources: Map<String, ObjectStorageService>,
-        destination: ObjectStorageService,
+        sources: Map<String, ManagedObjectStorageService>,
+        destination: ManagedObjectStorageService,
     ) {
         val transfer = ObjectBackupTransfer(sources, destination)
         transfer.copy(run.inventory, run.destinationId, progressService)
@@ -428,16 +428,16 @@ class ObjectBackupRunServiceImpl(
 
     override suspend fun executeRestore(
         key: String,
-        backup: ObjectStorageService,
-        destinations: Map<String, ObjectStorageService>,
+        backup: ManagedObjectStorageService,
+        destinations: Map<String, ManagedObjectStorageService>,
     ): ObjectBackupRun = executeRun(key, ObjectBackupOperation.RESTORE) { run ->
         restore(run, backup, destinations)
     }
 
     private suspend fun restore(
         run: ObjectBackupRun,
-        backup: ObjectStorageService,
-        destinations: Map<String, ObjectStorageService>,
+        backup: ManagedObjectStorageService,
+        destinations: Map<String, ManagedObjectStorageService>,
     ) {
         val path = StringObjectPath(run.path)
         val inventory = ObjectBackupManifestStore(backup, json).load(path)

@@ -1,20 +1,17 @@
 package bosca.storage.service
 
 import bosca.di.ObjectProvider
-import com.google.cloud.storage.Blob
 import com.google.cloud.storage.BlobId
 import com.google.cloud.storage.BlobInfo
 import com.google.cloud.storage.Storage
 import com.google.cloud.storage.StorageException
 import bosca.security.service.SecurityService
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 import java.nio.channels.Channels
-import java.time.ZoneOffset
 
 class GoogleObjectStorageService(
     private val bucket: String,
@@ -25,49 +22,6 @@ class GoogleObjectStorageService(
     securityService: ObjectProvider<SecurityService>
 ) : AbstractObjectStorageService(urlPrefix, urlUploadPrefix, urlSigner, securityService) {
 
-    override suspend fun listObjects(prefix: String, offset: Long, limit: Int): List<ObjectStorageEntry> {
-        require(offset >= 0) { "Object listing offset must not be negative" }
-        require(limit > 0) { "Object listing limit must be positive" }
-        return withContext(StorageDispatcher) {
-            val entries = mutableListOf<ObjectStorageEntry>()
-            var skip = offset
-            val page = storage.list(
-                bucket,
-                Storage.BlobListOption.prefix(prefix),
-                Storage.BlobListOption.pageSize(1000L),
-            )
-            for (blob in page.iterateAll()) {
-                currentCoroutineContext().ensureActive()
-                if (skip > 0) {
-                    skip--
-                    continue
-                }
-                val key = checkNotNull(blob.name) { "Listed object key is missing" }
-                require(key.startsWith(prefix)) { "Listed object is outside the requested prefix: $key" }
-                entries.add(ObjectStorageEntry(key, objectInfo(blob, key)))
-                if (entries.size == limit) break
-            }
-            entries
-        }
-    }
-
-    override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo = withContext(StorageDispatcher) {
-        val blob = try {
-            storage.get(BlobId.of(bucket, path.toString()))
-        } catch (failure: StorageException) {
-            if (failure.code == 404) throw ObjectNotFoundException(path, failure)
-            throw failure
-        } ?: throw ObjectNotFoundException(path)
-        objectInfo(blob, path.toString())
-    }
-
-    private fun objectInfo(blob: Blob, key: String) = ObjectStorageInfo(
-        length = checkNotNull(blob.size) { "Object length is missing: $key" },
-        etag = blob.etag?.takeIf { it.isNotBlank() },
-        version = blob.generation?.toString(),
-        modified = blob.updateTimeOffsetDateTime?.withOffsetSameInstant(ZoneOffset.UTC),
-    )
-
     override suspend fun getInputStream(path: ObjectPath): InputStream = openOnStorageDispatcher {
         val id = BlobId.of(bucket, path.toString())
         if (storage.get(id) == null) throw ObjectNotFoundException(path)
@@ -77,44 +31,16 @@ class GoogleObjectStorageService(
         NotFoundMappingInputStream(path, Channels.newInputStream(reader))
     }
 
-    override suspend fun getInputStream(path: ObjectPath, version: String): InputStream {
-        val generation = version.toLongOrNull()
-        require(generation != null && generation > 0 && generation.toString() == version) {
-            "A canonical positive Google object generation is required"
-        }
-        return openOnStorageDispatcher {
-            val reader = try {
-                storage.reader(BlobId.of(bucket, path.toString(), generation))
-            } catch (failure: StorageException) {
-                if (failure.code == 404) throw ObjectNotFoundException(path, failure)
-                throw failure
-            }
-            NotFoundMappingInputStream(path, Channels.newInputStream(reader))
-        }
+    private fun getOutputStream(path: ObjectPath): OutputStream {
+        val id = BlobId.of(bucket, path.toString())
+        // Replacing an object keeps its settings (content type, custom metadata, cache control), as
+        // writing through the existing blob always did; a new object starts from a bare BlobInfo.
+        val writer = storage.writer(storage.get(id) ?: BlobInfo.newBuilder(id).build())
+        return Channels.newOutputStream(writer)
     }
 
-    override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long = withContext(StorageDispatcher) {
-        val id = BlobId.of(bucket, path.toString())
-        // Preserve editable settings when replacing content.
-        val settings = storage.get(id) ?: BlobInfo.newBuilder(id).build()
-        val context = currentCoroutineContext()
-        var written = 0L
-        val measured = object : FilterInputStream(stream) {
-            override fun read(): Int {
-                context.ensureActive()
-                return stream.read().also { if (it >= 0) written++ }
-            }
-
-            override fun read(bytes: ByteArray, offset: Int, count: Int): Int {
-                context.ensureActive()
-                return stream.read(bytes, offset, count).also { if (it > 0) written += it }
-            }
-
-            override fun close() {}
-        }
-        val completed = storage.createFrom(settings, measured, 512 * 1024)
-        check(completed.size == written) { "Written object length does not match the upload: $path" }
-        written
+    override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?) = withContext(StorageDispatcher) {
+        getOutputStream(path).use { stream.copyTo(it) }
     }
 
     override suspend fun getInputStreamRange(

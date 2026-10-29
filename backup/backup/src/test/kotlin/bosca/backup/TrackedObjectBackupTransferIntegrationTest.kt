@@ -12,8 +12,8 @@ import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provides
-import bosca.storage.service.FileSystemObjectStorageService
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedFileSystemObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
 import io.mockk.coEvery
@@ -47,8 +47,8 @@ class TrackedObjectBackupTransferIntegrationTest {
     private lateinit var pool: ConnectionPool
     private lateinit var progressService: ObjectBackupProgressService
     private lateinit var directory: Path
-    private lateinit var source: FileSystemObjectStorageService
-    private lateinit var destination: FileSystemObjectStorageService
+    private lateinit var source: ManagedFileSystemObjectStorageService
+    private lateinit var destination: ManagedFileSystemObjectStorageService
     private val data = "data".toByteArray()
     private val entry = BackupObject(
         store = "content",
@@ -94,7 +94,7 @@ class TrackedObjectBackupTransferIntegrationTest {
     @Test
     fun `a copy completes durable progress only after persisted bytes are verified`() = runBlocking {
         writeSource()
-        val target = mockk<ObjectStorageService>()
+        val target = mockk<ManagedObjectStorageService>()
         coEvery { target.getInputStream(any()) } coAnswers {
             assertEquals(0, pool.activeConnections)
             assertEquals(ObjectBackupProgressStatus.RUNNING, persisted().status)
@@ -106,7 +106,7 @@ class TrackedObjectBackupTransferIntegrationTest {
             assertEquals(ObjectBackupProgressStatus.RUNNING, persisted().status)
             destination.setInputStream(firstArg(), secondArg(), thirdArg())
         }
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } coAnswers {
             assertEquals(0, pool.activeConnections)
             assertEquals(ObjectBackupProgressStatus.RUNNING, persisted().status)
@@ -128,7 +128,7 @@ class TrackedObjectBackupTransferIntegrationTest {
     fun `completed replay verifies output without opening source or rewriting bytes`() = runBlocking {
         writeSource()
         val completed = copy()
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         val target = readOnlyDestination()
 
         val replayed = copy(origin, target)
@@ -143,7 +143,7 @@ class TrackedObjectBackupTransferIntegrationTest {
         val prepared = withConnectionManager { prepare() }
         withConnectionManager { progressService.start(prepared.key, prepared.version) }
         destination.setInputStream(destinationPath, data.inputStream(), entry.length)
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         val target = readOnlyDestination()
 
         val reconciled = copy(origin, target)
@@ -158,7 +158,7 @@ class TrackedObjectBackupTransferIntegrationTest {
 
     @Test
     fun `partial write failure survives restart and retries the same intent`() = runBlocking {
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } answers {
             object : ByteArrayInputStream(data) {
                 private var reads = 0
@@ -223,8 +223,8 @@ class TrackedObjectBackupTransferIntegrationTest {
     fun `unavailable completed destination is not invalidated or overwritten`() = runBlocking {
         writeSource()
         val completed = copy()
-        val origin = mockk<ObjectStorageService>()
-        val target = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
+        val target = mockk<ManagedObjectStorageService>()
         val expected = IOException("destination unavailable")
         coEvery { target.getInputStream(any()) } throws expected
 
@@ -241,7 +241,7 @@ class TrackedObjectBackupTransferIntegrationTest {
         writeSource()
         copy()
         destination.setInputStream(destinationPath, "xxxx".byteInputStream(), 4)
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } throws IOException("source revision unavailable")
 
         assertFailsWith<IOException> { copy(origin) }
@@ -281,7 +281,7 @@ class TrackedObjectBackupTransferIntegrationTest {
     @Test
     fun `actual coroutine cancellation is recorded and propagated after closing the stream`() = runBlocking {
         var closed = false
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } coAnswers {
             currentCoroutineContext().cancel(CancellationException("copy cancelled"))
             object : ByteArrayInputStream(data) {
@@ -311,7 +311,7 @@ class TrackedObjectBackupTransferIntegrationTest {
         assertEquals("data", destination.getString(destinationPath))
         assertEquals(ObjectBackupProgressStatus.FAILED, persisted().status)
         removeStatusRejection()
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         val target = readOnlyDestination()
 
         val reconciled = copy(origin, target)
@@ -325,7 +325,7 @@ class TrackedObjectBackupTransferIntegrationTest {
     @Test
     fun `failure bookkeeping cannot replace the original storage exception`() = runBlocking {
         rejectStatus("failed")
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         val expected = IOException("source unavailable")
         coEvery { origin.getInputStream(any()) } throws expected
 
@@ -348,8 +348,8 @@ class TrackedObjectBackupTransferIntegrationTest {
     fun `conflicting revision intent fails before touching storage`() = runBlocking {
         writeSource()
         val completed = copy()
-        val origin = mockk<ObjectStorageService>()
-        val target = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
+        val target = mockk<ManagedObjectStorageService>()
 
         assertFailsWith<IllegalArgumentException> {
             copy(origin, target, entry.copy(sha256 = "0".repeat(64)))
@@ -378,8 +378,8 @@ class TrackedObjectBackupTransferIntegrationTest {
     }
 
     private suspend fun copy(
-        origin: ObjectStorageService = source,
-        target: ObjectStorageService = destination,
+        origin: ManagedObjectStorageService = source,
+        target: ManagedObjectStorageService = destination,
         payload: BackupObject = entry,
     ): ObjectBackupProgress = ObjectBackupTransfer(mapOf("content" to origin), target).copy(
         "source-1", "destination-1", "content", payload, progressService,
@@ -396,11 +396,11 @@ class TrackedObjectBackupTransferIntegrationTest {
         source.setInputStream(sourcePath, data.inputStream(), entry.length)
     }
 
-    private fun readOnlyDestination(): ObjectStorageService = mockk<ObjectStorageService>().also { target ->
+    private fun readOnlyDestination(): ManagedObjectStorageService = mockk<ManagedObjectStorageService>().also { target ->
         coEvery { target.getInputStream(any()) } coAnswers { destination.getInputStream(firstArg()) }
     }
 
-    private fun storage(name: String): FileSystemObjectStorageService = FileSystemObjectStorageService(
+    private fun storage(name: String): ManagedFileSystemObjectStorageService = ManagedFileSystemObjectStorageService(
         "", "", mockk(), directory.resolve(name).toString(), mockk(),
     )
 

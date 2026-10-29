@@ -11,7 +11,6 @@ import kotlinx.serialization.json.JsonElement
 @Repository
 interface MetadataRepository {
 
-
     @Query("insert into metadata (parent_id, name, type, content_type, content_length, language_tag, labels, recommendation_contexts, attributes, system_attributes, public, public_content, public_supplementary, created, modified, source_id, source_identifier, source_url, delete_workflow_id, permission_mutation, etag, locked, searchable, recommendable, sync_variant_collections, sync_variant_relationships) values (:parentId, :name, :type, :contentType, :contentLength, :languageTag, :labels, :recommendationContexts, :attributes, :systemAttributes, :public, :publicContent, :publicSupplementary, :created, :modified, :sourceId, :sourceIdentifier, :sourceUrl, :deleteWorkflowId, :permissionMutation, :etag, :locked, :searchable, :recommendable, :syncVariantCollections, :syncVariantRelationships) returning *")
     suspend fun add(metadata: Metadata): Metadata
 
@@ -23,24 +22,6 @@ interface MetadataRepository {
 
     @Query("select * from metadata where id = :id and version = :version")
     suspend fun getById(id: UUID, version: Int): Metadata?
-
-    /** Reads retained version fields with the owning item's current access controls; uncaptured upload evidence stays absent. */
-    @Query("""
-        select v.id, v.version, m.active_version, v.parent_id, v.name, v.type,
-               v.content_type, v.content_length, v.language_tag, v.labels,
-               v.attributes, v.system_attributes, v.created, v.modified,
-               v.source_id, v.source_identifier, v.delete_workflow_id,
-               null::timestamptz as uploaded, null::timestamptz as ready,
-               null::varchar as etag, null::varchar as source_url, null::varchar as source_status,
-               m.deleted, m.public, m.public_content, m.public_supplementary, m.permission_mutation,
-               m.workflow_state_id, m.workflow_state_pending_id, m.workflow_state_valid,
-               m.locked, m.sync_variant_collections, m.sync_variant_relationships,
-               m.searchable, m.recommendable, m.comments_enabled, m.comment_replies_enabled,
-               m.recommendation_contexts
-        from metadata_versions v join metadata m on m.id = v.id
-        where v.id = :id and v.version = :version
-    """)
-    suspend fun getArchivedById(id: UUID, version: Int): Metadata?
 
     @Query("update metadata set name = :name, modified = now() where id = :id returning *")
     suspend fun setName(id: UUID, name: String): Metadata?
@@ -96,7 +77,7 @@ interface MetadataRepository {
     @Query("update metadata set workflow_state_pending_id = null, workflow_state_valid = null, modified = now() where id = :id")
     suspend fun clearPendingState(id: UUID)
 
-    @Query("update metadata set uploaded = null, modified = now(), content_length = null, recommendation_contexts = :recommendationContexts where id = :id")
+    @Query("update metadata set uploaded = null, modified = now(), content_type = null, content_length = null, recommendation_contexts = :recommendationContexts where id = :id")
     suspend fun clearUploaded(id: UUID, recommendationContexts: List<String>)
 
     @Query("update metadata set ready = now(), modified = now() where id = :id")

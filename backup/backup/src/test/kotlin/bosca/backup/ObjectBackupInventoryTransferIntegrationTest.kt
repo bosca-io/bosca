@@ -12,8 +12,8 @@ import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provides
-import bosca.storage.service.FileSystemObjectStorageService
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedFileSystemObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
 import io.mockk.coEvery
@@ -44,9 +44,9 @@ class ObjectBackupInventoryTransferIntegrationTest {
     private lateinit var pool: ConnectionPool
     private lateinit var progressService: ObjectBackupProgressService
     private lateinit var directory: Path
-    private lateinit var content: FileSystemObjectStorageService
-    private lateinit var media: FileSystemObjectStorageService
-    private lateinit var destination: FileSystemObjectStorageService
+    private lateinit var content: ManagedFileSystemObjectStorageService
+    private lateinit var media: ManagedFileSystemObjectStorageService
+    private lateinit var destination: ManagedFileSystemObjectStorageService
     private val first = entry("content", "items/a", "a-1", "one")
     private val second = entry("media", "items/a", "b-1", "two")
     private val third = entry("content", "items/c", "c-1", "three")
@@ -106,7 +106,7 @@ class ObjectBackupInventoryTransferIntegrationTest {
 
     @Test
     fun `every item is prepared before storage opens without holding a database connection`() = runBlocking {
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         var reads = 0
         coEvery { origin.getInputStream(any()) } coAnswers {
             assertEquals(0, pool.activeConnections)
@@ -128,7 +128,7 @@ class ObjectBackupInventoryTransferIntegrationTest {
 
     @Test
     fun `failure leaves completed failed and pending items and retry resumes unfinished work`() = runBlocking {
-        val unavailable = mockk<ObjectStorageService>()
+        val unavailable = mockk<ManagedObjectStorageService>()
         coEvery { unavailable.getInputStream(any()) } throws IOException("media unavailable")
 
         assertFailsWith<IOException> { copy(sources = sources(mediaSource = unavailable)) }
@@ -141,7 +141,7 @@ class ObjectBackupInventoryTransferIntegrationTest {
         assertEquals(0, interrupted[third.revision]?.attempts)
 
         progressService = ObjectBackupProgressServiceImpl(provide())
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } coAnswers {
             assertEquals(third.key, firstArg<StringObjectPath>().toString())
             content.getInputStream(firstArg())
@@ -158,8 +158,8 @@ class ObjectBackupInventoryTransferIntegrationTest {
     @Test
     fun `a later unchanged inventory reuses completed output without source reads or writes`() = runBlocking {
         val completed = copy()
-        val contentOrigin = mockk<ObjectStorageService>()
-        val mediaOrigin = mockk<ObjectStorageService>()
+        val contentOrigin = mockk<ManagedObjectStorageService>()
+        val mediaOrigin = mockk<ManagedObjectStorageService>()
         val writes = mutableListOf<String>()
 
         val repeated = copy(
@@ -181,7 +181,7 @@ class ObjectBackupInventoryTransferIntegrationTest {
         val added = entry("content", "items/d", "d-1", "four")
         write(media, changed.key, "updated")
         write(content, added.key, "four")
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } coAnswers {
             assertEquals(added.key, firstArg<StringObjectPath>().toString())
             content.getInputStream(firstArg())
@@ -205,7 +205,7 @@ class ObjectBackupInventoryTransferIntegrationTest {
 
     @Test
     fun `cancellation propagates and leaves later inventory items pending`() = runBlocking {
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } coAnswers {
             currentCoroutineContext().cancel(CancellationException("inventory cancelled"))
             "two".byteInputStream()
@@ -224,7 +224,7 @@ class ObjectBackupInventoryTransferIntegrationTest {
 
     @Test
     fun `invalid manifests and destination identities fail before progress or storage writes`() = runBlocking {
-        val target = mockk<ObjectStorageService>()
+        val target = mockk<ManagedObjectStorageService>()
 
         assertFailsWith<IllegalArgumentException> { copy(inventory.copy(version = 2), target = target) }
         assertFailsWith<IllegalArgumentException> {
@@ -241,8 +241,8 @@ class ObjectBackupInventoryTransferIntegrationTest {
 
     @Test
     fun `unknown source stores are rejected before any intent or bytes are written`() = runBlocking {
-        val origin = mockk<ObjectStorageService>()
-        val target = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
+        val target = mockk<ManagedObjectStorageService>()
 
         val failure = assertFailsWith<IllegalArgumentException> {
             copy(sources = mapOf("content" to origin), target = target)
@@ -263,7 +263,7 @@ class ObjectBackupInventoryTransferIntegrationTest {
                 inventory.sourceId, "destination-1", inventory.scope, second.copy(sha256 = "0".repeat(64)),
             )
         }
-        val target = mockk<ObjectStorageService>()
+        val target = mockk<ManagedObjectStorageService>()
 
         assertFailsWith<IllegalArgumentException> { copy(target = target) }
 
@@ -275,7 +275,7 @@ class ObjectBackupInventoryTransferIntegrationTest {
     @Test
     fun `shared payload references copy bytes once and complete each logical item`() = runBlocking {
         val shared = second.copy(length = first.length, sha256 = first.sha256, payloadPath = first.payloadPath)
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         val writes = mutableListOf<String>()
 
         val result = copy(
@@ -292,7 +292,7 @@ class ObjectBackupInventoryTransferIntegrationTest {
 
     @Test
     fun `valid empty inventory completes without storage access or progress rows`() = runBlocking {
-        val target = mockk<ObjectStorageService>()
+        val target = mockk<ManagedObjectStorageService>()
 
         val result = copy(inventory.copy(objects = emptyList()), emptyMap(), target)
 
@@ -305,7 +305,7 @@ class ObjectBackupInventoryTransferIntegrationTest {
     @Test
     fun `caller list changes during transfer cannot alter the captured inventory`() = runBlocking {
         val objects = inventory.objects.toMutableList()
-        val origin = mockk<ObjectStorageService>()
+        val origin = mockk<ManagedObjectStorageService>()
         coEvery { origin.getInputStream(any()) } coAnswers {
             objects.clear()
             content.getInputStream(firstArg())
@@ -320,24 +320,24 @@ class ObjectBackupInventoryTransferIntegrationTest {
 
     private suspend fun copy(
         manifest: ObjectBackupManifest = inventory,
-        sources: Map<String, ObjectStorageService> = sources(),
-        target: ObjectStorageService = destination,
+        sources: Map<String, ManagedObjectStorageService> = sources(),
+        target: ManagedObjectStorageService = destination,
     ): List<ObjectBackupProgress> = ObjectBackupTransfer(sources, target).copy(
         manifest, "destination-1", progressService,
     )
 
     private fun sources(
-        contentSource: ObjectStorageService = content,
-        mediaSource: ObjectStorageService = media,
-    ): Map<String, ObjectStorageService> = mapOf("content" to contentSource, "media" to mediaSource)
+        contentSource: ManagedObjectStorageService = content,
+        mediaSource: ManagedObjectStorageService = media,
+    ): Map<String, ManagedObjectStorageService> = mapOf("content" to contentSource, "media" to mediaSource)
 
     private suspend fun persisted(): Map<String, ObjectBackupProgress> = withConnectionManager {
         progressService.list(BACKUP, inventory.sourceId, "destination-1", inventory.scope, 0, 100)
             .associateBy { it.payload.revision }
     }
 
-    private fun recordingDestination(writes: MutableList<String>): ObjectStorageService =
-        mockk<ObjectStorageService>().also { target ->
+    private fun recordingDestination(writes: MutableList<String>): ManagedObjectStorageService =
+        mockk<ManagedObjectStorageService>().also { target ->
             coEvery { target.getInputStream(any()) } coAnswers { destination.getInputStream(firstArg()) }
             coEvery { target.setInputStream(any(), any(), any()) } coAnswers {
                 writes.add(firstArg<StringObjectPath>().toString())
@@ -345,11 +345,11 @@ class ObjectBackupInventoryTransferIntegrationTest {
             }
         }
 
-    private fun storage(name: String): FileSystemObjectStorageService = FileSystemObjectStorageService(
+    private fun storage(name: String): ManagedFileSystemObjectStorageService = ManagedFileSystemObjectStorageService(
         "", "", mockk(), directory.resolve(name).toString(), mockk(),
     )
 
-    private suspend fun write(storage: ObjectStorageService, key: String, value: String) {
+    private suspend fun write(storage: ManagedObjectStorageService, key: String, value: String) {
         val bytes = value.toByteArray()
         storage.setInputStream(StringObjectPath(key), bytes.inputStream(), bytes.size.toLong())
     }

@@ -41,6 +41,7 @@ import bosca.sharedqueue.jobs.asCoroutineContext
 import bosca.sharedqueue.jobs.configuration.RegisterJobsConfiguration
 import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
 import bosca.storage.configuration.StorageConfiguration
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.test.resources.SharedNatsContainer
@@ -64,7 +65,7 @@ import kotlin.time.Duration.Companion.seconds
 internal class PostgresBackupPipelineFixture private constructor(
     private val nats: SharedNatsContainer,
     val queue: JobQueue,
-    private val staging: ObjectStorageService,
+    private val staging: ManagedObjectStorageService,
     private val json: Json,
     private val locks: NatsDistributedLockFactory,
 ) : AutoCloseable {
@@ -139,7 +140,7 @@ internal class PostgresBackupPipelineFixture private constructor(
         assertTrue(locks.forceRelease("job-${job.getId()}"))
     }
 
-    fun runner() = JobRunner(queue, 2, locks)
+    fun runner(observedQueue: JobQueue = queue) = JobRunner(observedQueue, 2, locks)
 
     suspend fun awaitComplete(id: UUID): PipelineRun = withTimeout(30_000) {
         var current = get(id)
@@ -171,7 +172,7 @@ internal class PostgresBackupPipelineFixture private constructor(
         ): PostgresBackupPipelineFixture {
             val json = application.json
             val nats = SharedNatsContainer().apply { start() }
-            var staging: ObjectStorageService? = null
+            var staging: ManagedObjectStorageService? = null
             try {
                 val natsPool = nats.newConnectionPool(1)
                 val locks = NatsDistributedLockFactory(natsPool)

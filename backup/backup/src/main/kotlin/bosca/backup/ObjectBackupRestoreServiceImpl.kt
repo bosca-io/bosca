@@ -4,7 +4,7 @@ import bosca.db.withConnectionManager
 import bosca.service.annotation.ServiceImplementation
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -20,8 +20,8 @@ class ObjectBackupRestoreServiceImpl(
 ) : ObjectBackupRestoreService {
     override suspend fun inspect(
         path: ObjectPath,
-        backup: ObjectStorageService,
-        destinations: Map<String, ObjectStorageService>,
+        backup: ManagedObjectStorageService,
+        destinations: Map<String, ManagedObjectStorageService>,
         destinationId: String,
     ): ObjectBackupRestoreInspection {
         require(destinationId.isNotBlank()) {
@@ -33,8 +33,8 @@ class ObjectBackupRestoreServiceImpl(
 
     override suspend fun inspect(
         inventory: ObjectBackupManifest,
-        backup: ObjectStorageService,
-        destinations: Map<String, ObjectStorageService>,
+        backup: ManagedObjectStorageService,
+        destinations: Map<String, ManagedObjectStorageService>,
         destinationId: String,
     ): ObjectBackupRestoreInspection {
         require(destinationId.isNotBlank()) {
@@ -69,8 +69,8 @@ class ObjectBackupRestoreServiceImpl(
 
     override suspend fun restore(
         path: ObjectPath,
-        backup: ObjectStorageService,
-        destinations: Map<String, ObjectStorageService>,
+        backup: ManagedObjectStorageService,
+        destinations: Map<String, ManagedObjectStorageService>,
         destinationId: String,
     ): ObjectBackupManifest {
         val targets = destinations.toMap()
@@ -80,8 +80,8 @@ class ObjectBackupRestoreServiceImpl(
 
     override suspend fun restore(
         inventory: ObjectBackupManifest,
-        backup: ObjectStorageService,
-        destinations: Map<String, ObjectStorageService>,
+        backup: ManagedObjectStorageService,
+        destinations: Map<String, ManagedObjectStorageService>,
         destinationId: String,
     ): ObjectBackupManifest {
         val targets = destinations.toMap()
@@ -91,8 +91,8 @@ class ObjectBackupRestoreServiceImpl(
 
     private suspend fun restoreInventory(
         inspection: ObjectBackupRestoreInspection,
-        backup: ObjectStorageService,
-        targets: Map<String, ObjectStorageService>,
+        backup: ManagedObjectStorageService,
+        targets: Map<String, ManagedObjectStorageService>,
         destinationId: String,
     ): ObjectBackupManifest {
         val inventory = inspection.inventory
@@ -131,9 +131,9 @@ class ObjectBackupRestoreServiceImpl(
 
     private fun validateDestinations(
         required: List<BackupObject>,
-        destinations: Map<String, ObjectStorageService>,
+        destinations: Map<String, ManagedObjectStorageService>,
     ) {
-        val physicalKeys = IdentityHashMap<ObjectStorageService, MutableSet<String>>()
+        val physicalKeys = IdentityHashMap<ManagedObjectStorageService, MutableSet<String>>()
 
         for (entry in required) {
             entry.validate()
@@ -147,7 +147,7 @@ class ObjectBackupRestoreServiceImpl(
     }
 
     private suspend fun inspectTarget(
-        destination: ObjectStorageService,
+        destination: ManagedObjectStorageService,
         payload: BackupObject,
     ): ObjectBackupRestoreObjectStatus = withContext(Dispatchers.IO) {
         try {

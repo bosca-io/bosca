@@ -1,7 +1,7 @@
 package bosca.backup
 
 import bosca.service.Service
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import java.nio.file.Path
 
 /** Captures and transfers standalone native PostgreSQL artifacts. Object recovery is separate. */
@@ -51,12 +51,12 @@ interface PostgresBackupService : Service {
      * input and exclusive destination access. Matching saved intent permits reuse/repair; completion
      * is published only after retained verification. Failure preserves retryable retained intent.
      */
-    suspend fun upload(directory: Path, backup: ObjectStorageService, prefix: String): PostgresBackupManifest
+    suspend fun upload(directory: Path, backup: ManagedObjectStorageService, prefix: String): PostgresBackupManifest
 
     /**
      * Downloads a completed retained artifact into a new local directory, verifying its native header,
      * length and digest before publication. Needs no source database or PostgreSQL tools. The caller
      * owns immutable retained input; failed unpublished downloads are cleaned without changing backup.
      */
-    suspend fun download(backup: ObjectStorageService, prefix: String, directory: Path): PostgresBackupManifest
+    suspend fun download(backup: ManagedObjectStorageService, prefix: String, directory: Path): PostgresBackupManifest
 }

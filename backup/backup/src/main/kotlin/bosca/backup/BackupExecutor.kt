@@ -3,16 +3,15 @@ package bosca.backup
 import bosca.content.collection.service.CollectionService
 import bosca.content.metadata.model.MetadataInput
 import bosca.content.metadata.service.MetadataService
+import bosca.db.ConnectionPool
 import bosca.db.connection
 import bosca.db.withConnectionManager
 import bosca.di.provide
 import bosca.queue.annotations.JobDefinition
 import bosca.sharedqueue.jobs.AbstractJobExecutor
-import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.download
 import bosca.storage.service.upload
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -122,8 +121,6 @@ class BackupExecutor : AbstractJobExecutor<BackupJob>(BackupJob.serializer()) {
             }
 
             log.info("Backup {} completed successfully, metadata {}", jobDef.backupId, metadata.id)
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: Exception) {
             log.error("Backup failed for {}", jobDef.backupId, e)
             withConnectionManager {
@@ -218,11 +215,16 @@ class BackupExecutor : AbstractJobExecutor<BackupJob>(BackupJob.serializer()) {
                 if (metadata.contentType == BACKUP_CONTENT_TYPE) continue
 
                 // Export primary content
-                if (metadata.uploaded != null) {
-                    val entryPath = "files/metadata/${metadata.id}/${metadata.version}/content"
-                    zip.putNextEntry(ZipEntry(entryPath))
-                    objectStorage.download(metadata).use { it.copyTo(zip) }
-                    zip.closeEntry()
+                val contentLength = metadata.contentLength
+                if (metadata.uploaded != null && contentLength != null && contentLength > 0) {
+                    try {
+                        val entryPath = "files/metadata/${metadata.id}/${metadata.version}/content"
+                        zip.putNextEntry(ZipEntry(entryPath))
+                        objectStorage.download(metadata).use { it.copyTo(zip) }
+                        zip.closeEntry()
+                    } catch (e: Exception) {
+                        log.warn("Skipping missing file for metadata {}", metadata.id, e)
+                    }
                 }
 
                 // Export supplementary files
@@ -231,10 +233,14 @@ class BackupExecutor : AbstractJobExecutor<BackupJob>(BackupJob.serializer()) {
                 }
                 for (supp in supplementaries) {
                     if (supp.uploaded != null) {
-                        val entryPath = "files/metadata/${metadata.id}/${metadata.version}/supplementary/${supp.id}"
-                        zip.putNextEntry(ZipEntry(entryPath))
-                        objectStorage.download(metadata, supp.id).use { it.copyTo(zip) }
-                        zip.closeEntry()
+                        try {
+                            val entryPath = "files/metadata/${metadata.id}/${metadata.version}/supplementary/${supp.id}"
+                            zip.putNextEntry(ZipEntry(entryPath))
+                            objectStorage.download(metadata, supp.id).use { it.copyTo(zip) }
+                            zip.closeEntry()
+                        } catch (e: Exception) {
+                            log.warn("Skipping missing supplementary {} for metadata {}", supp.id, metadata.id, e)
+                        }
                     }
                 }
             }
@@ -261,17 +267,14 @@ class BackupExecutor : AbstractJobExecutor<BackupJob>(BackupJob.serializer()) {
             if (batch.isEmpty()) break
 
             for (collection in batch) {
-                // Collections have no uploaded flag; only an absent primary object is optional.
-                val content = try {
-                    objectStorage.download(collection)
-                } catch (_: ObjectNotFoundException) {
-                    null
-                }
-                content?.use { input ->
+                // Export primary content if the collection has any
+                try {
                     val entryPath = "files/collection/${collection.id}/content"
                     zip.putNextEntry(ZipEntry(entryPath))
-                    input.copyTo(zip)
+                    objectStorage.download(collection).use { it.copyTo(zip) }
                     zip.closeEntry()
+                } catch (_: Exception) {
+                    // Collections may not have primary content; skip silently
                 }
 
                 // Export supplementary files
@@ -280,10 +283,14 @@ class BackupExecutor : AbstractJobExecutor<BackupJob>(BackupJob.serializer()) {
                 }
                 for (supp in supplementaries) {
                     if (supp.uploaded != null) {
-                        val entryPath = "files/collection/${collection.id}/supplementary/${supp.id}"
-                        zip.putNextEntry(ZipEntry(entryPath))
-                        objectStorage.download(collection, supp.id).use { it.copyTo(zip) }
-                        zip.closeEntry()
+                        try {
+                            val entryPath = "files/collection/${collection.id}/supplementary/${supp.id}"
+                            zip.putNextEntry(ZipEntry(entryPath))
+                            objectStorage.download(collection, supp.id).use { it.copyTo(zip) }
+                            zip.closeEntry()
+                        } catch (e: Exception) {
+                            log.warn("Skipping missing supplementary {} for collection {}", supp.id, collection.id, e)
+                        }
                     }
                 }
             }

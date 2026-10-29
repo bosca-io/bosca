@@ -19,9 +19,8 @@ import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageInfo
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
-import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
 import com.sun.net.httpserver.HttpServer
 import java.io.IOException
@@ -100,17 +99,17 @@ class ObjectBackupCaptureConfiguredIntegrationTest {
         StorageProviderRegistrar().register()
         val factory = provide<ObjectStorageServiceFactory>()
         val tracked = object : ObjectStorageServiceFactory by factory {
-            override suspend fun create(configuration: StorageConfiguration): ObjectStorageService {
+            override suspend fun create(configuration: StorageConfiguration): ManagedObjectStorageService {
                 assertEquals(0, pool.activeConnections)
                 val id = configuration.bucket ?: Path.of(checkNotNull(configuration.basePath)).fileName.toString()
                 if (id == failOpen) throw IOException("store open failed")
                 val actual = factory.create(configuration)
                 opened.add(id)
-                return object : ObjectStorageService by actual {
-                    override suspend fun getInputStream(path: ObjectPath, version: String): InputStream {
+                return object : ManagedObjectStorageService by actual {
+                    override suspend fun getInputStream(path: ObjectPath): InputStream {
                         assertEquals(0, pool.activeConnections)
                         if (id == cancelRead) currentCoroutineContext().cancel(CancellationException("capture cancelled"))
-                        return actual.getInputStream(path, version)
+                        return actual.getInputStream(path)
                     }
 
                     override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
@@ -128,7 +127,7 @@ class ObjectBackupCaptureConfiguredIntegrationTest {
 
             override suspend fun <T> withStorage(
                 configuration: StorageConfiguration,
-                block: suspend (ObjectStorageService) -> T,
+                block: suspend (ManagedObjectStorageService) -> T,
             ): T = create(configuration).use { block(it) }
         }
         provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) { tracked }
@@ -140,9 +139,11 @@ class ObjectBackupCaptureConfiguredIntegrationTest {
                     URLDecoder.decode(it.substringBefore('='), Charsets.UTF_8) to
                         URLDecoder.decode(it.substringAfter('=', ""), Charsets.UTF_8)
                 }
-                val version = query["versionId"]
-                val key = "${exchange.requestURI.path}@$version"
-                requests.add(key)
+                check(query["versionId"] == null) { "Capture reads current objects" }
+                val prefix = "${exchange.requestURI.path}@"
+                val key = data.keys.filter { it.startsWith(prefix) }.maxOrNull() ?: prefix + "v1"
+                val version = key.substringAfterLast('@')
+                if (exchange.requestMethod == "GET") requests.add(key)
                 signatures.add(exchange.requestHeaders.getFirst("Authorization").orEmpty())
                 val value = data[key]
                 val status = if (exchange.requestURI.path == failRead) 403 else if (value == null) 404 else 200
@@ -150,8 +151,12 @@ class ObjectBackupCaptureConfiguredIntegrationTest {
                     "<Error><Code>${if (status == 404) "NoSuchVersion" else "AccessDenied"}</Code></Error>"
                 if (status == 200) exchange.responseHeaders.add("x-amz-version-id", version)
                 val bytes = response.toByteArray()
-                exchange.sendResponseHeaders(status, bytes.size.toLong())
-                exchange.responseBody.write(bytes)
+                exchange.responseHeaders.add("Content-Length", bytes.size.toString())
+                if (exchange.requestMethod == "HEAD") exchange.sendResponseHeaders(status, -1)
+                else {
+                    exchange.sendResponseHeaders(status, bytes.size.toLong())
+                    exchange.responseBody.write(bytes)
+                }
             }
         }
         server.start()
@@ -318,7 +323,7 @@ class ObjectBackupCaptureConfiguredIntegrationTest {
     }
 
     @Test
-    fun `configured capture performs signed exact-version reads and closes every opened store`(): Unit = runBlocking {
+    fun `configured capture performs signed current-object reads and closes every opened store`(): Unit = runBlocking {
         val plan = configured()
         val result = service.captureConfigured(plan.key, configurations, OffsetDateTime.MIN)
         assertEquals(2, result.objects.size)

@@ -8,10 +8,7 @@ import bosca.di.ObjectProvider
 import bosca.git.service.SourceRefService
 import bosca.security.model.AuthenticatedPrincipal
 import bosca.serialization.UUID
-import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
-import bosca.storage.service.ObjectStorageEntry
-import bosca.storage.service.ObjectStorageInfo
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.SignedUrl
 import kotlinx.serialization.json.Json
@@ -36,16 +33,6 @@ internal class InMemoryObjectStorageService : ObjectStorageService {
 
     private val objects = ConcurrentHashMap<String, ByteArray>()
 
-    override suspend fun listObjects(prefix: String, offset: Long, limit: Int): List<ObjectStorageEntry> {
-        require(offset >= 0 && limit > 0)
-        val entries = objects.entries.filter { it.key.startsWith(prefix) }.sortedBy { it.key }
-        return entries.asSequence().filterIndexed { index, _ -> index.toLong() >= offset }.take(limit)
-            .map { ObjectStorageEntry(it.key, ObjectStorageInfo(it.value.size.toLong())) }.toList()
-    }
-
-    override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo =
-        objects[path.toString()]?.let { ObjectStorageInfo(it.size.toLong()) } ?: throw ObjectNotFoundException(path)
-
     override suspend fun getPath(metadata: Metadata, supplementaryId: UUID?): ObjectPath =
         error("not supported in tests")
 
@@ -57,9 +44,6 @@ internal class InMemoryObjectStorageService : ObjectStorageService {
 
     override suspend fun getInputStream(path: ObjectPath): InputStream =
         objects[path.toString()]?.inputStream() ?: error("no object at $path")
-
-    override suspend fun getInputStream(path: ObjectPath, version: String): InputStream =
-        throw UnsupportedOperationException("This test store does not retain object versions")
 
     override suspend fun getInputStreamRange(path: ObjectPath, range: LongRange): InputStream =
         error("not supported in tests")

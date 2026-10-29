@@ -16,9 +16,9 @@ import bosca.di.provide
 import bosca.di.provides
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
-import bosca.storage.service.FileSystemObjectStorageService
+import bosca.storage.service.ManagedFileSystemObjectStorageService
 import bosca.storage.service.ObjectNotFoundException
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
 import io.mockk.coEvery
@@ -59,9 +59,9 @@ class ObjectBackupRestoreRunIntegrationTest {
     private lateinit var service: ObjectBackupRunService
     private lateinit var progress: ObjectBackupProgressService
     private lateinit var directory: Path
-    private lateinit var backup: FileSystemObjectStorageService
-    private lateinit var target: FileSystemObjectStorageService
-    private lateinit var source: FileSystemObjectStorageService
+    private lateinit var backup: ManagedFileSystemObjectStorageService
+    private lateinit var target: ManagedFileSystemObjectStorageService
+    private lateinit var source: ManagedFileSystemObjectStorageService
     private lateinit var legacyKey: String
     private val path = "manifests/recovery.json"
     private val first = entry("items/a", "data")
@@ -298,7 +298,7 @@ class ObjectBackupRestoreRunIntegrationTest {
         val cancelled = assertNotNull(request { service.get(run.key) })
         assertEquals(ObjectBackupRunStatus.CANCELLED, cancelled.status)
         assertEquals(summary(completed = 1, failed = 1), cancelled.result)
-        val unavailable = mockk<ObjectStorageService>()
+        val unavailable = mockk<ManagedObjectStorageService>()
         assertEquals(cancelled, service.executeRestore(run.key, unavailable, mapOf("content" to unavailable)))
         coVerify(exactly = 0) { unavailable.getInputStream(any()) }
         request { service.retry(run.key, cancelled.version) }
@@ -310,7 +310,7 @@ class ObjectBackupRestoreRunIntegrationTest {
     fun `queued cancellation returns its historical outcome without storage access`(): Unit = runBlocking {
         val run = prepare()
         val cancelled = request { service.cancel(run.key, run.version, "operator cancelled") }
-        val unavailable = mockk<ObjectStorageService>()
+        val unavailable = mockk<ManagedObjectStorageService>()
 
         assertEquals(cancelled, service.executeRestore(run.key, unavailable, emptyMap()))
         assertEquals(summary(pending = 2), cancelled.result)
@@ -324,7 +324,7 @@ class ObjectBackupRestoreRunIntegrationTest {
         val completed = execute(run)
         val checkpoint = request { service.items(run.key, 0, 10) }.first()
         request { progress.invalidate(checkpoint.key, checkpoint.version, "later loss") }
-        val unavailable = mockk<ObjectStorageService>()
+        val unavailable = mockk<ManagedObjectStorageService>()
 
         assertEquals(completed, service.executeRestore(run.key, unavailable, emptyMap()))
         assertEquals(summary(completed = 2), completed.result)
@@ -386,7 +386,7 @@ class ObjectBackupRestoreRunIntegrationTest {
     fun `wrong-operation execution rejects both directions without starting a run`(): Unit = runBlocking {
         val restore = prepare()
         val copy = request { service.prepare(inventory, "destination-1") }
-        val unavailable = mockk<ObjectStorageService>()
+        val unavailable = mockk<ManagedObjectStorageService>()
 
         assertFailsWith<IllegalArgumentException> { service.execute(restore.key, emptyMap(), unavailable) }
         assertFailsWith<IllegalArgumentException> { service.executeRestore(copy.key, unavailable, emptyMap()) }
@@ -422,7 +422,7 @@ class ObjectBackupRestoreRunIntegrationTest {
         val laterInventory = inventory.copy(id = "later")
         save(laterInventory)
         val later = prepare(laterInventory)
-        val unavailable = mockk<ObjectStorageService>()
+        val unavailable = mockk<ManagedObjectStorageService>()
         coEvery { unavailable.getInputStream(any()) } throws IOException("target unavailable")
         assertFailsWith<IOException> { execute(later, unavailable) }
         assertEquals(ObjectBackupRunStatus.PARTIAL, request { service.get(later.key) }?.status)
@@ -500,7 +500,7 @@ class ObjectBackupRestoreRunIntegrationTest {
         val selected = inventory.copy(objects = emptyList())
         save(selected)
         val run = prepare(selected)
-        val destination = mockk<ObjectStorageService>()
+        val destination = mockk<ManagedObjectStorageService>()
 
         val completed = execute(run, destination)
 
@@ -514,7 +514,7 @@ class ObjectBackupRestoreRunIntegrationTest {
         manifestPath: String = path,
     ): ObjectBackupRun = request { service.prepareRestore(selected, "destination-1", manifestPath) }
 
-    private suspend fun execute(run: ObjectBackupRun, destination: ObjectStorageService = target): ObjectBackupRun =
+    private suspend fun execute(run: ObjectBackupRun, destination: ManagedObjectStorageService = target): ObjectBackupRun =
         service.executeRestore(run.key, backup, mapOf("content" to destination))
 
     private suspend fun <T> request(block: suspend () -> T): T = withConnectionManager(block)
@@ -529,27 +529,27 @@ class ObjectBackupRestoreRunIntegrationTest {
         ObjectBackupManifestStore(backup, Json).save(StringObjectPath(path), selected)
     }
 
-    private fun delegate(storage: ObjectStorageService): ObjectStorageService =
-        mockk<ObjectStorageService>().also { value ->
+    private fun delegate(storage: ManagedObjectStorageService): ManagedObjectStorageService =
+        mockk<ManagedObjectStorageService>().also { value ->
             coEvery { value.getInputStream(any()) } coAnswers { storage.getInputStream(firstArg()) }
             coEvery { value.setInputStream(any(), any(), any()) } coAnswers {
                 storage.setInputStream(firstArg(), secondArg(), thirdArg())
             }
         }
 
-    private fun storage(name: String): FileSystemObjectStorageService = FileSystemObjectStorageService(
+    private fun storage(name: String): ManagedFileSystemObjectStorageService = ManagedFileSystemObjectStorageService(
         "", "", mockk(), directory.resolve(name).toString(), mockk(),
     )
 
-    private suspend fun write(storage: ObjectStorageService, key: String, value: String) {
+    private suspend fun write(storage: ManagedObjectStorageService, key: String, value: String) {
         val bytes = value.toByteArray()
         storage.setInputStream(StringObjectPath(key), bytes.inputStream(), bytes.size.toLong())
     }
 
-    private suspend fun read(storage: ObjectStorageService, key: String): String =
+    private suspend fun read(storage: ManagedObjectStorageService, key: String): String =
         storage.getInputStream(StringObjectPath(key)).use { it.readBytes().decodeToString() }
 
-    private suspend fun assertMissing(storage: ObjectStorageService, key: String) {
+    private suspend fun assertMissing(storage: ManagedObjectStorageService, key: String) {
         assertFailsWith<ObjectNotFoundException> { storage.getInputStream(StringObjectPath(key)) }
     }
 

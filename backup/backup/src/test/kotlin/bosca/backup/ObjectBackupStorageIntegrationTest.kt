@@ -16,7 +16,7 @@ import bosca.di.provides
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.storage.configuration.StorageConfiguration
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
@@ -333,7 +333,7 @@ class ObjectBackupStorageIntegrationTest {
         val factory = object : ObjectStorageServiceFactory by actualFactory {
             override suspend fun <T> withStorage(
                 configuration: StorageConfiguration,
-                block: suspend (ObjectStorageService) -> T,
+                block: suspend (ManagedObjectStorageService) -> T,
             ): T {
                 assertEquals(0, pool.activeConnections)
                 assertEquals(first.toFile().canonicalPath, configuration.basePath)
@@ -369,7 +369,7 @@ class ObjectBackupStorageIntegrationTest {
         try {
             val configuration = s3().copy(endpoint = "http://127.0.0.1:${server.address.port}")
             for (failure in listOf(IOException("work failed"), CancellationException("work cancelled"))) {
-                lateinit var captured: ObjectStorageService
+                lateinit var captured: ManagedObjectStorageService
                 val selected = if (failure is CancellationException) configuration.copy(accessKeyId = "ROTATED_KEY") else configuration
                 val thrown = assertFailsWith<Exception> {
                     service.withStorage("backup", selected) {
@@ -401,7 +401,7 @@ class ObjectBackupStorageIntegrationTest {
 
     private suspend fun <T> request(block: suspend () -> T): T = withConnectionManager(block)
 
-    private suspend fun write(storage: ObjectStorageService, key: String, value: String) {
+    private suspend fun write(storage: ManagedObjectStorageService, key: String, value: String) {
         val bytes = value.toByteArray()
         storage.setInputStream(StringObjectPath(key), bytes.inputStream(), bytes.size.toLong())
     }

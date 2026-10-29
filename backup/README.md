@@ -30,8 +30,9 @@ New, changed and unfinished objects are copied; unchanged retained objects reuse
 verified payloads. Retries use saved selections and checkpoints. Full checksum
 rechecks can be scheduled with **Checksum recheck interval (days)**.
 
-No provider versioning is required. Unversioned capture compares the observed
-length, entity tag and modification time around reads. A source object that changes
+Capture reads current objects and compares the observed length, entity tag,
+modification time and available provider identity around reads. No provider
+versioning is required. A source object that changes
 before it is copied fails that selection; start a new capture to select its new state.
 A failure remains visible in Pipeline history, and completed payloads survive retries.
 
@@ -194,8 +195,8 @@ location. Replacing the database may discard prior restore progress; actual matc
 target bytes still avoid another copy. Finish database replacement before preparing
 new object work, and keep the progress database stable for that restore attempt.
 
-Before serving traffic, check representative images, supplementary files, logical
-historical versions, collections, documents, relationships and permissions. Verify
+Before serving traffic, check representative images, supplementary files, collections,
+documents, relationships and permissions. Verify
 that encrypted configuration can be read with the restored keys. Record both backup
 identities, their times, the object run outcome and any missing content. A completed
 object run reports only the objects selected by its manifest.

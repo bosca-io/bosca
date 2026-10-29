@@ -41,7 +41,8 @@ import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.sharedqueue.jobs.JobQueue
 import bosca.sharedqueue.jobs.JobQueueFactory
-import bosca.storage.service.FileSystemObjectStorageService
+import bosca.storage.service.ManagedFileSystemObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
@@ -71,8 +72,8 @@ abstract class ObjectBackupGraphQLTest {
     private lateinit var graphql: ObjectBackupQueryTestService
     protected lateinit var directory: Path
     private lateinit var application: BoscaApplication
-    protected lateinit var source: FileSystemObjectStorageService
-    protected lateinit var destination: FileSystemObjectStorageService
+    protected lateinit var source: ManagedFileSystemObjectStorageService
+    protected lateinit var destination: ManagedFileSystemObjectStorageService
     protected lateinit var run: ObjectBackupRun
     protected lateinit var json: Json
     protected val first = entry("items/a", "data")
@@ -108,7 +109,7 @@ abstract class ObjectBackupGraphQLTest {
         provides<GroupEvaluator> { GroupEvaluator(mockk()) }
         provides<MetadataService> { mockk() }
         StorageProviderRegistrar().register()
-        val objectStorage = mockk<ObjectStorageService>()
+        val objectStorage = mockk<ManagedObjectStorageService>()
         provides<ObjectStorageService>(overrideExisting = true) { objectStorage }
         registerQueue()
         BackupProviderRegistrar().register()
@@ -186,11 +187,11 @@ abstract class ObjectBackupGraphQLTest {
         }
     }
 
-    protected fun storage(name: String): FileSystemObjectStorageService = FileSystemObjectStorageService(
+    protected fun storage(name: String): ManagedFileSystemObjectStorageService = ManagedFileSystemObjectStorageService(
         "", "", mockk(), directory.resolve(name).toString(), mockk(),
     )
 
-    protected suspend fun write(storage: ObjectStorageService, key: String, value: String) {
+    protected suspend fun write(storage: ManagedObjectStorageService, key: String, value: String) {
         val bytes = value.toByteArray()
         storage.setInputStream(StringObjectPath(key), bytes.inputStream(), bytes.size.toLong())
     }

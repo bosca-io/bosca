@@ -12,7 +12,7 @@ interface ObjectStorageServiceFactory : Service {
      * Application-scoped callers should close it during application shutdown. Bucket creation
      * is opt-in through [StorageConfiguration.createBucket].
      */
-    suspend fun create(configuration: StorageConfiguration): ObjectStorageService
+    suspend fun create(configuration: StorageConfiguration): ManagedObjectStorageService
 
     /**
      * Opens the configured store and runs [block] on the storage I/O dispatcher.
@@ -24,6 +24,6 @@ interface ObjectStorageServiceFactory : Service {
      */
     suspend fun <T> withStorage(
         configuration: StorageConfiguration,
-        block: suspend (ObjectStorageService) -> T,
+        block: suspend (ManagedObjectStorageService) -> T,
     ): T
 }

@@ -16,7 +16,7 @@ import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectPath
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
@@ -131,9 +131,9 @@ class ObjectBackupJobCheckpointIntegrationTest {
             object : ObjectStorageServiceFactory by factory {
                 override suspend fun <T> withStorage(
                     configuration: StorageConfiguration,
-                    block: suspend (ObjectStorageService) -> T,
+                    block: suspend (ManagedObjectStorageService) -> T,
                 ): T = factory.withStorage(configuration) { actual ->
-                    block(object : ObjectStorageService by actual {
+                    block(object : ManagedObjectStorageService by actual {
                         override suspend fun getInputStream(path: ObjectPath): InputStream {
                             if (configuration.basePath == root.resolve("source").toString()) reads.add(path.toString())
                             return actual.getInputStream(path)
@@ -215,9 +215,9 @@ class ObjectBackupJobCheckpointIntegrationTest {
             object : ObjectStorageServiceFactory by actualFactory {
                 override suspend fun <T> withStorage(
                     configuration: StorageConfiguration,
-                    block: suspend (ObjectStorageService) -> T,
+                    block: suspend (ManagedObjectStorageService) -> T,
                 ): T = actualFactory.withStorage(configuration) { actual ->
-                    block(object : ObjectStorageService by actual {
+                    block(object : ManagedObjectStorageService by actual {
                         override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                             if (configuration.basePath == root.resolve(target).toString()) writes.add(path.toString())
                             return actual.setInputStream(path, stream, length)

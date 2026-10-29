@@ -4,7 +4,7 @@ import bosca.backup.graphql.ObjectBackupGraphQLTest
 import bosca.db.connection
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StringObjectPath
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -110,7 +110,7 @@ class ObjectBackupPayloadClaimIntegrationTest : ObjectBackupGraphQLTest() {
         val shared = first.copy(store = "media", key = "media/shared", revision = "shared-2")
         val declared = inventory.copy(id = "shared", sourceId = "source-2", scope = "other", objects = listOf(shared))
         val prepared = request { runs.prepare(declared, "destination-1") }
-        val unavailable = mockk<ObjectStorageService>()
+        val unavailable = mockk<ManagedObjectStorageService>()
         coEvery { unavailable.getInputStream(any()) } throws IllegalStateException("Source must not be read")
 
         val completed = runs.execute(prepared.key, mapOf("media" to unavailable), destination)

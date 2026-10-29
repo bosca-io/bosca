@@ -17,7 +17,7 @@ import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageInfo
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
@@ -41,7 +41,7 @@ class ObjectBackupTrackedManifestIntegrationTest {
     private lateinit var postgres: SharedPostgreSQLContainer
     private lateinit var pool: ConnectionPool
     private lateinit var directory: Path
-    private lateinit var storage: ObjectStorageService
+    private lateinit var storage: ManagedObjectStorageService
     private lateinit var progress: ObjectBackupProgressService
     private var reads = 0
     private var metadata = 0
@@ -71,7 +71,7 @@ class ObjectBackupTrackedManifestIntegrationTest {
         val filesystem = provide<ObjectStorageServiceFactory>().create(
             StorageConfiguration("fs", "", basePath = directory.toString()),
         )
-        storage = object : ObjectStorageService by filesystem {
+        storage = object : ManagedObjectStorageService by filesystem {
             override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
                 assertEquals(0, pool.activeConnections)
                 metadata++

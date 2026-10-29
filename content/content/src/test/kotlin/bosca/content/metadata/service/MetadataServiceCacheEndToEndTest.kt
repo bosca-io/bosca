@@ -1,11 +1,6 @@
 package bosca.content.metadata.service
 
 import bosca.cache.CacheManager
-import bosca.content.metadata.model.MetadataSupplementary
-import bosca.db.connection
-import bosca.db.use
-import kotlin.test.assertFailsWith
-import java.time.OffsetDateTime
 import bosca.cache.RequestCache
 import bosca.cache.RequestCacheSerializer
 import bosca.cache.RequestCacheSerializerImpl
@@ -23,13 +18,11 @@ import bosca.content.metadata.model.DataCollaboration
 import bosca.content.metadata.model.DataCollaborationInput
 import bosca.content.metadata.model.DataTemplateAttribute
 import bosca.content.metadata.model.Metadata
-import bosca.content.metadata.model.MetadataCacheKeyId
 import bosca.content.metadata.model.MetadataInput
 import bosca.content.metadata.model.MetadataType
 import bosca.events.DisabledEventManagerFilter
 import bosca.events.EventManager
 import bosca.events.asCoroutineContext
-import bosca.graphql.Batch
 import bosca.content.metadata.repository.MetadataCategoryRepositoryImpl
 import bosca.content.metadata.repository.MetadataPermissionRepositoryImpl
 import bosca.content.metadata.repository.MetadataProfileRepositoryImpl
@@ -89,7 +82,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -243,125 +235,6 @@ class MetadataServiceCacheEndToEndTest {
         }
         withContext(NonCancellable) {
             cm.release()
-        }
-    }
-
-    private suspend fun withVersionedMetadata(block: suspend (UUID) -> Unit) {
-        val id = UUID.random()
-        rawUpdate("""
-            insert into metadata (id, version, name, content_type, content_length, attributes, uploaded, ready, etag)
-            values (?, 7, 'Saved image', 'image/jpeg', 5, '{"caption":"Current"}', now(), now(), 'current-etag')
-        """.trimIndent(), id)
-        rawUpdate("""
-            insert into metadata_versions (id, version, name, content_type, content_length, attributes)
-            values (?, 6, 'Earlier image', 'image/png', 7, '{"caption":"Earlier"}')
-        """.trimIndent(), id)
-        try {
-            block(id)
-        } finally {
-            rawUpdate("delete from metadata where id = ?", id)
-        }
-    }
-
-    @Test
-    fun `versioned reads resolve mixed batch keys without replacing archived or missing versions`(): Unit = runBlocking {
-        withVersionedMetadata { id ->
-            val keys = listOf(
-                MetadataCacheKeyId(id), MetadataCacheKeyId(id, 7), MetadataCacheKeyId(id, 6),
-                MetadataCacheKeyId(id, 5), MetadataCacheKeyId(UUID.random(), 6),
-            )
-            repeat(2) {
-                withRequest {
-                    val batch = Batch<MetadataCacheKeyId, Metadata>(keys)
-                    service.getByIdBatched(batch)
-                    val results = batch.getResults()
-                    assertEquals(listOf(7, 7, 6, null, null), results.map { it?.version })
-                    assertEquals(listOf("Saved image", "Saved image", "Earlier image", null, null), results.map { it?.name })
-                    assertEquals(results[2], service.getById(id, 6))
-                    assertEquals(results[0], service.getById(id, null))
-                }
-            }
-        }
-    }
-
-    @Test
-    fun `versioned reads keep current and archived metadata separate across request caches`(): Unit = runBlocking {
-        withVersionedMetadata { id ->
-            repeat(2) {
-                withRequest {
-                    val current = assertNotNull(service.getById(id))
-                    assertEquals(current, service.getById(id, null))
-                    assertEquals(current, service.getById(id, 7))
-                    val archived = assertNotNull(service.getById(id, 6))
-                    assertEquals(id, archived.id)
-                    assertEquals(6, archived.version)
-                    assertEquals("Earlier image", archived.name)
-                    assertEquals("image/png", archived.contentType)
-                    assertEquals(7L, archived.contentLength)
-                    assertEquals(testJson.parseToJsonElement("""{"caption":"Earlier"}"""), archived.attributes)
-                    assertNull(archived.uploaded)
-                    assertNull(archived.ready)
-                    assertNull(archived.etag)
-                    assertEquals(archived, service.getById(id, 6))
-                    assertEquals("Saved image", assertNotNull(service.getById(id, 7)).name)
-                }
-            }
-            withRequest {
-                service.setName(id, "Renamed current")
-                assertEquals("Renamed current", assertNotNull(service.getById(id, null)).name)
-                assertEquals("Renamed current", assertNotNull(service.getById(id, 7)).name)
-                assertEquals("Earlier image", assertNotNull(service.getById(id, 6)).name)
-            }
-            withRequest {
-                assertEquals("Renamed current", assertNotNull(service.getById(id, 7)).name)
-                assertEquals("Earlier image", assertNotNull(service.getById(id, 6)).name)
-            }
-        }
-    }
-
-    @Test
-    fun `versioned reads return null for an absent logical version without substituting current metadata`(): Unit = runBlocking {
-        withVersionedMetadata { id ->
-            repeat(2) {
-                withRequest {
-                    for (version in listOf(0, 5, 8)) assertNull(service.getById(id, version))
-                    assertNull(service.getById(UUID.random(), 6))
-                    assertEquals(7, assertNotNull(service.getById(id, null)).version)
-                    assertEquals(7, assertNotNull(service.getById(id)).version)
-                }
-            }
-        }
-    }
-
-    @Test
-    fun `versioned reads retain current entity access controls and invalidate archived cache entries`(): Unit = runBlocking {
-        withVersionedMetadata { id ->
-            withRequest {
-                assertFalse(assertNotNull(service.getById(id, 6)).public)
-                val current = assertNotNull(service.getById(id))
-                service.setPublic(current, true)
-                service.setPublicContent(current, true)
-                service.setPublicSupplementary(current, true)
-                repository.setState(id, "published")
-                service.removeFromCache(id)
-                val archived = assertNotNull(service.getById(id, 6))
-                assertEquals(6, archived.version)
-                assertTrue(archived.public)
-                assertTrue(archived.publicContent)
-                assertTrue(archived.publicSupplementary)
-                assertTrue(archived.isPublished)
-                assertEquals("Earlier image", archived.name)
-                assertEquals(7, assertNotNull(repository.getById(id, 7)).version)
-                assertNull(repository.getById(id, 6))
-            }
-            withRequest {
-                val archived = assertNotNull(service.getById(id, 6))
-                assertTrue(archived.public)
-                repository.markDeleted(id)
-                service.removeFromCache(id)
-                assertTrue(assertNotNull(service.getById(id, 6)).deleted)
-                assertEquals(6, assertNotNull(service.getById(id, 6)).version)
-            }
         }
     }
 

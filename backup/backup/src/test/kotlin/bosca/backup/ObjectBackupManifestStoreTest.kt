@@ -1,9 +1,9 @@
 package bosca.backup
 
-import bosca.storage.service.FileSystemObjectStorageService
+import bosca.storage.service.ManagedFileSystemObjectStorageService
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StringObjectPath
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -29,7 +29,7 @@ import kotlin.test.assertTrue
 
 class ObjectBackupManifestStoreTest {
     private lateinit var directory: Path
-    private lateinit var storage: FileSystemObjectStorageService
+    private lateinit var storage: ManagedFileSystemObjectStorageService
     private lateinit var store: ObjectBackupManifestStore
     private val path = StringObjectPath("manifests/backup-1.json")
     private val data = "data".toByteArray()
@@ -42,7 +42,7 @@ class ObjectBackupManifestStoreTest {
     @BeforeTest
     fun setUp() {
         directory = createTempDirectory("bosca-object-backup-")
-        storage = FileSystemObjectStorageService("", "", mockk(), directory.toString(), mockk())
+        storage = ManagedFileSystemObjectStorageService("", "", mockk(), directory.toString(), mockk())
         store = ObjectBackupManifestStore(storage, Json)
     }
 
@@ -102,7 +102,7 @@ class ObjectBackupManifestStoreTest {
 
     @Test
     fun `invalid manifest destination fails before storage access`() = runTest {
-        val backend = mockk<ObjectStorageService>(relaxed = true)
+        val backend = mockk<ManagedObjectStorageService>(relaxed = true)
         assertFailsWith<IllegalArgumentException> {
             ObjectBackupManifestStore(backend, Json).save(StringObjectPath("../manifest.json"), manifest)
         }
@@ -120,7 +120,7 @@ class ObjectBackupManifestStoreTest {
 
     @Test
     fun `loading an inventory does not download object payloads`() = runTest {
-        val backend = mockk<ObjectStorageService>()
+        val backend = mockk<ManagedObjectStorageService>()
         coEvery { backend.getInputStream(path) } returns Json.encodeToString(ObjectBackupManifest.serializer(), manifest).byteInputStream()
 
         assertEquals(manifest, ObjectBackupManifestStore(backend, Json).load(path))
@@ -129,7 +129,7 @@ class ObjectBackupManifestStoreTest {
 
     @Test
     fun `shared payload is verified once`() = runTest {
-        val backend = mockk<ObjectStorageService>()
+        val backend = mockk<ManagedObjectStorageService>()
         coEvery { backend.getInputStream(any()) } answers { data.inputStream() }
         val shared = manifest.copy(objects = listOf(revision, revision.copy(revision = "revision-2")))
 
@@ -149,7 +149,7 @@ class ObjectBackupManifestStoreTest {
 
     @Test
     fun `cancelled payload read does not publish a manifest`() = runTest {
-        val backend = mockk<ObjectStorageService>(relaxed = true)
+        val backend = mockk<ManagedObjectStorageService>(relaxed = true)
         coEvery { backend.getInputStream(any()) } throws CancellationException("cancelled")
 
         assertFailsWith<CancellationException> { ObjectBackupManifestStore(backend, Json).save(path, manifest) }
@@ -167,7 +167,7 @@ class ObjectBackupManifestStoreTest {
             }
             override fun close() { closed = true; super.close() }
         }
-        val backend = mockk<ObjectStorageService>()
+        val backend = mockk<ManagedObjectStorageService>()
         coEvery { backend.getInputStream(any()) } returns input
         val large = manifest.copy(objects = listOf(revision.copy(length = bytes.size.toLong(), sha256 = digest(bytes))))
 
@@ -178,7 +178,7 @@ class ObjectBackupManifestStoreTest {
 
     @Test
     fun `payload read failure prevents publication`() = runTest {
-        val backend = mockk<ObjectStorageService>(relaxed = true)
+        val backend = mockk<ManagedObjectStorageService>(relaxed = true)
         coEvery { backend.getInputStream(any()) } returns object : InputStream() {
             override fun read(): Int = throw IOException("Read failed")
         }
@@ -188,7 +188,7 @@ class ObjectBackupManifestStoreTest {
 
     @Test
     fun `short manifest write cannot report success`() = runTest {
-        val backend = mockk<ObjectStorageService>()
+        val backend = mockk<ManagedObjectStorageService>()
         coEvery { backend.getInputStream(any()) } answers { data.inputStream() }
         coEvery { backend.setInputStream(any(), any(), any()) } returns 0
 
@@ -198,7 +198,7 @@ class ObjectBackupManifestStoreTest {
     @Test
     fun `an acknowledged manifest write must match its persisted inventory`() = runTest {
         writePayload(data)
-        val backend = object : ObjectStorageService by storage {
+        val backend = object : ManagedObjectStorageService by storage {
             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                 val consumed = stream.readBytes()
                 val different = manifest.copy(id = "different")

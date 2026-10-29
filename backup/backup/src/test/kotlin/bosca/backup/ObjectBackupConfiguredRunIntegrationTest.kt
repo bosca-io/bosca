@@ -17,7 +17,7 @@ import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectPath
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
@@ -469,7 +469,7 @@ class ObjectBackupConfiguredRunIntegrationTest {
         val tracked = object : ObjectStorageServiceFactory by factory {
             override suspend fun <T> withStorage(
                 configuration: StorageConfiguration,
-                block: suspend (ObjectStorageService) -> T,
+                block: suspend (ManagedObjectStorageService) -> T,
             ): T {
                 val key = Path.of(requireNotNull(configuration.basePath)).fileName.toString()
                 return try {
@@ -538,7 +538,7 @@ class ObjectBackupConfiguredRunIntegrationTest {
             val tracked = object : ObjectStorageServiceFactory by factory {
                 override suspend fun <T> withStorage(
                     configuration: StorageConfiguration,
-                    block: suspend (ObjectStorageService) -> T,
+                    block: suspend (ManagedObjectStorageService) -> T,
                 ): T {
                     selected["source-content"] = StorageConfiguration(
                         "fs", "", basePath = directory.resolve("wrong").toString(),
@@ -571,7 +571,7 @@ class ObjectBackupConfiguredRunIntegrationTest {
         val tracked = object : ObjectStorageServiceFactory by factory {
             override suspend fun <T> withStorage(
                 configuration: StorageConfiguration,
-                block: suspend (ObjectStorageService) -> T,
+                block: suspend (ManagedObjectStorageService) -> T,
             ): T {
                 val key = Path.of(requireNotNull(configuration.basePath)).fileName.toString()
                 if (key == "source-content") throw failure
@@ -611,10 +611,10 @@ class ObjectBackupConfiguredRunIntegrationTest {
         val observed = object : ObjectStorageServiceFactory by factory {
             override suspend fun <T> withStorage(
                 configuration: StorageConfiguration,
-                block: suspend (ObjectStorageService) -> T,
+                block: suspend (ManagedObjectStorageService) -> T,
             ): T = factory.withStorage(configuration) { actual ->
                 val store = Path.of(requireNotNull(configuration.basePath)).fileName.toString()
-                block(object : ObjectStorageService by actual {
+                block(object : ManagedObjectStorageService by actual {
                     override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                         assertEquals(0, pool.activeConnections)
                         beforeWrite(store, path.toString())

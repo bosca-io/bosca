@@ -3,7 +3,7 @@ package bosca.backup
 import bosca.service.Service
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectStorageEntry
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import java.time.OffsetDateTime
 
 /** Captures selected source objects into independent storage without requiring provider versioning. */
@@ -109,8 +109,8 @@ interface ObjectBackupCaptureService : Service {
      */
     suspend fun captureInventory(
         key: String,
-        sources: Map<String, ObjectStorageService>,
-        destination: ObjectStorageService,
+        sources: Map<String, ManagedObjectStorageService>,
+        destination: ManagedObjectStorageService,
         verifiedSince: OffsetDateTime?,
     ): ObjectBackupManifest
 
@@ -132,8 +132,8 @@ interface ObjectBackupCaptureService : Service {
     suspend fun captureInventory(
         inventory: ObjectBackupCaptureInventory,
         destinationId: String,
-        sources: Map<String, ObjectStorageService>,
-        destination: ObjectStorageService,
+        sources: Map<String, ManagedObjectStorageService>,
+        destination: ManagedObjectStorageService,
         payloadPrefix: String,
         manifestPath: String,
         verifiedSince: OffsetDateTime?,
@@ -165,8 +165,8 @@ interface ObjectBackupCaptureService : Service {
         scope: String,
         store: String,
         entry: ObjectStorageEntry,
-        source: ObjectStorageService,
-        destination: ObjectStorageService,
+        source: ManagedObjectStorageService,
+        destination: ManagedObjectStorageService,
         payloadPath: String,
         verifiedSince: OffsetDateTime?,
     ): ObjectBackupProgress
@@ -195,8 +195,8 @@ interface ObjectBackupCaptureService : Service {
     suspend fun capture(
         store: String,
         entry: ObjectStorageEntry,
-        source: ObjectStorageService,
-        destination: ObjectStorageService,
+        source: ManagedObjectStorageService,
+        destination: ManagedObjectStorageService,
         payloadPath: String,
     ): BackupObject
 }

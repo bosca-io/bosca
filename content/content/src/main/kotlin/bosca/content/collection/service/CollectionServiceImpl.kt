@@ -264,7 +264,6 @@ class CollectionServiceImpl(
         return repository.getDeleted(offset, limit)
     }
 
-
     override suspend fun addLanguageVariantsToBatch(batch: Batch<CollectionCacheKeyId, List<CollectionLanguageVariant>>) {
         variantLanguageCache.addToBatch(batch)
     }

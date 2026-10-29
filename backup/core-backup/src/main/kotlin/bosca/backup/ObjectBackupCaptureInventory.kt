@@ -7,8 +7,8 @@ import kotlinx.serialization.Serializable
  * Selected source objects and their observed metadata, grouped by logical source store.
  *
  * This selection contains no verified digests and does not establish database recovery coverage.
- * Retries retain this selection. Unversioned objects use entity tags or modification times
- * to detect observed changes; these values do not freeze source bytes.
+ * Retries retain this selection. Provider observations detect changes to current objects;
+ * they do not freeze source bytes or select historical provider versions.
  */
 @Serializable
 data class ObjectBackupCaptureInventory(
@@ -23,7 +23,7 @@ data class ObjectBackupCaptureInventory(
         ObjectBackupManifest(id, sourceId, scope, created, emptyList()).validate()
         for ((store, entries) in stores) {
             require(store.isNotBlank()) { "Logical source store is required" }
-            val revisions = mutableSetOf<Pair<String, String?>>()
+            val keys = mutableSetOf<String>()
             for (entry in entries) {
                 require(entry.key.isNotBlank() && entry.key.split('/').all {
                     it.isNotEmpty() && it != "." && it != ".."
@@ -32,8 +32,8 @@ data class ObjectBackupCaptureInventory(
                 require(version != null || !entry.info.etag.isNullOrBlank() || entry.info.modified != null) {
                     "Source change metadata is required: $store/${entry.key}"
                 }
-                require(revisions.add(entry.key to version)) {
-                    "Duplicate selected source revision: $store/${entry.key}@$version"
+                require(keys.add(entry.key)) {
+                    "Duplicate selected source object: $store/${entry.key}"
                 }
             }
         }

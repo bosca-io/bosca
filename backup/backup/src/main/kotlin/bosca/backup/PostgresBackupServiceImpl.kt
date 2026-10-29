@@ -6,7 +6,7 @@ import bosca.db.withConnectionManager
 import bosca.di.ObjectProvider
 import bosca.server.BoscaApplication
 import bosca.service.annotation.ServiceImplementation
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StorageDispatcher
 import java.io.OutputStream
 import java.nio.file.Files
@@ -86,7 +86,7 @@ class PostgresBackupServiceImpl(
 
     override suspend fun upload(
         directory: Path,
-        backup: ObjectStorageService,
+        backup: ManagedObjectStorageService,
         prefix: String,
     ): PostgresBackupManifest = withContext(StorageDispatcher) {
         check(connectionOrNull()?.inTransaction != true) { "PostgreSQL upload must run outside an active caller transaction" }
@@ -95,7 +95,7 @@ class PostgresBackupServiceImpl(
     }
 
     override suspend fun download(
-        backup: ObjectStorageService,
+        backup: ManagedObjectStorageService,
         prefix: String,
         directory: Path,
     ): PostgresBackupManifest = withContext(StorageDispatcher) {

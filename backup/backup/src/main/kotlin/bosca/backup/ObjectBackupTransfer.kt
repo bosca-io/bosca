@@ -1,7 +1,7 @@
 package bosca.backup
 
 import bosca.db.withConnectionManager
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StringObjectPath
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -11,8 +11,8 @@ import kotlinx.coroutines.withContext
 
 /** Copies declared backup payloads from named source stores into one destination. */
 class ObjectBackupTransfer(
-    sources: Map<String, ObjectStorageService>,
-    private val destination: ObjectStorageService,
+    sources: Map<String, ManagedObjectStorageService>,
+    private val destination: ManagedObjectStorageService,
 ) {
     private val sources = sources.toMap()
 
@@ -121,7 +121,7 @@ class ObjectBackupTransfer(
             progressService.start(progress.key, progress.version)
         }
         return try {
-            copy(entry, sourceKey, null)
+            copy(entry, sourceKey)
             currentCoroutineContext().ensureActive()
 
             withConnectionManager {
@@ -156,18 +156,11 @@ class ObjectBackupTransfer(
      * Changed source bytes fail length/digest verification. Failed transfers may leave an
      * unverified payload for retry; they do not publish a manifest or a completed checkpoint.
      */
-    suspend fun copy(entry: BackupObject): Unit = copy(entry, entry.key, null)
-
-    /** Copies or reuses known bytes, reading exactly [version] if source access is needed. */
-    suspend fun copyVersion(entry: BackupObject, version: String) {
-        require(version.isNotBlank()) { "A retained provider object version is required" }
-        copy(entry, entry.key, version)
-    }
+    suspend fun copy(entry: BackupObject): Unit = copy(entry, entry.key)
 
     private suspend fun copy(
         entry: BackupObject,
         sourceKey: String,
-        sourceVersion: String?,
     ): Unit = withContext(Dispatchers.IO) {
         entry.validate()
         if (destination.hasVerifiedBackupPayload(entry)) return@withContext
@@ -177,11 +170,7 @@ class ObjectBackupTransfer(
         }
         val context = currentCoroutineContext()
         val input = BackupPayloadInputStream(
-            if (sourceVersion == null) {
-                source.getInputStream(StringObjectPath(sourceKey))
-            } else {
-                source.getInputStream(StringObjectPath(sourceKey), sourceVersion)
-            },
+            source.getInputStream(StringObjectPath(sourceKey)),
             entry,
             context,
         )

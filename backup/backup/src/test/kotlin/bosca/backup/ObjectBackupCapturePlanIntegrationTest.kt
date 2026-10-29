@@ -209,7 +209,6 @@ class ObjectBackupCapturePlanIntegrationTest {
         assertTrue(list().isEmpty())
     }
 
-
     private suspend fun prepare(
         inventory: ObjectBackupCaptureInventory = selected,
         destination: String = "retained",

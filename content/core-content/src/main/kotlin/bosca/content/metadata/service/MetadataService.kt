@@ -64,7 +64,6 @@ interface MetadataService : PermissionService<Metadata, UUID>, TransitioningServ
      */
     suspend fun getDeleted(offset: Long, limit: Int): List<Metadata>
 
-
     /**
      * Looks up a metadata entry by its identifier, returning the latest version.
      *
@@ -101,10 +100,6 @@ interface MetadataService : PermissionService<Metadata, UUID>, TransitioningServ
 
     /**
      * Looks up a metadata entry by its identifier and optional version number.
-     * An explicit version returns the matching current or retained archive record, never another version.
-     * Archived fields use the owning item's current visibility, publication, deletion and permission controls.
-     * History does not record upload/ready timestamps, ETags or source URL/status; those remain null.
-     * Other historical values reflect the fields actually retained in the archive.
      *
      * @param id the metadata identifier
      * @param version the specific version to retrieve, or null for the latest version
@@ -130,7 +125,6 @@ interface MetadataService : PermissionService<Metadata, UUID>, TransitioningServ
 
     /**
      * Registers a batch loader for efficiently fetching metadata entries by cache key.
-     * Each key's optional version follows [getById]; missing versions leave the batch entry empty.
      *
      * @param batch the batch accumulator to populate with metadata data
      */

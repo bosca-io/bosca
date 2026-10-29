@@ -13,7 +13,7 @@ import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectPath
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import java.io.InputStream
 import java.nio.file.Files
@@ -51,10 +51,10 @@ object ObjectBackupCheckpointWorker {
             object : ObjectStorageServiceFactory by factory {
                 override suspend fun <T> withStorage(
                     configuration: StorageConfiguration,
-                    block: suspend (ObjectStorageService) -> T,
+                    block: suspend (ManagedObjectStorageService) -> T,
                 ): T = factory.withStorage(configuration) { actual ->
                     val store = if (configuration.basePath != root.resolve(target).toString()) actual else
-                        object : ObjectStorageService by actual {
+                        object : ManagedObjectStorageService by actual {
                             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                                 if (nativeKey != null && path.toString().endsWith("/database.dump")) {
                                     actual.setInputStream(path, stream.readNBytes(10).inputStream(), 10)

@@ -2,8 +2,6 @@ package bosca.storage.service
 
 import bosca.di.ObjectProvider
 import bosca.security.service.SecurityService
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import software.amazon.awssdk.core.ResponseInputStream
 import software.amazon.awssdk.core.sync.RequestBody
@@ -17,11 +15,8 @@ import software.amazon.awssdk.services.s3.model.CreateMultipartUploadRequest
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.GetObjectResponse
-import software.amazon.awssdk.services.s3.model.HeadObjectRequest
 import software.amazon.awssdk.services.s3.model.ListMultipartUploadsRequest
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.ListPartsRequest
-import software.amazon.awssdk.services.s3.model.NoSuchBucketException
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException
 import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.model.UploadPartCopyRequest
@@ -31,7 +26,6 @@ import java.io.ByteArrayInputStream
 import java.io.FilterInputStream
 import java.io.InputStream
 import java.security.MessageDigest
-import java.time.ZoneOffset
 
 class S3ObjectStorageService(
     private val bucket: String,
@@ -42,111 +36,11 @@ class S3ObjectStorageService(
     securityService: ObjectProvider<SecurityService>
 ) : AbstractObjectStorageService(urlPrefix, urlUploadPrefix, urlSigner, securityService) {
 
-    override fun close() = client.close()
-
-    override suspend fun listObjects(prefix: String, offset: Long, limit: Int): List<ObjectStorageEntry> {
-        require(offset >= 0) { "Object listing offset must not be negative" }
-        require(limit > 0) { "Object listing limit must be positive" }
-        return withContext(StorageDispatcher) {
-            val entries = mutableListOf<ObjectStorageEntry>()
-            val seenTokens = mutableSetOf<String>()
-            var token: String? = null
-            var skip = offset
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                val pageSize = if (skip >= 1000) 1000 else minOf(1000L, skip + (limit - entries.size)).toInt()
-                val request = ListObjectsV2Request.builder()
-                    .bucket(bucket)
-                    .prefix(prefix)
-                    .continuationToken(token)
-                    .maxKeys(pageSize)
-                    .build()
-                val page = client.listObjectsV2(request)
-                for (entry in page.contents()) {
-                    currentCoroutineContext().ensureActive()
-                    if (skip > 0) {
-                        skip--
-                        continue
-                    }
-                    val key = checkNotNull(entry.key()) { "Listed object key is missing" }
-                    require(key.startsWith(prefix)) { "Listed object is outside the requested prefix: $key" }
-                    entries.add(
-                        ObjectStorageEntry(
-                            key,
-                            ObjectStorageInfo(
-                                length = checkNotNull(entry.size()) { "Listed object length is missing: $key" },
-                                etag = entry.eTag()?.takeIf { it.isNotBlank() },
-                                modified = entry.lastModified()?.atOffset(ZoneOffset.UTC),
-                            ),
-                        ),
-                    )
-                    if (entries.size == limit) return@withContext entries
-                }
-                if (page.isTruncated() != true) break
-                val next = checkNotNull(page.nextContinuationToken()?.takeIf { it.isNotBlank() }) {
-                    "Truncated object listing has no continuation token"
-                }
-                check(seenTokens.add(next)) { "Object listing repeated a continuation token" }
-                token = next
-            }
-            entries
-        }
-    }
-
-    override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo = withContext(StorageDispatcher) {
-        val response = try {
-            client.headObject(HeadObjectRequest.builder().bucket(bucket).key(path.toString()).build())
-        } catch (failure: S3Exception) {
-            val missingBucket = failure is NoSuchBucketException || failure.awsErrorDetails()?.errorCode() == "NoSuchBucket"
-            if (failure.statusCode() == 404 && !missingBucket) throw ObjectNotFoundException(path, failure)
-            throw failure
-        }
-        ObjectStorageInfo(
-            length = checkNotNull(response.contentLength()) { "Object length is missing: $path" },
-            etag = response.eTag()?.takeIf { it.isNotBlank() },
-            version = response.versionId()?.takeIf { it.isNotBlank() && it != "null" },
-            modified = response.lastModified()?.atOffset(ZoneOffset.UTC),
-        )
-    }
-
     override suspend fun getInputStream(path: ObjectPath): InputStream = openOnStorageDispatcher {
         try {
             AbortOnEarlyCloseInputStream(client.getObject(GetObjectRequest.builder().bucket(bucket).key(path.toString()).build()))
         } catch (e: NoSuchKeyException) {
             throw ObjectNotFoundException(path, e)
-        }
-    }
-
-    override suspend fun getInputStream(path: ObjectPath, version: String): InputStream {
-        require(version.isNotBlank() && version != "null") { "An immutable S3 object version is required" }
-        return openOnStorageDispatcher {
-            val response = try {
-                client.getObject(
-                    GetObjectRequest.builder()
-                        .bucket(bucket)
-                        .key(path.toString())
-                        .versionId(version)
-                        .build(),
-                )
-            } catch (failure: S3Exception) {
-                val missingBucket = failure is NoSuchBucketException ||
-                    failure.awsErrorDetails()?.errorCode() == "NoSuchBucket"
-                if (failure.statusCode() == 404 && !missingBucket) throw ObjectNotFoundException(path, failure)
-                throw failure
-            }
-            try {
-                check(response.response().versionId() == version) {
-                    "Object response does not match the requested version"
-                }
-                AbortOnEarlyCloseInputStream(response)
-            } catch (failure: Throwable) {
-                try {
-                    response.abort()
-                } catch (abortFailure: Throwable) {
-                    failure.addSuppressed(abortFailure)
-                }
-                throw failure
-            }
         }
     }
 
@@ -170,11 +64,9 @@ class S3ObjectStorageService(
         val buffer = ByteArray(partSize)
         try {
             while (true) {
-                currentCoroutineContext().ensureActive()
                 var bytesReadTotal = 0
                 // Read up to partSize bytes into buffer
                 while (bytesReadTotal < partSize) {
-                    currentCoroutineContext().ensureActive()
                     val read = stream.read(buffer, bytesReadTotal, partSize - bytesReadTotal)
                     if (read == -1) break
                     bytesReadTotal += read
@@ -212,7 +104,6 @@ class S3ObjectStorageService(
                 partNumber += 1
             }
 
-            currentCoroutineContext().ensureActive()
             client.completeMultipartUpload(
                 CompleteMultipartUploadRequest.builder()
                     .bucket(bucket)
@@ -235,8 +126,8 @@ class S3ObjectStorageService(
                         .uploadId(uploadId)
                         .build()
                 )
-            } catch (cleanup: Throwable) {
-                t.addSuppressed(cleanup)
+            } catch (_: Exception) {
+                // ignore abort failure
             }
             throw t
         }
@@ -340,10 +231,10 @@ class S3ObjectStorageService(
             "multipart upload $uploadId contains $uploadedLength bytes, expected $totalLength"
         }
         val completedParts = listedParts.map { part ->
-            CompletedPart.builder()
-                .partNumber(part.partNumber())
-                .eTag(part.eTag())
-                .build()
+                CompletedPart.builder()
+                    .partNumber(part.partNumber())
+                    .eTag(part.eTag())
+                    .build()
         }
 
         client.completeMultipartUpload(
@@ -352,8 +243,8 @@ class S3ObjectStorageService(
                 .key(path.toString())
                 .uploadId(uploadId)
                 .multipartUpload(
-                    CompletedMultipartUpload.builder()
-                        .parts(completedParts)
+                        CompletedMultipartUpload.builder()
+                            .parts(completedParts)
                         .build()
                 )
                 .build()

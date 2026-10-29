@@ -2,23 +2,23 @@ package bosca.backup
 
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectStorageInfo
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StringObjectPath
 import kotlinx.coroutines.currentCoroutineContext
 import java.time.OffsetDateTime
 
 /** Reads the current retained identity without treating mutable version sentinels as proof. */
-internal suspend fun ObjectStorageService.observeBackupPayload(entry: BackupObject): ObjectStorageInfo {
+internal suspend fun ManagedObjectStorageService.observeBackupPayload(entry: BackupObject): ObjectStorageInfo {
     val observed = getObjectInfo(StringObjectPath(entry.payloadPath))
     return observed.copy(version = observed.version?.takeIf { it.isNotBlank() && it != "null" })
 }
 
 /** Compares change observations without treating entity tags or timestamps as content hashes. */
-private fun ObjectStorageInfo.matchesObservation(other: ObjectStorageInfo): Boolean {
+internal fun ObjectStorageInfo.matchesObservation(other: ObjectStorageInfo): Boolean {
     if (length != other.length) return false
-    if (version != null) return version == other.version
-    return other.version == null &&
-        etag?.takeIf { it.isNotBlank() } == other.etag?.takeIf { it.isNotBlank() } &&
+    val selectedVersion = version?.takeIf { it.isNotBlank() && it != "null" }
+    if (selectedVersion != null) return selectedVersion == other.version
+    return etag?.takeIf { it.isNotBlank() } == other.etag?.takeIf { it.isNotBlank() } &&
         modified?.toInstant() == other.modified?.toInstant()
 }
 
@@ -35,7 +35,7 @@ internal fun ObjectBackupProgress.canReuseVerification(
 }
 
 /** Distinguishes missing or mismatching output from storage failures that must stop a transfer. */
-internal suspend fun ObjectStorageService.hasVerifiedBackupPayload(entry: BackupObject): Boolean = try {
+internal suspend fun ManagedObjectStorageService.hasVerifiedBackupPayload(entry: BackupObject): Boolean = try {
     verifyBackupPayload(entry)
     true
 } catch (_: ObjectNotFoundException) {
@@ -45,7 +45,7 @@ internal suspend fun ObjectStorageService.hasVerifiedBackupPayload(entry: Backup
 }
 
 /** Reads and verifies a retained payload; callers run blocking storage reads on their I/O context. */
-internal suspend fun ObjectStorageService.verifyBackupPayload(entry: BackupObject) {
+internal suspend fun ManagedObjectStorageService.verifyBackupPayload(entry: BackupObject) {
     val input = BackupPayloadInputStream(
         getInputStream(StringObjectPath(entry.payloadPath)),
         entry,
@@ -59,21 +59,20 @@ internal suspend fun ObjectStorageService.verifyBackupPayload(entry: BackupObjec
     }
 }
 
-/** Verifies the declared bytes and checks that an unversioned observation stayed unchanged during the read. */
-internal suspend fun ObjectStorageService.verifyBackupPayload(entry: BackupObject, observed: ObjectStorageInfo) {
+/** Verifies the declared bytes and checks that the observation stayed unchanged during the read. */
+internal suspend fun ManagedObjectStorageService.verifyBackupPayload(entry: BackupObject, observed: ObjectStorageInfo) {
     if (observed.length != entry.length) {
         throw BackupPayloadMismatchException("Backup payload length mismatch: ${entry.payloadPath}")
     }
     val path = StringObjectPath(entry.payloadPath)
-    val version = observed.version
-    val stream = if (version == null) getInputStream(path) else getInputStream(path, version)
+    val stream = getInputStream(path)
     BackupPayloadInputStream(stream, entry, currentCoroutineContext()).use { input ->
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         while (input.read(buffer) != -1) {
             // The stream verifies complete length and SHA-256 at EOF.
         }
     }
-    if (version == null && !observed.matchesObservation(observeBackupPayload(entry))) {
+    if (!observed.matchesObservation(observeBackupPayload(entry))) {
         throw BackupPayloadMismatchException("Retained object changed during verification: ${entry.payloadPath}")
     }
 }

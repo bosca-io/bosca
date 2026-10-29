@@ -69,12 +69,13 @@ class ObjectBackupCaptureInventoryTest {
     }
 
     @Test
-    fun `duplicate selected revisions are rejected but distinct stores and historical versions are allowed`() {
-        assertFailsWith<IllegalArgumentException> {
-            inventory.copy(stores = mapOf("content" to listOf(entry, entry))).validate()
+    fun `a current-object inventory rejects repeated keys even with different provider observations`() {
+        for (other in listOf(entry, entry.copy(info = entry.info.copy(version = "provider-v2")))) {
+            assertFailsWith<IllegalArgumentException> {
+                inventory.copy(stores = mapOf("content" to listOf(entry, other))).validate()
+            }
         }
-        inventory.copy(stores = mapOf("content" to listOf(entry,
-            entry.copy(info = entry.info.copy(version = "provider-v2"))), "artifacts" to listOf(entry))).validate()
+        inventory.copy(stores = mapOf("content" to listOf(entry), "artifacts" to listOf(entry))).validate()
     }
 
     @Test

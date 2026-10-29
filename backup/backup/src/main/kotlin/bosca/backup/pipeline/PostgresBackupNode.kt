@@ -57,7 +57,9 @@ class PostgresBackupNode(
         val key = objectBackupIdentity(ObjectBackupOperation.BACKUP, listOf("postgresql", invocation.toString(), id))
         val service = provide<PostgresBackupRunService>()
         val checkpoint = key.takeIf { queuedInvocation != null }
-        val receipt = service.backupConfigured(key, sourceId, storageKey, prefix, checkpoint)
+        val receipt = deferBusyBackupDestination {
+            service.backupConfigured(key, sourceId, storageKey, prefix, checkpoint)
+        }
         return PostgresBackupNodeSerializer.serialize(receipt)
     }
 

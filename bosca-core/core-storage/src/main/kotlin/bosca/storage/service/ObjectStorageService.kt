@@ -7,7 +7,7 @@ import bosca.serialization.UUID
 import bosca.server.content.*
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -15,7 +15,6 @@ import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FilterInputStream
 import java.io.InputStream
-import java.nio.file.Files
 import java.util.UUID as JavaUUID
 import java.util.concurrent.Executors
 
@@ -49,14 +48,7 @@ open class StringObjectPath(
  * direct client uploads and downloads, enabling efficient large-file transfers that bypass
  * the application server.
  */
-interface ObjectStorageService : AutoCloseable {
-
-    /**
-     * Releases resources owned by this store after its operations and streams have finished.
-     * Closing may block and should run on [StorageDispatcher]. Stores without owned resources
-     * have nothing to release.
-     */
-    override fun close() {}
+interface ObjectStorageService {
 
     /**
      * Resolves the storage path for a metadata item's primary or supplementary content.
@@ -94,31 +86,6 @@ interface ObjectStorageService : AutoCloseable {
     suspend fun getString(path: ObjectPath): String
 
     /**
-     * Reads the current object's length and available provider metadata without opening its body.
-     *
-     * This observes the object at lookup time; it does not pin a revision, verify a digest or
-     * establish recovery coverage. Entity tags and modification times alone do not prove unchanged
-     * content. Blocking metadata access runs on [StorageDispatcher].
-     *
-     * @throws ObjectNotFoundException when no object exists at [path]; other failures propagate
-     */
-    suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo
-
-    /**
-     * Lists current object keys beginning with the literal [prefix], in backend key order.
-     *
-     * [offset] must be nonnegative and [limit] positive. An empty prefix selects the whole store.
-     * Returns at most [limit] entries, or an empty page beyond the end. Reads no asset bodies.
-     * Cloud stores use provider listing metadata without per-object requests; S3 listings have no version IDs.
-     * Filesystem storage lists regular files, including paths reached through directory aliases.
-     * Blocking enumeration runs on [StorageDispatcher]; failures and cancellation propagate.
-     *
-     * Enumeration does not pin source revisions or establish a closed inventory. Source changes
-     * can shift offset positions between calls; callers establish exact capture/retention separately.
-     */
-    suspend fun listObjects(prefix: String, offset: Long, limit: Int): List<ObjectStorageEntry>
-
-    /**
      * Opens an [InputStream] for reading the entire content at the given path.
      * The caller is responsible for closing the returned stream.
      *
@@ -127,25 +94,6 @@ interface ObjectStorageService : AutoCloseable {
      * @throws ObjectNotFoundException when nothing is stored at [path]
      */
     suspend fun getInputStream(path: ObjectPath): InputStream
-
-    /**
-     * Opens exactly the retained provider [version] at [path], without falling back to current bytes.
-     *
-     * Use an immutable version identity observed in [ObjectStorageInfo.version]. S3 accepts an
-     * opaque, nonblank version ID other than its mutable `null` sentinel; Google requires a
-     * canonical positive Long generation. Filesystem storage does not retain provider versions
-     * and rejects this operation. The caller closes the returned stream, including after a read
-     * failure. Blocking open work runs on [StorageDispatcher].
-     *
-     * Selecting a version does not retain it or associate it with a database recovery boundary.
-     * Providers may report a missing revision lazily when the stream is first read.
-     *
-     * @throws IllegalArgumentException when [version] is invalid for this backend
-     * @throws UnsupportedOperationException when the backend cannot address retained versions
-     * @throws ObjectNotFoundException when the requested revision is unavailable
-     * @throws IllegalStateException when a provider response substitutes or omits a requested version
-     */
-    suspend fun getInputStream(path: ObjectPath, version: String): InputStream
 
     /**
      * Opens an [InputStream] for reading a byte range of the content at the given path.
@@ -228,10 +176,6 @@ interface ObjectStorageService : AutoCloseable {
     /**
      * Completes a multipart upload and makes the assembled object available at [path].
      *
-     * The default implementation assembles staged parts locally and removes the parts and its
-     * local file on exit, including cancellation. Cleanup failures propagate or are suppressed
-     * on the original failure. Native implementations may require caller abort on failure.
-     *
      * @param partCount number of consecutively uploaded parts
      * @param totalLength total object size in bytes
      */
@@ -243,13 +187,11 @@ interface ObjectStorageService : AutoCloseable {
     ) {
         require(partCount > 0) { "partCount must be positive" }
         require(totalLength > 0) { "multipart upload must not be empty" }
-        var tempFile: File? = null
-        var failure: Throwable? = null
+        val tempFile = withContext(Dispatchers.IO) { File.createTempFile("object-multipart-", ".tmp") }
         try {
-            withContext(StorageDispatcher) {
-                val assembled = File.createTempFile("object-multipart-", ".tmp").also { tempFile = it }
+            withContext(Dispatchers.IO) {
                 var copied = 0L
-                BufferedOutputStream(assembled.outputStream()).use { output ->
+                BufferedOutputStream(tempFile.outputStream()).use { output ->
                     for (partNumber in 1..partCount) {
                         getInputStream(MultipartPartPath(path, uploadId, partNumber)).use { input ->
                             copied += input.copyTo(output)
@@ -259,28 +201,16 @@ interface ObjectStorageService : AutoCloseable {
                 check(copied == totalLength) {
                     "multipart upload $uploadId contains $copied bytes, expected $totalLength"
                 }
-                assembled.inputStream().use { setInputStream(path, it, totalLength) }
+                tempFile.inputStream().use { input ->
+                    setInputStream(path, input, totalLength)
+                }
             }
-        } catch (caught: Throwable) {
-            failure = caught
-            throw caught
         } finally {
-            val originalFailure = failure
-            withContext(NonCancellable + StorageDispatcher) {
-                try {
-                    abortMultipartUpload(path, uploadId, partCount)
-                } catch (cleanup: Throwable) {
-                    val prior = failure
-                    if (prior == null) failure = cleanup else if (prior !== cleanup) prior.addSuppressed(cleanup)
-                }
-                try {
-                    tempFile?.let { Files.deleteIfExists(it.toPath()) }
-                } catch (cleanup: Throwable) {
-                    val prior = failure
-                    if (prior == null) failure = cleanup else if (prior !== cleanup) prior.addSuppressed(cleanup)
-                }
+            try {
+                abortMultipartUpload(path, uploadId, partCount)
+            } finally {
+                withContext(Dispatchers.IO) { tempFile.delete() }
             }
-            if (originalFailure == null) failure?.let { throw it }
         }
     }
 
@@ -315,8 +245,8 @@ interface ObjectStorageService : AutoCloseable {
     suspend fun delete(path: ObjectPath)
 
     /**
-     * Generates a signed download URL for the selected logical metadata version.
-     * Application download links include the metadata ID and version in the signed query.
+     * Generates a pre-signed download URL for a metadata item's content, allowing
+     * direct client downloads without proxying through the application server.
      *
      * @param path the storage path of the object to download
      * @param principal the authenticated principal requesting the download, or `null` for anonymous access

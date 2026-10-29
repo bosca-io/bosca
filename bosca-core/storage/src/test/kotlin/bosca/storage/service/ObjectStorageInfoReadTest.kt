@@ -1,9 +1,5 @@
 package bosca.storage.service
 
-import com.google.cloud.storage.Blob
-import com.google.cloud.storage.BlobId
-import com.google.cloud.storage.Storage
-import com.google.cloud.storage.StorageException
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -170,72 +166,12 @@ class ObjectStorageInfoReadTest {
     }
 
     @Test
-    fun `Google reads metadata with generation identity without opening a reader`() = runTest {
-        val client = mockk<Storage>()
-        val timestamp = OffsetDateTime.parse("2026-10-17T01:02:03.123456789+05:30")
-        val blob = blob(Long.MAX_VALUE, "opaque-tag", 42L, timestamp)
-        val caller = Thread.currentThread()
-        var invoked: Thread? = null
-        every { client.get(BlobId.of("bucket", "asset")) } answers {
-            invoked = Thread.currentThread()
-            blob
-        }
-        assertEquals(ObjectStorageInfo(Long.MAX_VALUE, "opaque-tag", "42", timestamp.withOffsetSameInstant(ZoneOffset.UTC)),
-            google(client).getObjectInfo(path))
-        assertNotSame(caller, assertNotNull(invoked))
-        verify(exactly = 1) { client.get(BlobId.of("bucket", "asset")) }
-        verify(exactly = 0) { client.reader(any<BlobId>(), *anyVararg()) }
-    }
-
-    @Test
-    fun `Google optional metadata remains absent`() = runTest {
-        val client = mockk<Storage>()
-        every { client.get(any<BlobId>()) } returns blob(0, null, null, null)
-        assertEquals(ObjectStorageInfo(0), google(client).getObjectInfo(path))
-    }
-
-    @Test
-    fun `Google maps missing lookups and explicit not found errors`() = runTest {
-        val client = mockk<Storage>()
-        every { client.get(any<BlobId>()) } returns null
-        assertEquals(path, assertFailsWith<ObjectNotFoundException> { google(client).getObjectInfo(path) }.path)
-        val failure = StorageException(404, "missing")
-        every { client.get(any<BlobId>()) } throws failure
-        val missing = assertFailsWith<ObjectNotFoundException> { google(client).getObjectInfo(path) }
-        assertEquals(path, missing.path)
-        assertSame(failure, missing.cause)
-    }
-
-    @Test
-    fun `Google access backend and cancellation failures propagate unchanged`() = runTest {
-        val client = mockk<Storage>()
-        for (status in listOf(403, 429, 503)) {
-            val failure = StorageException(status, "unavailable")
-            every { client.get(any<BlobId>()) } throws failure
-            assertSame(failure, assertFailsWith<StorageException> { google(client).getObjectInfo(path) })
-        }
-        val cancelled = CancellationException("metadata cancelled")
-        every { client.get(any<BlobId>()) } throws cancelled
-        val observed = assertFailsWith<CancellationException> { google(client).getObjectInfo(path) }
-        assertEquals(cancelled.message, observed.message)
-        assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === cancelled })
-    }
-
-    @Test
     fun `no-op storage reports absent metadata without creating objects`() = runTest {
-        assertEquals(path, assertFailsWith<ObjectNotFoundException> { NoOpObjectStorageService().getObjectInfo(path) }.path)
+        assertEquals(path, assertFailsWith<ObjectNotFoundException> { ManagedNoOpObjectStorageService().getObjectInfo(path) }.path)
     }
 
-    private fun filesystem() = FileSystemObjectStorageService("", "", mockk(), temporaryFolder.root.path, mockk())
+    private fun filesystem() = ManagedFileSystemObjectStorageService("", "", mockk(), temporaryFolder.root.path, mockk())
 
-    private fun s3(client: S3Client) = S3ObjectStorageService("bucket", client, "", "", mockk(), mockk())
+    private fun s3(client: S3Client) = ManagedS3ObjectStorageService("bucket", client, "", "", mockk(), mockk())
 
-    private fun google(client: Storage) = GoogleObjectStorageService("bucket", client, "", "", mockk(), mockk())
-
-    private fun blob(length: Long, tag: String?, version: Long?, modified: OffsetDateTime?): Blob = mockk {
-        every { size } returns length
-        every { etag } returns tag
-        every { generation } returns version
-        every { updateTimeOffsetDateTime } returns modified
-    }
 }

@@ -58,7 +58,7 @@ class ObjectStorageServiceFactoryIntegrationTest {
     @Test
     fun `content provider delegates configuration to the factory and closes the shared store at shutdown`(): Unit = runBlocking {
         val configuration = filesystem("application")
-        val storage = mockk<ObjectStorageService>(relaxed = true)
+        val storage = mockk<ManagedObjectStorageService>(relaxed = true)
         val factory = mockk<ObjectStorageServiceFactory>()
         coEvery { factory.create(configuration) } returns storage
         provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) { factory }
@@ -107,7 +107,7 @@ class ObjectStorageServiceFactoryIntegrationTest {
     fun `generated factory can open a filesystem without application content or security services`(): Unit = runBlocking {
         val factory = provide<ObjectStorageServiceFactory>()
         val result = factory.withStorage(filesystem("source")) { storage ->
-            assertIs<FileSystemObjectStorageService>(storage)
+            assertIs<ManagedFileSystemObjectStorageService>(storage)
             write(storage, "asset", "source content")
             storage.getString(StringObjectPath("asset"))
         }
@@ -148,7 +148,7 @@ class ObjectStorageServiceFactoryIntegrationTest {
     @Test
     fun `no-op storage remains available without an S3 client`(): Unit = runBlocking {
         provide<ObjectStorageServiceFactory>().withStorage(StorageConfiguration("noop", "")) {
-            assertIs<NoOpObjectStorageService>(it)
+            assertIs<ManagedNoOpObjectStorageService>(it)
         }
     }
 
@@ -157,7 +157,7 @@ class ObjectStorageServiceFactoryIntegrationTest {
         val factory = provide<ObjectStorageServiceFactory>()
         ObjectStorageS3TestEndpoint(bucket = "source-bucket", content = "source data").use { endpoint ->
             factory.withStorage(s3(endpoint, "source-bucket", "SOURCE_KEY")) { storage ->
-                assertIs<S3ObjectStorageService>(storage)
+                assertIs<ManagedS3ObjectStorageService>(storage)
                 assertEquals("source data", storage.getString(StringObjectPath("asset")))
             }
 
@@ -247,7 +247,7 @@ class ObjectStorageServiceFactoryIntegrationTest {
     fun `S3 clients close after successful scoped work`(): Unit = runBlocking {
         val factory = provide<ObjectStorageServiceFactory>()
         ObjectStorageS3TestEndpoint().use { endpoint ->
-            lateinit var captured: ObjectStorageService
+            lateinit var captured: ManagedObjectStorageService
             val result = factory.withStorage(s3(endpoint)) {
                 captured = it
                 it.getString(StringObjectPath("asset"))
@@ -263,7 +263,7 @@ class ObjectStorageServiceFactoryIntegrationTest {
         val factory = provide<ObjectStorageServiceFactory>()
         val failure = IOException("work failed")
         ObjectStorageS3TestEndpoint().use { endpoint ->
-            lateinit var captured: ObjectStorageService
+            lateinit var captured: ManagedObjectStorageService
             val thrown = assertFailsWith<IOException> {
                 factory.withStorage(s3(endpoint)) {
                     captured = it
@@ -282,7 +282,7 @@ class ObjectStorageServiceFactoryIntegrationTest {
         val factory = provide<ObjectStorageServiceFactory>()
         val cancellation = CancellationException("cancelled work")
         ObjectStorageS3TestEndpoint().use { endpoint ->
-            lateinit var captured: ObjectStorageService
+            lateinit var captured: ManagedObjectStorageService
             val thrown = assertFailsWith<CancellationException> {
                 factory.withStorage(s3(endpoint)) {
                     captured = it
@@ -300,7 +300,7 @@ class ObjectStorageServiceFactoryIntegrationTest {
     fun `actual coroutine cancellation closes the active scoped client`(): Unit = runBlocking {
         val factory = provide<ObjectStorageServiceFactory>()
         ObjectStorageS3TestEndpoint().use { endpoint ->
-            val ready = CompletableDeferred<ObjectStorageService>()
+            val ready = CompletableDeferred<ManagedObjectStorageService>()
             val work = async {
                 factory.withStorage(s3(endpoint)) {
                     assertEquals("data", it.getString(StringObjectPath("asset")))
@@ -541,63 +541,6 @@ class ObjectStorageServiceFactoryIntegrationTest {
         }
     }
 
-    @Test
-    fun `S3 retained reads send the signed encoded version while current reads still use current content`(): Unit = runBlocking {
-        val version = "retained/+% =version"
-        ObjectStorageS3TestEndpoint(objectVersion = version, onGet = { query ->
-            200 to if (query["versionId"] == version) "retained content" else "current content"
-        }).use { endpoint ->
-            provide<ObjectStorageServiceFactory>().withStorage(s3(endpoint, key = "VERSION_KEY")) { storage ->
-                assertEquals("retained content", storage.getInputStream(StringObjectPath("asset"), version).use {
-                    it.readAllBytes().decodeToString()
-                })
-                assertEquals("current content", storage.getString(StringObjectPath("asset")))
-            }
-            assertEquals(listOf(mapOf("versionId" to version), emptyMap()), endpoint.getQueries.toList())
-            assertEquals(2, endpoint.objectGets.get())
-            assertEquals(0, endpoint.objectHeads.get())
-            assertEquals(0, endpoint.bucketChecks.get())
-            assertEquals(0, endpoint.bucketCreations.get())
-            assertTrue(endpoint.authorizationHeaders.all { it.contains("Credential=VERSION_KEY/") })
-        }
-    }
-
-    @Test
-    fun `S3 providers ignoring version selection cannot return successful retained reads`(): Unit = runBlocking {
-        for (returned in listOf(null, "new")) {
-            ObjectStorageS3TestEndpoint(content = "current content", objectVersion = returned).use { endpoint ->
-                assertFailsWith<IllegalStateException> {
-                    provide<ObjectStorageServiceFactory>().withStorage(s3(endpoint)) {
-                        it.getInputStream(StringObjectPath("asset"), "retained")
-                    }
-                }
-                assertEquals(listOf(mapOf("versionId" to "retained")), endpoint.getQueries.toList())
-                assertEquals(1, endpoint.objectGets.get())
-                assertEquals(0, endpoint.objectHeads.get())
-            }
-        }
-    }
-
-    @Test
-    fun `S3 missing retained versions cannot fall back to available current content`(): Unit = runBlocking {
-        ObjectStorageS3TestEndpoint(onGet = { query ->
-            if (query["versionId"] != null) {
-                404 to "<Error><Code>NoSuchVersion</Code><Message>Deleted revision</Message></Error>"
-            } else {
-                200 to "current content"
-            }
-        }).use { endpoint ->
-            provide<ObjectStorageServiceFactory>().withStorage(s3(endpoint)) { storage ->
-                val missing = assertFailsWith<ObjectNotFoundException> {
-                    storage.getInputStream(StringObjectPath("asset"), "retained")
-                }
-                assertEquals(404, assertIs<S3Exception>(missing.cause).statusCode())
-                assertEquals(listOf(mapOf("versionId" to "retained")), endpoint.getQueries.toList())
-                assertEquals("current content", storage.getString(StringObjectPath("asset")))
-            }
-        }
-    }
-
     private fun listingPage(entries: List<Pair<String, Long>>, next: String? = null): String = buildString {
         append("<ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">")
         append("<IsTruncated>${next != null}</IsTruncated>")
@@ -622,7 +565,7 @@ class ObjectStorageServiceFactoryIntegrationTest {
         endpoint = endpoint.endpoint, accessKeyId = key, accessKeySecret = "test-secret",
     )
 
-    private suspend fun write(storage: ObjectStorageService, path: String, value: String) {
+    private suspend fun write(storage: ManagedObjectStorageService, path: String, value: String) {
         val bytes = value.toByteArray()
         storage.setInputStream(StringObjectPath(path), bytes.inputStream(), bytes.size.toLong())
     }

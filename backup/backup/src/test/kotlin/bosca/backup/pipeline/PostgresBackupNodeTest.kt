@@ -1,5 +1,6 @@
 package bosca.backup.pipeline
 
+import bosca.backup.ObjectBackupDestinationBusyException
 import bosca.backup.PostgresBackupManifest
 import bosca.backup.PostgresBackupReceipt
 import bosca.backup.PostgresBackupRunService
@@ -8,12 +9,9 @@ import bosca.di.annotation.InternalDI
 import bosca.di.provides
 import bosca.pipelines.DryRunTrace
 import bosca.pipelines.PipelineContext
-import bosca.pipelines.annotation.SettingControl
 import bosca.pipelines.node.BackupPipelineNodeSerializersProvider
 import bosca.pipelines.node.NodeInputs
 import bosca.pipelines.node.NodeResult
-import bosca.pipelines.node.PipelineNode
-import bosca.pipelines.node.PipelineValue
 import bosca.security.model.AuthenticatedPrincipal
 import bosca.security.model.Group
 import bosca.security.model.GroupType
@@ -22,6 +20,7 @@ import bosca.security.service.AuthenticationContext
 import bosca.security.service.GroupEvaluator
 import bosca.security.service.SecurityException
 import bosca.serialization.UUID
+import bosca.sharedqueue.jobs.DelayException
 import bosca.sharedqueue.jobs.Job
 import bosca.sharedqueue.jobs.JobQueue
 import bosca.sharedqueue.jobs.asCoroutineContext
@@ -128,9 +127,30 @@ class PostgresBackupNodeTest {
         assertEquals("upload failed", assertFailsWith<java.io.IOException> { perform(node()) }.message)
     }
 
+    @Test
+    fun `queued destination contention defers the same native request while inline callers retain the error`(): Unit = runBlocking {
+        val busy = ObjectBackupDestinationBusyException("retained")
+        coEvery { service.backupConfigured(any(), any(), any(), any(), any()) } throws busy
+        val queue = mockk<JobQueue>()
+        val job = mockk<Job>()
+        every { job.getId() } returns UUID.random()
+        withContext(queue.asCoroutineContext(job)) {
+            val delayed = assertFailsWith<DelayException> { perform(node()) }
+            assertTrue(delayed.cause === busy)
+            coEvery { service.backupConfigured(any(), "instance", "retained", "postgresql", any()) } answers {
+                val key = firstArg<String>()
+                PostgresBackupReceipt(key, "retained", "postgresql/$key/artifact", manifest)
+            }
+            val receipt = perform(node())
+            coVerify(exactly = 2) {
+                service.backupConfigured(receipt.key, "instance", "retained", "postgresql", receipt.key)
+            }
+        }
+        coEvery { service.backupConfigured(any(), any(), any(), any(), any()) } throws busy
+        assertTrue(assertFailsWith<ObjectBackupDestinationBusyException> { perform(node()) } === busy)
+    }
+
     private fun node(id: String = "backup") = PostgresBackupNode(id, sourceId = "instance", storageKey = "retained")
-
-
 
     private suspend fun perform(node: PostgresBackupNode): PostgresBackupReceipt {
         val result = node.run(PipelineContext(admin, json), NodeInputs(emptyMap()))

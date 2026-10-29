@@ -1,18 +1,9 @@
 package bosca.backup
 
 import bosca.backup.pipeline.PostgresRestoreNode
-import bosca.cache.CacheManager
-import bosca.content.collection.repository.CollectionRepositoryImpl
-import bosca.content.collection.service.CollectionService
-import bosca.content.collection.service.CollectionServiceImpl
-import bosca.content.metadata.repository.MetadataRepositoryImpl
-import bosca.content.metadata.service.MetadataService
-import bosca.content.metadata.service.MetadataServiceImpl
 import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
-import bosca.db.ConnectionManager
 import bosca.db.ConnectionPool
-import bosca.db.asCoroutineContext
 import bosca.db.migrations.CoreMigration
 import bosca.db.migrations.FlywayMigration
 import bosca.db.transaction
@@ -33,9 +24,12 @@ import bosca.pipelines.node.PipelineValue
 import bosca.serialization.UUID
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
+import bosca.sharedqueue.jobs.Job
+import bosca.sharedqueue.jobs.JobQueue
+import bosca.sharedqueue.jobs.serialize
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectPath
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import io.mockk.mockk
@@ -43,12 +37,13 @@ import java.io.IOException
 import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.sql.DriverManager
 import java.time.Instant
 import java.util.Properties
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -60,13 +55,14 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Duration
 import kotlin.test.assertTrue
-import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
@@ -548,7 +544,7 @@ class PostgresBackupIntegrationTest {
             var closed = 0
             faultStorage { actual ->
                 opened++
-                object : ObjectStorageService by actual {
+                object : ManagedObjectStorageService by actual {
                     override fun close() { closed++; actual.close() }
                 }
             }
@@ -665,7 +661,7 @@ class PostgresBackupIntegrationTest {
         withNativeRecovery { manifest, path ->
             var cancelled = true
             var closed = 0
-            faultStorage { actual -> object : ObjectStorageService by actual {
+            faultStorage { actual -> object : ManagedObjectStorageService by actual {
                 override suspend fun getInputStream(path: ObjectPath): InputStream {
                     if (cancelled && path.toString().endsWith("database.dump")) throw kotlinx.coroutines.CancellationException("download cancelled")
                     return actual.getInputStream(path)
@@ -704,7 +700,7 @@ class PostgresBackupIntegrationTest {
         withNativeRecovery { _, path ->
             var fail = true
             var closed = 0
-            faultStorage { actual -> object : ObjectStorageService by actual {
+            faultStorage { actual -> object : ManagedObjectStorageService by actual {
                 override fun close() {
                     actual.close()
                     closed++
@@ -1156,9 +1152,9 @@ class PostgresBackupIntegrationTest {
             val factory = provide<ObjectStorageServiceFactory>()
             provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) {
                 object : ObjectStorageServiceFactory by factory {
-                    override suspend fun create(configuration: StorageConfiguration): ObjectStorageService {
+                    override suspend fun create(configuration: StorageConfiguration): ManagedObjectStorageService {
                         val actual = factory.create(configuration)
-                        return object : ObjectStorageService by actual {
+                        return object : ManagedObjectStorageService by actual {
                             override suspend fun getInputStream(path: ObjectPath): InputStream {
                                 if (configuration.bucket == "content") sourceReads.add(path.toString())
                                 return actual.getInputStream(path)
@@ -1176,7 +1172,7 @@ class PostgresBackupIntegrationTest {
 
                     override suspend fun <T> withStorage(
                         configuration: StorageConfiguration,
-                        block: suspend (ObjectStorageService) -> T,
+                        block: suspend (ManagedObjectStorageService) -> T,
                     ): T = create(configuration).use { block(it) }
                 }
             }
@@ -1397,7 +1393,6 @@ class PostgresBackupIntegrationTest {
         return provide()
     }
 
-
     @Test
     fun `configured database backup publishes a durable receipt and survives source removal`(): Unit = runBlocking {
         val runs = runService()
@@ -1455,7 +1450,7 @@ class PostgresBackupIntegrationTest {
         install()
         val restarted = provide<PostgresBackupRunService>()
         var observed = false
-        faultStorage { actual -> object : ObjectStorageService by actual {
+        faultStorage { actual -> object : ManagedObjectStorageService by actual {
             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                 if (!observed) {
                     observed = true
@@ -1535,7 +1530,7 @@ class PostgresBackupIntegrationTest {
     @Test
     fun `native checkpoint identity is saved on the first attempt`(): Unit = runBlocking {
         val runs = runService()
-        faultStorage { actual -> object : ObjectStorageService by actual {
+        faultStorage { actual -> object : ManagedObjectStorageService by actual {
             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                 val active = withConnectionManager { assertNotNull(runs.get("request")) }
                 assertTrue(assertNotNull(active.writerToken).startsWith("backing-job:"))
@@ -1658,6 +1653,61 @@ class PostgresBackupIntegrationTest {
     }
 
     @Test
+    fun `native backup destination contention defers the same Pipeline child without failed attempts`(): Unit = runBlocking {
+        val runs = runService()
+        seedNativeWriter("owner", "active-writer", prefix = "postgresql")
+        val owner = withConnectionManager { assertNotNull(runs.get("owner")) }
+        PostgresBackupPipelineFixture.create(application, pool, root).use { pipeline ->
+            val initial = pipeline.start()
+            pipeline.execute(pipeline.next())
+            val delayed = CompletableDeferred<UUID>()
+            val delays = AtomicInteger()
+            val children = CopyOnWriteArrayList<UUID>()
+            val observed = object : JobQueue by pipeline.queue {
+                override suspend fun enqueueLater(job: Job, timeout: Duration): UUID {
+                    assertEquals(5.seconds, timeout)
+                    assertEquals(0, job.serialize().failures)
+                    children.add(job.getId())
+                    val id = pipeline.queue.enqueueLater(job, timeout)
+                    if (delays.incrementAndGet() >= 2) delayed.complete(id)
+                    return id
+                }
+            }
+            val runner = pipeline.runner(observed)
+            runner.run()
+            try {
+                val child = withTimeout(20_000) { delayed.await() }
+                val key = objectBackupIdentity(ObjectBackupOperation.BACKUP, listOf("postgresql", child.toString(), "backup"))
+                assertEquals(setOf(child), children.toSet())
+                assertEquals(PipelineRunStatus.SUSPENDED, pipeline.get(initial.id).status)
+                assertEquals(owner, withConnectionManager { runs.get("owner") })
+                assertEquals(null, withConnectionManager { runs.get(key) })
+                assertFalse(Files.exists(root.resolve("retained")))
+                assertTrue(withConnectionManager { provide<bosca.pipelines.service.PipelineRunService>().nodeTimeline(initial.id) }.none {
+                    it.nodeId == "backup" && it.status == bosca.pipelines.model.NodeExecutionStatus.FAILED
+                })
+                runs.recover("owner", assertNotNull(owner.writerToken))
+                val completed = pipeline.awaitComplete(initial.id)
+                assertEquals(PipelineRunStatus.OK, completed.status)
+                val receipt = application.json.decodeFromJsonElement(PostgresBackupReceipt.serializer(), assertNotNull(completed.output))
+                assertEquals(key, receipt.key)
+                val saved = withConnectionManager { assertNotNull(runs.get(key)) }
+                assertEquals(1, saved.attempts)
+                assertEquals(receipt, saved.result)
+                assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+                assertTrue(withConnectionManager { provide<bosca.pipelines.service.PipelineRunService>().nodeTimeline(initial.id) }.none {
+                    it.nodeId == "backup" && it.status == bosca.pipelines.model.NodeExecutionStatus.FAILED
+                })
+                provide<ObjectStorageServiceFactory>().withStorage(assertNotNull(retained)) { store -> service.download(store, receipt.path, output) }
+                restore()
+                assertEquals("captured", scalar("select body->>'name' from workops.tasks", "recovered"))
+            } finally {
+                runner.shutdown()
+            }
+        }
+    }
+
+    @Test
     fun `later database requests capture a new point without replacing old recovery data`(): Unit = runBlocking {
         val runs = runService()
         val first = runs.backupConfigured("first", "instance", "retained", "database-backups")
@@ -1706,16 +1756,9 @@ class PostgresBackupIntegrationTest {
         assertFalse(Files.exists(root.resolve("retained")))
     }
 
-
-
-
-
-
-
     private fun assertRecoveryScratchClean() {
         assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-restore-") })
     }
-
 
     @Test
     fun `queued native backup preserves caller and completes with a source-independent artifact`(): Unit = runBlocking {
@@ -1851,7 +1894,7 @@ class PostgresBackupIntegrationTest {
         runService()
         var fail = true
         val paths = mutableListOf<String>()
-        faultStorage { actual -> object : ObjectStorageService by actual {
+        faultStorage { actual -> object : ManagedObjectStorageService by actual {
             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                 assertEquals(0, pool.activeConnections)
                 if (path.toString().endsWith("database.dump")) {
@@ -1893,7 +1936,7 @@ class PostgresBackupIntegrationTest {
     fun `native request cannot complete after short writes or storage close failures`(): Unit = runBlocking {
         runService()
         var short = true
-        faultStorage { actual -> object : ObjectStorageService by actual {
+        faultStorage { actual -> object : ManagedObjectStorageService by actual {
             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                 val written = actual.setInputStream(path, stream, length)
                 return if (short && path.toString().endsWith("database.dump")) written - 1 else written
@@ -1940,12 +1983,12 @@ class PostgresBackupIntegrationTest {
         assertEquals(1, withConnectionManager { assertNotNull(runs.get("owned")).attempts })
     }
 
-    private suspend fun faultStorage(wrap: (ObjectStorageService) -> ObjectStorageService) {
+    private suspend fun faultStorage(wrap: (ManagedObjectStorageService) -> ManagedObjectStorageService) {
         val actual = provide<ObjectStorageServiceFactory>()
         provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) {
             object : ObjectStorageServiceFactory by actual {
-                override suspend fun create(configuration: StorageConfiguration): ObjectStorageService = wrap(actual.create(configuration))
-                override suspend fun <T> withStorage(configuration: StorageConfiguration, block: suspend (ObjectStorageService) -> T): T =
+                override suspend fun create(configuration: StorageConfiguration): ManagedObjectStorageService = wrap(actual.create(configuration))
+                override suspend fun <T> withStorage(configuration: StorageConfiguration, block: suspend (ManagedObjectStorageService) -> T): T =
                     create(configuration).use { block(it) }
             }
         }

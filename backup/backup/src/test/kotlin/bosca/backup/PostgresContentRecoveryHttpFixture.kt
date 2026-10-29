@@ -10,6 +10,7 @@ import bosca.di.annotation.InternalDI
 import bosca.di.provides
 import bosca.security.model.AuthenticatedPrincipal
 import bosca.security.service.AuthenticationProviders
+import bosca.serialization.UUID
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.server.netty.NettyServerEngine
@@ -29,7 +30,6 @@ import kotlinx.coroutines.withTimeout
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Exercises the production download handlers over HTTP with recovered services and fixture identities. */
@@ -40,7 +40,11 @@ internal class PostgresContentRecoveryHttpFixture(
     private val storage: ObjectStorageService,
     private val signer: UrlSigner,
 ) {
-    suspend fun verify(history: Metadata, identities: Map<String, AuthenticatedPrincipal>) {
+    suspend fun verify(
+        current: Metadata,
+        identities: Map<String, AuthenticatedPrincipal>,
+        supplementaryId: UUID,
+    ) {
         val application = BoscaApplication(ApplicationConfig.load("""
             bosca:
               server:
@@ -89,48 +93,46 @@ internal class PostgresContentRecoveryHttpFixture(
                     etag?.let { builder.header("If-None-Match", it) }
                     client.send(builder.GET().build(), HttpResponse.BodyHandlers.ofString())
                 }
-            val current = "/api/v1/content/metadata/download?id=${history.id}"
-            val selected = "$current&version=${history.version}"
-            val earlier = request(selected, "reader")
-            assertEquals(200, earlier.statusCode())
-            assertEquals("earlier", earlier.body())
-            assertEquals("7", earlier.headers().firstValue("Content-Length").orElse(null))
-            assertNull(earlier.headers().firstValue("ETag").orElse(null))
-            assertEquals("image", request(current, "reader").body())
-            assertEquals("image", request("$current&version=7", "reader").body())
+            val selected = "/api/v1/content/metadata/download?id=${current.id}"
+            val response = request(selected, "reader")
+            assertEquals(200, response.statusCode())
+            assertEquals("image", response.body())
+            assertEquals("5", response.headers().firstValue("Content-Length").orElse(null))
+            assertEquals("W/\"recovered-current-etag\"", response.headers().firstValue("ETag").orElse(null))
             for (principal in listOf(null, "outsider", "scoped")) {
                 assertEquals(403, request(selected, principal).statusCode())
             }
-            assertEquals(404, request("$current&version=5", "reader").statusCode())
-            for (version in listOf("", "invalid", "0", "-1", "2147483648")) {
-                assertEquals(400, request("$current&version=$version", "reader").statusCode())
-            }
             val range = request(selected, "reader", range = "bytes=1-3")
             assertEquals(206, range.statusCode())
-            assertEquals("arl", range.body())
-            assertEquals("bytes 1-3/7", range.headers().firstValue("Content-Range").orElse(null))
+            assertEquals("mag", range.body())
+            assertEquals("bytes 1-3/5", range.headers().firstValue("Content-Range").orElse(null))
             assertEquals("3", range.headers().firstValue("Content-Length").orElse(null))
             val conditional = request(selected, "reader", etag = "\"recovered-current-etag\"")
-            assertEquals(200, conditional.statusCode())
-            assertEquals("earlier", conditional.body())
-            val file = request("/content/file?id=${history.id}&version=6&download=true", "reader")
+            assertEquals(304, conditional.statusCode())
+            assertTrue(conditional.body().isEmpty())
+            val file = request("/content/file?id=${current.id}&download=true", "reader")
             assertEquals(200, file.statusCode())
-            assertEquals("earlier", file.body())
-            assertEquals("attachment; filename=\"Earlier image\"", file.headers().firstValue("Content-Disposition").orElse(null))
+            assertEquals("image", file.body())
+            assertEquals("attachment; filename=\"Saved image\"", file.headers().firstValue("Content-Disposition").orElse(null))
 
-            val path = storage.getPath(history)
-            val signed = storage.getSignedDownloadUrl(path, null, history, null, false).url
+            val path = storage.getPath(current)
+            val signed = storage.getSignedDownloadUrl(path, null, current, null, false).url
             assertTrue(signer.verify(URI.create(signed)))
             val signedUri = URI.create(signed)
             val signedPath = signedUri.rawPath + "?" + signedUri.rawQuery
-            assertTrue(signedPath.contains("version=6"), signedPath)
             val signedResponse = request(signedPath)
             assertEquals(200, signedResponse.statusCode())
-            assertEquals("earlier", signedResponse.body())
-            assertEquals(403, request(signedPath.replace("version=6", "version=7")).statusCode())
-            assertEquals(403, request(signedPath.replace("&version=6", "")).statusCode())
-            val currentSigned = URI.create(signer.sign("https://recovered.invalid$current", 1800))
-            assertEquals("image", request(currentSigned.rawPath + "?" + currentSigned.rawQuery).body())
+            assertEquals("image", signedResponse.body())
+            assertEquals(403, request(signedPath.replace("id=${current.id}", "id=${current.id}&filename=true")).statusCode())
+
+            val attachmentPath = storage.getPath(current, supplementaryId)
+            val attachmentUrl = URI.create(storage.getSignedDownloadUrl(attachmentPath, null, current, supplementaryId, true).url)
+            val attachment = request(attachmentUrl.rawPath + "?" + attachmentUrl.rawQuery)
+            assertEquals(200, attachment.statusCode())
+            assertEquals("thumbnail", attachment.body())
+            assertEquals("9", attachment.headers().firstValue("Content-Length").orElse(null))
+            assertEquals("image/png", attachment.headers().firstValue("Content-Type").orElse(null))
+            assertEquals("attachment; filename=\"Thumbnail\"", attachment.headers().firstValue("Content-Disposition").orElse(null))
 
             val bytes = storage.getInputStream(path).use { it.readBytes() }
             try {
@@ -139,7 +141,7 @@ internal class PostgresContentRecoveryHttpFixture(
                 assertEquals(404, missing.statusCode())
                 assertFalse(missing.body().contains("image"))
             } finally {
-                ByteArrayInputStream(bytes).use { assertEquals(7L, storage.setInputStream(path, it)) }
+                ByteArrayInputStream(bytes).use { assertEquals(5L, storage.setInputStream(path, it)) }
             }
         } finally {
             client.close()

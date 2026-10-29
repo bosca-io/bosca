@@ -17,7 +17,7 @@ import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageInfo
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
@@ -52,16 +52,16 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Real PostgreSQL/generated services and signed SDK metadata/version reads of retained bytes. */
+/** Real PostgreSQL/generated services and signed SDK metadata and current body reads of retained bytes. */
 @OptIn(InternalDI::class)
 class ObjectBackupVerificationIntegrationTest {
     private lateinit var postgres: SharedPostgreSQLContainer
     private lateinit var pool: ConnectionPool
     private lateinit var directory: Path
     private lateinit var server: HttpServer
-    private lateinit var reader: ObjectStorageService
-    private lateinit var target: ObjectStorageService
-    private lateinit var source: ObjectStorageService
+    private lateinit var reader: ManagedObjectStorageService
+    private lateinit var target: ManagedObjectStorageService
+    private lateinit var source: ManagedObjectStorageService
     private lateinit var service: ObjectBackupCaptureService
     private val current = ConcurrentHashMap<String, String>()
     private val versions = ConcurrentHashMap<Pair<String, String>, Path>()
@@ -148,7 +148,7 @@ class ObjectBackupVerificationIntegrationTest {
             "s3", "", bucket = "bucket", forcePathStyle = true, region = "us-east-1",
             endpoint = "http://127.0.0.1:${server.address.port}", accessKeyId = "VERIFY_KEY", accessKeySecret = "test-secret",
         ))
-        target = object : ObjectStorageService by reader {
+        target = object : ManagedObjectStorageService by reader {
             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                 assertEquals(0, pool.activeConnections)
                 writes.incrementAndGet()
@@ -161,7 +161,8 @@ class ObjectBackupVerificationIntegrationTest {
             }
         }
         source = mockk()
-        coEvery { source.getInputStream(any(), "source-v1") } answers {
+        coEvery { source.getObjectInfo(any()) } returns selected.info
+        coEvery { source.getInputStream(any()) } answers {
             assertEquals(0, pool.activeConnections)
             sourceReads.incrementAndGet()
             content.inputStream()
@@ -187,7 +188,6 @@ class ObjectBackupVerificationIntegrationTest {
         val result = capture()
         assertEquals(current[payloadPath], result.verifiedInfo?.version)
         assertNotNull(result.verified)
-        assertEquals(listOf(result.verifiedInfo?.version), versionReads.toList())
         assertEquals(1, bodies.get())
         assertEquals(1, sourceReads.get())
         assertTrue(signatures.all { it.contains("Credential=VERIFY_KEY/") })
@@ -218,14 +218,13 @@ class ObjectBackupVerificationIntegrationTest {
     }
 
     @Test
-    fun `an expired cutoff forces a version-addressed checksum check and refreshes evidence`(): Unit = runBlocking {
+    fun `an expired cutoff forces a checksum check and refreshes evidence`(): Unit = runBlocking {
         val first = verifiedCapture()
         resetCounters()
         val refreshed = capture(checkNotNull(first.verified).plusSeconds(1))
         assertEquals(first.version + 1, refreshed.version)
         assertEquals(first.attempts, refreshed.attempts)
         assertEquals(first.payload, refreshed.payload)
-        assertEquals(listOf(first.verifiedInfo?.version), versionReads.toList())
         assertEquals(1, bodies.get())
         assertEquals(0, sourceReads.get())
     }
@@ -237,7 +236,6 @@ class ObjectBackupVerificationIntegrationTest {
         val result = capture(null)
         assertEquals(first.version + 1, result.version)
         assertEquals(1, bodies.get())
-        assertEquals(listOf(first.verifiedInfo?.version), versionReads.toList())
     }
 
     @Test
@@ -250,7 +248,6 @@ class ObjectBackupVerificationIntegrationTest {
         assertEquals(replacement, result.verifiedInfo?.version)
         assertEquals(first.version + 1, result.version)
         assertEquals(first.attempts, result.attempts)
-        assertEquals(listOf(replacement), versionReads.toList())
         assertEquals(0, sourceReads.get())
     }
 
@@ -357,18 +354,18 @@ class ObjectBackupVerificationIntegrationTest {
     }
 
     @Test
-    fun `cancellation during metadata or pinned reads cannot extend verification evidence`(): Unit = runBlocking {
+    fun `cancellation during metadata or body reads cannot extend verification evidence`(): Unit = runBlocking {
         val first = verifiedCapture()
         val original = target
         for (duringMetadata in listOf(true, false)) {
-            target = object : ObjectStorageService by original {
+            target = object : ManagedObjectStorageService by original {
                 override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
                     if (duringMetadata) currentCoroutineContext().cancel(CancellationException("metadata cancelled"))
                     return original.getObjectInfo(path)
                 }
-                override suspend fun getInputStream(path: ObjectPath, version: String): InputStream {
+                override suspend fun getInputStream(path: ObjectPath): InputStream {
                     currentCoroutineContext().cancel(CancellationException("verification cancelled"))
-                    return original.getInputStream(path, version)
+                    return original.getInputStream(path)
                 }
             }
             val work = async { capture(checkNotNull(first.verified).plusSeconds(1)) }
@@ -416,7 +413,6 @@ class ObjectBackupVerificationIntegrationTest {
             resetCounters()
             publish(captured, cutoff)
             assertEquals(1, bodies.get())
-            assertEquals(listOf(captured.verifiedInfo?.version), versionReads.toList())
             assertEquals(0, sourceReads.get())
             val refreshed = checkpoint(captured.key)
             assertEquals(captured.version + 1, refreshed.version)
@@ -433,7 +429,6 @@ class ObjectBackupVerificationIntegrationTest {
         resetCounters()
         publish(captured)
         assertEquals(1, bodies.get())
-        assertEquals(listOf(replacement), versionReads.toList())
         assertEquals(replacement, checkpoint(captured.key).verifiedInfo?.version)
         assertEquals(captured.attempts, checkpoint(captured.key).attempts)
     }
@@ -480,7 +475,7 @@ class ObjectBackupVerificationIntegrationTest {
     fun `publication cancellation after metadata prevents output and leaves proof unchanged`(): Unit = runBlocking {
         val captured = verifiedCapture()
         val original = target
-        target = object : ObjectStorageService by original {
+        target = object : ManagedObjectStorageService by original {
             override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
                 currentCoroutineContext().cancel(CancellationException("publication cancelled"))
                 return original.getObjectInfo(path)
@@ -530,7 +525,7 @@ class ObjectBackupVerificationIntegrationTest {
         ObjectBackupManifestStore(target, Json).saveTracked(
             manifestPath, selected, "retained-store", provide(), checkNotNull(captured.verified).minusSeconds(1),
         )
-        assertEquals(1, heads.get())
+        assertEquals(2, heads.get())
         assertEquals(1, bodies.get())
         assertEquals(captured.verifiedInfo?.version, checkpoint(other.key).verifiedInfo?.version)
         assertNotNull(checkpoint(other.key).verified)
@@ -542,7 +537,7 @@ class ObjectBackupVerificationIntegrationTest {
         val captured = verifiedCapture()
         val original = target
         for (incomplete in listOf(false, true)) {
-            target = object : ObjectStorageService by original {
+            target = object : ManagedObjectStorageService by original {
                 override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                     if (incomplete) return 0
                     throw IOException("manifest unavailable")
@@ -557,7 +552,7 @@ class ObjectBackupVerificationIntegrationTest {
     fun `publication cannot use a checkpoint invalidated during retained metadata I O`(): Unit = runBlocking {
         val captured = verifiedCapture()
         val original = target
-        target = object : ObjectStorageService by original {
+        target = object : ManagedObjectStorageService by original {
             override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
                 val info = original.getObjectInfo(path)
                 withConnectionManager {

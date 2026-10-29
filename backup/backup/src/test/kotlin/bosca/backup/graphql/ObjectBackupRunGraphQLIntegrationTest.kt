@@ -11,6 +11,7 @@ import bosca.security.model.GroupType
 import bosca.security.model.Principal
 import bosca.security.service.ImpersonatedAuthenticationContext
 import bosca.storage.service.ObjectStorageInfo
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StringObjectPath
 import io.mockk.coEvery
@@ -183,7 +184,7 @@ class ObjectBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
         val failedRun = request {
             runs.prepare(inventory.copy(id = "failed", objects = listOf(first.copy(revision = "failed-1"))), "destination-1")
         }
-        val unavailable = mockk<ObjectStorageService>()
+        val unavailable = mockk<ManagedObjectStorageService>()
         coEvery { unavailable.getInputStream(any()) } throws IOException("source unavailable")
         kotlin.test.assertFailsWith<IOException> {
             runs.execute(failedRun.key, mapOf("content" to unavailable), destination)

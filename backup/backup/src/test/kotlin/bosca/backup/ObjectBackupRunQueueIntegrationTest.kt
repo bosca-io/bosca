@@ -32,7 +32,7 @@ import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedNatsContainer
@@ -144,9 +144,9 @@ class ObjectBackupRunQueueIntegrationTest {
         val actualFactory = provide<ObjectStorageServiceFactory>()
         provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) {
             object : ObjectStorageServiceFactory by actualFactory {
-                override suspend fun create(configuration: StorageConfiguration): ObjectStorageService {
+                override suspend fun create(configuration: StorageConfiguration): ManagedObjectStorageService {
                     val actual = actualFactory.create(configuration)
-                    return object : ObjectStorageService by actual {
+                    return object : ManagedObjectStorageService by actual {
                         override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                             if (!path.toString().startsWith("manifests/")) {
                                 payloadWrites.add(path.toString())
@@ -161,7 +161,7 @@ class ObjectBackupRunQueueIntegrationTest {
 
                 override suspend fun <T> withStorage(
                     configuration: StorageConfiguration,
-                    block: suspend (ObjectStorageService) -> T,
+                    block: suspend (ManagedObjectStorageService) -> T,
                 ): T = create(configuration).use { block(it) }
             }
         }

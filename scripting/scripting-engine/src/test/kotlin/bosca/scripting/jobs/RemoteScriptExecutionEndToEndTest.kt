@@ -13,10 +13,7 @@ import bosca.di.annotation.InternalDI
 import bosca.di.provides
 import bosca.pubsub.Message
 import bosca.pubsub.PubSubService
-import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
-import bosca.storage.service.ObjectStorageEntry
-import bosca.storage.service.ObjectStorageInfo
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StringObjectPath
 import bosca.scripting.engine.KtsEngine
@@ -89,23 +86,10 @@ class RemoteScriptExecutionEndToEndTest {
     private val config = ScriptingSecurityConfiguration()
     private val storageData = ConcurrentHashMap<String, ByteArray>()
     private val objectStorageService = object : ObjectStorageService {
-        override suspend fun listObjects(prefix: String, offset: Long, limit: Int): List<ObjectStorageEntry> {
-            require(offset >= 0 && limit > 0)
-            val entries = storageData.entries.filter { it.key.startsWith(prefix) }.sortedBy { it.key }
-            return entries.asSequence().filterIndexed { index, _ -> index.toLong() >= offset }.take(limit)
-                .map { ObjectStorageEntry(it.key, ObjectStorageInfo(it.value.size.toLong())) }.toList()
-        }
-
-        override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo =
-            storageData[path.toString()]?.let { ObjectStorageInfo(it.size.toLong()) }
-                ?: throw ObjectNotFoundException(path)
-
         override suspend fun getPath(metadata: bosca.content.metadata.model.Metadata, supplementaryId: UUID?) = error("unused")
         override suspend fun getPath(collection: bosca.content.collection.model.Collection, supplementaryId: UUID?) = error("unused")
         override suspend fun getString(path: ObjectPath) = storageData[path.toString()]?.decodeToString() ?: error("Not found: $path")
         override suspend fun getInputStream(path: ObjectPath): InputStream = (storageData[path.toString()] ?: error("Not found: $path")).inputStream()
-        override suspend fun getInputStream(path: ObjectPath, version: String): InputStream =
-            throw UnsupportedOperationException("This test store does not retain object versions")
         override suspend fun getInputStreamRange(path: ObjectPath, range: LongRange) = error("unused")
         override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
             val bytes = stream.readBytes()

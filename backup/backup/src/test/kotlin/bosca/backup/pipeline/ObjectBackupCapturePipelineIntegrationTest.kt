@@ -65,6 +65,7 @@ import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageInfo
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.test.resources.SharedNatsContainer
@@ -118,7 +119,7 @@ class ObjectBackupCapturePipelineIntegrationTest {
     private lateinit var server: HttpServer
     private lateinit var directory: Path
     private lateinit var application: BoscaApplication
-    private lateinit var staging: ObjectStorageService
+    private lateinit var staging: ManagedObjectStorageService
     private lateinit var json: Json
     private lateinit var captures: ObjectBackupCaptureService
     private lateinit var runs: PipelineRunService
@@ -181,13 +182,11 @@ class ObjectBackupCapturePipelineIntegrationTest {
                     return@use
                 }
                 val selectedVersion = query["versionId"]
-                val version = if (unversioned && selectedVersion == null) {
-                    if (key == "b") currentVersion else "v1"
-                } else selectedVersion
-                requests.add("$key@$selectedVersion")
+                val version = if (key == "b") currentVersion else "v1"
+                requests.add("$key@${if (unversioned) null else version}")
                 signatures.add(exchange.requestHeaders.getFirst("Authorization").orEmpty())
                 val success = key != failedKey && version in setOf("v1", "v2") && key in setOf("a", "b") &&
-                    (!unversioned || selectedVersion == null)
+                    selectedVersion == null
                 val bytes = if (success) (if (version == "v2") "next" else if (key == "a") "data" else "more").toByteArray()
                     else "<Error><Code>AccessDenied</Code></Error>".toByteArray()
                 if (success && !unversioned) exchange.responseHeaders.add("x-amz-version-id", version)
@@ -528,7 +527,7 @@ class ObjectBackupCapturePipelineIntegrationTest {
     }
 
     @Test
-    fun `discovery action retry reuses saved versions after restart and source mutation`(): Unit = runBlocking {
+    fun `discovery action retry rejects changed unfinished content after restart`(): Unit = runBlocking {
         useDiscoveryPipeline()
         failedKey = "b"
         val initial = start()
@@ -545,11 +544,14 @@ class ObjectBackupCapturePipelineIntegrationTest {
         install()
         val retry = assertNotNull(queue.dequeue(40.seconds))
         assertEquals(failure.first.getId(), retry.getId())
-        execute(retry)
-        assertEquals(PipelineRunStatus.OK, get(initial.id).status)
-        assertTrue(discoveryRequests.isEmpty())
-        assertEquals(listOf("b@v1"), requests.toList())
-        assertTrue(directory.resolve("retained").resolve(discovered.path).exists())
+        val changed = assertFailsWith<bosca.backup.BackupPayloadMismatchException> { execute(retry) }
+        withConnectionManager {
+            withContext(queue.asCoroutineContext(retry)) { queue.markFailed(retry, changed, false) }
+        }
+        assertNull(get(initial.id).output)
+        assertTrue(discoveryRequests.none { it == "LIST" })
+        assertTrue(requests.isEmpty())
+        assertFalse(directory.resolve("retained").resolve(discovered.path).exists())
     }
 
     @Test
@@ -769,10 +771,10 @@ class ObjectBackupCapturePipelineIntegrationTest {
         val actualFactory = provide<ObjectStorageServiceFactory>()
         provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) {
             object : ObjectStorageServiceFactory by actualFactory {
-                override suspend fun create(configuration: StorageConfiguration): ObjectStorageService {
+                override suspend fun create(configuration: StorageConfiguration): ManagedObjectStorageService {
                     val actual = actualFactory.create(configuration)
                     if (configuration.basePath != directory.resolve("restored").toFile().canonicalPath) return actual
-                    return object : ObjectStorageService by actual {
+                    return object : ManagedObjectStorageService by actual {
                         override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                             assertEquals(0, pool.activeConnections)
                             restoreWrites.add(path.toString())
@@ -788,7 +790,7 @@ class ObjectBackupCapturePipelineIntegrationTest {
 
                 override suspend fun <T> withStorage(
                     configuration: StorageConfiguration,
-                    block: suspend (ObjectStorageService) -> T,
+                    block: suspend (ManagedObjectStorageService) -> T,
                 ): T = create(configuration).use { block(it) }
             }
         }

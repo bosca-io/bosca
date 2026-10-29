@@ -17,7 +17,7 @@ import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectPath
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.test.resources.SharedPostgreSQLContainer
 import com.sun.net.httpserver.HttpServer
@@ -45,10 +45,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Real generated services, PostgreSQL and signed reads from independent S3-compatible recovery storage. */
@@ -117,12 +115,12 @@ class ObjectBackupRestorePreparationIntegrationTest {
         val factory = provide<ObjectStorageServiceFactory>()
         provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) {
             object : ObjectStorageServiceFactory by factory {
-                override suspend fun create(configuration: StorageConfiguration): ObjectStorageService {
+                override suspend fun create(configuration: StorageConfiguration): ManagedObjectStorageService {
                     if (checkPool) assertEquals(0, pool.activeConnections)
                     val actual = factory.create(configuration)
                     val id = configuration.bucket ?: Path.of(checkNotNull(configuration.basePath)).fileName.toString()
                     opened.add(id)
-                    return object : ObjectStorageService by actual {
+                    return object : ManagedObjectStorageService by actual {
                         override suspend fun getInputStream(path: ObjectPath): InputStream {
                             if (cancelManifest && id == "retained" && path.toString() == manifestPath) {
                                 throw CancellationException("manifest read cancelled")
@@ -150,7 +148,7 @@ class ObjectBackupRestorePreparationIntegrationTest {
 
                 override suspend fun <T> withStorage(
                     configuration: StorageConfiguration,
-                    block: suspend (ObjectStorageService) -> T,
+                    block: suspend (ManagedObjectStorageService) -> T,
                 ): T = create(configuration).use { block(it) }
             }
         }

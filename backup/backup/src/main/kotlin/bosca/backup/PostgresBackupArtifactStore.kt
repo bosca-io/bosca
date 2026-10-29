@@ -1,7 +1,7 @@
 package bosca.backup
 
 import bosca.storage.service.ObjectNotFoundException
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 import bosca.storage.service.StringObjectPath
 import java.nio.file.Files
 import java.nio.file.Path
@@ -16,7 +16,7 @@ import kotlinx.serialization.json.Json
 
 /** Transfers one native database artifact in a caller-owned, exclusively written object prefix. */
 internal class PostgresBackupArtifactStore(
-    private val storage: ObjectStorageService,
+    private val storage: ManagedObjectStorageService,
     private val json: Json,
     private val prefix: String,
 ) {
@@ -24,12 +24,6 @@ internal class PostgresBackupArtifactStore(
         require(prefix.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
             "Invalid PostgreSQL backup prefix: $prefix"
         }
-    }
-
-    /** Checks the exact completed native artifact without creating local files or repairing storage. */
-    suspend fun verify(manifest: PostgresBackupManifest) {
-        require(read("manifest.json") == manifest) { "Retained PostgreSQL manifest differs from the local artifact" }
-        for (payload in payloads(manifest)) storage.verifyBackupPayload(payload)
     }
 
     /** Receives an already verified local manifest; source bytes are checked again during transfer. */
@@ -50,32 +44,28 @@ internal class PostgresBackupArtifactStore(
         require(completed == null || completed == manifest) { "Conflicting completed PostgreSQL backup: $prefix" }
         require(intent == null || intent == manifest) { "Conflicting PostgreSQL backup intent: $prefix" }
         if (intent == null && partialCompletion != null) throw partialCompletion
-        val selected = payloads(manifest)
+        val payload = payload(manifest)
         if (completed == null && intent == null) {
-            for (payload in selected) {
-                val existing = try {
-                    storage.getObjectInfo(StringObjectPath(payload.payloadPath))
-                } catch (_: ObjectNotFoundException) {
-                    null
-                }
-                require(existing == null) { "Unowned PostgreSQL backup payload already exists: ${payload.payloadPath}" }
+            val existing = try {
+                storage.getObjectInfo(StringObjectPath(payload.payloadPath))
+            } catch (_: ObjectNotFoundException) {
+                null
             }
+            require(existing == null) { "Unowned PostgreSQL backup payload already exists: ${payload.payloadPath}" }
             write("intent.json", manifest)
         }
 
-        for (payload in selected) {
-            if (!storage.hasVerifiedBackupPayload(payload)) {
-                BackupPayloadInputStream(
-                    Files.newInputStream(directory.resolve(payload.key)), payload, currentCoroutineContext(),
-                ).use { input ->
-                    val written = storage.setInputStream(StringObjectPath(payload.payloadPath), input, payload.length)
-                    input.verifyComplete()
-                    check(written == payload.length) {
-                        "Incomplete PostgreSQL payload write: expected ${payload.length}, wrote $written"
-                    }
+        if (!storage.hasVerifiedBackupPayload(payload)) {
+            BackupPayloadInputStream(
+                Files.newInputStream(directory.resolve(payload.key)), payload, currentCoroutineContext(),
+            ).use { input ->
+                val written = storage.setInputStream(StringObjectPath(payload.payloadPath), input, payload.length)
+                input.verifyComplete()
+                check(written == payload.length) {
+                    "Incomplete PostgreSQL payload write: expected ${payload.length}, wrote $written"
                 }
-                storage.verifyBackupPayload(payload)
             }
+            storage.verifyBackupPayload(payload)
         }
         if (completed == null) write("manifest.json", manifest)
         return manifest
@@ -89,17 +79,16 @@ internal class PostgresBackupArtifactStore(
         var failure: Throwable? = null
         try {
             val manifest = read("manifest.json")
-            for (selected in payloads(manifest)) {
-                val temporary = directory.resolve("${selected.key}.tmp")
-                BackupPayloadInputStream(
-                    storage.getInputStream(StringObjectPath(selected.payloadPath)), selected, currentCoroutineContext(),
-                ).use { input ->
-                    Files.newOutputStream(temporary, CREATE_NEW, WRITE).use { input.transferTo(it) }
-                    input.verifyComplete()
-                }
-                if (selected.key == manifest.payloadPath) requireNativePostgresDump(temporary)
-                Files.move(temporary, directory.resolve(selected.key))
+            val selected = payload(manifest)
+            val temporary = directory.resolve("${selected.key}.tmp")
+            BackupPayloadInputStream(
+                storage.getInputStream(StringObjectPath(selected.payloadPath)), selected, currentCoroutineContext(),
+            ).use { input ->
+                Files.newOutputStream(temporary, CREATE_NEW, WRITE).use { input.transferTo(it) }
+                input.verifyComplete()
             }
+            requireNativePostgresDump(temporary)
+            Files.move(temporary, directory.resolve(selected.key))
             val metadata = directory.resolve("manifest.json.tmp")
             Files.writeString(metadata, json.encodeToString(PostgresBackupManifest.serializer(), manifest), CREATE_NEW, WRITE)
             currentCoroutineContext().ensureActive()
@@ -126,18 +115,14 @@ internal class PostgresBackupArtifactStore(
         }
     }
 
-    private fun payloads(manifest: PostgresBackupManifest): List<BackupObject> = buildList {
-        add(
-            BackupObject(
-                store = "postgresql",
-                key = manifest.payloadPath,
-                revision = manifest.id,
-                length = manifest.length,
-                sha256 = manifest.sha256,
-                payloadPath = "$prefix/${manifest.payloadPath}",
-            ),
-        )
-    }
+    private fun payload(manifest: PostgresBackupManifest) = BackupObject(
+        store = "postgresql",
+        key = manifest.payloadPath,
+        revision = manifest.id,
+        length = manifest.length,
+        sha256 = manifest.sha256,
+        payloadPath = "$prefix/${manifest.payloadPath}",
+    )
 
     private suspend fun readOrNull(name: String): PostgresBackupManifest? = try {
         read(name)

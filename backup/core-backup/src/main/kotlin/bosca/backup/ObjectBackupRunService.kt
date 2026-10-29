@@ -2,7 +2,7 @@ package bosca.backup
 
 import bosca.service.Service
 import bosca.storage.configuration.StorageConfiguration
-import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ManagedObjectStorageService
 
 /**
  * Tracks fixed object inventories using the caller's connection-manager context.
@@ -164,8 +164,8 @@ interface ObjectBackupRunService : Service {
      */
     suspend fun execute(
         key: String,
-        sources: Map<String, ObjectStorageService>,
-        destination: ObjectStorageService,
+        sources: Map<String, ManagedObjectStorageService>,
+        destination: ManagedObjectStorageService,
     ): ObjectBackupRun
 
     /**
@@ -181,7 +181,7 @@ interface ObjectBackupRunService : Service {
      */
     suspend fun executeRestore(
         key: String,
-        backup: ObjectStorageService,
-        destinations: Map<String, ObjectStorageService>,
+        backup: ManagedObjectStorageService,
+        destinations: Map<String, ManagedObjectStorageService>,
     ): ObjectBackupRun
 }
