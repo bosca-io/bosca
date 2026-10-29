@@ -51,8 +51,8 @@ validation. Within the catalog and Design Library consumer suites, independent t
 a pool sized to Gradle's worker budget while test classes remain serial. Independent suites can run
 in parallel. Each method owns its server, browser profile and cookies; focused checks use distinct
 report names. Set `-Pbml.browser.workers=1` to run methods
-serially, or choose another pool size for the available machine. The aggregate task reuses those
-results, and its Gradle worker count is bounded independently.
+serially, or choose another pool size for the available machine. CI's later JVM phase excludes these
+suites so they run once even when that phase uses a different Gradle worker count.
 
 Run the CI browser phase from the workspace root with
 `./gradlew -Pbosca.ios.enabled=false --parallel --max-workers=4 testBmlBrowser`.

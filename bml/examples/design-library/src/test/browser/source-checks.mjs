@@ -25,7 +25,7 @@ export async function checkSource({ call, evaluate, until: poll, base, mode, art
   })()`});
   await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});
   await call('Page.navigate',{url:base+'/source?line=70'});
-  await until(`document.readyState==='complete'&&${root}?.hasAttribute('data-source-ready')&&document.querySelector('[data-source-plain][data-source-ready]')&&${active}?.textContent.includes('return')`);
+  await until(`document.readyState==='complete'&&[...document.querySelectorAll('[data-bml-source-view]')].length===11&&[...document.querySelectorAll('[data-bml-source-view]')].every(viewer=>viewer.hasAttribute('data-source-ready'))&&${active}?.textContent.includes('return')&&${root}.querySelector('.source-keyword')&&document.querySelector('[data-source=purple] .source-keyword')&&document.querySelector('[data-source-short] .source-keyword')`);
   assert.deepEqual(await evaluate(`(() => {const root=${root},content=${content},wrap=root.querySelector('[data-bml-ref=wrap]');return {
     readonly:content.getAttribute('aria-readonly'),editable:content.isContentEditable,label:content.getAttribute('aria-label'),tabindex:content.tabIndex,
     forwarded:root.title==='Application source'&&root.classList.contains('source-example'),fallback:!!root.querySelector('[data-bml-ref=fallback]'),
@@ -60,15 +60,18 @@ export async function checkSource({ call, evaluate, until: poll, base, mode, art
   await evaluate(`window.savedSource=${root};window.savedCodeMirror=${root}.querySelector('.cm-editor');${content}.focus()`);
   await click('[data-source-update=light]');await until('document.querySelector("[data-source-update=light]").textContent.includes("Update 1")');
   assert.ok(await evaluate(`${root}===window.savedSource&&${root}.querySelector('.cm-editor')===window.savedCodeMirror&&document.activeElement===${content}&&${root}.querySelector('[data-bml-ref=wrap]').getAttribute('aria-pressed')==='true'`),'Unrelated patches retain the viewer, keyboard focus and local wrap choice');
-  await click('[data-source-line=light]');await until(`${root}.dataset.line==='50'&&${active}.textContent.includes('row50')`);
+  await click('[data-source-line=light]');await until(`${root}.dataset.line==='50'&&${active}?.textContent.includes('row50')`);
   await click('[data-source-wrap=light]');await until(`${root}.hasAttribute('data-wrapped')`);
   await click('[data-source-wrap=light]');await until(`!${root}.querySelector('.cm-lineWrapping')&&${root}.querySelector('[data-bml-ref=wrap]').getAttribute('aria-pressed')==='false'`);
-  await click('[data-source-language=light]');await until(`${root}.dataset.language==='text'&&!${root}.querySelector('.source-keyword')`);
-  await click('[data-source-language=light]');await until(`${root}.dataset.language==='typescript'&&${root}.querySelector('.source-keyword')`);
-  await evaluate(`document.querySelector('[data-palette=light]').classList.add('alternate');${content}.focus()`);
-  assert.deepEqual(await evaluate(`(() => {const root=${root};return [getComputedStyle(root.querySelector('.cm-editor')).backgroundColor,
-    getComputedStyle(root.querySelector('.cm-editor')).color,getComputedStyle(root.querySelector('.cm-gutters')).color,
-    getComputedStyle(root.querySelector('.source-keyword')).color,getComputedStyle(root.querySelector('.cm-activeLine')).backgroundColor];})()`),
+  await click('[data-source-language=light]');await until(`${root}.dataset.language==='text'&&${root}.hasAttribute('data-source-ready')&&!${root}.querySelector('.source-keyword')`);
+  await click('[data-source-language=light]');await until(`${root}.dataset.language==='typescript'&&${root}.hasAttribute('data-source-ready')&&${root}.querySelector('.source-keyword')`);
+  await evaluate(`document.querySelector('[data-palette=light]').classList.add('alternate');${root}.scrollIntoView({block:'center'});${content}.focus()`);
+  const theme = await poll(`(() => {const root=${root},editor=root.querySelector('.cm-editor'),gutter=root.querySelector('.cm-gutters'),
+    keyword=root.querySelector('.source-keyword'),line=root.querySelector('.cm-activeLine');
+    if(!root.hasAttribute('data-source-ready')||!editor||!gutter||!keyword||!line)return null;
+    return [getComputedStyle(editor).backgroundColor,getComputedStyle(editor).color,getComputedStyle(gutter).color,
+      getComputedStyle(keyword).color,getComputedStyle(line).backgroundColor];})()`);
+  assert.deepEqual(theme,
     ['rgb(239, 246, 255)','rgb(30, 58, 138)','rgb(30, 64, 175)','rgb(29, 78, 216)','rgba(0, 0, 0, 0)']);
   await key('Escape');await key('Tab');
   assert.ok(await evaluate(`!${root}.contains(document.activeElement)`),'Escape then Tab restores native focus navigation');
@@ -111,7 +114,7 @@ export async function checkSource({ call, evaluate, until: poll, base, mode, art
       await call('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:false});
       await call('Page.navigate',{url:base+'/source'});
       const viewer=`document.querySelector('[data-source=${palette}]')`;
-      await until(`${viewer}?.hasAttribute('data-source-ready')`);
+      await until(`['light','purple'].every(palette=>{const root=document.querySelector('[data-source='+palette+']');return root?.hasAttribute('data-source-ready')&&root.querySelector('.source-keyword');})`);
       const snapshot=()=>evaluate(`(()=>{const root=${viewer},box=root.getBoundingClientRect();return {
         source:root.querySelector('textarea').value,width:box.width,height:box.height,
         foreground:getComputedStyle(root.querySelector('.cm-editor')).color,
