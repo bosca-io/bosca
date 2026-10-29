@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
-import { launchTestBrowser } from '../../../../../gradle/bml-test-browser.mjs';
+import { launchTestBrowser, waitForTestCondition } from '../../../../../gradle/bml-test-browser.mjs';
 import { checkReferences } from './references.mjs';
 import { checkPresentation } from './presentation.mjs';
 import { checkPickers } from './picker.mjs';
@@ -54,8 +54,10 @@ await new Promise(resolve => listener.close(resolve));
 const cdp = `http://127.0.0.1:${port}`;
 const ownedBrowser = await launchTestBrowser(port);
 const browser = ownedBrowser.process;
-const keyboard = ownedBrowser.connection.contexts()[0].pages()[0].keyboard;
+const page = ownedBrowser.connection.contexts()[0].pages()[0];
+const keyboard = page.keyboard;
 let ws, diagnostics;
+let scriptsDisabled = false;
 try {
   const targets = await (await fetch(`${cdp}/json`)).json();
   ws = new WebSocket(targets.find(target => target.type === 'page').webSocketDebuggerUrl);
@@ -86,6 +88,9 @@ try {
     else item.resolve(message.result);
   });
   function call(method, params = {}, deadline = 10000) {
+    if (method === 'Emulation.setScriptExecutionDisabled') scriptsDisabled = params.value;
+    if (method === 'Page.navigate') return page.goto(params.url, { waitUntil: 'load', timeout: deadline });
+    if (method === 'Page.reload') return page.reload({ waitUntil: 'load', timeout: deadline });
     return new Promise((resolve, reject) => {
       const id = ++sequence;
       diagnostics?.sent(id, method, params);
@@ -101,11 +106,9 @@ try {
     return result.result.value;
   }
   async function until(expression) {
-    // Observe immediate DOM updates promptly, retaining 100 slower polls for delayed actions.
-    for (let attempt = 0; attempt < 120; attempt++) {
-      if (await evaluate(expression)) return;
-      await new Promise(resolve => setTimeout(resolve, attempt < 20 ? 5 : 50));
-    }
+    let timeout;
+    try { return await waitForTestCondition(page, expression, { scriptsDisabled }); }
+    catch (error) { if (error.name !== 'TimeoutError') throw error; timeout = error; }
     const context = await evaluate(`({ url: location.href, ready: document.readyState,
       active: document.activeElement?.outerHTML.slice(0, 1500),
       actions: Array.from(document.querySelectorAll('[data-bml-method]'), el => ({ text: el.textContent.trim(),
@@ -116,7 +119,7 @@ try {
         .catch(error => ({ body: `Response body unavailable: ${error.message}` }));
       failures.push({ ...response, body: body.body.slice(0, 2000) });
     }
-    throw new Error(`Timed out: ${expression}\n${JSON.stringify({ context, responses, failures, consoleErrors })}`);
+    throw new Error(`Timed out: ${expression}\n${JSON.stringify({ context, responses, failures, consoleErrors })}`, { cause: timeout });
   }
 
   await call('Page.enable');await call('Runtime.enable');await call('Network.enable');await call('Page.bringToFront');
@@ -263,7 +266,7 @@ try {
   await checkPickers({navigate,evaluate,until,call,artifacts,mode});
   checkpoint('pickers complete');
   await checkSources({navigate,evaluate,until,key,call,artifacts,mode});
-  await checkToastNavigation({navigate,evaluate,until,call});
+  await checkToastNavigation({navigate,evaluate,until,call,page});
   await checkJsonEditors({navigate,evaluate,until,call,artifacts,mode});
   checkpoint('editors complete');
   await checkComments({navigate,evaluate,until,call,artifacts,mode});

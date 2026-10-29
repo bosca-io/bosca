@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 /** Returning to saved session state must not announce an earlier action as a new result. */
-export async function checkToastNavigation({ navigate, evaluate, until: poll, call }) {
+export async function checkToastNavigation({ navigate, evaluate, until: poll, call, page }) {
   const until = expression => poll(`Boolean(${expression})`);
   const root = `document.querySelector('[data-catalog-save-toast=foundation]')`;
   const ready = () => until(`document.querySelector('[data-catalog-form=foundation]')?.dataset.bmlActionBound==='true'&&${root}.querySelector('[data-bml-ref=dismiss]')?.hasAttribute('title')===false`);
@@ -12,10 +12,16 @@ export async function checkToastNavigation({ navigate, evaluate, until: poll, ca
     return sequence + 1;
   };
   const leaveAndReturn = async (historyBack = false) => {
-    await evaluate(`document.querySelector('nav[aria-label="Design library"] a[href="/components"]').click()`);
-    await until(`location.pathname==='/components'&&document.readyState==='complete'`);
-    if (historyBack) await evaluate(`history.back()`);
-    else await evaluate(`document.querySelector('nav[aria-label="Design library"] a[href="/foundation"]').click()`);
+    await Promise.all([
+      page.waitForURL('**/components', { waitUntil: 'load', timeout: 10000 }),
+      page.locator('nav[aria-label="Design library"] a[href="/components"]').click(),
+    ]);
+    // A restored history document is already loaded and does not emit a new load event.
+    if (historyBack) await page.goBack({ waitUntil: 'commit', timeout: 10000 });
+    else await Promise.all([
+      page.waitForURL('**/foundation', { waitUntil: 'load', timeout: 10000 }),
+      page.locator('nav[aria-label="Design library"] a[href="/foundation"]').click(),
+    ]);
     await until(`location.pathname==='/foundation'&&document.readyState==='complete'`);
     await ready();
   };

@@ -44,13 +44,14 @@ internal class BmlChunkTestBrowser(chrome: File, profile: File, private val log:
             while (!portFile.isFile && process.isAlive && System.nanoTime() < deadline) Thread.sleep(50)
             check(portFile.isFile) { "Browser did not expose DevTools: ${diagnostics()}" }
             val port = portFile.readLines().first().toInt()
-            val response = client.send(
-                HttpRequest.newBuilder(URI("http://127.0.0.1:$port/json")).timeout(Duration.ofSeconds(5)).GET().build(),
-                HttpResponse.BodyHandlers.ofString(),
-            )
-            check(response.statusCode() == 200) { response.body() }
-            val target = Json.parseToJsonElement(response.body()).jsonArray.map { it.jsonObject }
-                .first { it["type"]?.jsonPrimitive?.content == "page" }
+            val target = checkNotNull(awaitChunkBrowserPageTarget(deadline, process::isAlive) {
+                val response = client.send(
+                    HttpRequest.newBuilder(URI("http://127.0.0.1:$port/json")).timeout(Duration.ofSeconds(5)).GET().build(),
+                    HttpResponse.BodyHandlers.ofString(),
+                )
+                check(response.statusCode() == 200) { response.body() }
+                Json.parseToJsonElement(response.body()).jsonArray.map { it.jsonObject }
+            }) { "Browser did not publish a page target: ${diagnostics()}" }
             socket = client.newWebSocketBuilder().connectTimeout(Duration.ofSeconds(5)).buildAsync(
                 URI(target.getValue("webSocketDebuggerUrl").jsonPrimitive.content),
                 object : WebSocket.Listener {

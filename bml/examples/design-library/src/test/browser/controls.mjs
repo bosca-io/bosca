@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
-import { launchTestBrowser } from '../../../../../../gradle/bml-test-browser.mjs';
+import { launchTestBrowser, waitForTestCondition } from '../../../../../../gradle/bml-test-browser.mjs';
 import { checkLayout } from './layout-checks.mjs';
 import { checkIconActions } from './icon-action-checks.mjs';
 import { checkOverlays } from './overlay-checks.mjs';
@@ -35,7 +35,9 @@ await new Promise(resolve => listener.close(resolve));
 const cdp = `http://127.0.0.1:${port}`;
 const ownedBrowser = await launchTestBrowser(port);
 const browser = ownedBrowser.process;
+const page = ownedBrowser.connection.contexts()[0].pages()[0];
 let ws;
+let scriptsDisabled = false;
 try {
   const targets = await (await fetch(`${cdp}/json`)).json();
   ws = new WebSocket(targets.find(target => target.type === 'page').webSocketDebuggerUrl);
@@ -64,6 +66,9 @@ try {
     else item.resolve(message.result);
   });
   function call(method, params = {}) {
+    if (method === 'Emulation.setScriptExecutionDisabled') scriptsDisabled = params.value;
+    if (method === 'Page.navigate') return page.goto(params.url, { waitUntil: 'load', timeout: 10000 });
+    if (method === 'Page.reload') return page.reload({ waitUntil: 'load', timeout: 10000 });
     return new Promise((resolve, reject) => {
       const id = ++sequence;
       const timeout = setTimeout(() => {
@@ -83,12 +88,9 @@ try {
     return result.result.value;
   }
   async function until(expression) {
-    // Observe immediate DOM updates promptly, retaining 100 slower polls for delayed actions.
-    for (let attempt = 0; attempt < 120; attempt++) {
-      const value = await evaluate(expression);
-      if (value) return value;
-      await new Promise(resolve => setTimeout(resolve, attempt < 20 ? 5 : 50));
-    }
+    let timeout;
+    try { return await waitForTestCondition(page, expression, { scriptsDisabled }); }
+    catch (error) { if (error.name !== 'TimeoutError') throw error; timeout = error; }
     const context = await evaluate(`({ url: location.href, ready: document.readyState,
       active: document.activeElement?.outerHTML.slice(0, 1500),
       actions: Array.from(document.querySelectorAll('[data-bml-method]'), el => ({ text: el.textContent.trim(),
@@ -98,7 +100,7 @@ try {
       const body = await call('Network.getResponseBody', { requestId: response.id });
       failures.push({ ...response, body: body.body.slice(0, 2000) });
     }
-    throw new Error(`Timed out: ${expression}\n${JSON.stringify({ context, responses, failures, consoleErrors })}`);
+    throw new Error(`Timed out: ${expression}\n${JSON.stringify({ context, responses, failures, consoleErrors })}`, { cause: timeout });
   }
   await call('Page.enable');
   await call('Runtime.enable');
