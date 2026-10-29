@@ -201,6 +201,12 @@ open class CiApi(network: NetworkClient) : Api(network) {
     open suspend fun getPipelineLogs(stepId: Uuid, offset: Int? = null, limit: Int? = null) =
         network.boscaGraphql.execute(GetPipelineLogs, GetPipelineLogs.Variables(stepId, offset, limit)).git.pipelineLogs
 
+    open suspend fun listPipelineRunsForPipeline(repositoryId: Uuid, pipelineId: Uuid, offset: Long, limit: Int) =
+        network.boscaGraphql.execute(
+            ListPipelineRunsForPipeline,
+            ListPipelineRunsForPipeline.Variables(repositoryId, pipelineId, offset, limit),
+        ).git.pipelines.singleOrNull()?.runs
+
     open suspend fun listPipelines(repositoryId: Uuid) =
         network.boscaGraphql.execute(ListPipelines, ListPipelines.Variables(repositoryId)).git.pipelines
 

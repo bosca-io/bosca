@@ -3235,7 +3235,7 @@ type Git {
     "The uses:verify-deployment gate's observation: current deployment health, or NONE."
     jobDeploymentHealth(jobId: UUID!, environmentKey: String!, repository: String): String!
     "List pipelines for a repository."
-    pipelines(repositoryId: UUID!): [GitPipeline!]!
+    pipelines(repositoryId: UUID!, id: UUID): [GitPipeline!]!
     "Look up a pull request by repository and number."
     pullRequest(number: Int!, repositoryId: UUID!): GitPullRequest
     "List pull requests for a repository with optional filters."
