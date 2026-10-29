@@ -279,7 +279,7 @@ Build and verify:
 
 The ordinary `test` task also includes the browser test. Tests launch separate production and
 development JVMs using only built JARs, exercise HTTP assets and actions, and use an isolated headless
-Chrome profile. Independent methods run in a bounded pool of four (`-Pbml.browser.workers=1` selects
+Chrome profile. Independent methods use Gradle's worker budget (`-Pbml.browser.workers=1` selects
 serial execution). The full-document accessibility tests cover every route in both palettes and
 runtime modes at desktop and phone widths, including editor, visualization, dashboard and tree
 states. Each combination is audited once, with contrast evidence required for each group of routes.

@@ -48,8 +48,9 @@ The JVM CI pipeline installs Chromium through the catalog's pinned test dependen
 its executable path for both suites. It does not depend on a system Chrome installation.
 Browser suites, including Notifications Web adoption, run in a dedicated phase before aggregate JVM
 validation. Within the catalog and Design Library consumer suites, independent test methods run in
-a pool of four while test classes remain serial. Each method owns its server, browser profile and
-cookies; focused checks use distinct report names. Set `-Pbml.browser.workers=1` to run methods
+a pool sized to Gradle's worker budget while test classes remain serial. Independent suites can run
+in parallel. Each method owns its server, browser profile and cookies; focused checks use distinct
+report names. Set `-Pbml.browser.workers=1` to run methods
 serially, or choose another pool size for the available machine. The aggregate task reuses those
 results, and its Gradle worker count is bounded independently.
 
