@@ -4,11 +4,10 @@ import { join } from 'node:path';
 import { contrastSamples } from './presentation.mjs';
 
 /** Real local actions and native layout, disclosure, focus and scrolling in consumer palettes. */
-export async function checkSurfaces({navigate,evaluate,until:poll,call,artifacts,mode}) {
+export async function checkSurfaces({navigate,evaluate,until:poll,call,key,artifacts,mode}) {
   const until=expression=>poll(`Boolean(${expression})`);
   const truth=expression=>evaluate(`Boolean(${expression})`);
   const node=(part,id='dark')=>`document.querySelector('[data-surface-${part}=${id}]')`;
-  const key=async value=>{for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:value,windowsVirtualKeyCode:{Enter:13,Tab:9,ArrowRight:39,PageDown:34}[value],...(value==='Enter'&&type==='keyDown'?{text:'\r'}:{})});};
   const action=async(part,done,id='dark')=>{await evaluate(`window.surfaceAction=${node(part,id)};window.surfaceAction.click()`);await until(`!window.surfaceAction.isConnected&&(${done})`);};
   const load=async(id='dark')=>{await evaluate(`window.surfaceSequence=Number(${node('toast',id)}.dataset.sequence);${node('form',id)}.requestSubmit()`);await until(`Number(${node('toast',id)}.dataset.sequence)===window.surfaceSequence+1&&!${node('form',id)}.hasAttribute('data-bml-action-pending')`);};
   const states=async(id='dark')=>evaluate(`document.querySelector('[data-catalog-surface=${id}] [data-example-states]').open=true`);
@@ -28,12 +27,16 @@ export async function checkSurfaces({navigate,evaluate,until:poll,call,artifacts
   await evaluate('window.releaseSurfaceLoad()');await until(`${node('table')}&&${node('toast')}.dataset.sequence==='2'`);
   assert.ok(await truth(`${node('table')}.getAttribute('role')==='region'&&${node('table')}.getAttribute('aria-label')==='Local component examples'&&${node('table')}.tabIndex===0&&${node('table')}.querySelectorAll('tbody tr').length===15&&${node('table')}.querySelectorAll('th[scope=col]').length===3&&${node('empty','light')}.checkVisibility()&&!${node('table','light')}`));
   await call('Emulation.setDeviceMetricsOverride',{width:390,height:1000,deviceScaleFactor:1,mobile:false});
+  await until(`${node('table')}.scrollWidth>${node('table')}.clientWidth&&${node('table')}.scrollHeight>${node('table')}.clientHeight`);
   // Register the future event without returning its Promise to the awaiting CDP evaluation.
-  await evaluate(`(()=>{${node('table')}.scrollIntoView({block:'center'});${node('table')}.focus();window.surfaceScrollFinished=new Promise(resolve=>${node('table')}.addEventListener('scrollend',resolve,{once:true}));})()`);
+  await evaluate(`(()=>{${node('table')}.scrollIntoView({block:'center',behavior:'instant'});${node('table')}.focus({preventScroll:true});window.surfaceScrollFinished=new Promise(resolve=>${node('table')}.addEventListener('scrollend',resolve,{once:true}));})()`);
   await key('ArrowRight');await evaluate('window.surfaceScrollFinished.then(()=>true)');
+  const horizontal=await evaluate(`({left:${node('table')}.scrollLeft,top:${node('table')}.scrollTop})`);
+  assert.ok(horizontal.left>0,`Arrow Right scrolls the native table: ${JSON.stringify(horizontal)}`);
   await evaluate(`(()=>{window.surfaceScrollFinished=new Promise(resolve=>${node('table')}.addEventListener('scrollend',resolve,{once:true}));})()`);
   await key('PageDown');await evaluate('window.surfaceScrollFinished.then(()=>true)');
-  await until(`${node('table')}.scrollLeft>0&&${node('table')}.scrollTop>0`);
+  const vertical=await evaluate(`({left:${node('table')}.scrollLeft,top:${node('table')}.scrollTop})`);
+  assert.ok(vertical.top>0,`Page Down scrolls the native table: ${JSON.stringify(vertical)}`);
   await evaluate(`${node('table')}.scrollTo({left:80,top:120,behavior:'instant'})`);await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   await evaluate(`window.surfaceTable=${node('table')};window.surfaceScroll=[window.surfaceTable.scrollLeft,window.surfaceTable.scrollTop]`);
   await action('refresh',`${node('toast')}.dataset.sequence==='3'`);

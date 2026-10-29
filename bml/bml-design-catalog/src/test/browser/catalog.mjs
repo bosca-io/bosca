@@ -54,6 +54,7 @@ await new Promise(resolve => listener.close(resolve));
 const cdp = `http://127.0.0.1:${port}`;
 const ownedBrowser = await launchTestBrowser(port);
 const browser = ownedBrowser.process;
+const keyboard = ownedBrowser.connection.contexts()[0].pages()[0].keyboard;
 let ws, diagnostics;
 try {
   const targets = await (await fetch(`${cdp}/json`)).json();
@@ -153,7 +154,7 @@ try {
   } else if(process.argv[4]==='--tree-accessibility') {
     await checkAccessibility({navigate,evaluate,until,call,artifacts,mode,paths:['/trees'],reportName:'tree-accessibility'});
   } else if(process.argv[4]==='--surfaces') {
-    await checkSurfaces({navigate,evaluate,until,call,artifacts,mode});
+    await checkSurfaces({navigate,evaluate,until,call,key:value=>keyboard.press(value),artifacts,mode});
   } else if(process.argv[4]==='--feedback') {
     await checkFeedback({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--dashboards') {
@@ -276,7 +277,7 @@ try {
   await checkRouteNavigation({navigate,evaluate,until,call,artifacts,mode});
   if(mode.startsWith('native-')) {
     await checkFeedback({navigate,evaluate,until,call,artifacts,mode});
-    await checkSurfaces({navigate,evaluate,until,call,artifacts,mode});
+    await checkSurfaces({navigate,evaluate,until,call,key:value=>keyboard.press(value),artifacts,mode});
   }
   }
   assert.deepEqual(exceptions,[]);
