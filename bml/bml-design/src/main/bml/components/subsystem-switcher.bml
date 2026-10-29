@@ -6,7 +6,7 @@
   <prop name="homeHref" type="String" default="/" />
   <script server provides="current">items.firstOrNull { it.id == currentId }</script>
   <div class="subsystem-switcher" data-bml-design-dialog data-subsystem-switcher :data-current-subsystem="currentId">
-    <html:button class="subsystem-trigger" ref="trigger" type="button" aria-label="Switch subsystems">
+    <html:button class="subsystem-trigger" ref="trigger" type="button">
       <span class="subsystem-trigger-icon"><icon :name='current?.icon ?: "workflow"' :size="16" /></span>
       <span class="subsystem-trigger-text"><strong>{ current?.label ?: product }</strong><span>{ current?.description ?: "Build & Deliver" }</span></span>
       <span class="subsystem-trigger-chevron"><icon name="chevron-right" :size="14" /></span>
