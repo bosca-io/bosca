@@ -126,7 +126,7 @@ broadcast subscriptions are stopped with the application.
 
 ```bash
 ./gradlew :server:atlas-server:test
-./gradlew :git:git-ci:test --tests 'bosca.git.ci.service.RegistryProducedArtifactVerifierTest'
+./gradlew :artifacts:artifacts-git:test
 ./gradlew :git:git-ui-server:test
 ```
 
@@ -142,3 +142,8 @@ Artifact administration is available under `/artifacts` in the BML host. The aut
 landing page links both applications. Artifact file uploads and reads use the UI origin; a separate
 registry pool can be selected with `BML_ARTIFACTS_ENDPOINT`, while its public file URL origin can be
 set with `ATLAS_ARTIFACTS_URL`. The UI continues using the shared Atlas GraphQL endpoint.
+
+Git and the artifact registry remain independent domain modules. Atlas selects the `artifacts-git`
+CI registry adapter and its generated providers; standalone Git does not load registry modules.
+Atlas also supplies the subsystem catalog to the imported Git UI. Shared authentication lives in
+`bml-auth-ui`, while each host owns its login branding and landing routes.

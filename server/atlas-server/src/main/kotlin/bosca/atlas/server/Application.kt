@@ -100,7 +100,7 @@ internal fun atlasProviderRegistrars() = arrayOf(
     CorePipelinesProviderRegistrar(), PipelinesProviderRegistrar(),
     CoreGitProviderRegistrar(), GitProviderRegistrar(),
     CoreGitCiProviderRegistrar(), GitCiProviderRegistrar(), GitJobsProviderRegistrar(),
-    CoreArtifactsProviderRegistrar(), ArtifactsProviderRegistrar(), ArtifactsAdminProviderRegistrar(),
+    CoreArtifactsProviderRegistrar(), ArtifactsProviderRegistrar(), ArtifactsGitProviderRegistrar(), ArtifactsAdminProviderRegistrar(),
     ArtifactsDockerProviderRegistrar(), ArtifactsHelmProviderRegistrar(), ArtifactsMavenProviderRegistrar(),
     ArtifactsNpmProviderRegistrar(), ArtifactsRawProviderRegistrar(), ArtifactsMlProviderRegistrar(),
 )

@@ -3,6 +3,7 @@ package bosca.atlas.ui
 import bosca.atlas.ui.generated.BmlComponents
 import bosca.atlas.ui.generated.BmlIslands
 import bosca.atlas.ui.generated.BmlPages
+import bosca.bml.auth.AuthUi
 import bosca.bml.project.CompiledProject
 import bosca.bml.server.BmlServer
 import bosca.server.BoscaApplication
@@ -14,7 +15,7 @@ object AtlasUi {
     val componentRenderers = BmlComponents.renderers
     val islandDispatchers = BmlIslands.dispatchers
     val componentIslandDispatchers = BmlIslands.componentDispatchers
-    val css: String get() = resource("atlas-ui.css")
+    val css: String get() = AuthUi.css + "\n" + resource("atlas-ui.css")
     val javascript: String get() = resource("atlas-ui.js")
     val favicon: String get() = resource("atlas-mark.svg")
 

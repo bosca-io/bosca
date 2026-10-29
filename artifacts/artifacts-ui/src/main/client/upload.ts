@@ -97,8 +97,8 @@ export function mountArtifactUpload(ctx: ClientContext, resolve: ResolveTarget):
         if (!namespaceId) throw new Error("Choose a namespace.");
         if (!safeArtifactRepositoryName(name)) throw new Error("Enter a repository name of up to 255 letters, numbers, @, _, dots, or hyphens, without consecutive dots.");
       }
-      await atlasAuth.initialize(false);
-      const headers = await atlasAuth.getAuthHeaders();
+      await boscaAuth.initialize(false);
+      const headers = await boscaAuth.getAuthHeaders();
       signal.throwIfAborted();
       const target = await resolveTarget(repositoryId, namespaceId, name);
       signal.throwIfAborted();

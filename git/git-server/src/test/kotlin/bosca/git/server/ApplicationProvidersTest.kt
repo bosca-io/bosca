@@ -6,16 +6,10 @@ import bosca.di.MissingObjectProvider
 import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provideProvider
-import bosca.di.provide
-import bosca.di.provides
 import bosca.git.service.ProducedArtifactVerifier
 import bosca.git.service.RequiredArtifactVerifier
-import bosca.pubsub.PubSubService
-import bosca.storage.service.ObjectStorageService
 import bosca.pipelines.PipelineEventDispatcher
 import bosca.scheduler.service.SchedulerService
-import io.mockk.mockk
-import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -43,13 +37,11 @@ class ApplicationProvidersTest {
     }
 
     @Test
-    fun `CI artifact verifiers resolve through the Git server provider graph`() = runTest {
+    fun `standalone Git leaves registry verification to importing hosts`() {
         ProviderRegistry.clear()
         gitServerProviderRegistrars().forEach { it.register() }
-        provides<ObjectStorageService>(singleton = true, overrideExisting = true) { mockk(relaxed = true) }
-        provides<PubSubService>(singleton = true, overrideExisting = true) { mockk(relaxed = true) }
 
-        assertTrue(provide<ProducedArtifactVerifier>().missing(emptyList()).isEmpty())
-        assertTrue(provide<RequiredArtifactVerifier>().unsatisfied(emptyList()).isEmpty())
+        assertTrue(provideProvider<ProducedArtifactVerifier>() is MissingObjectProvider<*>)
+        assertTrue(provideProvider<RequiredArtifactVerifier>() is MissingObjectProvider<*>)
     }
 }

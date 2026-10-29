@@ -1,22 +1,6 @@
 <component tag="atlas-auth-layout">
   <prop name="title" type="String" required />
-  <html lang="en">
-    <head>
-      <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <meta name="robots" content="noindex,nofollow" />
-      <meta name="referrer" content="same-origin" />
-      <title>{ title } — Bosca Atlas</title>
-    </head>
-    <body class="auth-document">
-      <div class="auth-layout">
-        <atlas-auth-brand />
-        <main class="auth-content">
-          <div class="auth-card">
-            <slot />
-          </div>
-        </main>
-      </div>
-    </body>
-  </html>
+  <auth-layout :title="title" product="Atlas" heading="Source repositories and build artifacts." description="Build &amp; Deliver with Bosca Atlas.">
+    <slot />
+  </auth-layout>
 </component>

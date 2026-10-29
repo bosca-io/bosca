@@ -12,6 +12,7 @@ java {
 }
 
 dependencies {
+    api(project(":bml:bml-auth-ui"))
     api(project(":bml:bml-server"))
     api(project(":bml:bml-design"))
     api(project(":bosca-core:core"))
@@ -37,11 +38,18 @@ boscaGraphql {
 }
 
 tasks.named("bmlInstallClientDependencies") {
+    val sharedAuthInstall = layout.projectDirectory.dir("node_modules/@bosca/bml-auth-ui").asFile
+    doFirst {
+        check(sharedAuthInstall.deleteRecursively()) { "Cannot refresh the local authentication client" }
+    }
+    inputs.files(fileTree("../../bml/bml-auth-ui") { include("package.json", "src/main/client/**") })
     inputs.files(fileTree("../../bml/bml-runtime") { include("package.json", "src/**", "tools/**") })
     inputs.files(fileTree("../../web/packages/auth") { include("package.json", "src/**") })
 }
 
 tasks.named("bmlBundleClient") {
+    inputs.files(fileTree("../../bml/bml-auth-ui/src/main/client"))
+        .withPropertyName("authClientSources").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file("tsconfig.json").withPropertyName("clientTypeScriptConfig")
 }
 
@@ -53,12 +61,4 @@ val typecheckClient by tasks.registering(Exec::class) {
     commandLine(bml.nodeExecutable.get(), layout.projectDirectory.file("node_modules/typescript/bin/tsc").asFile.absolutePath, "--noEmit")
 }
 
-val testClient by tasks.registering(Exec::class) {
-    group = "verification"
-    description = "Test Atlas authentication flows."
-    dependsOn("bmlInstallClientDependencies")
-    workingDir(projectDir)
-    commandLine(bml.nodeExecutable.get(), "--test", "src/test/client-auth.test.mjs")
-}
-
-tasks.named("check") { dependsOn(typecheckClient, testClient) }
+tasks.named("check") { dependsOn(typecheckClient, ":bml:bml-auth-ui:check") }

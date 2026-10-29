@@ -124,6 +124,7 @@ val projects = buildList {
     add(project(":admin-support:postgres-admin"))
     add(project(":artifacts:core-artifacts"))
     add(project(":artifacts:artifacts-base"))
+    add(project(":artifacts:artifacts-git"))
     add(project(":artifacts:artifacts-installer"))
     add(project(":artifacts:artifacts-admin"))
     add(project(":artifacts:artifacts-ml"))

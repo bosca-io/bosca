@@ -362,17 +362,16 @@ class GitUiRoutesTest {
         assertEquals(11, paths.size)
         assertEquals(paths.distinct(), paths)
         val nativeConfig = requireNotNull(GitUiAssets::class.java.getResourceAsStream(
-            "/META-INF/native-image/io.bosca/atlas-ui/resource-config.json",
+            "/META-INF/native-image/io.bosca/git-ui/resource-config.json",
         )).use { Json.parseToJsonElement(it.readBytes().decodeToString()).jsonObject }
         val nativePatterns = nativeConfig.getValue("resources").jsonObject.getValue("includes").jsonArray
             .map { Regex(it.jsonObject.getValue("pattern").jsonPrimitive.content) }
-        val manifestPath = "bml/applications/bosca.atlas.ui.generated/client-manifest.json"
-        assertTrue(nativePatterns.any { it.matches(manifestPath) })
-        assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$manifestPath")?.use { it.readBytes() })
-        assertTrue(nativePatterns.any { it.matches("META-INF/licenses/bml-design/geist.txt") })
-        paths.forEach { path ->
-            val resource = "bml/applications/bosca.atlas.ui.generated/" + path.removePrefix("/_bml/")
+        for (resource in listOf("git-ui.css", "git-ui.js")) {
             assertTrue(nativePatterns.any { it.matches(resource) }, resource)
+            assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$resource")?.use { it.readBytes() })
+        }
+        paths.forEach { path ->
+            val resource = path.removePrefix("/_")
             assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$resource")?.use { it.readBytes() })
             val response =
                 client.send(

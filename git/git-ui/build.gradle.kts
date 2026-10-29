@@ -14,7 +14,7 @@ dependencies {
     api(project(":bml:bml-server"))
     api(project(":bml:bml-design"))
     api(project(":bosca-core:core"))
-    implementation(project(":server:atlas-ui"))
+    implementation(project(":bml:bml-auth-ui"))
     implementation(project(":bml:core-bml"))
     implementation(project(":bml:bml-annotations"))
     implementation(project(":bosca-graphql:bosca-graphql-client"))
@@ -33,15 +33,19 @@ bml {
 }
 
 tasks.named("bmlInstallClientDependencies") {
+    val sharedAuthInstall = layout.projectDirectory.dir("node_modules/@bosca/bml-auth-ui").asFile
+    doFirst {
+        check(sharedAuthInstall.deleteRecursively()) { "Cannot refresh the local authentication client" }
+    }
     inputs.files(fileTree("../../bml/bml-runtime") { include("package.json", "src/**", "tools/**") })
     inputs.files(fileTree("../../web/packages/auth") { include("package.json", "src/**") })
-    inputs.files(fileTree("../../server/atlas-ui") { include("package.json", "src/main/client/**") })
+    inputs.files(fileTree("../../bml/bml-auth-ui") { include("package.json", "src/main/client/**") })
 }
 
 tasks.named("bmlBundleClient") {
     inputs.file("tsconfig.json").withPropertyName("clientTypeScriptConfig")
-    inputs.files(fileTree("../../server/atlas-ui/src/main/client"))
-        .withPropertyName("atlasClientSources").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(fileTree("../../bml/bml-auth-ui/src/main/client"))
+        .withPropertyName("authClientSources").withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 val typecheckClient by tasks.registering(Exec::class) {

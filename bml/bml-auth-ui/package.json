@@ -1,0 +1,22 @@
+{
+  "name": "@bosca/bml-auth-ui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/main/client/auth-ui.ts",
+    "./auth": "./src/main/client/auth.ts",
+    "./profile-menu": "./src/main/client/profile-menu.ts",
+    "./appearance": "./src/main/client/appearance.ts"
+  },
+  "dependencies": {
+    "@bosca/auth-client-browser": "file:../../web/packages/auth",
+    "@bosca/bml": "file:../bml-runtime"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "typescript": "^5.6.3"
+  },
+  "files": [
+    "src/main/client"
+  ]
+}

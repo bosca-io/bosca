@@ -15,14 +15,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class ConfigurationTest {
-    @Test
-    fun `registry verifiers belong to Git CI independently of WorkOps`() {
-        val artifacts = mockk<bosca.artifacts.service.ArtifactRepositoryService>()
-        assertIs<bosca.git.ci.service.RegistryProducedArtifactVerifier>(configuration.producedArtifactVerifier(artifacts))
-        assertIs<bosca.git.ci.service.RegistryProducedArtifactVerifier>(configuration.requiredArtifactVerifier(artifacts))
-    }
-
-
     private val configuration = Configuration()
 
     @Test

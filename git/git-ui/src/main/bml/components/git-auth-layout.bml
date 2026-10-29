@@ -1,0 +1,6 @@
+<component tag="git-auth-layout">
+  <prop name="title" type="String" required />
+  <auth-layout :title="title" product="Git" heading="Source repositories." description="Browse code, review changes, and build with Bosca Git.">
+    <slot />
+  </auth-layout>
+</component>

@@ -648,7 +648,7 @@ class CiPipelineRepositoryIntegrationTest {
         )
 
         // Real services over the real database; the registry is faked at the SPI seam — exactly
-        // where production wires the workops registry verifier (whose exact/prefix resolution has
+        // where composed hosts wire the registry adapter (whose exact/prefix resolution has
         // its own tests in that module).
         val jobService = bosca.git.ci.service.PipelineJobServiceImpl(
             jobRepo, stepRepo, io.mockk.mockk(relaxed = true), json,

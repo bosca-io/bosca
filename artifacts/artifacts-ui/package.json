@@ -8,7 +8,7 @@
   "dependencies": {
     "@bosca/auth-client-browser": "file:../../web/packages/auth",
     "@bosca/bml": "file:../../bml/bml-runtime",
-    "@bosca/atlas-ui-client": "file:../../server/atlas-ui"
+    "@bosca/bml-auth-ui": "file:../../bml/bml-auth-ui"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

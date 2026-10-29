@@ -10,7 +10,7 @@
     </profile-menu>
   </div>
   <script client scoped>
-    import { mountProfileMenu } from "@client/profile-menu";
+    import { mountProfileMenu } from "@bosca/bml-auth-ui/profile-menu";
     mountProfileMenu(ctx);
   </script>
 </component>

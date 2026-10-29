@@ -14,7 +14,8 @@ Main server assembly and background job runner for the Bosca platform. This is t
 | `messages-pages` | Message page rendering (JTE templates) |
 
 Atlas can run as one process or as separate API, Git transport, UI, and worker processes.
-The shared Atlas UI provides the landing and authentication routes consumed by Git UI. See [Atlas server](atlas-server/README.md) for the module boundaries.
+Atlas and Git own their routes and reuse the neutral BML authentication library. Atlas supplies its
+subsystem catalog when importing Git UI. See [Atlas server](atlas-server/README.md) for the module boundaries.
 
 ## Prerequisites
 

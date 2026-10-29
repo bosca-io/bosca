@@ -8,6 +8,7 @@ import bosca.di.AIProviderRegistrar
 import bosca.di.BackupProviderRegistrar
 import bosca.di.AnalyticsAIProviderRegistrar
 import bosca.di.AnalyticsProviderRegistrar
+import bosca.di.ArtifactsGitProviderRegistrar
 import bosca.di.ArtifactsProviderRegistrar
 import bosca.di.BoscaRunnerProviderRegistrar
 import bosca.di.CommentsProviderRegistrar
@@ -161,13 +162,9 @@ suspend fun BoscaApplication.module() {
         GitCiProviderRegistrar(),
         GitJobsProviderRegistrar(),
         WorkOpsProviderRegistrar(),
-        // Artifacts registry — required in the runner (registrar parity with bosca-server), not for
-        // serving registry routes but so the git-ci requirement checker can construct the workops
-        // RequiredArtifactVerifier, whose factory injects ArtifactRepositoryService. That checker
-        // runs HERE via GitCiModule's bosca.artifacts.version.published listener and the
-        // pipeline-requirement-check sweep; without ArtifactsProviderRegistrar its dependency is
-        // unresolvable and gated jobs fail with "no artifact verifier is available in this deployment".
+        // CI registry verification runs in this worker as well as the API hosts.
         ArtifactsProviderRegistrar(),
+        ArtifactsGitProviderRegistrar(),
         StorePipelinesProviderRegistrar(),
         // Native release actions use the Kubernetes deploy adapters.
         // Only an actual Helm deploy needs the KubernetesControllerClient dependency.

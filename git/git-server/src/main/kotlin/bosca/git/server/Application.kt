@@ -2,8 +2,6 @@ package bosca.git.server
 
 import bosca.analytics.server.AnalyticsServerClientModule
 import bosca.configuration.GraphQLModule
-import bosca.di.ArtifactsProviderRegistrar
-import bosca.di.CoreArtifactsProviderRegistrar
 import bosca.di.ContentProviderRegistrar
 import bosca.di.CoreContentProviderRegistrar
 import bosca.di.CoreGitCiProviderRegistrar
@@ -96,6 +94,4 @@ internal fun gitServerProviderRegistrars() =
         GitProviderRegistrar(),
         GitCiProviderRegistrar(),
         GitJobsProviderRegistrar(),
-        CoreArtifactsProviderRegistrar(),
-        ArtifactsProviderRegistrar(),
     )

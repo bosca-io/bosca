@@ -230,8 +230,8 @@ export function mountPipelineLogs(ctx: IslandContext) {
     const current = generation;
     if (disposed || paused || finished || !active()) return;
     try {
-      await atlasAuth.initialize(false);
-      const headers = await atlasAuth.getAuthHeaders();
+      await boscaAuth.initialize(false);
+      const headers = await boscaAuth.getAuthHeaders();
       const token = headers.Authorization?.replace(/^Bearer /, "");
       if (!token) {
         status("Sign in to receive live logs.");
@@ -406,7 +406,7 @@ export function mountPipelineLogs(ctx: IslandContext) {
     }
   }, 1000);
   void connect();
-  const unsubscribe = atlasAuth.onAuthStateChanged((user) => {
+  const unsubscribe = boscaAuth.onAuthStateChanged((user) => {
     if (!user) {
       disconnect();
       status("Signed out. Live logs stopped.");

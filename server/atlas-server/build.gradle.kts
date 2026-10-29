@@ -38,6 +38,7 @@ dependencies {
     implementation(project(":git:git-jobs"))
     implementation(project(":artifacts:core-artifacts"))
     implementation(project(":artifacts:artifacts-base"))
+    implementation(project(":artifacts:artifacts-git"))
     implementation(project(":artifacts:artifacts-installer"))
     implementation(project(":artifacts:artifacts-admin"))
     implementation(project(":artifacts:artifacts-docker"))

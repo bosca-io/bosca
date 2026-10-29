@@ -205,6 +205,7 @@ includeComponent("bml", listOf(
     "bml-annotations",
     "bml-compiler",
     "bml-design",
+    "bml-auth-ui",
     "bml-design-catalog",
     "core-bml",
     "bml",
@@ -268,6 +269,7 @@ includeComponent("backup", listOf(
 includeComponent("artifacts", listOf(
     "core-artifacts",
     "artifacts-base",
+    "artifacts-git",
     "artifacts-admin",
     "artifacts-ui",
     "artifacts-installer",

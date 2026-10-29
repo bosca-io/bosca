@@ -2,18 +2,13 @@
   "name": "@bosca/atlas-ui-client",
   "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/main/client/atlas-ui.ts",
-    "./auth": "./src/main/client/auth.ts",
-    "./profile-menu": "./src/main/client/profile-menu.ts",
-    "./appearance": "./src/main/client/appearance.ts"
-  },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@bosca/auth-client-browser": "file:../../web/packages/auth",
-    "@bosca/bml": "file:../../bml/bml-runtime"
+    "@bosca/bml": "file:../../bml/bml-runtime",
+    "@bosca/bml-auth-ui": "file:../../bml/bml-auth-ui"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

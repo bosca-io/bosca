@@ -3,9 +3,13 @@
   <script server provides="path">
     ctx.requestPath
   </script>
-  <app-header brand="Bosca" product="Git" href="/">
+  <script server provides="navigation">bosca.git.ui.currentGitUiNavigation()</script>
+  <app-header brand="Bosca" :product="navigation.product" :href="navigation.homeHref">
     <if signedIn>
-      <div class="atlas-git-switcher" data-atlas-system-switcher><subsystem-switcher :items="bosca.atlas.ui.AtlasSubsystems.items" currentId="git" product="Atlas" /></div>
+      <if navigation.items.isNotEmpty()>
+        <div><subsystem-switcher :items="navigation.items" currentId="git" :product="navigation.product" :homeHref="navigation.homeHref" /></div>
+      </if>
+      <if navigation.items.isEmpty()>
       <div class="shell-subsystem git-subsystem">
         <span class="shell-subsystem-icon subsystem-icon">
           <icon name="branch" />
@@ -15,6 +19,7 @@
           <p>Browse repositories, review pull requests, and search code</p>
         </div>
       </div>
+      </if>
       <nav class="shell-navigation git-navigation" aria-label="Git">
         <div class="shell-group nav-group">
           <span class="shell-label nav-label">Code</span>

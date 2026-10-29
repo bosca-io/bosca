@@ -1,6 +1,7 @@
 package bosca.git.ui
 
 import bosca.bml.library.BmlApplicationAssets
+import bosca.bml.library.BmlLibraryClientManifest
 import bosca.bml.library.BmlClientManifest
 import bosca.bml.project.ContentDigest
 import java.io.File
@@ -24,7 +25,7 @@ internal fun verifyGitUiNativeResources(report: File, retainedReport: File) {
     val loader = GitUiNativeHostTest::class.java.classLoader
     val expected = linkedMapOf<String, String>()
     var indexedAssets = 0
-    for (root in listOf("bml/applications/bml.generated", "bml/applications/bosca.atlas.ui.generated")) {
+    for (root in listOf("bml/applications/bml.generated")) {
         val manifestPath = "$root/client-manifest.json"
         val manifestBytes = requireNotNull(loader.getResourceAsStream(manifestPath)).use { it.readAllBytes() }
         val manifest = Json.decodeFromString(BmlClientManifest.serializer(), manifestBytes.decodeToString())
@@ -33,6 +34,15 @@ internal fun verifyGitUiNativeResources(report: File, retainedReport: File) {
         expected.putAll(manifest.files.associate { "$root/${it.path}" to it.digest })
         expected[manifestPath] = ContentDigest.sha256(manifestBytes)
     }
+    val libraries = loader.getResources("META-INF/bml/client-manifest.json").toList()
+    for (resource in libraries) {
+        val manifest = resource.openStream().use {
+            Json.decodeFromString(BmlLibraryClientManifest.serializer(), it.readAllBytes().decodeToString())
+        }
+        BmlApplicationAssets.validateFiles(manifest.files)
+        indexedAssets += manifest.files.size
+        expected.putAll(manifest.files.associate { "${manifest.resourcePrefix}/${it.path}" to it.digest })
+    }
     val buildId = File(requireNotNull(System.getProperty("gitUi.native.buildId"))).readBytes()
     java.time.Instant.parse(buildId.decodeToString())
     expected["META-INF/bosca/bml/build-id"] = ContentDigest.sha256(buildId)
@@ -40,7 +50,7 @@ internal fun verifyGitUiNativeResources(report: File, retainedReport: File) {
         val path = "META-INF/licenses/bml-design/$name.txt"
         expected[path] = requireNotNull(loader.getResourceAsStream(path)).use { ContentDigest.sha256(it.readAllBytes()) }
     }
-    for (name in listOf("git-ui.css", "atlas-ui.css", "atlas-ui.js")) {
+    for (name in listOf("git-ui.css", "git-ui.js", "auth-ui.css")) {
         expected[name] = requireNotNull(loader.getResourceAsStream(name)).use { ContentDigest.sha256(it.readAllBytes()) }
     }
     val verified = expected.mapValues { (path, digest) ->

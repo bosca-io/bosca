@@ -10,6 +10,7 @@ import bosca.configuration.service.getValueAs
 import bosca.db.withConnectionManager
 import bosca.di.AIProviderRegistrar
 import bosca.di.ArtifactsAdminProviderRegistrar
+import bosca.di.ArtifactsGitProviderRegistrar
 import bosca.di.ArtifactsProviderRegistrar
 import bosca.di.CoreArtifactsProviderRegistrar
 import bosca.di.CalendarProviderRegistrar
@@ -210,6 +211,7 @@ suspend fun BoscaApplication.module() {
         PostgresAdminProviderRegistrar(),
         CoreArtifactsProviderRegistrar(),
         ArtifactsProviderRegistrar(),
+        ArtifactsGitProviderRegistrar(),
         ArtifactsAdminProviderRegistrar(),
 
         // AI

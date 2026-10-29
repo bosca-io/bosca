@@ -4,6 +4,8 @@ import bosca.artifacts.ui.ArtifactsUi
 import bosca.atlas.ui.AtlasUi
 import bosca.bml.project.CompiledProject
 import bosca.bml.server.BmlServer
+import bosca.git.ui.GitUiNavigation
+import bosca.atlas.ui.AtlasSubsystems
 import bosca.git.ui.GitUi
 import bosca.git.ui.installGitSubscriptions
 import bosca.git.ui.server.installGitFileProxy
@@ -24,11 +26,12 @@ fun BoscaApplication.module() {
 
 /** Uses the same UI implementation for embedded and standalone Atlas deployments. */
 fun BoscaApplication.installAtlasUiServer(graphqlEndpoint: String, authCookiePrefix: String? = null) {
+    val gitNavigation = GitUiNavigation(AtlasSubsystems.items, product = "Atlas")
     BmlServer(
         project = CompiledProject("atlas-ui", "0.0.1"),
-        pages = AtlasUi.pages + GitUi.pages.filterNot { it.route == "/" } + ArtifactsUi.pages,
+        pages = AtlasUi.pages + GitUi.pages(gitNavigation).filterNot { it.route == "/" || it.route == "/login" || it.route.startsWith("/auth/") } + ArtifactsUi.pages,
         components = (AtlasUi.components + GitUi.components + ArtifactsUi.components).distinctBy { it.tag },
-        componentRenderers = AtlasUi.componentRenderers + GitUi.componentRenderers + ArtifactsUi.componentRenderers,
+        componentRenderers = AtlasUi.componentRenderers + GitUi.componentRenderers(gitNavigation) + ArtifactsUi.componentRenderers,
         islandDispatchers = AtlasUi.islandDispatchers + GitUi.islandDispatchers + ArtifactsUi.islandDispatchers,
         componentIslandDispatchers = AtlasUi.componentIslandDispatchers + GitUi.componentIslandDispatchers + ArtifactsUi.componentIslandDispatchers,
         contracts = GitUi.contracts + ArtifactsUi.contracts,

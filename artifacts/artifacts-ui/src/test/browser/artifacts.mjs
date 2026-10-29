@@ -71,7 +71,12 @@ try {
     for (let i = 0; i < 150; i++) { if (await evaluate(expression)) return; await new Promise(resolve => setTimeout(resolve, 100)); }
     throw new Error(`Timed out: ${label}. Browser errors: ${JSON.stringify(errors)}. Page: ${await evaluate("document.body.innerText.slice(-4000)")}`);
   };
-  const go = async path => { await call("Page.navigate", { url: base + path }); await until(`location.pathname === ${JSON.stringify(path.split("?")[0])} && document.readyState === "complete" && typeof atlasAuth !== "undefined"`); await until("!document.body.innerText.includes('Unable to load this page')"); await evaluate("document.fonts.ready.then(() => true)"); };
+  const go = async path => { await call("Page.navigate", { url: base + path }); await until(`location.pathname === ${JSON.stringify(path.split("?")[0])} && document.readyState === "complete" && typeof boscaAuth !== "undefined"`); await until("!document.body.innerText.includes('Unable to load this page')"); await evaluate("document.fonts.ready.then(() => true)");
+    const theme = await evaluate("({font:getComputedStyle(document.documentElement).fontFamily,margin:getComputedStyle(document.body).margin,sizing:getComputedStyle(document.body).boxSizing})");
+    assert.ok(theme.font.includes("Geist"), `Missing application typography at ${path}: ${JSON.stringify(theme)}`);
+    assert.equal(theme.margin, "0px", path);
+    assert.equal(theme.sizing, "border-box", path);
+  };
   const click = async selector => {
     const rect = await evaluate(`(() => { const item = document.querySelector(${JSON.stringify(selector)}); if (!item) throw new Error('Missing control: ' + ${JSON.stringify(selector)}); item.scrollIntoView({block:'center'}); const r = item.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
     await call("Input.dispatchMouseEvent", { type: "mousePressed", ...rect, button: "left", clickCount: 1 });
@@ -145,17 +150,17 @@ try {
   await until(`document.querySelector(${JSON.stringify(download)})?.textContent.includes('Download URL copied.')`);
   const copied = await evaluate("navigator.clipboard.readText()");
   assert.equal(copied, `${base}/_artifacts/raw/atlas-ui-files/tool/browser-1/browser.zip`);
-  const payload = await evaluate(`(async () => fetch(${JSON.stringify(copied)}, {headers: await atlasAuth.getAuthHeaders()}).then(response => response.text()))()`);
+  const payload = await evaluate(`(async () => fetch(${JSON.stringify(copied)}, {headers: await boscaAuth.getAuthHeaders()}).then(response => response.text()))()`);
   assert.equal(payload, "browser-upload-bytes");
-  assert.equal(await evaluate(`(async()=>fetch(${JSON.stringify(base+"/_artifacts/raw/atlas-ui-files/tool/browser-1/retry.zip")},{headers:await atlasAuth.getAuthHeaders()}).then(r=>r.text()))()`), "retry-upload-bytes");
+  assert.equal(await evaluate(`(async()=>fetch(${JSON.stringify(base+"/_artifacts/raw/atlas-ui-files/tool/browser-1/retry.zip")},{headers:await boscaAuth.getAuthHeaders()}).then(r=>r.text()))()`), "retry-upload-bytes");
 
   const geometry = [];
   for (const width of [1920, 1024, 768, 390]) {
     await call("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
     await go("/repositories");
     assert.equal(await evaluate("document.querySelector('.subsystem-trigger-chevron path')?.getAttribute('d')"), "m9 18 6-6-6-6");
-    await click(".atlas-git-switcher [data-bml-ref=trigger]");
-    await until("document.querySelector('[data-atlas-system-switcher] dialog[open]') !== null");
+    await click("[data-subsystem-switcher] [data-bml-ref=trigger]");
+    await until("document.querySelector('[data-subsystem-switcher] dialog[open]') !== null");
     assert.equal(await evaluate("document.activeElement?.getAttribute('aria-label')"), "Filter subsystems");
     const chooser = await evaluate("(() => { const d=document.querySelector('dialog[open]'); const b=getComputedStyle(d,'::backdrop'); return {blur:b.backdropFilter,background:b.backgroundColor,git:getComputedStyle(d.querySelector('[data-subsystem-id=git]')).getPropertyValue('--item-accent').trim(),artifacts:getComputedStyle(d.querySelector('[data-subsystem-id=artifacts]')).getPropertyValue('--item-accent').trim()}; })()");
     assert.deepEqual(chooser, { blur:"none", background:"rgba(0, 0, 0, 0)", git:"#64748b", artifacts:"#f764f6" });
@@ -168,15 +173,15 @@ try {
     await screenshot(`system-switcher-empty-${width}`);
     await key("Escape", "Escape", 27);
     await until("!document.querySelector('dialog[open]')");
-    assert.equal(await evaluate("document.activeElement === document.querySelector('.atlas-git-switcher [data-bml-ref=trigger]')"), true);
-    await click(".atlas-git-switcher [data-bml-ref=trigger]");
+    assert.equal(await evaluate("document.activeElement === document.querySelector('[data-subsystem-switcher] [data-bml-ref=trigger]')"), true);
+    await click("[data-subsystem-switcher] [data-bml-ref=trigger]");
     assert.equal(await evaluate("document.querySelector('dialog[open] input').value"), "");
     await filterSubsystems("artifacts");
     assert.equal(await evaluate("[...document.querySelectorAll('dialog[open] [data-subsystem-id]')].filter(a=>!a.hidden&&!a.closest('[hidden]')).length"), 1);
     await key("ArrowDown", "ArrowDown", 40);
     await key("Enter", "Enter", 13);
-    await until("location.pathname === '/artifacts/namespaces' && document.readyState === 'complete' && document.querySelector('[data-atlas-system-switcher]') !== null");
-    await click("[data-atlas-system-switcher] [data-bml-ref=trigger]");
+    await until("location.pathname === '/artifacts/namespaces' && document.readyState === 'complete' && document.querySelector('[data-subsystem-switcher]') !== null");
+    await click("[data-subsystem-switcher] [data-bml-ref=trigger]");
     await until("document.querySelector('dialog[open]') !== null");
     assert.equal(await evaluate("document.querySelector('dialog[open] a[aria-current=page]')?.textContent.includes('Artifacts')"), true);
     assert.equal(await evaluate("document.querySelector('dialog[open] [data-subsystem-recent-block]')?.textContent.includes('Git')"), true);

@@ -62,7 +62,7 @@ class AtlasUiRoutesTest {
         }
         val javascript = get("/_bml/app.js").body()
         assertTrue("\"authCookiePrefix\":\"_atlas_test\"" in javascript)
-        assertTrue("atlasAuth" in javascript)
+        assertTrue("boscaAuth" in javascript)
         assertFalse("gitAuth" in javascript)
     }
 
