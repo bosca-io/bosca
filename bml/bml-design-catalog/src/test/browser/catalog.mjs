@@ -37,6 +37,7 @@ import { checkVisualizations } from './visualizations.mjs';
 import { checkDashboards } from './dashboards.mjs';
 import { driverDiagnostics } from './driver-diagnostics.mjs';
 import { checkResources } from './resources.mjs';
+import { checkFileDrops } from './file-drop.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -157,6 +158,8 @@ try {
       assert.ok(report.probes.paused.frames.some(frame=>frame.url==='bml-driver-busy-probe.js'));
     } else assert.equal(report.probes.renderer.result.value.ready,'complete');
     console.log(`Driver ${busy?'busy renderer':'pending promise'} evidence verified: ${path}`);
+  } else if(process.argv[4]==='--file-drop') {
+    await checkFileDrops({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--resources') {
     await checkResources({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--deep-tree') {

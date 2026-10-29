@@ -45,10 +45,11 @@ pipeline package. Existing operator graphs and the package's version are preserv
 
 ## Structure and validation
 
-Cards, descriptions, disclosures, form bodies/footers, destructive actions, navigation controls,
+File drops, cards, descriptions, disclosures, form bodies/footers, destructive actions, navigation controls,
 empty states, and pagination come from `bml-design`. Artifact CSS supplies the subsystem theme
 and domain layout; it must not override descendant button or dialog presentation. Destructive
 actions use the library's `danger` class, and ghost styling belongs only to the dialog trigger.
+The shared `file-drop` emits local file selections; Artifacts owns staging, filenames and transport.
 
 `src/main/bml` owns pages/components; `src/main/kotlin` owns loaders, view models, and actions;
 `src/main/graphql` owns the maintained schema subset and operations; `src/main/client` handles

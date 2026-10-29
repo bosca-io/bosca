@@ -123,7 +123,7 @@ try {
   await writeFile(localFile, "browser-upload-bytes");
   await writeFile(retryFile, "retry-upload-bytes");
   let document = await call("DOM.getDocument");
-  let fileInput = await call("DOM.querySelector", { nodeId: document.root.nodeId, selector: '.artifact-drop input[type=file]' });
+  let fileInput = await call("DOM.querySelector", { nodeId: document.root.nodeId, selector: '[data-file-drop] input[type=file]' });
   await call("DOM.setFileInputFiles", { nodeId: fileInput.nodeId, files: [localFile, retryFile] });
   await until("location.pathname === '/artifacts/repositories/upload' && document.querySelector('[data-bml-ref=files] input[name=filename]')?.value === 'browser.zip'", "staged file survives navigation");
   await fill("input[name=version]", "browser-1");

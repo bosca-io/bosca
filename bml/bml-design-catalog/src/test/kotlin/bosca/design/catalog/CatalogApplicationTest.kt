@@ -29,6 +29,13 @@ class CatalogApplicationTest {
     private val classpath = System.getProperty("catalog.classpath")
 
     @Test
+    fun `file drops retain native selection and disabled behavior across palettes`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--file-drop", 60)
+        }
+    }
+
+    @Test
     fun `driver diagnostics distinguish pending promises and blocked renderers`() {
         withServer(false) { base, _ ->
             runBrowser(base, false, "--driver-promise-probe", 60)

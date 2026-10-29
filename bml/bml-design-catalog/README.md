@@ -81,7 +81,7 @@ and Gateway routing without a cluster rollout. Native heap flags can be passed t
 | Route | Examples |
 | --- | --- |
 | `/` | Unprefixed import/authoring, buttons and feedback, links into the catalog |
-| `/foundation` | Labelled form with server validation, pending/success/error feedback, native choices, button sizes, loading/disabled states, badges, empty content and a scrolling table |
+| `/foundation` | Shared file drops in both palettes, labelled form with server validation, pending/success/error feedback, native choices, button sizes, loading/disabled states, badges, empty content and a scrolling table |
 | `/themes` | The same form in separate dark and consumer-light palettes, with independent state |
 | `/comments` | Independent dark/light comment drafts, pending/rejected posts, native reset and controlled replacements, readonly/disabled/paused/long/escaped variants |
 | `/overlays` | Independent modal forms, retained drafts, rejected confirmations, popover forms and menus, sizes and trigger variants |
@@ -484,3 +484,11 @@ draft prop. See the [structured input contract](../bml-design/README.md#structur
 The examples construct segmented options, local tabs, common chart settings/points and flow card data/ports as Kotlin objects. Standard document examples reuse `bosca.documents` through `documentValue`; custom/submitted content stays lossless JSON. API references show the simple string props and structured object contracts.
 
 The document page includes a directly bound `bosca.content.metadata.model.Document`; the editor extracts its ProseMirror body. The other examples retain open JSON drafts and caller-owned forms.
+
+File-drop acceptance uses the native file picker and browser drag events with real local files in
+both palettes at desktop and phone widths. It checks repeated selection, single/multiple files,
+disabled and re-enabled selection, picker hints, bubbling file events and application-owned feedback:
+
+```sh
+./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.file drops retain native selection and disabled behavior across palettes'
+```

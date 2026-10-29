@@ -33,18 +33,7 @@
         <field label="Version">
           <input name="version" required placeholder="1.0.0" />
         </field>
-        <div class="artifact-drop" ref="dropZone">
-          <label class="artifact-drop-target">
-            <html:input ref="fileInput" type="file" multiple class="artifact-file-input" />
-            <span class="artifact-drop-icon">
-              <icon name="upload" :size="20" />
-            </span>
-            <span class="artifact-drop-copy">
-              <strong>Choose files or drop them here</strong>
-              <span>Set the artifact filenames before uploading</span>
-            </span>
-          </label>
-        </div>
+        <file-drop ref="dropZone" label="Choose files or drop them here" description="Set the artifact filenames before uploading" multiple />
         <div class="artifact-stack" ref="files" aria-label="Upload files" aria-live="polite">
         </div>
         <alert ref="message" tone="info" role="status" compact hidden />

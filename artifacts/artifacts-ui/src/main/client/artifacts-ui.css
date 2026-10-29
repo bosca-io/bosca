@@ -73,15 +73,6 @@
 .artifact-file:last-child { border:0; }
 .artifact-download { display:inline-flex; align-items:center; }
 .artifact-download input { width:200px; max-width:100%; }
-.artifact-drop { position:relative; border:1px dashed color-mix(in oklch,var(--fg-3) 45%,transparent); border-radius:var(--r-sm); background:color-mix(in oklch,var(--fg-3) 4%,transparent); transition:border-color .15s,background .15s; }
-.artifact-drop:hover,.artifact-drop:focus-within,.artifact-drop[data-dragging] { border-color:var(--accent); background:color-mix(in oklch,var(--accent) 8%,transparent); }
-.artifact-drop-target { position:relative; display:flex; min-height:116px; align-items:center; justify-content:center; gap:13px; padding:20px; cursor:pointer; }
-.artifact-file-input { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
-.artifact-drop-icon { display:grid; place-items:center; width:36px; height:36px; flex:none; color:var(--fg-3); border-radius:var(--r-xs); background:color-mix(in oklch,var(--fg-3) 9%,transparent); }
-.artifact-drop-copy { display:flex; flex-direction:column; gap:3px; }
-.artifact-drop-copy strong { color:var(--fg-1); font-size:13px; font-weight:600; }
-.artifact-drop-copy > span { font-size:11.5px; color:var(--fg-3); }
-.artifact-drop > p:empty { display:none; }
 
 .artifact-metadata { padding:10px 14px; }
 .artifact-metadata pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }

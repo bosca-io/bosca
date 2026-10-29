@@ -1,5 +1,5 @@
 <page route="/components">
-  <catalog-document title="Components" description="Public APIs and rendered examples for all 51 library exports." current="/components">
+  <catalog-document title="Components" description="Public APIs and rendered examples for the design library." current="/components">
     <p class="page-intro">Import the library once. Use short component names throughout your application, then set colors in your own CSS.</p>
     <pre class="code-sample" role="group" tabindex="0" aria-label="Library import"><code>&lt;import library="io.bosca:bml-design" /&gt;</code></pre>
     <div class="catalog-grid">
@@ -9,6 +9,7 @@
           <ul class="reference-index">
             <li><a href="/components/controls#ref-button" data-export-link="button"><code>button</code></a></li>
             <li><a href="/components/controls#ref-input" data-export-link="input"><code>input</code></a></li>
+            <li><a href="/components/controls#ref-file-drop" data-export-link="file-drop"><code>file-drop</code></a></li>
             <li><a href="/components/controls#ref-field" data-export-link="field"><code>field</code></a></li>
             <li><a href="/components/controls#ref-checkbox" data-export-link="checkbox"><code>checkbox</code></a></li>
             <li><a href="/components/controls#ref-switch" data-export-link="switch"><code>switch</code></a></li>

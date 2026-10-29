@@ -32,14 +32,13 @@ export function rawUploadPath(namespace: string, repository: string, version: st
 export function mountArtifactUpload(ctx: ClientContext, resolve: ResolveTarget): void {
   const resolveTarget = artifactTargetResolver(resolve);
   const form = ctx.ref<HTMLFormElement>("uploadForm");
-  const picker = ctx.ref<HTMLInputElement>("fileInput");
   const filesRoot = ctx.ref<HTMLElement>("files");
   const template = ctx.ref<HTMLElement>("fileTemplate");
   const message = ctx.ref<HTMLElement>("message");
   const upload = ctx.ref<HTMLButtonElement>("upload");
   const cancel = ctx.ref<HTMLButtonElement>("cancel");
   const drop = ctx.ref<HTMLElement>("dropZone");
-  if (!form || !picker || !filesRoot || !template || !message || !upload || !cancel || !drop) return;
+  if (!form || !filesRoot || !template || !message || !upload || !cancel || !drop) return;
   const showMessage = (text: string, tone: "info" | "success" | "error") => {
     message.textContent = text;
     message.dataset.tone = tone;
@@ -66,22 +65,19 @@ export function mountArtifactUpload(ctx: ClientContext, resolve: ResolveTarget):
       ctx.on(remove, "click", () => { if (!controller) { files.splice(files.indexOf(item), 1); row.remove(); } });
       filesRoot.append(row);
     }
-    picker.value = "";
   };
   const staging = new URLSearchParams(location.search).get("staging");
   if (staging) {
     upload.disabled = true;
     void consumeArtifactFiles(staging).then(add).catch(error => { showMessage(error instanceof Error ? error.message : "Choose the files again.", "error"); }).finally(() => { upload.disabled = false; });
   }
-  ctx.on(picker, "change", () => add(picker.files));
-  ctx.on<DragEvent>(drop, "dragover", event => { event.preventDefault(); drop.setAttribute("data-dragging", ""); });
-  ctx.on(drop, "dragleave", () => drop.removeAttribute("data-dragging"));
-  ctx.on<DragEvent>(drop, "drop", event => { event.preventDefault(); drop.removeAttribute("data-dragging"); add(event.dataTransfer?.files ?? null); });
+  ctx.on<CustomEvent<File[]>>(drop, "filesselected", event => add(event.detail));
   ctx.on(cancel, "click", () => controller?.abort());
   ctx.on(form, "submit", async event => {
     event.preventDefault();
     if (controller) return;
     controller = new AbortController();
+    drop.setAttribute("data-disabled", "");
     const signal = controller.signal;
     upload.disabled = true;
     cancel.hidden = false;
@@ -128,7 +124,7 @@ export function mountArtifactUpload(ctx: ClientContext, resolve: ResolveTarget):
       location.assign("/artifacts/repositories/" + encodeURIComponent(target.id ?? ""));
     } catch (error) {
       showMessage(signal.aborted ? "Upload cancelled. Uploaded files are kept; retry to upload the remaining files." : error instanceof Error ? error.message : "Upload failed.", "error");
-    } finally { controller = undefined; upload.disabled = false; cancel.hidden = true; }
+    } finally { drop.removeAttribute("data-disabled"); controller = undefined; upload.disabled = false; cancel.hidden = true; }
   });
   ctx.onUnmount(() => controller?.abort());
 }

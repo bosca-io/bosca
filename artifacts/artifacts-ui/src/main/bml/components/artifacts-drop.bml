@@ -1,34 +1,31 @@
 <component tag="artifacts-drop">
   <prop name="href" type="String" default="/artifacts/repositories/upload" />
-  <div class="artifact-drop" :data-upload-href="href">
-    <label class="artifact-drop-target">
-      <html:input ref="files" type="file" multiple class="artifact-file-input" />
-      <span class="artifact-drop-icon">
-        <icon name="upload" :size="20" />
-      </span>
-      <span class="artifact-drop-copy">
-        <strong>Drop files to upload</strong>
-        <span>Choose their version and artifact filenames</span>
-      </span>
-    </label>
-    <p ref="message" role="status">
-    </p>
+  <div class="artifact-stack" :data-upload-href="href">
+    <file-drop ref="dropZone" label="Drop files to upload" description="Choose their version and artifact filenames" multiple />
+    <alert ref="message" compact hidden />
     <a class="sr-only" :href="href">Upload files</a>
   </div>
   <script client scoped>
-  import { stageArtifactFiles } from "@client/staging";
-  const input = ctx.ref<HTMLInputElement>("files");
-  const message = ctx.ref<HTMLElement>("message");
-  let staging = false;
-  const stage = async (files: FileList | null) => {
-   if (!files?.length || staging) return;
-   staging = true;
-   try { await stageArtifactFiles(files, ctx.root.dataset.uploadHref ?? "/artifacts/repositories/upload"); }
-   catch (error) { if (message) message.textContent = error instanceof Error ? error.message : "Open Upload files and choose the files again."; staging = false; }
-  };
-  if (input) ctx.on(input, "change", () => { void stage(input.files); });
-  ctx.on<DragEvent>(ctx.root, "dragover", event => { event.preventDefault(); ctx.root.setAttribute("data-dragging", ""); });
-  ctx.on(ctx.root, "dragleave", () => ctx.root.removeAttribute("data-dragging"));
-  ctx.on<DragEvent>(ctx.root, "drop", event => { event.preventDefault(); ctx.root.removeAttribute("data-dragging"); void stage(event.dataTransfer?.files ?? null); });
+    import { stageArtifactFiles } from "@client/staging";
+    const drop = ctx.ref<HTMLElement>("dropZone");
+    const message = ctx.ref<HTMLElement>("message");
+    let staging = false;
+    const stage = async (files: File[]) => {
+      if (!files.length || staging) return;
+      staging = true;
+      drop?.setAttribute("data-disabled", "");
+      if (message) message.hidden = true;
+      try {
+        await stageArtifactFiles(files, ctx.root.dataset.uploadHref ?? "/artifacts/repositories/upload");
+      } catch (error) {
+        if (message) {
+          message.textContent = error instanceof Error ? error.message : "Open Upload files and choose the files again.";
+          message.hidden = false;
+        }
+        staging = false;
+        drop?.removeAttribute("data-disabled");
+      }
+    };
+    if (drop) ctx.on<CustomEvent<File[]>>(drop, "filesselected", event => { void stage(event.detail); });
   </script>
 </component>
