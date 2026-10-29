@@ -1,7 +1,7 @@
 import type { ClientContext } from "@bosca/bml";
 
 /** Native modal behavior, including focus containment and action-patch recovery. */
-export function modalDialog(ctx: ClientContext) {
+export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boolean } = {}) {
   let visible = false;
   let requested = false;
   let completed = false;
@@ -79,6 +79,12 @@ export function modalDialog(ctx: ClientContext) {
   });
   ctx.on<KeyboardEvent>(ctx.root, "keydown", (event) => {
     const panel = dialog();
+    if (event.key === "Escape" && options.closeOnEscape && panel?.open) {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+      return;
+    }
     if (event.key !== "Tab" || !panel?.open) return;
     if (event.target instanceof Element && event.target.closest("[data-bml-design-dialog]") !== ctx.root) return;
     const focusable = [

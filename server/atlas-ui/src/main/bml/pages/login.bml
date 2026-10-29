@@ -1,0 +1,10 @@
+<page route="/login">
+  <atlas-auth-layout title="Welcome back.">
+    <auth-heading
+      eyebrow="Sign in"
+      title="Welcome back."
+      sub="Use your email or a connected provider."
+    />
+    <auth-login-form />
+  </atlas-auth-layout>
+</page>

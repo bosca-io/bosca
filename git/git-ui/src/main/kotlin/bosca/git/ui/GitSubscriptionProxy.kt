@@ -38,7 +38,7 @@ internal fun subscriptionEndpoint(graphqlEndpoint: String): URI {
  * connection_init token and authorizes each subscription; the relay does not mint or inspect
  * tokens.
  */
-internal fun installGitSubscriptions(application: BoscaApplication, graphqlEndpoint: String) {
+fun installGitSubscriptions(application: BoscaApplication, graphqlEndpoint: String) {
     val endpoint = subscriptionEndpoint(graphqlEndpoint)
     application.router.webSocket("/_git/subscriptions", "graphql-transport-ws") {
         relaySubscriptions(endpoint)

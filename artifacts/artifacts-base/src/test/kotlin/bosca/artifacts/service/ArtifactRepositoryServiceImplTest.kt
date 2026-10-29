@@ -276,6 +276,22 @@ class ArtifactRepositoryServiceImplTest {
     }
 
     @Test
+    fun `createNamespace rejects a single dot before persisting an unaddressable namespace`() = runTest {
+        coEvery { namespaceRepo.create(".", false) } returns namespace.copy(name = ".")
+        assertFailsWith<IllegalArgumentException> { service.createNamespace(".", false) }
+        coVerify(exactly = 0) { namespaceRepo.create(any(), any()) }
+    }
+
+    @Test
+    fun `findOrCreateRepository rejects a single dot before persisting an unaddressable repository`() = runTest {
+        coEvery { namespaceRepo.findByName("my-namespace") } returns namespace
+        coEvery { repoRepo.findByCoordinates(nsId, ".", "raw") } returns null
+        coEvery { repoRepo.create(nsId, ".", "raw") } returns repo.copy(name = ".", type = "raw")
+        assertFailsWith<IllegalArgumentException> { service.findOrCreateRepository("my-namespace", ".", ArtifactType.RAW) }
+        coVerify(exactly = 0) { repoRepo.create(any(), any(), any()) }
+    }
+
+    @Test
     fun `createNamespace rejects name with invalid characters`() = runTest {
         assertFailsWith<IllegalArgumentException> {
             service.createNamespace("my namespace!", false)

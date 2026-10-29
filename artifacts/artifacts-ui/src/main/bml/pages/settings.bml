@@ -1,0 +1,23 @@
+<page route="/artifacts/settings/repositories/{id}" requireAuth>
+  <script server provides="page">bosca.artifacts.ui.artifactSettings()</script>
+  <artifacts-layout :admin="page.admin" title="Repository settings">
+    <page-shell class="artifact-page" flush>
+      <page-heading :title='(page.repository?.path ?: "Repository") + " settings"'>
+        <if page.repository != null>
+          <button-link :href="page.repository?.href.orEmpty()" icon="arrow-left">Back to repository</button-link>
+        </if>
+      </page-heading>
+      <div class="artifact-content">
+        <if !page.admin>
+          <p>Administrator access is required to manage repository settings.</p>
+        <else-if page.sync != null>
+          <artifacts-sync :initial="page.sync" />
+        <else-if page.publication != null>
+          <artifacts-publication :initial="page.publication" />
+        <else>
+          <p>Sync destinations are available for Docker and raw repositories.</p>
+        </if>
+      </div>
+    </page-shell>
+  </artifacts-layout>
+</page>

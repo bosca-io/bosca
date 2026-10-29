@@ -2,7 +2,8 @@
   <prop name="message" type="String" default="" />
   <prop name="title" type="String" default="" />
   <prop name="icon" type="String" default="folder" />
-  <div class="empty-state" {...attrs}>
+  <prop name="compact" type="Boolean" default="false" />
+  <div class="empty-state" :data-compact="compact" {...attrs}>
     <span class="empty-icon">
       <icon :name="icon" :size="24" />
     </span>
@@ -26,6 +27,8 @@
       padding: 44px 24px;
       text-align: center;
     }
+    .empty-state[data-compact] { padding:24px 16px; gap:8px; }
+    .empty-state[data-compact] .empty-icon { width:32px; height:32px; margin:0; }
     .empty-icon {
       display: flex;
       align-items: center;

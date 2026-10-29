@@ -1,0 +1,102 @@
+<component tag="artifacts-permissions">
+  <prop name="initial" type="bosca.artifacts.ui.ArtifactPermissionsModel" required />
+  <script server provides="model">bosca.artifacts.ui.ArtifactPermissionsModel(initial.admin, initial.namespaceId, initial.namespaces, initial.groups, initial.permissions)</script>
+  <island name="artifacts-permissions" :key="initial.namespaceId">
+    <page-shell class="artifact-page" flush>
+      <page-heading title="Namespace permissions" subtitle="Grant access through groups" :trail='listOf(bosca.design.model.NavigationItem("Artifacts", "/artifacts/namespaces", false), bosca.design.model.NavigationItem("Settings", "", false))' />
+      <div class="artifact-content">
+        <artifacts-feedback :feedback="model.feedback" />
+        <if !model.admin>
+          <p>Administrator access is required to manage namespace permissions.</p>
+        <else>
+          <form method="get" class="artifact-query">
+            <field label="Namespace">
+              <select name="namespaceId" required>
+                <option value="">Choose a namespace</option>
+                <for namespace in model.namespaces>
+                  <option :value="namespace.id" :selected="namespace.id == model.namespaceId">{ namespace.name }</option>
+                </for>
+              </select>
+            </field>
+            <button type="submit">View permissions</button>
+          </form>
+          <if model.namespaceId.isNotBlank()>
+            <card title="Grant permission">
+              <div class="artifact-stack">
+                <form @submit="model.grant(form.groupId, form.action, ctx)">
+                  <form-body>
+                    <field label="Group">
+                      <select name="groupId" searchable required>
+                        <option value="">Choose a group</option>
+                        <for group in model.groups>
+                          <option :value="group.id">{ group.label }</option>
+                        </for>
+                      </select>
+                    </field>
+                    <field label="Action">
+                      <select name="action">
+                        <for action in model.actions>
+                          <option :value="action">{ action }</option>
+                        </for>
+                      </select>
+                    </field>
+                    <form-actions align="start">
+                      <button type="submit" primary>Grant permission</button>
+                    </form-actions>
+                  </form-body>
+                </form>
+              </div>
+            </card>
+            <card title="Granted permissions">
+              <div class="artifact-stack">
+                <if model.permissions.isEmpty()>
+                  <empty-state icon="users" message="No explicit permission grants." compact />
+                </if>
+                <if model.permissions.isNotEmpty()>
+                  <table-scroll label="Namespace permission grants" class="artifact-table">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Group</th>
+                          <th>Action</th>
+                          <th>
+                            <span class="sr-only">Actions</span>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <for permission in model.permissions>
+                          <tr>
+                            <td>
+                              <strong>{ permission.groupName }</strong>
+                            </td>
+                            <td>
+                              <badge tone="neutral">{ permission.action }</badge>
+                            </td>
+                            <td>
+                              <confirm-dialog title="Remove permission?" description="This group will lose the selected explicit namespace permission." triggerLabel="Remove permission">
+                                <form @submit="model.revoke(permission.groupId, permission.action, form.confirmed, ctx)">
+                                  <form-body padded>
+                                    <checkbox name="confirmed" label="Remove this grant" required />
+                                  </form-body>
+                                  <form-actions bordered>
+                                    <button size="sm" data-dialog-close>Cancel</button>
+                                    <button type="submit" size="sm" class="danger">Remove permission</button>
+                                  </form-actions>
+                                </form>
+                              </confirm-dialog>
+                            </td>
+                          </tr>
+                        </for>
+                      </tbody>
+                    </table>
+                  </table-scroll>
+                </if>
+              </div>
+            </card>
+          </if>
+        </if>
+      </div>
+    </page-shell>
+  </island>
+</component>

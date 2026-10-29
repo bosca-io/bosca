@@ -80,9 +80,9 @@ class DesignLibraryTest {
             val manifest = BmlLibraryArtifacts.decode(jar.getInputStream(jar.getJarEntry(BmlLibraryArtifacts.MANIFEST_PATH)).reader().readText())
             assertEquals("io.bosca:bml-design", manifest.library)
             assertEquals("bosca.design.generated", manifest.generatedPackage)
-            assertEquals(setOf("alert", "app-header", "app-shell", "badge", "bosca-mark", "button", "card", "chart", "checkbox", "comment-editor", "confirm-dialog", "copy", "copy-field", "dashboard-grid", "dashboard-item", "dialog", "disclosure-heading",
-                "document-editor", "empty-state", "field", "flow-editor", "fullscreen-button", "icon", "icon-button", "icon-link", "input", "json-editor", "loading-state", "page-heading", "page-shell", "panel", "popover", "profile", "profile-menu",
-                "search-input", "select", "section", "section-heading", "segmented-control", "source-view", "spinner", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs", "workspace"),
+            assertEquals(setOf("alert", "app-header", "app-shell", "badge", "bosca-mark", "button", "button-link", "card", "chart", "checkbox", "comment-editor", "confirm-dialog", "copy", "copy-field", "dashboard-grid", "dashboard-item", "dialog", "disclosure-heading",
+                "document-editor", "empty-state", "field", "file-drop", "flow-editor", "form-actions", "form-body", "fullscreen-button", "icon", "icon-button", "icon-link", "input", "json-editor", "loading-state", "page-heading", "page-shell", "pagination", "panel", "popover", "profile", "profile-menu", "progress-bar",
+                "search-input", "select", "section", "section-heading", "segmented-control", "source-view", "spinner", "subsystem-links", "subsystem-switcher", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs", "workspace"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
             assertTrue(manifest.requirements.isEmpty())
             assertTrue(manifest.providerRegistrars.isEmpty())

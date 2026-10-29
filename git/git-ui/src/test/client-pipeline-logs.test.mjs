@@ -88,7 +88,7 @@ function setup(t, { initial = [line(1)], active = true, refresh } = {}) {
   };
   const sandbox = {
     document, location: window.location, WebSocket: Socket,
-    gitAuth: {
+    boscaAuth: {
       initialize: async (fetchProfile) => { assert.equal(fetchProfile, false); }, getAuthHeaders: async () => ({ Authorization: "Bearer test" }),
       onAuthStateChanged: () => () => {},
     },

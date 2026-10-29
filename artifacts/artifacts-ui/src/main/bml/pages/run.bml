@@ -1,0 +1,6 @@
+<page route="/artifacts/runs/{id}" requireAuth>
+  <script server provides="page">bosca.artifacts.ui.artifactRun()</script>
+  <artifacts-layout title="Artifact pipeline run">
+    <artifacts-run :initial="page" />
+  </artifacts-layout>
+</page>

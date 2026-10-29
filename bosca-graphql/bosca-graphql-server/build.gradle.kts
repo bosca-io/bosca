@@ -24,7 +24,6 @@ kotlin {
             api(project(":bosca-graphql:bosca-graphql"))
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json) // JsonElement is the wire model for coercion/results
-            implementation(libs.kotlinx.datetime) // the DateTime scalar
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

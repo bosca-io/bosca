@@ -366,10 +366,10 @@ class GitUiRoutesTest {
         )).use { Json.parseToJsonElement(it.readBytes().decodeToString()).jsonObject }
         val nativePatterns = nativeConfig.getValue("resources").jsonObject.getValue("includes").jsonArray
             .map { Regex(it.jsonObject.getValue("pattern").jsonPrimitive.content) }
-        val manifestPath = "bml/applications/bml.generated/client-manifest.json"
-        assertTrue(nativePatterns.any { it.matches(manifestPath) })
-        assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$manifestPath")?.use { it.readBytes() })
-        assertTrue(nativePatterns.any { it.matches("META-INF/licenses/bml-design/geist.txt") })
+        for (resource in listOf("git-ui.css", "git-ui.js")) {
+            assertTrue(nativePatterns.any { it.matches(resource) }, resource)
+            assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$resource")?.use { it.readBytes() })
+        }
         paths.forEach { path ->
             val resource = "bml/applications/bml.generated/" + path.removePrefix("/_bml/")
             assertTrue(nativePatterns.any { it.matches(resource) }, resource)

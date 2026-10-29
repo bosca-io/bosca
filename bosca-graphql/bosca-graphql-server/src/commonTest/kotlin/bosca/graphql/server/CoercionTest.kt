@@ -6,13 +6,13 @@ import bosca.graphql.language.Field
 import bosca.graphql.language.OperationDefinition
 import bosca.graphql.parser.Parser
 import bosca.graphql.schema.GraphQLSchema
-import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 
 /**

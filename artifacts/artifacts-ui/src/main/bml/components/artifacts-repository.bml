@@ -1,0 +1,186 @@
+<component tag="artifacts-repository">
+  <prop name="initial" type="bosca.artifacts.ui.ArtifactRepositoryModel" required />
+  <script server provides="model">bosca.artifacts.ui.ArtifactRepositoryModel(initial.id, initial.admin, initial.offset, initial.tagOffset, repository = initial.repository, versions = initial.versions, tags = initial.tags)</script>
+  <island name="artifacts-repository" :key="initial.id">
+    <page-shell class="artifact-page" flush>
+      <page-heading :title="model.title" :trail='listOf(bosca.design.model.NavigationItem("Artifacts", "/artifacts/namespaces", false), bosca.design.model.NavigationItem("Repositories", "/artifacts/repositories", false))'>
+        <if model.repository?.type == "raw">
+          <button-link :href="model.repository?.uploadHref.orEmpty()" icon="upload">Upload files</button-link>
+        </if>
+        <if model.admin && model.repository != null>
+          <icon-link :href="model.repository?.settingsHref.orEmpty()" icon="settings" label="Repository settings" />
+        </if>
+      </page-heading>
+      <div class="artifact-content">
+        <artifacts-feedback :feedback="model.feedback" />
+        <if !model.admin>
+          <p>Administrator access is required to use artifact administration.</p>
+          <button-link href="/" icon="arrow-left">Back to Atlas</button-link>
+        </if>
+        <if model.admin && model.repository != null>
+          <card title="Details" :padded="false">
+            <div class="artifact-detail-grid repository-details">
+              <div>
+                <span class="artifact-detail-label">Name</span>
+                <span class="artifact-detail-value mono">{ model.repository?.name }</span>
+              </div>
+              <div>
+                <span class="artifact-detail-label">Namespace</span>
+                <a class="artifact-name" :href='"/artifacts/namespaces/" + model.repository?.namespaceId'>{ model.repository?.namespace }</a>
+              </div>
+              <div>
+                <span class="artifact-detail-label">Type</span>
+                <badge :color="bosca.artifacts.ui.artifactTypeColor(model.repository?.type.orEmpty())">{ model.repository?.type }</badge>
+              </div>
+              <div>
+                <span class="artifact-detail-label">ID</span>
+                <div class="artifact-detail-id">
+                  <code :title="model.id">{ model.id }</code>
+                  <copy :showStatus="false" :value="model.id" label="Copy repository ID" />
+                </div>
+              </div>
+              <div>
+                <span class="artifact-detail-label">Created</span>
+                <span class="artifact-detail-value">{ model.repository?.created?.take(10) }</span>
+              </div>
+              <div>
+                <span class="artifact-detail-label">Modified</span>
+                <span class="artifact-detail-value">{ model.repository?.modified?.take(10) }</span>
+              </div>
+            </div>
+          </card>
+          <if model.repository?.type == "raw">
+            <artifacts-drop :href="model.repository?.uploadHref.orEmpty()" />
+          </if>
+          <if model.repository?.type == "docker">
+            <card :title='"Tags (" + model.repository?.tagCount + ")"' :padded="false">
+              <if model.tags.isEmpty()>
+                <empty-state icon="tag" message="No tags published." compact />
+              </if>
+              <for tag in model.tags>
+                <div class="artifact-tag-row">
+                  <strong class="mono">{ tag.name }</strong>
+                  <code class="artifact-muted" :title="tag.digest">{ tag.digest.take(22) }…</code>
+                  <span class="artifact-date">{ tag.modified.take(10) }</span>
+                  <copy :showStatus="false" :value="tag.digest" label="Copy manifest digest" />
+                  <confirm-dialog :title='"Delete tag " + tag.name + "?"' description="The tag will be removed. Its version remains available." triggerLabel="Delete tag">
+                    <form @submit="model.deleteTag(tag.name, form.confirmed, ctx)">
+                      <form-body padded>
+                        <checkbox name="confirmed" label="Delete this tag" required />
+                      </form-body>
+                      <form-actions bordered>
+                        <button size="sm" data-dialog-close>Cancel</button>
+                        <button type="submit" size="sm" class="danger">Delete tag</button>
+                      </form-actions>
+                    </form>
+                  </confirm-dialog>
+                </div>
+              </for>
+              <pagination label="Tag pages" :page="model.tagOffset / 15 + 1" :previousHref='if (model.tagOffset != 0L) model.pageHref(model.offset, model.tagOffset - 15) else ""' :nextHref='if (model.tagOffset + model.tags.size < (model.repository?.tagCount ?: 0)) model.pageHref(model.offset, model.tagOffset + 15) else ""' />
+            </card>
+          </if>
+          <card :title='"Versions (" + model.repository?.versionCount + ")"' :padded="false">
+            <if model.versions.isEmpty()>
+              <empty-state icon="package" message="No versions published." compact />
+            </if>
+            <div class="artifact-version-list">
+              <for version in model.versions>
+                <card class="artifact-version-card" :padded="false">
+                  <details class="artifact-version">
+                    <disclosure-heading framed>
+                      <strong class="mono">{ version.version }</strong>
+                      <span class="artifact-muted">{ version.blobs.size.toString() + if (version.blobs.size == 1) " blob" else " blobs" }</span>
+                      <span class="artifact-date">{ version.created.take(10) }</span>
+                    </disclosure-heading>
+                    <div>
+                      <table-scroll label="Version files" class="artifact-table artifact-blob-table">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Role</th>
+                              <th>Digest</th>
+                              <th>Size</th>
+                              <th>Filename</th>
+                              <th>Media type</th>
+                              <th>
+                                <span class="sr-only">Copy URL</span>
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <for blob in version.blobs>
+                              <tr>
+                                <td>
+                                  <badge tone="accent">{ blob.role }</badge>
+                                </td>
+                                <td>
+                                  <code :title="blob.digest">{ blob.digest.take(22) }…</code>
+                                  <copy :showStatus="false" :value="blob.digest" label="Copy digest" />
+                                </td>
+                                <td>{ blob.sizeLabel }</td>
+                                <td>{ blob.filename.ifBlank { "—" } }</td>
+                                <td>
+                                  <code class="artifact-muted">{ blob.mediaType }</code>
+                                </td>
+                                <td>
+                                  <if blob.download.isNotBlank()>
+                                    <artifacts-download :url="blob.download" :filename="blob.filename.ifBlank { blob.role }" />
+                                  </if>
+                                </td>
+                              </tr>
+                            </for>
+                          </tbody>
+                        </table>
+                      </table-scroll>
+                      <div class="artifact-version-meta">
+                        <badge :tone='if (version.completed) "success" else "neutral"'>{ if (version.finalized) "Finalized" else if (version.completed) "Uploads completed" else "Uploads not confirmed" }</badge>
+                        <if version.commitSha.isNotBlank()>
+                          <copy :showStatus="false" :value="version.commitSha" label="Copy build commit" />
+                          <code>{ version.commitSha.take(12) }</code>
+                        </if>
+                      </div>
+                      <if version.metadata != null>
+                        <details class="artifact-metadata">
+                          <disclosure-heading>Metadata</disclosure-heading>
+                          <pre>{ version.metadata.toString() }</pre>
+                        </details>
+                      </if>
+                    </div>
+                  </details>
+                  <div class="artifact-version-action">
+                    <confirm-dialog :title='"Delete version " + version.version + "?"' description="The version and its file associations will be permanently removed." triggerLabel="Delete version">
+                      <form @submit="model.deleteVersion(version.id, form.confirmed, ctx)">
+                        <form-body padded>
+                          <checkbox name="confirmed" label="Delete this version" required />
+                        </form-body>
+                        <form-actions bordered>
+                          <button size="sm" data-dialog-close>Cancel</button>
+                          <button type="submit" size="sm" class="danger">Delete version</button>
+                        </form-actions>
+                      </form>
+                    </confirm-dialog>
+                  </div>
+                </card>
+              </for>
+            </div>
+            <pagination label="Version pages" :page="model.offset / 15 + 1" :previousHref='if (model.offset != 0L) model.pageHref(model.offset - 15, model.tagOffset) else ""' :nextHref='if (model.offset + model.versions.size < (model.repository?.versionCount ?: 0)) model.pageHref(model.offset + 15, model.tagOffset) else ""' />
+          </card>
+          <form-actions>
+            <button-link :href='"/artifacts/settings/permissions?namespaceId=" + model.repository?.namespaceId' icon="shield">Manage namespace permissions</button-link>
+            <confirm-dialog :triggerIconOnly="false" title="Delete repository?" description="All versions, tags, and files will be permanently removed." triggerLabel="Delete repository">
+              <form @submit="model.deleteRepository(form.confirmed, ctx)">
+                <form-body padded>
+                  <checkbox name="confirmed" label="Delete this repository and its contents" required />
+                </form-body>
+                <form-actions bordered>
+                  <button size="sm" data-dialog-close>Cancel</button>
+                  <button type="submit" size="sm" class="danger">Delete repository</button>
+                </form-actions>
+              </form>
+            </confirm-dialog>
+          </form-actions>
+        </if>
+      </div>
+    </page-shell>
+  </island>
+</component>

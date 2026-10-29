@@ -16,7 +16,7 @@ import bosca.security.service.SecurityConfigurationImpl
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.server.installer.DefaultGitEmailPipelinesInstaller
-import bosca.server.installer.DefaultArtifactSyncPipelinesInstaller
+import bosca.artifacts.installer.DefaultArtifactSyncPipelinesInstaller
 import bosca.server.installer.DefaultSocialNotificationPipelinesInstaller
 import bosca.server.installer.DefaultTransactionalEmailPipelinesInstaller
 import bosca.server.installer.MaintenanceJobsInstaller

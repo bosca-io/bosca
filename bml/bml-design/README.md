@@ -46,7 +46,7 @@ Pages and local components, including nested source directories, can then use:
 The containing page or component declares the application's state and island as usual. The example
 consumer in [examples/design-library](../examples/design-library/README.md) demonstrates this wiring.
 The [catalog application](../bml-design-catalog/README.md) provides references and rendered examples
-for all 51 exports, with its own navigation, local actions and CSS palettes.
+for all exports, with its own navigation, local actions and CSS palettes.
 See [Migrating Git UI components](migration.md) for the complete tag mapping, caller changes,
 and ownership of styles and browser behavior.
 Use `<html:button>`, `<html:input>` and `<html:section>` for native elements after importing their library counterparts.
@@ -102,20 +102,56 @@ CSS, globally or on a themed container. Declaring the packaged faces does not fo
 
 ## Components
 
+`subsystem-switcher` and `subsystem-links` reproduce Studio's sidebar subsystem header,
+filterable categorized chooser, recent items, keyboard navigation, and compact home launcher.
+Applications supply `List<SubsystemNavigationItem>` with their own routes, labels, icons, and
+accent colors. The native modal retains Escape dismissal, focus return, and focus containment;
+its transparent backdrop leaves the current subsystem visible. The chooser records only visited
+subsystem IDs, and always navigates through the supplied links. `subsystem-links` supports `home`,
+`menu`, and `recent` layouts. Subsystem themes derive the `bosca-mark` face tokens from their
+primary `--accent` color, with lighter and darker side faces as in Studio.
+
+`page-shell flush` lets an application own its header and content insets at every viewport width.
+The default page padding remains available to existing consumers.
+
+`form-body` owns the vertical field spacing (`padded` adds dialog body insets), and `form-actions`
+owns action alignment and optional bordered footers. Keep native `form` elements and declarative
+submit actions in the application. `button-link` supplies the same themed control dimensions for
+native navigation. `pagination` owns page controls and renders only when another page exists;
+applications supply native links or projected server-action buttons. `card` forwards root attributes
+and accepts a `description`. `empty-state compact` fits status panels without custom padding rules.
+
+`progress-bar` renders native determinate progress using the palette's accent, with `value`, `max`,
+and an accessible `label`; callers can update the native progress element's value. Alerts support
+`error`, `success`, and `info` tones.
+
+`file-drop` owns the native file picker, keyboard focus, drag feedback and file selection. It emits
+a bubbling `filesselected` event whose detail is a `File[]`. Applications own validation, staging,
+uploading, progress and errors. Selection clears the picker so choosing the same file again emits
+another event. `multiple` applies to both picker and drops; `accept` is a native picker hint and
+does not validate dropped files. Toggle the root's `data-disabled` attribute by presence to disable
+selection during an asynchronous operation; the component synchronizes the native input and
+accessible disabled state. Its colors follow the enclosing palette.
+
+```html
+<file-drop ref="files" label="Choose files or drop them here" description="Select attachments" multiple />
+```
+
 | Export | Props and defaults | Native target and children |
 | --- | --- | --- |
 | `button` | `size: String = "md"` (`md`, `sm`, `xs`); `loading: Boolean = false`; `type: String = "button"`; `ref: String = ""`; `primary: Boolean = false`; `icon: String = ""`; `disabled: Boolean = false` | Native button receives additional attributes, merged `class`, and declarative click events. Default children supply its accessible name. Loading disables it and overlays an aria-hidden spinner. |
 | `input` | `size: String = "md"` (`md`, `sm`); `mono: Boolean = false`; `type: String = "text"`; `ref: String = ""`; `value: String = ""`; `required: Boolean = false` | Native input receives additional attributes and events, including `name`, `disabled`, `readonly`, `autocomplete`, `aria-*`, and `data-*`. No child content. |
 | `field` | Required `label: String`; `hint: String = ""`; `hideLabel: Boolean = false` | A wrapping native label contains default children. The hidden-label option retains an accessible label. Only named props and children are consumed. |
-| `card` | `title: String = ""`; `padded: Boolean = true` | Native section with an optional heading and a default child body. Only named props and children are consumed. |
-| `page-shell` | `fill: Boolean = false`; `narrow: Boolean = false` | Native main with default children, merged classes, and additional attributes. `fill` allocates a flex column; `narrow` uses a centered 400px form surface. |
+| `card` | `title: String = ""`; `padded: Boolean = true`; `description: String = ""` | Native section receives additional attributes, with an optional heading/description and a default child body. |
+| `page-shell` | `fill: Boolean = false`; `narrow: Boolean = false`; `flush: Boolean = false` | Native main with default children, merged classes, and additional attributes. `fill` allocates a flex column; `narrow` uses a centered 400px form surface. |
 | `icon` | Required `name: String`; `size: Int = 16`; `strokeWidth: Double = 2.0` | Decorative, aria-hidden Lucide SVG. No child content. |
 | `spinner` | `size: String = "sm"` (`xs`, `sm`, `md`) | Aria-hidden spinner, 12/14/20px respectively; stops animation for reduced motion. No child content. |
 | `checkbox` | Required `label: String`; `description: String = ""`; `checked: Boolean = false` | Wrapping label with a native 14px checkbox. Additional attributes and classes go to the input, including `name`, `value`, `required` and `disabled`. Change events bubble to the label root. No child content. |
 | `switch` | Required `label: String`; `description: String = ""`; `checked: Boolean = false`; `disabled: Boolean = false` | Wrapping label with a native checkbox and `role="switch"`, presented as a 32×18px track. Additional attributes/classes go to the input. Change events bubble to the label root. No child content. |
-| `alert` | `ref: String = ""`; `hidden: Boolean = false`; `tone: String = "error"` (`error`, `success`); `compact: Boolean = false` | Native paragraph with `role="alert"`, forwarded attributes/classes and default children. Compact text is 12px with an 18px line. |
+| `file-drop` | `ref: String = ""`; `label: String = "Choose files or drop them here"`; `description: String = ""`; `accept: String = ""`; `multiple: Boolean = false`; `disabled: Boolean = false` | Root div receives additional attributes/classes. Labelled native file input supports keyboard selection; bubbling `filesselected` carries local files. No child content. |
+| `alert` | `ref: String = ""`; `hidden: Boolean = false`; `tone: String = "error"` (`error`, `success`, `info`); `compact: Boolean = false` | Native paragraph with `role="alert"`, forwarded attributes/classes and default children. Compact text is 12px with an 18px line. |
 | `badge` | `tone: String = "neutral"` (`neutral`, `purple`, `info`, `success`, `warning`, `error`, `accent`); `color: String = ""` | Native span with forwarded attributes/classes and default children. A supplied CSS color overrides the tone. |
-| `empty-state` | `message: String = ""`; `title: String = ""`; `icon: String = "folder"` | Native div with forwarded attributes/classes, decorative icon, optional title/message and default action children. |
+| `empty-state` | `message: String = ""`; `title: String = ""`; `icon: String = "folder"`; `compact: Boolean = false` | Native div with forwarded attributes/classes, decorative icon, optional title/message and default action children. |
 | `loading-state` | `label: String = "Loading…"`; `compact: Boolean = false`; `ref: String = ""` | Native div with `role="status"`, forwarded attributes/classes, decorative spinner and visible label. No child content. |
 | `table-scroll` | `label: String = "Scrollable table"` | Focusable, labelled region with forwarded attributes/classes and default table children. Horizontal overflow stays inside the region; keyboard focus uses the accent color. |
 | `bosca-mark` | No named props | The actual 22×22px Bosca SVG, labelled `Bosca`, with forwarded attributes/classes. `aria-hidden` can mark it decorative. No child content. |

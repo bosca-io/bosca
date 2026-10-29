@@ -1,0 +1,35 @@
+<page route="/" requireAuth>
+  <script server provides="appearance">if (ctx.cookies["git_ui_appearance"] == "light") "light" else "dark"</script>
+  <html lang="en" :data-theme="appearance">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <meta name="robots" content="noindex,nofollow" />
+      <title>Bosca Atlas</title>
+      <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    </head>
+    <body :data-theme="appearance">
+      <div class="atlas-home">
+        <div class="atlas-home-inner">
+        <header class="atlas-home-header">
+          <a class="atlas-home-brand" href="/" aria-label="Bosca Atlas home">
+            <bosca-mark width="26" height="26" />
+            <span>Bosca</span><span class="atlas-brand-separator" aria-hidden="true"></span><span>Atlas</span>
+          </a>
+          <div class="atlas-home-actions">
+            <atlas-profile-menu />
+          </div>
+        </header>
+        <main class="atlas-home-main">
+          <div class="atlas-home-intro">
+            <h1>Welcome.</h1>
+            <p>Where would you like to go?</p>
+          </div>
+          <html:section data-subsystem-recent-block hidden><p class="atlas-category">Recent</p><subsystem-links :items="bosca.atlas.ui.AtlasSubsystems.items" variant="recent" recent /></html:section>
+          <nav aria-label="Atlas systems"><p class="atlas-category">Build &amp; Deliver</p><subsystem-links :items="bosca.atlas.ui.AtlasSubsystems.items" /></nav>
+        </main>
+        </div>
+      </div>
+    </body>
+  </html>
+</page>

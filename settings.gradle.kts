@@ -209,6 +209,7 @@ includeComponent("bml", listOf(
     "bml-annotations",
     "bml-compiler",
     "bml-design",
+    "bml-auth-ui",
     "bml-design-catalog",
     "core-bml",
     "bml",
@@ -272,7 +273,10 @@ includeComponent("backup", listOf(
 includeComponent("artifacts", listOf(
     "core-artifacts",
     "artifacts-base",
+    "artifacts-git",
     "artifacts-admin",
+    "artifacts-ui",
+    "artifacts-installer",
     "artifacts-docker",
     "artifacts-helm",
     "artifacts-maven",
@@ -326,6 +330,9 @@ includeComponent("firebase-scrypt", listOf(
 ))
 
 includeComponent("server", listOf(
+    "atlas-server",
+    "atlas-ui",
+    "atlas-ui-server",
     "bosca-server",
     "bosca-runner",
     "messages-pages",
