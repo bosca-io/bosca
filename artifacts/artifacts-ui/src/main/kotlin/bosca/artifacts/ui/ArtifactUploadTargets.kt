@@ -10,7 +10,7 @@ class ArtifactUploadTargets : ArtifactUploadTarget {
     override suspend fun resolve(gql: GraphQLClient, repositoryId: String, namespaceId: String, name: String): Map<String, String> {
         if (repositoryId == "new") {
             val trimmed = name.trim()
-            require(trimmed.length in 1..255 && trimmed.matches(Regex("[A-Za-z0-9@_.-]+")) && ".." !in trimmed) { "Enter a safe repository name of up to 255 characters." }
+            require(trimmed.length in 1..255 && trimmed != "." && trimmed.matches(Regex("[A-Za-z0-9@_.-]+")) && ".." !in trimmed) { "Enter a safe repository name of up to 255 characters." }
             require(namespaceId.isNotBlank()) { "Choose a namespace." }
             val created = gql.execute(ArtifactsCreateRepository, ArtifactsCreateRepository.Variables(namespaceId, trimmed, ArtifactRegistryType.raw)).artifactsAdmin.createRepository
             val namespace = requireNotNull(created.namespace) { "The namespace is unavailable." }

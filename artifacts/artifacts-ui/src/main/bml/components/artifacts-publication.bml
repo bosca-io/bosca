@@ -80,6 +80,9 @@
             <form-body>
               <field label="Version">
                 <select name="versionId" required>
+                  <if model.reviewedVersion != null && model.versions.none { it.id == model.selectedVersionId }>
+                    <option :value="model.selectedVersionId" selected>{ model.reviewedVersion?.version }</option>
+                  </if>
                   <for version in model.versions>
                     <option :value="version.id" :selected="model.selectedVersionId == version.id">{ version.version }</option>
                   </for>
@@ -99,7 +102,7 @@
             </if>
           </pagination>
           <if model.reviewedVersion != null>
-            <h3>Stored files</h3>
+            <h3>{ "Stored files for " + model.reviewedVersion?.version.orEmpty() }</h3>
             <for blob in model.reviewedVersion?.blobs.orEmpty()>
               <article class="artifact-file">
                 <strong>{ blob.filename.ifBlank { blob.role } }</strong>

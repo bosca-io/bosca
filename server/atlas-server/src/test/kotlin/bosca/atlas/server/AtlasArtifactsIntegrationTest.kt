@@ -16,17 +16,17 @@ class AtlasArtifactsIntegrationTest {
             val origin = fixture.newOrigin()
             val registry = fixture.start("registry", mapOf("ATLAS_API_ENABLED" to "false", "ATLAS_GIT_ENABLED" to "false", "ATLAS_UI_ENABLED" to "false", "ATLAS_RUNNER_ENABLED" to "false", "APP_URL" to origin, "APP_ALLOWED_ORIGIN" to origin)).first
             val api = fixture.start("api", mapOf("ATLAS_ARTIFACTS_ENABLED" to "false", "ATLAS_UI_ENABLED" to "false", "ATLAS_RUNNER_ENABLED" to "false", "APP_URL" to origin, "APP_ALLOWED_ORIGIN" to origin, "GIT_UI_URL" to origin)).first
-            val ui = fixture.startUi(api, origin, registry)
+            val ui = fixture.startUi(api, origin, registry, registry)
             fun JsonElement.at(vararg keys: String): JsonElement = keys.fold(this) { v, key -> v.jsonObject.getValue(key) }
             val token = fixture.graphql(ui, """mutation { security { login { password(identifier: "admin", password: "atlas-admin-password") { token { token } } } } }""").at("security", "login", "password", "token", "token").jsonPrimitive.content
             val namespace = fixture.graphql(ui, """mutation { artifactsAdmin { createNamespace(name: "split-files", public: false) { id } } }""", token).at("artifactsAdmin", "createNamespace", "id").jsonPrimitive.content
             val repository = fixture.graphql(ui, """mutation { artifactsAdmin { createRepository(namespaceId: "$namespace", name: "tool", type: raw) { id } } }""", token).at("artifactsAdmin", "createRepository", "id").jsonPrimitive.content
             val upload = fixture.upload(ui, "/_artifacts/raw/split-files/tool/1.0/tool.zip", "split bytes", token)
             assertEquals(201, upload.statusCode(), upload.body())
-            assertEquals("split bytes", fixture.request(ui, "/raw/split-files/tool/1.0/tool.zip", token = token).body())
+            assertEquals("split bytes", fixture.request(ui, "/_artifacts/raw/split-files/tool/1.0/tool.zip", token = token).body())
             val encodedPath = "split-files/tool/1.0%2Bbuild/tool%2B%E2%98%83%20file.zip"
             assertEquals(201, fixture.upload(ui, "/_artifacts/raw/$encodedPath", "encoded bytes", token).statusCode())
-            assertEquals("encoded bytes", fixture.request(ui, "/raw/$encodedPath", token = token).body())
+            assertEquals("encoded bytes", fixture.request(ui, "/_artifacts/raw/$encodedPath", token = token).body())
             val resolved = fixture.request(ui, "/_bml/contract/ArtifactUploadTarget/resolve", JsonArray(listOf(JsonPrimitive("new"), JsonPrimitive(namespace), JsonPrimitive("new-tool"))).toString(), token)
             assertEquals(200, resolved.statusCode(), resolved.body())
             val target = Json.parseToJsonElement(resolved.body()).jsonObject
@@ -37,6 +37,27 @@ class AtlasArtifactsIntegrationTest {
             val page = fixture.request(ui, "/artifacts/repositories/$repository", token = token)
             assertEquals(200, page.statusCode(), page.body())
             assertTrue("tool.zip" in page.body())
+            assertTrue("value=\"$registry/raw/split-files/tool/1.0/tool.zip\"" in page.body())
+            val mavenFile = "/maven/split-files/com/example/tool.core/1.0/tool.core-1.0.jar"
+            val mavenBytes = "maven artifact bytes"
+            assertEquals(201, fixture.upload(registry, mavenFile, mavenBytes, token).statusCode())
+            val mavenRepository = fixture.graphql(ui, "{ artifactsAdmin { repositories(type: maven) { id } } }", token)
+                .at("artifactsAdmin", "repositories").jsonArray.single().at("id").jsonPrimitive.content
+            val mavenPage = fixture.request(ui, "/artifacts/repositories/$mavenRepository", token = token)
+            assertEquals(200, mavenPage.statusCode(), mavenPage.body())
+            val downloadPaths = Regex("value=\"([^\"]*/maven/[^\"]*)\"").findAll(mavenPage.body())
+                .map { java.net.URI(it.groupValues[1]).rawPath }.toSet()
+            val downloadFile = "/maven/split-files/com/example/tool/core/1.0/tool.core-1.0.jar"
+            assertEquals(setOf(downloadFile, "$downloadFile.sha1", "$downloadFile.md5"), downloadPaths)
+            assertTrue("value=\"$registry$downloadFile\"" in mavenPage.body())
+            assertEquals(mavenBytes, fixture.request(ui, "/_artifacts$downloadFile", token = token).body())
+            for ((extension, algorithm) in listOf("sha1" to "SHA-1", "md5" to "MD5")) {
+                val checksum = java.security.MessageDigest.getInstance(algorithm).digest(mavenBytes.encodeToByteArray())
+                    .joinToString("") { "%02x".format(it) }
+                val response = fixture.request(ui, "/_artifacts$downloadFile.$extension", token = token)
+                assertEquals(200, response.statusCode(), response.body())
+                assertEquals(checksum, response.body())
+            }
         }
     }
 
@@ -80,8 +101,8 @@ class AtlasArtifactsIntegrationTest {
             assertTrue("Upload files" in page("/artifacts/repositories/upload?repositoryId=$repositoryId"))
             val upload = fixture.upload(ui, "/_artifacts/raw/atlas-ui-files/tool/1.0/tool.zip", "artifact bytes", token)
             assertEquals(201, upload.statusCode(), upload.body())
-            assertEquals("artifact bytes", fixture.request(ui, "/raw/atlas-ui-files/tool/1.0/tool.zip", token = token).body())
-            assertEquals(200, fixture.request(ui, "/raw/atlas-ui-files/tool/1.0/tool.zip", token = reader).statusCode())
+            assertEquals("artifact bytes", fixture.request(ui, "/_artifacts/raw/atlas-ui-files/tool/1.0/tool.zip", token = token).body())
+            assertEquals(200, fixture.request(ui, "/_artifacts/raw/atlas-ui-files/tool/1.0/tool.zip", token = reader).statusCode())
             assertTrue(fixture.upload(ui, "/_artifacts/raw/atlas-ui-files/tool/1.0/forbidden.zip", "forbidden", reader).statusCode() in 400..499)
             val deniedSettings = fixture.request(ui, "/artifacts/settings/repositories/$repositoryId", token = reader)
             assertEquals(200, deniedSettings.statusCode())
@@ -113,6 +134,48 @@ class AtlasArtifactsIntegrationTest {
             val graphs = fixture.graphql(ui, "{ pipelines { all { name } } }", token).at("pipelines", "all").jsonArray
             assertTrue(graphs.any { it.at("name").jsonPrimitive.content == "Sync Docker Image to GHCR" })
             assertTrue(graphs.any { it.at("name").jsonPrimitive.content == "Publish Raw Artifact to GitHub" })
+            val rawOwner = fixture.graphql(ui, """mutation { profiles { edit(profile: {slug: "raw", name: "Raw routing fixture", visibility: PUBLIC, attributes: []}) { id } } }""", token)
+                .at("profiles", "edit", "id").jsonPrimitive.content
+            fixture.graphql(ui, """mutation { git { createRepository(input: {name: "Git routing fixture", slug: "atlas-ui-files", ownerId: "$rawOwner", initializeWithReadme: true}) { id } } }""", token)
+            val gitFilePath = "/raw/atlas-ui-files/raw/main/README.md"
+            val gitFile = fixture.request(ui, gitFilePath, token = token)
+            assertEquals(200, gitFile.statusCode(), gitFile.body())
+            val rawRepository = fixture.graphql(ui, """mutation { artifactsAdmin { createRepository(namespaceId: "$namespaceId", name: "raw", type: raw) { id } } }""", token)
+                .at("artifactsAdmin", "createRepository", "id").jsonPrimitive.content
+            val artifactBytes = "Artifact routing fixture"
+            assertEquals(201, fixture.upload(ui, "/_artifacts/raw/atlas-ui-files/raw/main/README.md", artifactBytes, token).statusCode())
+            val rawPage = page("/artifacts/repositories/$rawRepository")
+            val rawDownload = Regex("value=\"([^\"]*/raw/atlas-ui-files/raw/main/README.md)\"").find(rawPage)
+                ?.groupValues?.get(1) ?: error("Missing raw artifact download URL")
+            val artifactFile = fixture.request(ui, java.net.URI(rawDownload).rawPath, token = token)
+            assertEquals(200, artifactFile.statusCode(), artifactFile.body())
+            assertEquals(artifactBytes, artifactFile.body())
+            assertEquals(gitFile.body(), fixture.request(ui, gitFilePath, token = token).body())
+            val rawNamespace = fixture.graphql(ui, """mutation { artifactsAdmin { createNamespace(name: "raw", public: false) { id } } }""", token)
+                .at("artifactsAdmin", "createNamespace", "id").jsonPrimitive.content
+            fixture.graphql(ui, """mutation { artifactsAdmin { createRepository(namespaceId: "$rawNamespace", name: "tool", type: raw) { id } } }""", token)
+            val rawNamespaceFile = "/_artifacts/raw/raw/tool/main/README.md"
+            assertEquals(201, fixture.upload(ui, rawNamespaceFile, artifactBytes, token).statusCode())
+            assertEquals(artifactBytes, fixture.request(ui, rawNamespaceFile, token = token).body())
+            val equivalentOriginUi = fixture.startUi(api, fixture.newOrigin(), "HTTP://LOCALHOST:${java.net.URI(api).port}/")
+            assertEquals(artifactBytes, fixture.request(equivalentOriginUi, java.net.URI(rawDownload).rawPath, token = token).body())
+            assertEquals(gitFile.body(), fixture.request(equivalentOriginUi, gitFilePath, token = token).body())
+            val refreshRepository = fixture.graphql(ui, """mutation { artifactsAdmin { createRepository(namespaceId: "$namespaceId", name: "publication-refresh", type: raw) { id } } }""", token)
+                .at("artifactsAdmin", "createRepository", "id").jsonPrimitive.content
+            assertEquals(201, fixture.upload(ui, "/_artifacts/raw/atlas-ui-files/publication-refresh/initial/file.zip", "initial bytes", token).statusCode())
+            val refreshPath = "/artifacts/settings/repositories/$refreshRepository"
+            val refreshPage = page(refreshPath)
+            for (index in 1..16) {
+                assertEquals(201, fixture.upload(ui, "/_artifacts/raw/atlas-ui-files/publication-refresh/newer-$index/file.zip", "new bytes $index", token).statusCode())
+            }
+            val refreshed = action(refreshPath, "/artifacts/settings/repositories/{id}", "artifacts-publication.model", "refresh", emptyList(), html = refreshPage)
+            val refreshedState = Json.parseToJsonElement(refreshed.getValue("state").jsonPrimitive.content).jsonObject
+            val selectedVersion = refreshedState.getValue("selectedVersionId").jsonPrimitive.content
+            assertEquals("initial", refreshedState.at("reviewedVersion", "version").jsonPrimitive.content)
+            assertFalse(refreshedState.getValue("versions").jsonArray.any { it.at("id").jsonPrimitive.content == selectedVersion })
+            val selectedOption = Regex("<option\\b[^>]*>").findAll(refreshed.getValue("html").jsonPrimitive.content)
+                .firstOrNull { "value=\"$selectedVersion\"" in it.value }
+            assertTrue(selectedOption?.value?.contains(" selected") == true, "The version selector must retain the version whose files are being reviewed")
             val assets = Regex("(?:src|href)=\"(/_bml/[^\"]+)\"").findAll(html).map { it.groupValues[1].replace("&amp;", "&") }.distinct().toList()
             for (asset in assets) assertEquals(200, fixture.request(ui, asset).statusCode(), asset)
             val favicon = fixture.request(ui, "/favicon.svg")

@@ -2,8 +2,8 @@
   <prop name="url" type="String" required />
   <prop name="filename" type="String" required />
   <div class="artifact-download">
-    <html:input ref="url" :value="url" :aria-label='"Download URL for " + filename' readonly hidden />
-    <icon-button ref="copy" icon="copy" :label='"Copy URL for " + filename' size="xs" />
+    <input ref="url" :value="url" :aria-label='"Download URL for " + filename' size="sm" readonly hidden />
+    <icon-button ref="copy" icon="copy" :label='"Copy URL for " + filename' />
     <p class="sr-only" ref="message" role="status">
     </p>
   </div>

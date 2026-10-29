@@ -113,12 +113,7 @@
               <artifacts-drop />
             </if>
             <card title="Repositories" :padded="false">
-              <nav class="artifact-filter" aria-label="Registry type">
-                <a :href='model.href + "?type=all"' :aria-current='if (model.type == "all") "page" else "false"'>All types</a>
-                <for type in bosca.artifacts.ui.artifactTypes>
-                  <a :href='model.href + "?type=" + type' :aria-current='if (model.type == type) "page" else "false"'>{ type }</a>
-                </for>
-              </nav>
+              <tabs label="Registry type" :items="model.filters" class="artifact-filter" />
               <if model.repositories.isEmpty()>
                 <empty-state message="No repositories found." />
               </if>

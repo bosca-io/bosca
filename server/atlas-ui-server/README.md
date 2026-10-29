@@ -30,6 +30,8 @@ and the root landing route. The host enables Atlas's system switcher in the impo
 standalone Git keeps its own navigation. Git and artifacts each retain their local links, with the
 shared dialog providing system switching and a return to Atlas home.
 Artifacts UI is imported from `:artifacts:artifacts-ui`, with typed GraphQL actions and same-origin
-registry file proxies. `BML_ARTIFACTS_ENDPOINT` optionally selects a separate registry upstream;
-`ATLAS_ARTIFACTS_URL` sets the public origin used in copied file URLs. GraphQL remains shared.
+registry file proxies under `/_artifacts/`, which have distinct URLs from Git raw files. The composed
+Atlas backend exposes matching routes through the existing registry handlers. `BML_ARTIFACTS_ENDPOINT`
+optionally selects a separate registry upstream using native protocol paths; `ATLAS_ARTIFACTS_URL`
+sets the public origin used in copied native file URLs. GraphQL remains shared.
 See [Atlas server](../atlas-server/README.md) for deployment roles and production-process tests.

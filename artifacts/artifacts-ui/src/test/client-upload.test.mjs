@@ -9,6 +9,7 @@ test("partial upload retry reuses the created repository and changed coordinates
   assert.equal((await resolve("new", "namespace", "tool")).id, "1");
   assert.equal((await resolve("new", "namespace", "tool")).id, "1");
   assert.equal((await resolve("new", "namespace", "other")).id, "2");
+  assert.equal((await resolve("new", "namespace", "tool")).id, "1");
   assert.equal(calls.length, 2);
   let attempts = 0;
   const retry = artifactTargetResolver(async () => { if (++attempts === 1) throw new Error("Unavailable"); return { id: "created" }; });
@@ -17,11 +18,11 @@ test("partial upload retry reuses the created repository and changed coordinates
 });
 test("new repository names match the target contract before creating a repository", () => {
   for (const value of ["release-tools", "@scope.tool_1", "a".repeat(255)]) assert.equal(safeArtifactRepositoryName(value), true);
-  for (const value of ["", " ", "a b", "a/b", "a\\b", "a..b", "a".repeat(256)]) assert.equal(safeArtifactRepositoryName(value), false);
+  for (const value of ["", " ", ".", "a b", "a/b", "a\\b", "a..b", "a".repeat(256)]) assert.equal(safeArtifactRepositoryName(value), false);
 });
 test("upload coordinates are encoded and unsafe path segments fail before network I/O", () => {
   assert.equal(rawUploadPath("@scope", "tool", "1.0+build", "a b.zip"), "/_artifacts/raw/%40scope/tool/1.0%2Bbuild/a%20b.zip");
-  for (const value of ["", " ", ".", "..", "a/b", "a\\b", "a\u0000b", "a\u007fb"]) {
+  for (const value of ["", " ", ".", "..", "a/b", "a\\b", "a\u0000b", "a\u007fb", "a\u0080b", "a\u009fb"]) {
     assert.equal(safeArtifactSegment(value), false, JSON.stringify(value));
     assert.throws(() => rawUploadPath("ns", "repo", value, "file.zip"));
   }

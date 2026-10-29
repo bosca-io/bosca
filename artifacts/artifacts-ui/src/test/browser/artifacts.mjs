@@ -26,6 +26,9 @@ let launchError;
 chrome.on("error", error => { launchError = error; });
 let ws;
 const errors = [];
+const uploadAttempts = new Map();
+const expectedNetworkFailures = new Set();
+let failUploadOnce = true;
 try {
   let targets;
   for (let i = 0; i < 100; i++) {
@@ -41,7 +44,21 @@ try {
   ws.addEventListener("message", event => {
     const message = JSON.parse(event.data);
     if (message.method === "Runtime.exceptionThrown") errors.push(message.params.exceptionDetails);
-    if (message.method === "Log.entryAdded" && message.params.entry.level === "error") errors.push(message.params.entry);
+    if (message.method === "Log.entryAdded" && message.params.entry.level === "error") {
+      const entry = message.params.entry;
+      if (!(entry.source === "network" && expectedNetworkFailures.has(entry.url))) errors.push(entry);
+    }
+    if (message.method === "Fetch.requestPaused") {
+      const { requestId, request } = message.params;
+      uploadAttempts.set(request.url, (uploadAttempts.get(request.url) ?? 0) + 1);
+      const fail = failUploadOnce && new URL(request.url).pathname.endsWith("/retry.zip");
+      if (fail) { failUploadOnce = false; expectedNetworkFailures.add(request.url); }
+      void call(fail ? "Fetch.fulfillRequest" : "Fetch.continueRequest", fail ? {
+        requestId, responseCode: 503,
+        responseHeaders: [{name:"Content-Type",value:"text/plain"}],
+        body: Buffer.from("Temporarily unavailable").toString("base64"),
+      } : { requestId }).catch(error => errors.push(String(error)));
+    }
     if (message.id) { const item = pending.get(message.id); pending.delete(message.id); if (message.error) item?.reject(new Error(JSON.stringify(message.error))); else item?.resolve(message.result); }
   });
   const call = (method, params = {}) => new Promise((resolve, reject) => { const id = ++sequence; pending.set(id, { resolve, reject }); ws.send(JSON.stringify({ id, method, params })); });
@@ -102,23 +119,35 @@ try {
 
   await go(`/artifacts/repositories/${repositoryId}`);
   const localFile = join(profile, "browser.zip");
+  const retryFile = join(profile, "retry.zip");
   await writeFile(localFile, "browser-upload-bytes");
+  await writeFile(retryFile, "retry-upload-bytes");
   let document = await call("DOM.getDocument");
   let fileInput = await call("DOM.querySelector", { nodeId: document.root.nodeId, selector: '.artifact-drop input[type=file]' });
-  await call("DOM.setFileInputFiles", { nodeId: fileInput.nodeId, files: [localFile] });
+  await call("DOM.setFileInputFiles", { nodeId: fileInput.nodeId, files: [localFile, retryFile] });
   await until("location.pathname === '/artifacts/repositories/upload' && document.querySelector('[data-bml-ref=files] input[name=filename]')?.value === 'browser.zip'", "staged file survives navigation");
   await fill("input[name=version]", "browser-1");
+  await call("Fetch.enable", {patterns:[{urlPattern:base+"/_artifacts/raw/*",requestStage:"Request"}]});
+  await click("button[data-bml-ref=upload]");
+  await until("document.querySelector('[data-bml-ref=message]')?.textContent.includes('Some files failed.') && !document.querySelector('button[data-bml-ref=upload]').disabled", "partial upload exposes a retry");
+  assert.deepEqual(await evaluate("[...document.querySelectorAll('[data-bml-ref=files] [data-file-status]')].map(e=>e.textContent)"), ["Uploaded","Temporarily unavailable"]);
+  await screenshot("upload-partial-retry");
   await click("button[data-bml-ref=upload]");
   await until(`location.pathname === '/artifacts/repositories/${repositoryId}' && document.body.innerText.includes('browser-1')`, "browser upload completes and returns to repository");
+  await call("Fetch.disable");
+  assert.equal(uploadAttempts.get(`${base}/_artifacts/raw/atlas-ui-files/tool/browser-1/browser.zip`), 1, "Successful files are not uploaded again on retry");
+  assert.equal(uploadAttempts.get(`${base}/_artifacts/raw/atlas-ui-files/tool/browser-1/retry.zip`), 2);
   await screenshot("uploaded-repository");
 
   await evaluate("[...document.querySelectorAll('details.artifact-version')].find(item => item.textContent.includes('browser-1')).open = true");
-  await click(".artifact-version[open] .artifact-download button");
-  await until("document.querySelector('.artifact-version[open] .artifact-download')?.textContent.includes('Download URL copied.')");
+  const download = '.artifact-version[open] .artifact-download:has(input[aria-label="Download URL for browser.zip"])';
+  await click(`${download} button`);
+  await until(`document.querySelector(${JSON.stringify(download)})?.textContent.includes('Download URL copied.')`);
   const copied = await evaluate("navigator.clipboard.readText()");
-  assert.equal(copied, `${base}/raw/atlas-ui-files/tool/browser-1/browser.zip`);
+  assert.equal(copied, `${base}/_artifacts/raw/atlas-ui-files/tool/browser-1/browser.zip`);
   const payload = await evaluate(`(async () => fetch(${JSON.stringify(copied)}, {headers: await atlasAuth.getAuthHeaders()}).then(response => response.text()))()`);
   assert.equal(payload, "browser-upload-bytes");
+  assert.equal(await evaluate(`(async()=>fetch(${JSON.stringify(base+"/_artifacts/raw/atlas-ui-files/tool/browser-1/retry.zip")},{headers:await atlasAuth.getAuthHeaders()}).then(r=>r.text()))()`), "retry-upload-bytes");
 
   const geometry = [];
   for (const width of [1920, 1024, 768, 390]) {

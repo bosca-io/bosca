@@ -4,6 +4,7 @@ import bosca.artifacts.ui.graphql.*
 import bosca.bml.graphql.execute
 import bosca.bml.render.RenderContext
 import bosca.bml.render.currentRenderContext
+import bosca.design.model.NavigationItem
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -17,6 +18,9 @@ class ArtifactListModel(
     val href: String get() = if (kind == "namespaces") "/artifacts/namespaces" else if (namespaceId.isNotBlank()) "/artifacts/namespaces/${artifactEncode(namespaceId)}" else "/artifacts/repositories"
     val previousHref: String get() = "$href?type=$type&offset=${(offset - 15).coerceAtLeast(0)}"
     val nextHref: String get() = "$href?type=$type&offset=${offset + 15}"
+    val filters: List<NavigationItem> get() = (listOf("all") + artifactTypes).map { registryType ->
+        NavigationItem(if (registryType == "all") "All types" else registryType, "$href?type=$registryType", type == registryType)
+    }
     suspend fun reload(ctx: RenderContext) {
         if (!admin) return
         namespaces = ctx.gql.execute(ArtifactsNamespaces, Unit).artifactsAdmin.namespaces.map {

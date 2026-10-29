@@ -35,7 +35,8 @@ fun artifactDownload(repository: ArtifactRepositoryView, version: String, role: 
         "ml" -> if (role == "model") "/ml/$ns/$name/$v" else null
         else -> null
     } ?: return ""
-    return System.getenv("ATLAS_ARTIFACTS_URL").orEmpty().trimEnd('/') + path
+    val origin = System.getenv("ATLAS_ARTIFACTS_URL").orEmpty().trim().trimEnd('/')
+    return if (origin.isBlank()) "/_artifacts$path" else origin + path
 }
 
 /** Registry badge colors used by Studio's artifact screens. */

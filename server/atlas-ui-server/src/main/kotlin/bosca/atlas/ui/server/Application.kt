@@ -44,9 +44,10 @@ fun BoscaApplication.installAtlasUiServer(graphqlEndpoint: String, authCookiePre
         dev = false,
     ).install(this)
     installGitSubscriptions(this, graphqlEndpoint)
+    val artifactsEndpoint = environment.config.propertyOrNull("bml.artifactsEndpoint")?.getString()?.takeIf(String::isNotBlank)
+        ?: System.getenv("BML_ARTIFACTS_ENDPOINT")?.takeIf(String::isNotBlank) ?: graphqlEndpoint
+    ArtifactFileProxy(artifactsEndpoint, graphqlEndpoint).install(this)
     installGitFileProxy(graphqlEndpoint)
-    ArtifactFileProxy(environment.config.propertyOrNull("bml.artifactsEndpoint")?.getString()?.takeIf(String::isNotBlank)
-        ?: System.getenv("BML_ARTIFACTS_ENDPOINT")?.takeIf(String::isNotBlank) ?: graphqlEndpoint).install(this)
     router.get("/welcome") { call.respondRedirect("/") }
     for (path in listOf("/favicon.svg", "/favicon.ico")) {
         router.get(path) { call.respondBytes(AtlasUi.favicon.encodeToByteArray(), bosca.server.ContentType.parse("image/svg+xml")) }

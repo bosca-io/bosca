@@ -136,6 +136,7 @@
     <card title="Forms and actions" description="The library owns form spacing, footer alignment, navigation controls, and pagination.">
       <form action="/components/layout" method="get"><form-body>
         <field label="Example name"><input name="example" value="Library form" /></field>
+        <progress-bar label="Example progress" :value="65.0" />
         <form-actions><button-link href="/components/layout" icon="arrow-left">Cancel</button-link><button type="submit" primary>Save example</button></form-actions>
       </form-body></form>
       <pagination :page="paginationPage" :previousHref='if (paginationPage != 1L) "/components/layout?page=" + (paginationPage - 1) else ""' :nextHref='if (paginationPage != 3L) "/components/layout?page=" + (paginationPage + 1) else ""' label="Example pages" />

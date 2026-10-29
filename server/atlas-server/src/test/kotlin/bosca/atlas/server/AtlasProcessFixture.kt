@@ -63,6 +63,8 @@ internal class AtlasProcessFixture : AutoCloseable {
                 "GIT_UI_URL" to ui, "APP_ALLOWED_ORIGIN" to ui, "OAUTH2_ALLOWED_REDIRECT" to ui,
                 "SECURITY_AUTO_VERIFY" to "true", "GRAPHQL_INTROSPECTION_ENABLED" to "true",
                 "WELCOME_EMAIL_URL" to "", "ATLAS_RUNNER_CONCURRENCY" to "2",
+                "ATLAS_ARTIFACTS_URL" to "",
+                "BML_ARTIFACTS_ENDPOINT" to "",
             ) + flags)
             redirectErrorStream(true)
             redirectOutput(log)
@@ -97,7 +99,7 @@ internal class AtlasProcessFixture : AutoCloseable {
 
     fun newOrigin(): String = "http://localhost:${freePort()}"
 
-    fun startUi(api: String, origin: String, artifactsEndpoint: String? = null): String {
+    fun startUi(api: String, origin: String, artifactsEndpoint: String? = null, publicArtifactsOrigin: String = ""): String {
         val port = URI.create(origin).port
         val config = File(directory, "ui.yaml")
         config.writeText("""
@@ -115,7 +117,9 @@ internal class AtlasProcessFixture : AutoCloseable {
             File(System.getProperty("java.home"), "bin/java").absolutePath,
             "--enable-native-access=ALL-UNNAMED", "-cp", requireNotNull(System.getProperty("atlasServerClasspath")),
             "bosca.atlas.ui.server.ApplicationKt", "-config=${config.absolutePath}",
-        ).directory(directory).redirectErrorStream(true).redirectOutput(log).start()
+        ).directory(directory).apply {
+            environment().putAll(mapOf("ATLAS_ARTIFACTS_URL" to publicArtifactsOrigin, "BML_ARTIFACTS_ENDPOINT" to ""))
+        }.redirectErrorStream(true).redirectOutput(log).start()
         processes += process
         await("standalone UI ready", log) {
             check(process.isAlive) { "UI host exited: ${log.readText().takeLast(16_000)}" }

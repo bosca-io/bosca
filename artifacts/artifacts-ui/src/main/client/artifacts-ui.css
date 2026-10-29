@@ -55,10 +55,7 @@
 .artifact-detail-label { color:var(--fg-3); font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.05em; }
 .artifact-detail-value { color:var(--fg-1); font-size:13px; }
 .artifact-visibility { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-.artifact-filter { display:flex; align-items:center; flex-wrap:wrap; gap:2px; padding:8px 12px; border-bottom:1px solid var(--line); }
-.artifact-filter a { padding:3px 10px; border-radius:6px; font-size:11.5px; font-weight:500; color:var(--fg-3); text-decoration:none; }
-.artifact-filter a:hover { color:var(--fg-1); background:color-mix(in oklch,var(--fg-3) 8%,transparent); }
-.artifact-filter a[aria-current="page"] { color:var(--fg-0); background:color-mix(in oklch,var(--fg-3) 14%,transparent); }
+.artifact-document .artifact-filter { margin:0; padding:0 12px; }
 
 .artifact-version-list { padding:8px; display:flex; flex-direction:column; gap:6px; }
 .artifact-version-card { position:relative; }

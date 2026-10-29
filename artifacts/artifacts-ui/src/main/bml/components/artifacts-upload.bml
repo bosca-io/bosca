@@ -47,8 +47,7 @@
         </div>
         <div class="artifact-stack" ref="files" aria-label="Upload files" aria-live="polite">
         </div>
-        <p ref="message" role="status">
-        </p>
+        <alert ref="message" tone="info" role="status" compact hidden />
       </form-body>
       <form-actions bordered align="between">
         <button-link href="/artifacts/repositories" icon="arrow-left">Back to repositories</button-link>
@@ -60,18 +59,15 @@
     </form>
     <div ref="fileTemplate" hidden>
       <div class="artifact-file">
-        <label>Filename<html:input name="filename" required />
-        </label>
+        <field label="Filename"><input name="filename" required /></field>
         <p data-file-info>
         </p>
-        <progress max="100" value="0" aria-label="Upload progress">
-        </progress>
+        <progress-bar label="Upload progress" />
         <p data-file-status role="status">Ready</p>
         <button type="button" data-file-remove>Remove file</button>
       </div>
     </div>
   </card>
-  <style scoped>progress { width:100%; } .artifact-file label { display:flex; flex-direction:column; gap:8px; }</style>
   <script client scoped>
   import { ArtifactUploadTarget } from "./ArtifactUploadTarget";
   import { mountArtifactUpload } from "@client/upload";

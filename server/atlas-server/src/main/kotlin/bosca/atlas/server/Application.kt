@@ -17,6 +17,11 @@ import bosca.initialization.InitializeModule
 import bosca.installer.model.PackageInstallations
 import bosca.routes.configureGitCiRoutes
 import bosca.routes.configureGitRoutes
+import bosca.routes.configureArtifactsRawRoutes
+import bosca.routes.configureArtifactsMavenRoutes
+import bosca.routes.configureArtifactsNpmRoutes
+import bosca.routes.configureArtifactsHelmRoutes
+import bosca.routes.configureArtifactsMlRoutes
 import bosca.scheduler.listeners.JobEnqueueEventForwarder
 import bosca.security.routes.SecurityRoutesModule
 import bosca.security.routes.AuthenticationModule
@@ -58,6 +63,14 @@ suspend fun BoscaApplication.module() {
     } else {
         GraphQLRegistrar.register(graphql)
         launch { graphql.warmup() }
+    }
+    if (configuration.artifactsEnabled) {
+        // Register the private registry namespace before Git's parameterized file route.
+        configureArtifactsRawRoutes("/_artifacts")
+        configureArtifactsMavenRoutes("/_artifacts")
+        configureArtifactsNpmRoutes("/_artifacts")
+        configureArtifactsHelmRoutes("/_artifacts")
+        configureArtifactsMlRoutes("/_artifacts")
     }
     if (configuration.gitEnabled) {
         configureGitRoutes()

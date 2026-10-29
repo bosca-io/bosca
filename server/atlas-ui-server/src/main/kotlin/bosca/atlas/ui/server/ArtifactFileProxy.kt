@@ -20,8 +20,10 @@ import okio.BufferedSink
 import okio.source
 
 /** Streams registry file traffic through the UI origin; registry services authorize the caller. */
-internal class ArtifactFileProxy(endpoint: String) {
+internal class ArtifactFileProxy(endpoint: String, graphqlEndpoint: String) {
     private val origin = endpoint.substringBefore("/graphql").trimEnd('/').toHttpUrl()
+    private val atlasEndpoint = origin == graphqlEndpoint.substringBefore("/graphql").trimEnd('/').toHttpUrl()
+    private val upstreamPrefix = if (atlasEndpoint) "/_artifacts" else ""
     private val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).build()
 
     fun install(application: BoscaApplication) {
@@ -32,7 +34,7 @@ internal class ArtifactFileProxy(endpoint: String) {
                 return@put
             }
             // Bosca decodes '+' as a space in route parameters, so preserve literal plus signs.
-            val path = listOf("raw", segments[0], "api", segments[1], segments[2], segments[3])
+            val path = listOfNotNull("_artifacts".takeIf { atlasEndpoint }, "raw", segments[0], "api", segments[1], segments[2], segments[3])
                 .joinToString("/") { URLEncoder.encode(it, StandardCharsets.UTF_8).replace("+", "%20") }
             val url = origin.newBuilder().addEncodedPathSegments(path).build()
             call.request.bodyInputStream().use { input ->
@@ -45,9 +47,9 @@ internal class ArtifactFileProxy(endpoint: String) {
             }
         }
         for (path in listOf("/raw/{namespace}/{repository}/{version}/{filename}", "/maven/{repository}/{path...}", "/npm/{name}/-/{filename}", "/npm/@{scope}/{name}/-/{filename}", "/helm/{namespace}/charts/{name}/{version}", "/ml/{namespace}/{name}/{version}")) {
-            application.router.get(path) {
-                val request = Request.Builder().url(origin.toString().trimEnd('/') + call.request.uri).get()
-                if (request.build().url.encodedPath != origin.encodedPath.trimEnd('/') + call.request.path) {
+            application.router.get("/_artifacts$path") {
+                val request = Request.Builder().url(origin.toString().trimEnd('/') + upstreamPrefix + call.request.uri.removePrefix("/_artifacts")).get()
+                if (request.build().url.encodedPath != origin.encodedPath.trimEnd('/') + upstreamPrefix + call.request.path.removePrefix("/_artifacts")) {
                     call.respond(HttpStatusCode.BadRequest, "Invalid artifact path")
                 } else forward(call, request)
             }

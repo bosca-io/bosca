@@ -121,6 +121,10 @@ native navigation. `pagination` owns page controls and renders only when another
 applications supply native links or projected server-action buttons. `card` forwards root attributes
 and accepts a `description`. `empty-state compact` fits status panels without custom padding rules.
 
+`progress-bar` renders native determinate progress using the palette's accent, with `value`, `max`,
+and an accessible `label`; callers can update the native progress element's value. Alerts support
+`error`, `success`, and `info` tones.
+
 | Export | Props and defaults | Native target and children |
 | --- | --- | --- |
 | `button` | `size: String = "md"` (`md`, `sm`, `xs`); `loading: Boolean = false`; `type: String = "button"`; `ref: String = ""`; `primary: Boolean = false`; `icon: String = ""`; `disabled: Boolean = false` | Native button receives additional attributes, merged `class`, and declarative click events. Default children supply its accessible name. Loading disables it and overlays an aria-hidden spinner. |

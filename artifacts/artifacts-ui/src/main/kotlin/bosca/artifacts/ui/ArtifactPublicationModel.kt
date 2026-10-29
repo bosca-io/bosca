@@ -99,6 +99,13 @@ class ArtifactPublicationModel(
             feedback.message = "Release publication queued."
         }
     }
-    suspend fun versionsPage(delta: Int, ctx: RenderContext) = feedback.perform { offset = (offset + delta * 15).coerceAtLeast(0); selectedVersionId = ""; historyOffset = 0; reload(ctx) }
+    suspend fun versionsPage(delta: Int, ctx: RenderContext) = feedback.perform {
+        offset = (offset + delta * 15).coerceAtLeast(0)
+        selectedVersionId = ""
+        historyOffset = 0
+        reviewedVersion = null
+        commitDraft = ""
+        reload(ctx)
+    }
     suspend fun historyPage(delta: Int, ctx: RenderContext) = feedback.perform { historyOffset = (historyOffset + delta * 15).coerceAtLeast(0); reload(ctx) }
 }

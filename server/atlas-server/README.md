@@ -79,6 +79,11 @@ browser GraphQL, OAuth, subscription, and file requests remain same-origin.
 
 Artifact registry protocols may use the primary Atlas hostname or a separate registry hostname.
 The current routes are `/v2/` for Docker/OCI, `/maven/`, `/npm/`, `/helm/`, `/raw/`, and `/ml/`.
+Atlas also exposes the file-serving protocols under `/_artifacts/` for the UI proxy, using the
+same registry handlers and authorization. UI-generated file URLs use this namespace so a Git raw
+file and an artifact can have matching owner/namespace and repository names. A configured
+`ATLAS_ARTIFACTS_URL` uses the registry's native paths on its public host. Native protocol paths
+that overlap Git routes can use the separate registry listener described below.
 For a separate registry process, enable artifacts and disable API, Git, UI, and workers:
 
 ```bash

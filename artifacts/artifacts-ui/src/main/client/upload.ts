@@ -5,23 +5,24 @@ type Target = Record<string, string>;
 type ResolveTarget = (repositoryId: string, namespaceId: string, name: string) => Promise<Target>;
 type UploadFile = { file: File; row: HTMLElement; filename: HTMLInputElement; status: HTMLElement; progress: HTMLProgressElement; completedTarget?: string };
 
-/** Reuses a created repository when a partial upload is retried with the same coordinates. */
+/** Reuses resolved repositories when a partial upload returns to earlier coordinates. */
 export function artifactTargetResolver(resolve: ResolveTarget): ResolveTarget {
-  let previous: { key: string; target: Target } | undefined;
+  const targets = new Map<string, Target>();
   return async (repositoryId, namespaceId, name) => {
     const key = JSON.stringify([repositoryId, namespaceId, name]);
-    if (previous?.key === key) return previous.target;
+    const cached = targets.get(key);
+    if (cached) return cached;
     const target = await resolve(repositoryId, namespaceId, name);
-    previous = { key, target };
+    targets.set(key, target);
     return target;
   };
 }
 
 export function safeArtifactSegment(value: string): boolean {
-  return value.trim().length > 0 && value !== "." && value !== ".." && !/[\/\\\x00-\x1f\x7f]/.test(value);
+  return value.trim().length > 0 && value !== "." && value !== ".." && !/[\/\\\x00-\x1f\x7f-\x9f]/.test(value);
 }
 export function safeArtifactRepositoryName(value: string): boolean {
-  return value.length >= 1 && value.length <= 255 && /^[A-Za-z0-9@_.-]+$/.test(value) && !value.includes("..");
+  return value.length >= 1 && value.length <= 255 && value !== "." && /^[A-Za-z0-9@_.-]+$/.test(value) && !value.includes("..");
 }
 export function rawUploadPath(namespace: string, repository: string, version: string, filename: string): string {
   if (![namespace, repository, version, filename].every(safeArtifactSegment)) throw new Error("Coordinates and filenames must be single safe path segments.");
@@ -39,6 +40,12 @@ export function mountArtifactUpload(ctx: ClientContext, resolve: ResolveTarget):
   const cancel = ctx.ref<HTMLButtonElement>("cancel");
   const drop = ctx.ref<HTMLElement>("dropZone");
   if (!form || !picker || !filesRoot || !template || !message || !upload || !cancel || !drop) return;
+  const showMessage = (text: string, tone: "info" | "success" | "error") => {
+    message.textContent = text;
+    message.dataset.tone = tone;
+    message.hidden = !text;
+    message.setAttribute("role", tone === "error" ? "alert" : "status");
+  };
   let controller: AbortController | undefined;
   const files: UploadFile[] = [];
   const add = (incoming: Iterable<File> | null) => {
@@ -64,7 +71,7 @@ export function mountArtifactUpload(ctx: ClientContext, resolve: ResolveTarget):
   const staging = new URLSearchParams(location.search).get("staging");
   if (staging) {
     upload.disabled = true;
-    void consumeArtifactFiles(staging).then(add).catch(error => { message.textContent = error instanceof Error ? error.message : "Choose the files again."; }).finally(() => { upload.disabled = false; });
+    void consumeArtifactFiles(staging).then(add).catch(error => { showMessage(error instanceof Error ? error.message : "Choose the files again.", "error"); }).finally(() => { upload.disabled = false; });
   }
   ctx.on(picker, "change", () => add(picker.files));
   ctx.on<DragEvent>(drop, "dragover", event => { event.preventDefault(); drop.setAttribute("data-dragging", ""); });
@@ -78,8 +85,7 @@ export function mountArtifactUpload(ctx: ClientContext, resolve: ResolveTarget):
     const signal = controller.signal;
     upload.disabled = true;
     cancel.hidden = false;
-    message.setAttribute("role", "status");
-    message.textContent = "Preparing upload…";
+    showMessage("Preparing upload…", "info");
     const data = new FormData(form);
     const version = String(data.get("version") ?? "").trim();
     try {
@@ -118,11 +124,10 @@ export function mountArtifactUpload(ctx: ClientContext, resolve: ResolveTarget):
         }
       }
       if (failed) throw new Error("Some files failed. Retry to upload the remaining files.");
-      message.textContent = "All files uploaded.";
+      showMessage("All files uploaded.", "success");
       location.assign("/artifacts/repositories/" + encodeURIComponent(target.id ?? ""));
     } catch (error) {
-      message.setAttribute("role", "alert");
-      message.textContent = signal.aborted ? "Upload cancelled. Uploaded files are kept; retry to upload the remaining files." : error instanceof Error ? error.message : "Upload failed.";
+      showMessage(signal.aborted ? "Upload cancelled. Uploaded files are kept; retry to upload the remaining files." : error instanceof Error ? error.message : "Upload failed.", "error");
     } finally { controller = undefined; upload.disabled = false; cancel.hidden = true; }
   });
   ctx.onUnmount(() => controller?.abort());

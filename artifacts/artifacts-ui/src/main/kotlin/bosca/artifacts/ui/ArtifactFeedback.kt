@@ -14,6 +14,7 @@ class ArtifactFeedback(
         message = ""
         failed = false
         nextHref = ""
+        runHref = ""
         try { block() } catch (e: CancellationException) { throw e } catch (e: Exception) {
             failed = true
             message = e.message ?: "The artifact action failed."

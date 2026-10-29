@@ -33,10 +33,11 @@ VIEW/EDIT permissions; the UI does not change backend authorization.
 
 ## Registry origins
 
-Browser uploads and file reads use the host's same-origin routes. `BML_ARTIFACTS_ENDPOINT` optionally
-selects a separate registry upstream, while GraphQL stays on `BML_GRAPHQL_ENDPOINT`. Without that
-setting, registry traffic uses the GraphQL backend origin. `ATLAS_ARTIFACTS_URL` optionally sets the
-public registry origin used in copied URLs; otherwise the UI origin is used, with file reads proxied.
+Browser uploads and file reads use the host's same-origin `/_artifacts/` routes. Atlas exposes matching
+backend routes using the existing registry handlers and authorization. `BML_ARTIFACTS_ENDPOINT`
+optionally selects a separate registry upstream using its native protocol paths, while GraphQL stays
+on `BML_GRAPHQL_ENDPOINT`. `ATLAS_ARTIFACTS_URL` optionally sets the public registry origin used in
+copied native protocol URLs; otherwise copied URLs use the UI origin and `/_artifacts/` file proxy.
 No browser-to-registry CORS configuration is required for these UI workflows.
 
 Atlas and the main API server use `artifacts-installer` to seed the same default sync/publication

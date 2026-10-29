@@ -94,4 +94,46 @@ class ArtifactActionsTest {
         assertFailsWith<CancellationException> { feedback.perform { throw CancellationException("cancelled") } }
         assertFalse(feedback.failed)
     }
+
+    @Test fun `a failed publication retry does not link to an earlier successful queue request`() = runTest {
+        val model = ArtifactPublicationModel(repository, selectedVersionId = "version", reviewedVersion = version.copy(completed = true))
+        model.publish("destination", "a".repeat(40), context { _, _ ->
+            json("""{"artifactsAdmin":{"publishRelease":"previous-run"}}""")
+        })
+        assertEquals("/artifacts/runs/previous-run", model.feedback.runHref)
+        model.publish("destination", "a".repeat(40), context { _, _ -> error("Registry unavailable") })
+        assertTrue(model.feedback.failed)
+        assertEquals("Registry unavailable", model.feedback.message)
+        assertEquals("", model.feedback.runHref)
+    }
+
+    @Test fun `upload target rejects a dot repository before sending a creation request`() = runTest {
+        val ctx = context { _, _ -> error("A repository must not be created") }
+        assertFailsWith<IllegalArgumentException> { ArtifactUploadTargets().resolve(ctx.gql, "new", "namespace", ".") }
+    }
+
+    @Test fun `paging publication versions clears the previous build commit and reviewed files`() = runTest {
+        val commit = "b".repeat(40)
+        val versionJson = """{"id":"next-version","repositoryId":"repository","version":"2.0","metadata":null,"created":"","completed":true,"finalized":false,"completedCommitSha":"$commit","blobs":[]}"""
+        val model = ArtifactPublicationModel(repository, selectedVersionId = "version", reviewedVersion = version, commitDraft = "a".repeat(40))
+        model.versionsPage(1, context { operation, variables ->
+            when (operation) {
+                "ArtifactsRepository" -> {
+                    assertEquals(15L, variables.getValue("offset").jsonPrimitive.long)
+                    json("""{"artifactsAdmin":{"repository":{"id":"repository","namespaceId":"namespace","name":"tool","type":"raw","created":"","modified":"","namespace":{"id":"namespace","name":"builds"},"versionCount":16,"tagCount":0,"versions":[$versionJson],"tags":[]}}}""")
+                }
+                "ArtifactsVersion" -> {
+                    assertEquals("next-version", variables.getValue("id").jsonPrimitive.content)
+                    json("""{"artifactsAdmin":{"version":$versionJson}}""")
+                }
+                "ArtifactsPublications" -> json("""{"artifactsAdmin":{"publications":[]}}""")
+                else -> emptyResponse(operation)
+            }
+        })
+        assertFalse(model.feedback.failed, model.feedback.message)
+        assertEquals("next-version", model.selectedVersionId)
+        assertEquals("", model.commitDraft)
+        assertEquals(commit, model.reviewedVersion?.commitSha)
+        assertEquals(emptyList(), model.reviewedVersion?.blobs)
+    }
 }

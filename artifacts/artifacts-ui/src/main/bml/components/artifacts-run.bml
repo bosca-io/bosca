@@ -22,7 +22,7 @@
               </article>
             </for>
             <if model.status == "FAILED">
-              <confirm-dialog title="Restart failed run?" description="The original input will run against the current pipeline." triggerLabel="Restart run">
+              <confirm-dialog :triggerIconOnly="false" icon="refresh" title="Restart failed run?" description="The original input will run against the current pipeline." triggerLabel="Restart run">
                 <form @submit="model.restart(form.confirmed, ctx)">
                   <form-body padded>
                     <checkbox name="confirmed" label="Restart this run" required />
@@ -35,7 +35,7 @@
               </confirm-dialog>
             </if>
             <if model.active>
-              <confirm-dialog title="Cancel run?" description="The running or suspended pipeline will be cancelled." triggerLabel="Cancel run">
+              <confirm-dialog :triggerIconOnly="false" icon="close" title="Cancel run?" description="The running or suspended pipeline will be cancelled." triggerLabel="Cancel run">
                 <form @submit="model.cancel(form.confirmed, ctx)">
                   <form-body padded>
                     <checkbox name="confirmed" label="Cancel this run" required />
