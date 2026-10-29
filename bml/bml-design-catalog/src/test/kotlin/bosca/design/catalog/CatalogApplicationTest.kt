@@ -377,7 +377,7 @@ class CatalogApplicationTest {
             Json.decodeFromString(BmlLibraryManifest.serializer(), jar.getInputStream(jar.getJarEntry("META-INF/bml/library-manifest.json"))
                 .bufferedReader().use { it.readText() }).components.filter { it.exported }
         }
-        assertTrue(exports.isNotEmpty(), "Design library must publish component exports")
+        assertTrue(exports.isNotEmpty())
         return buildJsonObject {
             for (component in exports) put(component.tag, buildJsonObject {
                 put("scoped", component.styles.isNotBlank())
