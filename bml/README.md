@@ -33,6 +33,10 @@ The IntelliJ plugin is documented in [bml-ide/README.md](bml-ide/README.md).
 The TypeScript browser runtime lives in `bml-runtime/` and uses npm; install its dependencies
 there before running tasks that bundle BML client code.
 
+The BML Gradle-plugin suite runs independent TestKit classes in two isolated test JVMs and
+logs completed tests. Fixture builds that edit files between invocations disable filesystem
+watching while retaining configuration-cache and up-to-date checks.
+
 The Design Library catalog, consumer and Notifications Web tests launch isolated headless profiles.
 Gradle prepares Chromium through the catalog's pinned private Playwright dependency before these
 tests, so a system Chrome installation is unnecessary. The first run requires network access;
@@ -47,6 +51,13 @@ a pool of four while test classes remain serial. Each method owns its server, br
 cookies; focused checks use distinct report names. Set `-Pbml.browser.workers=1` to run methods
 serially, or choose another pool size for the available machine. The aggregate task reuses those
 results, and its Gradle worker count is bounded independently.
+
+Run the CI browser phase from the workspace root with
+`./gradlew -Pbosca.ios.enabled=false --parallel --max-workers=4 testBmlBrowser`.
+This builds independent suites in parallel, then runs chunk-cache, Notifications Web,
+Design Library consumer and catalog tests in sequence. Catalog test completions appear
+in the Gradle log. Local choices, feedback and surfaces run in their dedicated JVM
+cases; native catalog qualification retains them in its single browser entry point.
 
 `./gradlew :bml:bml-server:chunkCacheBrowserTest` checks module requests across two deployments
 with unchanged JavaScript and a retained browser cache, for both filesystem and packaged assets.

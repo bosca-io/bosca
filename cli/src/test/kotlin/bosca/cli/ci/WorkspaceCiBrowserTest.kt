@@ -35,6 +35,11 @@ class WorkspaceCiBrowserTest {
             assertTrue("-Pbosca.ios.enabled=false" in command, pipeline)
             assertTrue("--max-workers=4" in command, pipeline)
             assertTrue("test" in command, pipeline)
+            val browserCommand = pipelineSteps.single { it.name == "Run BML Browser Tests" }.run.orEmpty()
+                .split(Regex("\\s+"))
+            assertTrue("testBmlBrowser" in browserCommand, pipeline)
+            assertTrue("--parallel" in browserCommand, pipeline)
+            assertTrue("--max-workers=4" in browserCommand, pipeline)
             for (step in pipelineSteps.filter { it.run?.startsWith("./gradlew ") == true }) {
                 assertTrue("-Pbosca.ios.enabled=false" in step.run.orEmpty(), "$pipeline: ${step.name}")
             }

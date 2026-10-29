@@ -114,9 +114,10 @@ try {
     return result.result.value;
   }
   async function until(expression) {
-    for (let attempt = 0; attempt < 100; attempt++) {
+    // Observe immediate DOM updates promptly, retaining 100 slower polls for delayed actions.
+    for (let attempt = 0; attempt < 120; attempt++) {
       if (await evaluate(expression)) return;
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise(resolve => setTimeout(resolve, attempt < 20 ? 5 : 50));
     }
     const context = await evaluate(`({ url: location.href, ready: document.readyState,
       active: document.activeElement?.outerHTML.slice(0, 1500),
@@ -278,14 +279,17 @@ try {
   checkpoint('editors complete');
   await checkComments({navigate,evaluate,until,call,artifacts,mode});
   await checkOverlays({navigate,evaluate,until,call,artifacts,mode});
-  await checkLocalChoices({navigate,evaluate,until,call,artifacts,mode});
-  checkpoint('choices complete');
+  // Native qualification has one browser entry point; JVM checks have dedicated concurrent cases.
+  if(mode.startsWith('native-')) await checkLocalChoices({navigate,evaluate,until,call,artifacts,mode});
+  checkpoint('overlays complete');
   await checkSearchViews({navigate,evaluate,until,call,artifacts,mode});
   await checkTrees({navigate,evaluate,until,call,artifacts,mode});
   checkpoint('trees complete');
   await checkRouteNavigation({navigate,evaluate,until,call,artifacts,mode});
-  await checkFeedback({navigate,evaluate,until,call,artifacts,mode});
-  await checkSurfaces({navigate,evaluate,until,call,artifacts,mode});
+  if(mode.startsWith('native-')) {
+    await checkFeedback({navigate,evaluate,until,call,artifacts,mode});
+    await checkSurfaces({navigate,evaluate,until,call,artifacts,mode});
+  }
   }
   assert.deepEqual(exceptions,[]);
   if(!process.argv[4]?.startsWith('--')) console.log(`Catalog ${mode}: foundation, themes, ${Object.keys(JSON.parse(process.argv[4])).length} packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);

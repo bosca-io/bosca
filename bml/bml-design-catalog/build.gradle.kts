@@ -70,6 +70,7 @@ val catalogRuntime = configurations.named("runtimeClasspath")
 val catalogClasspath = files(tasks.jar.flatMap { it.archiveFile }, catalogRuntime).asPath
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    testLogging.events("passed", "failed", "skipped")
     // Only explicitly concurrent browser classes opt in. Cap compensation threads too:
     // blocking HTTP calls can otherwise grow the pool beyond its target parallelism.
     val browserWorkers = providers.gradleProperty("bml.browser.workers").getOrElse("4")

@@ -384,7 +384,7 @@ class DesignLibraryTest {
         ServerSocketChannel.open(StandardProtocolFamily.INET).use { ipv4 ->
             ipv4.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
             ServerSocketChannel.open(StandardProtocolFamily.INET6).use { ipv6 ->
-                ipv6.bind(InetSocketAddress(InetAddress.getByName("::1"), 0))
+                ipv6.bind(InetSocketAddress(InetAddress.getByName("::1"), (ipv4.localAddress as InetSocketAddress).port))
                 val occupied = listOf(ipv4, ipv6).map { (it.localAddress as InetSocketAddress).port }
                 withServer(false) { production, productionClient ->
                     withServer(true) { development, developmentClient ->
@@ -486,7 +486,9 @@ class DesignLibraryTest {
     private fun withLauncher(test: (List<String>, File?) -> Unit) {
         val binary = System.getProperty("design.fixture.binary")?.let(::File)
         if (binary == null) {
-            test(listOf(System.getProperty("design.fixture.java"), "-cp", classpath, "bosca.design.example.MainKt"), null)
+            test(listOf(System.getProperty("design.fixture.java"),
+                "-Djava.net.preferIPv4Stack=false", "-Djava.net.preferIPv6Addresses=true",
+                "-cp", classpath, "bosca.design.example.MainKt"), null)
             return
         }
         assertTrue(binary.isFile && binary.canExecute(), binary.path)
@@ -519,9 +521,11 @@ class DesignLibraryTest {
                 Thread.sleep(25)
             }
             val port = requireNotNull(boundPort) { "Consumer did not report a successful bind: ${log.readText()}" }
-            val endpoint = "http://localhost:$port"
+            val host = if (System.getProperty("design.fixture.binary") == null) "[::1]" else "localhost"
+            val endpoint = "http://$host:$port"
             base = endpoint
-            HttpClient.newBuilder().cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build().use { client ->
+            HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                .cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build().use { client ->
                 test(endpoint, client)
             }
         } catch (failure: Throwable) {
