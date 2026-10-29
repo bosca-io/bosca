@@ -67,7 +67,7 @@ jobs:
       - name: Run BML Browser Tests
         run: ./gradlew --no-daemon -Pbosca.ios.enabled=false --no-parallel --max-workers=2 :bml:bml-server:chunkCacheBrowserTest :notifications-web:test :bml:examples:design-library:test :bml:bml-design-catalog:test
       - name: Run JVM Tests
-        run: ./gradlew --no-daemon -Pbosca.ios.enabled=false --max-workers=4 -Pbosca.kmp.jvmCodegen=true test
+        run: ./gradlew --no-daemon -Pbosca.ios.enabled=false --max-workers=4 test
       - name: Stop Shared Test Resources
         run: ./gradlew --no-daemon -Pbosca.ios.enabled=false testResourcesDown
         if: always()
