@@ -16,8 +16,11 @@ test('history readiness accepts restored documents without waiting for a fresh l
     const base = `http://127.0.0.1:${http.address().port}`;
     await page.goto(base + '/first');
     await page.goto(base + '/second');
-    await page.goBack({ waitUntil: 'commit', timeout: 5000 });
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Runtime.evaluate', { expression: 'history.back()', awaitPromise: true });
     assert.equal(await waitForTestCondition(page, "document.readyState==='complete'&&document.querySelector('main')?.textContent==='/first'"), true);
+    await cdp.send('Runtime.evaluate', { expression: 'history.forward()', awaitPromise: true });
+    assert.equal(await waitForTestCondition(page, "document.readyState==='complete'&&document.querySelector('main')?.textContent==='/second'"), true);
   } finally {
     try { await owned?.close(); }
     finally { await new Promise(resolve => http.close(resolve)); }
@@ -34,6 +37,44 @@ test('readiness follows a navigation that destroys the original document', { tim
     assert.equal(await ready, true);
     assert.deepEqual(await waitForTestCondition(page, "['ready',document.querySelector('main').textContent]"), ['ready', 'ready']);
     await assert.rejects(waitForTestCondition(page, "(()=>{throw new Error('invalid readiness predicate');})()"), /invalid readiness predicate/);
+  } finally {
+    await owned.close();
+  }
+});
+
+test('readiness awaits asynchronous false results before accepting a fulfilled condition', { timeout: 15000 }, async () => {
+  const owned = await launchTestBrowser(0);
+  try {
+    const page = owned.connection.contexts()[0].pages()[0];
+    await page.evaluate('window.asyncConditionPasses=0');
+    const value = await waitForTestCondition(page, `(async()=>{
+      await new Promise(resolve=>requestAnimationFrame(resolve));
+      const passes=++window.asyncConditionPasses;
+      return passes>=3 ? {ready:true,passes} : false;
+    })()`);
+    assert.deepEqual(value, { ready: true, passes: 3 });
+    await assert.rejects(waitForTestCondition(page, '(async()=>{throw new Error("invalid async predicate");})()'), /invalid async predicate/);
+  } finally {
+    await owned.close();
+  }
+});
+
+test('an asynchronous readiness wait follows a navigation while its old predicate is pending', { timeout: 15000 }, async () => {
+  const owned = await launchTestBrowser(0);
+  try {
+    const page = owned.connection.contexts()[0].pages()[0];
+    const navigation = waitForTestCondition(page, `(async()=>{
+      if(document.querySelector('main'))return document.querySelector('main').textContent==='async ready';
+      window.asyncNavigationStarted=true;
+      await new Promise(()=>{});
+      return false;
+    })()`);
+    const observed = navigation.then(value => ({ value }), error => ({ error }));
+    await waitForTestCondition(page, 'window.asyncNavigationStarted===true');
+    await page.goto('data:text/html,<main>async ready</main>');
+    const result = await observed;
+    if (result.error) throw result.error;
+    assert.equal(result.value, true);
   } finally {
     await owned.close();
   }

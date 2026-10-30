@@ -58,11 +58,16 @@ checks. The pinned Playwright launcher owns each isolated Chromium process tree 
 including forced cleanup when the browser stops responding.
 
 Run the CI browser phase from the workspace root with
-`./gradlew -Pbosca.ios.enabled=false --parallel --max-workers=4 testBmlBrowser`.
-This builds independent suites in parallel, then runs chunk-cache, Notifications Web,
-Design Library consumer and catalog tests in sequence. Catalog test completions appear
+`./gradlew -Pbosca.ios.enabled=false --parallel --max-workers=8 -Pbml.browser.workers=4 testBmlBrowser`.
+This builds and runs the chunk-cache, Notifications Web, Design Library consumer and catalog
+suites using the configured worker budget. Catalog test completions appear
 in the Gradle log. Local choices, feedback and surfaces run in their dedicated JVM
 cases; native catalog qualification retains them in its single browser entry point.
+
+Successful browser tests use Gradle's build cache across clean checkouts: code, resources,
+browser scripts, Node and Chromium versions remain inputs; absolute launch paths and the generated
+deployment identity do not. Browser preparation is up to date while its lockfile, installed
+Playwright and browser executable remain available.
 
 `./gradlew :bml:bml-server:chunkCacheBrowserTest` checks module requests across two deployments
 with unchanged JavaScript and a retained browser cache, for both filesystem and packaged assets.

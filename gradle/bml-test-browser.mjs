@@ -31,7 +31,25 @@ export async function waitForTestCondition(page, expression, { scriptsDisabled =
       clearTimeout(timer);
     }
   }
-  const handle = await page.waitForFunction(expression, undefined, { timeout: 5100, polling: 50 });
+  // Playwright polls synchronously; keep pending Promises separate from their fulfilled values.
+  const handle = await page.waitForFunction(state => {
+    if (state.failed) throw state.failure;
+    if (state.value) return state.value;
+    if (!state.pending) {
+      const result = globalThis.eval(state.expression);
+      if (!result || typeof result.then !== 'function') return result;
+      state.pending = true;
+      Promise.resolve(result).then(value => {
+        state.value = value;
+        state.pending = false;
+      }, error => {
+        state.failure = error;
+        state.failed = true;
+        state.pending = false;
+      });
+    }
+    return false;
+  }, { expression }, { timeout: 5100, polling: 50 });
   try { return await handle.jsonValue(); }
   finally { await handle.dispose(); }
 }

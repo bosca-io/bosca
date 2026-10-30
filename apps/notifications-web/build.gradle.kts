@@ -64,19 +64,33 @@ tasks.test {
     inputs.files(rootProject.fileTree("bml/bml-runtime/tools"), rootProject.fileTree("bml/bml-runtime/src"),
         rootProject.file("bml/bml-runtime/package-lock.json"))
         .withPropertyName("adoptionClientToolchain").withPathSensitivity(PathSensitivity.RELATIVE)
-    systemProperty("adoption.classpath", files(tasks.jar.flatMap { it.archiveFile }, adoptionRuntime).asPath)
-    systemProperty("adoption.java", javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath)
-    systemProperty("adoption.node", bml.nodeExecutable.get())
-    systemProperty("adoption.project", projectDir.absolutePath)
-    systemProperty("adoption.runtime", rootProject.file("bml/bml-runtime").absolutePath)
-    systemProperty("adoption.plugin", adoptionPlugin.asPath)
-    systemProperty("adoption.compiler", adoptionCompiler.asPath)
+    inputs.files(tasks.jar.flatMap { it.archiveFile }, adoptionRuntime)
+        .withPropertyName("applicationRuntime").withNormalizer(ClasspathNormalizer::class.java)
+    // Absolute launch paths are runtime arguments; content inputs above determine reuse.
+    inputs.dir(layout.projectDirectory.dir("src/main"))
+        .withPropertyName("publishedConsumerSources").withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty("adoption.version", project(":bml:bml-design").version.toString())
-    systemProperty("adoption.pom", project(":bml:bml-design").layout.buildDirectory.file("publications/maven/pom-default.xml").get().asFile.absolutePath)
-    systemProperty("adoption.artifacts", (adoptionRuntime.get().resolvedConfiguration.resolvedArtifacts +
-        adoptionCompiler.resolvedConfiguration.resolvedArtifacts).distinctBy { it.file }.joinToString("\n") {
-        "${it.moduleVersion.id.group}\t${it.moduleVersion.id.name}\t${it.moduleVersion.id.version}\t${it.classifier.orEmpty()}\t${it.file.absolutePath}"
-    })
+    inputs.file(project(":bml:bml-design").layout.buildDirectory.file("publications/maven/pom-default.xml"))
+        .withPropertyName("publishedDesignPom").withPathSensitivity(PathSensitivity.NONE)
+    val testNode = bml.nodeExecutable.get()
+    inputs.property("testNodeVersion", providers.exec {
+        commandLine(testNode, "--version")
+    }.standardOutput.asText.map { it.trim() })
+    val runtimeProperties = mapOf(
+        "adoption.classpath" to files(tasks.jar.flatMap { it.archiveFile }, adoptionRuntime).asPath,
+        "adoption.java" to javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath,
+        "adoption.node" to bml.nodeExecutable.get(),
+        "adoption.project" to projectDir.absolutePath,
+        "adoption.runtime" to rootProject.file("bml/bml-runtime").absolutePath,
+        "adoption.plugin" to adoptionPlugin.asPath,
+        "adoption.compiler" to adoptionCompiler.asPath,
+        "adoption.pom" to project(":bml:bml-design").layout.buildDirectory.file("publications/maven/pom-default.xml").get().asFile.absolutePath,
+        "adoption.artifacts" to (adoptionRuntime.get().resolvedConfiguration.resolvedArtifacts +
+            adoptionCompiler.resolvedConfiguration.resolvedArtifacts).distinctBy { it.file }.joinToString("\n") {
+            "${it.moduleVersion.id.group}\t${it.moduleVersion.id.name}\t${it.moduleVersion.id.version}\t${it.classifier.orEmpty()}\t${it.file.absolutePath}"
+        },
+    )
+    doFirst { systemProperties(runtimeProperties) }
 }
 
 tasks.register<Test>("nativeDesignAdoptionTest") {
