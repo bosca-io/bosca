@@ -4,10 +4,14 @@ map $http_upgrade $bosca_connection_upgrade {
     '' close;
 }
 
+upstream bosca_atlas_api {
+    server 127.0.0.1:@@ATLAS_PORT@@;
+}
+
 server {
     listen 80;
     listen [::]:80;
-    server_name @@STUDIO_DOMAIN@@ @@GIT_DOMAIN@@;
+    server_name @@STUDIO_DOMAIN@@ @@GIT_DOMAIN@@ @@ATLAS_DOMAIN@@ @@ARTIFACTS_DOMAIN@@;
 
     location ^~ /.well-known/acme-challenge/ {
         root /var/www/letsencrypt;
@@ -65,12 +69,54 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     include /etc/nginx/snippets/bosca-proxy.conf;
 
-    # UI pages and BML assets/actions share the Git origin. Other paths use the API.
+    # UI navigation redirects to Atlas; Git transport and API paths retain this origin.
     location ~ "^(/|/(login|welcome|404|500|compare|search|statuses|robots[.]txt|llms[.]txt|sitemap[.]xml|favicon[.]ico)/?|/auth/(signup|forgot|verify|reset-password|link/confirm)/?|/settings/github/?|/repositories(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}(/(settings|secrets|github))?)?/?|/(pulls|pipelines|ci-agents)(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})?/?|/_bml/(js|css|i18n|identity|render|contract|action|deferred|reload|app[.]css|app[.]js)(/.*)?|/_git/(fonts|subscriptions)(/.*)?)$" {
-        proxy_pass http://127.0.0.1:@@GIT_UI_PORT@@;
+        return 302 https://@@ATLAS_DOMAIN@@$request_uri;
     }
 
     location / {
-        proxy_pass http://127.0.0.1:@@GIT_PORT@@;
+        proxy_pass http://127.0.0.1:@@GIT_BACKEND_PORT@@;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name @@ATLAS_DOMAIN@@;
+
+    ssl_certificate /etc/letsencrypt/live/@@CERT_NAME@@/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/@@CERT_NAME@@/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    include /etc/nginx/snippets/bosca-proxy.conf;
+
+    location ~ "^(/|/(login|welcome|404|500|compare|search|statuses|robots[.]txt|llms[.]txt|sitemap[.]xml|favicon[.]ico)/?|/auth/(signup|forgot|verify|reset-password|link/confirm)/?|/settings/github/?|/repositories(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}(/(settings|secrets|github))?)?/?|/(pulls|pipelines|ci-agents)(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})?/?|/_bml/(js|css|i18n|identity|render|contract|action|deferred|reload|app[.]css|app[.]js)(/.*)?|/_git/(fonts|subscriptions)(/.*)?|/favicon[.]svg|/artifacts/namespaces(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})?/?|/artifacts/repositories(/([0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}|upload))?/?|/artifacts/settings/permissions/?|/artifacts/settings/repositories/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/?|/artifacts/runs/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/?|/_artifacts(/.*)?)$" {
+        proxy_pass http://127.0.0.1:@@ATLAS_UI_PORT@@;
+    }
+    location ~ "^(/[^/]+/[^/]+[.]git(/.*)?|/[^/]+/[^/]+/raw(/.*)?|/ci(/.*)?|/api/webhooks(/.*)?)$" {
+        proxy_pass http://127.0.0.1:@@GIT_BACKEND_PORT@@;
+    }
+    location ~ ^/(v2|raw|maven|npm|helm|ml)(/|$) {
+        proxy_pass http://127.0.0.1:@@REGISTRY_BACKEND_PORT@@;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:@@ATLAS_PORT@@;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name @@ARTIFACTS_DOMAIN@@;
+
+    ssl_certificate /etc/letsencrypt/live/@@CERT_NAME@@/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/@@CERT_NAME@@/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    include /etc/nginx/snippets/bosca-proxy.conf;
+
+@@REGISTRY_FILE_LOCATION@@
+    location / {
+        proxy_pass http://127.0.0.1:@@REGISTRY_BACKEND_PORT@@;
     }
 }

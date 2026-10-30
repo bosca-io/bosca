@@ -32,7 +32,7 @@ Edit `swarm.local.json` before deployment:
 
 - Set the manager and worker SSH targets and the manager's private advertise address. Set a worker's optional `advertiseAddress` to its private address when it has multiple network interfaces.
 - Set each site's `serverMemory` when its Bosca server needs a different memory limit. It defaults to `768M`; for example, `1536M` allows 1.5 GiB. CPU remains uncapped.
-- Set each site's `id`, base `domain`, mail sender and default `mailerType` (`sendgrid`, `mailgun`, or `smtp`), Redis database number, and BML Artifacts URL/token. Studio's **System → Integrations → Choose email provider** setting overrides this default without redeployment. Site IDs must be unique lower-case letters and digits. Each site gets `<id>-bosca` and `<id>-warehouse` PostgreSQL databases. A site's public hostnames are derived from its base domain as in the Kubernetes deployment (see [Hostnames](#hostnames)); `gitDomain` overrides the shared Git API and UI hostname. Set `rootImage` and optionally `rootPort` to serve a website at the root and `www` hosts.
+- Set each site's `id`, base `domain`, mail sender and default `mailerType` (`sendgrid`, `mailgun`, or `smtp`), Redis database number, and BML Artifacts URL/token. Studio's **System → Integrations → Choose email provider** setting overrides this default without redeployment. Site IDs must be unique lower-case letters and digits. Each site gets `<id>-bosca` and `<id>-warehouse` PostgreSQL databases. A site's public hostnames are derived from its base domain as in the Kubernetes deployment (see [Hostnames](#hostnames)); `gitDomain` overrides the Git transport hostname; `atlas.domain` overrides the Atlas hostname within the shared cookie domain. Set `rootImage` and optionally `rootPort` to serve a website at the root and `www` hosts.
 - If a site's `rootImage` comes from another private registry, set `rootRegistryAuth.server` to the image's registry host. Set `username` to `api_token` and leave `password` blank for the one-time `setup-tokens` command to mint a pull-only token, or provide an existing `username` and `password` in the owner-only config. `passwordEnv` can supply the password during deployment instead. The CLI logs in to both the platform registry and any configured root image registries before deploying stacks.
 - The root website service receives `BML_GRAPHQL_ENDPOINT` pointing to that site's Bosca server over the Swarm overlay network, so BML pages can load data and proxy browser GraphQL calls.
 - Set a site's `rootEnv` map for additional website runtime environment variables. For the Bosca Nuxt website, set `rootEnv.NUXT_CLI_INSTALL_SCRIPT_URL` to `https://<artifacts-host>/raw/bosca/bosca-cli/<cli-version>/install.sh`. The website then configures that raw repository as the installer's package source. Use the CLI artifact version, which is independent of the website image tag. These settings apply only to that site's `root-web` service; run `bosca swarm deploy` after changing them.
@@ -103,7 +103,7 @@ change. The renderer passes this setting as `FUMS_TRANSFORM_ENABLED` only to tha
 site's collector. The runner's transform remains disabled; delivery jobs use its
 separate `fumsQueueRunner` worker.
 
-One shared PostgreSQL with pgvector provides separate operational and warehouse databases and roles per site. As in the Kubernetes deployment, the Bosca services connect through PgBouncer in transaction mode (up to 1000 client connections, 25 server connections per database and role), so their connection pools cannot exhaust the shared server; PostgreSQL's connection limit is sized from the number of sites. Trino connects to PostgreSQL directly. PgBouncer logs in to PostgreSQL as the connecting role, so each site still reaches only its own databases. Shared NATS has an account per site. Dragonfly uses distinct logical databases and Pub/Sub namespaces. Each site selects NATS or Redis independently for caches, pub/sub, job queues, locks, and counters (see [Backend selection](#backend-selection)). Meilisearch uses per-site index prefixes. S3Proxy uses separate content and warehouse buckets. Trino has per-site catalogs and file access rules. Image processing and the text-embeddings service are shared; embeddings carry no site data. Each site runs its own Bosca server, runner, Git server, analytics collector, artifacts server, Studio, Profiles, Notifications, BML message server, recommendation trainer, model loader, and TensorFlow Serving. Caddy routes by hostname.
+One shared PostgreSQL with pgvector provides separate operational and warehouse databases and roles per site. As in the Kubernetes deployment, the Bosca services connect through PgBouncer in transaction mode (up to 1000 client connections, 25 server connections per database and role), so their connection pools cannot exhaust the shared server; PostgreSQL's connection limit is sized from the number of sites. Trino connects to PostgreSQL directly. PgBouncer logs in to PostgreSQL as the connecting role, so each site still reaches only its own databases. Shared NATS has an account per site. Dragonfly uses distinct logical databases and Pub/Sub namespaces. Each site selects NATS or Redis independently for caches, pub/sub, job queues, locks, and counters (see [Backend selection](#backend-selection)). Meilisearch uses per-site index prefixes. S3Proxy uses separate content and warehouse buckets. Trino has per-site catalogs and file access rules. Image processing and the text-embeddings service are shared; embeddings carry no site data. Each site runs its own Bosca server, runner, Atlas, analytics collector, Studio, Profiles, Notifications, BML message server, recommendation trainer, model loader, and TensorFlow Serving. Caddy routes by hostname.
 
 The manager runs the stateful services: PostgreSQL, PgBouncer, NATS, Dragonfly, Meilisearch, S3Proxy, Trino, Caddy and the backups. Application services run on the workers with memory limits but no CPU caps, allowing CPU overprovisioning. The first worker also holds each site's recommendation-model volume, shared by its model loader and TensorFlow Serving. Workers must be x86_64: the embeddings and TensorFlow Serving images are published for amd64 only. Every service rotates its logs (three 10 MB files). Services with a health check restart when it fails, and stateless application services start their replacement before stopping the old task and roll back when it does not become healthy.
 
@@ -122,8 +122,9 @@ Each site's hostnames and routes mirror the Kubernetes Gateway HTTPRoutes, with 
 | `studio.<domain>` | Studio; `/api/v1/events` and `/api/v1/installation` go to the analytics collector, and `/graphql`, `/graphqlws`, `/oauth2`, `/api/v1`, `/files`, and `/content` go to the Bosca server |
 | `profiles.<domain>` | Profiles self-service account site |
 | `a.<domain>` | Analytics collector |
-| `git.<domain>` | Git API/transport on 8091 and BML UI on 8093, selected by HTTP path |
-| `artifacts.<domain>` | Artifacts server (the site's registry) |
+| `atlas.<domain>` | Atlas Git/artifact UI on 8095, API/transports on 8094, selected by path |
+| `git.<domain>` | Git transport/API alias; Git UI pages redirect to Atlas by default |
+| `artifacts.<domain>` | Native registry URLs; file protocols use Atlas’s private route prefix |
 | `notifications.<domain>` | Notifications preferences and unsubscribe pages |
 | `messages.<domain>` | Message server assets (`/assets`) and engagement tracking (`/c`, `/o`); existing notification links continue to work |
 
@@ -143,7 +144,7 @@ Choose `nats` or `redis` independently for each site's infrastructure backends i
 "counterBackend": "nats"
 ```
 
-Every setting defaults to `nats`. Each selection applies consistently across the site's server, runner, Git server, analytics collector, and artifacts server, while different sites can have different selections:
+Every setting defaults to `nats`. Each selection applies consistently across the site's server, runner, Atlas, analytics collector and optional separate Git/registry services, while different sites can have different selections:
 
 | Site setting | Application environment |
 | --- | --- |
@@ -163,19 +164,44 @@ For a new installation, choose the backends before the first `bosca swarm deploy
 2. Stop the site's Bosca processes together on the manager to keep their backend selections consistent during the change. For a site named `site1`:
 
    ```bash
-   sudo docker service scale site1_server=0 site1_runner=0 site1_git=0 site1_collector=0 site1_artifacts=0
+   sudo docker service scale site1_server=0 site1_runner=0 site1_atlas=0 site1_collector=0
    ```
 
 3. Change the desired site settings, review `bosca swarm render --config ./swarm.local.json`, and run `bosca swarm deploy --config ./swarm.local.json`. Resume traffic and CI agents after readiness checks pass.
 
 Changing a setting does not copy its queued jobs, cached entries, or counter values between backends. Changing only `cacheBackend` leaves jobs, pub/sub, locks, and counters on their selected backends; caches populate as the site serves requests again. The broker data directories remain in place.
 
-Git UI, clone URLs and auth returns share `https://git.<domain>`, overridden with
-`gitDomain`. Caddy sends known UI pages and BML endpoints to 8093 and leaves Git
-transport, LFS, raw files, GraphQL, OAuth, webhooks and CI paths on 8091. Register
-`https://git.<domain>/oauth2/google/callback` with the site's Google client in
-addition to the Bosca server callback. Health checks cover both Git listeners.
-Deploy a Git image built from this revision; its UI listener is required.
+Atlas replaces the Git and artifacts processes by default. Set `images.atlas` to
+an `atlas-server` release built from these changes; `bosca swarm update-images`
+recognizes both `atlas` and `atlas-ui`. Existing database/storage, tokens and the
+pipeline key are reused. Add DNS for `atlas.<domain>` and register
+`https://atlas.<domain>/oauth2/google/callback` with the site's Google client.
+The default public origin is `https://atlas.<domain>`; clone URLs retain
+`https://git.<domain>`. The existing platform runner continues consuming jobs.
+Set `atlas.runnerEnabled: true` to add Atlas queue consumers; the platform runner
+continues owning event listeners and scheduling.
+
+Each site's optional `atlas` settings select independent processes:
+
+```json
+"atlas": {
+  "domain": "build.example.com",
+  "separateUi": true,
+  "separateGit": false,
+  "separateArtifacts": false,
+  "runnerEnabled": false
+}
+```
+
+`separateUi` starts `atlas-ui-server` with the same Atlas origin and a private
+GraphQL endpoint. `separateGit` starts the backend-only Git server;
+`separateArtifacts` starts the existing registry service. Both the Atlas hostname
+and their companion hostnames send protocol requests to the selected backend.
+When a backend is off, those routes use Atlas. UI pages always stay on Atlas;
+Git-host UI entry points redirect there. Shared `/graphql` remains on Atlas. These options also use
+`images.atlas-ui`, `images.git` and `images.artifacts`, respectively. After new
+services and ingress become healthy, deployment retires only the replaced managed
+Git/registry/UI services; their data and other services remain intact.
 
 ## OAuth redirects
 
@@ -189,9 +215,10 @@ Set each site's `oauthRedirects` to the URLs users may return to after sign-in:
 ]
 ```
 
-The server checks the destination's origin (scheme, host, and port), so paths on an allowed origin are also accepted. Use HTTP URLs for local development when needed. Omitting the setting or using `null` keeps the existing defaults: `https://studio.<domain>` and `http://localhost:3000`. A configured list replaces those defaults, and `[]` disables redirects. Include Studio in the list if users should return there after sign-in.
+Include the Atlas origin in an explicit list when users should return to Atlas.
+The server checks the destination's origin (scheme, host, and port), so paths on an allowed origin are also accepted. Use HTTP URLs for local development when needed. Omitting the setting or using `null` keeps the server/runner defaults (`https://studio.<domain>` and `http://localhost:3000`) and Atlas’s own origin. A configured list replaces those defaults, and `[]` disables redirects. Include Studio in the list if users should return there after sign-in.
 
-Run `bosca swarm render --config ./swarm.local.json` to review the generated stack, then `bosca swarm deploy --config ./swarm.local.json` to apply it. For an explicit list, the CLI generates `config/sites/<site>/server.yaml` and `runner.yaml` with the standard `oauth2.redirects` YAML list, mounts each file as a Swarm config, and starts the application with `-config=/config/application.yaml`. All other settings come from the application defaults bundled with the CLI; use server and runner images built from the corresponding workspace revision. Omitting the list uses the images' packaged application configuration. Google and Facebook provider callback URLs remain `https://<domain>/oauth2/<provider>/callback`.
+Run `bosca swarm render --config ./swarm.local.json` to review the generated stack, then `bosca swarm deploy --config ./swarm.local.json` to apply it. For an explicit list, the CLI generates `config/sites/<site>/server.yaml` and `runner.yaml` with the standard `oauth2.redirects` YAML list, mounts each file as a Swarm config, and starts the application with `-config=/config/application.yaml`. Other settings come from application defaults bundled with the CLI; Atlas also receives the site’s initialization password bindings. Use matching application images. Omitting the list uses the server/runner images’ packaged configuration and retains Atlas’s generated initialization configuration. Server/runner provider callbacks remain at the base domain. Atlas’s Google callback uses the Atlas origin.
 
 ## Recommendations and embeddings
 

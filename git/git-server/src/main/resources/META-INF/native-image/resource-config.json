@@ -1,7 +1,6 @@
 {
   "resources": {
     "includes": [
-      {"pattern": "META-INF/bosca/bml/build-id"},
       {"pattern": "application\\.yaml"},
       {"pattern": "logback\\.xml"},
       {"pattern": "db/migrations/.*\\.sql"},

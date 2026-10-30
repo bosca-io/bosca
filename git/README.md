@@ -11,7 +11,7 @@ Native git hosting platform with WorkOps integration, source ref management for 
 | `git` | Full implementation — DFS, services, transport, GraphQL, repositories |
 | `git-ci` | CI implementation |
 | `git-jobs` | Background job workers (GC, purge, webhooks, maintenance) |
-| `git-server` | One process hosting API/transport and a separate UI listener |
+| `git-server` | Backend-only Git API and transports |
 | `git-ui` | Componentized BML UI library |
 | `git-ui-server` | BML host module with HTTP and subscription proxies to Git server |
 
@@ -33,7 +33,7 @@ Run these commands from the **workspace root**. `git` is part of the root Gradle
 
 ```bash
 ./gradlew :git:test  # Test Git modules
-./gradlew :git:git-server:run  # API/transport on 8091 and BML UI on 8093 in one process
+./gradlew :git:git-server:run  # API and transports on 8091
 ./gradlew :git:git-server:nativeCompile  # Build a native image
 ```
 
@@ -41,7 +41,11 @@ Migration `V49__pull_request_merge_base.sql` records the target commit before ea
 
 Each PR saves its own `deleteBranchOnMerge` choice. New PRs start with the repository's default (enabled unless configured otherwise), and the creation and edit controls can turn it off. Later repository changes do not alter saved PR choices. Registered migration `V50__pull_request_branch_cleanup.sql` initializes existing PRs from their repository configuration. Default branches, protected branches, and branches still used by an open or draft PR are retained. Branch deletion commits with the merge and sends the ordinary branch-deletion notifications; a failed merge retains the source branch.
 
-The embedded UI host proxies over loopback HTTP to the API’s actual bound port and performs no local authentication or GraphQL execution. `GIT_HTTP_PORT` and `GIT_UI_HTTP_PORT` select the two listeners. See [Git UI server](git-ui-server/README.md) for origin, OAuth and cookie configuration.
+`git-server` owns only its API/transport listener (`GIT_HTTP_PORT`, default 8091).
+Atlas imports the Git UI; Git has no runtime dependency on UI, Atlas or artifact registry
+modules. `GIT_UI_URL` supplies the external UI origin for browser redirects (Atlas defaults
+to port 8095 locally). The standalone [Git UI server](git-ui-server/README.md) remains an
+independent development/test client.
 
 ## Local Infrastructure
 

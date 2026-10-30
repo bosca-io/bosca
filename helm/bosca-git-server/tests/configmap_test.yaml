@@ -17,20 +17,20 @@ tests:
           path: data["application.yaml"]
           pattern: 'PIPELINE_SECRET_KEY|secretKey:.*pipeline'
 
-  - it: configures both listeners and the browser authentication origin
+  - it: configures the backend and external UI authentication origin
     asserts:
       - matchRegex:
           path: data["application.yaml"]
           pattern: 'url: "https://git.example.com"'
       - matchRegex:
           path: data["application.yaml"]
-          pattern: 'ui:\s+url: "https://git.example.com"\s+auth-cookie-prefix: ""\s+server:\s+port: 8093'
+          pattern: 'ui:\s+url: "https://atlas.example.com"'
       - matchRegex:
           path: data["application.yaml"]
-          pattern: 'allowed-origins:\s+- "https://git.example.com"'
+          pattern: 'allowed-origins:\s+- "https://atlas.example.com"'
       - matchRegex:
           path: data["application.yaml"]
-          pattern: 'redirects:\s+- "https://git.example.com"'
+          pattern: 'redirects:\s+- "https://atlas.example.com"'
       - matchRegex:
           path: data["application.yaml"]
           pattern: 'callback: "https://git.example.com/oauth2/google/callback"'
@@ -43,8 +43,7 @@ tests:
       appConfig.gitUrl: https://code.custom.example/
       appConfig.appAllowedOrigins: [https://review.extra.example]
       appConfig.oauth2Redirects: [https://review.extra.example]
-      ui.port: 18093
-      ui.authCookiePrefix: _bat_git
+      appConfig.uiUrl: https://build.custom.example
       appConfig.authCookiePrefixes:
         - prefix: _bat_git
           domains: [code.custom.example]
@@ -57,13 +56,13 @@ tests:
           pattern: 'callback: "https://code.custom.example/oauth2/google/callback"'
       - matchRegex:
           path: data["application.yaml"]
-          pattern: 'auth-cookie-prefix: "_bat_git"\s+server:\s+port: 18093'
+          pattern: 'ui:\s+url: "https://build.custom.example"'
       - matchRegex:
           path: data["application.yaml"]
-          pattern: 'allowed-origins:\s+- "https://code.custom.example"\s+- "https://review.extra.example"'
+          pattern: 'allowed-origins:\s+- "https://build.custom.example"\s+- "https://review.extra.example"'
       - matchRegex:
           path: data["application.yaml"]
-          pattern: 'redirects:\s+- "https://code.custom.example"\s+- "https://review.extra.example"'
+          pattern: 'redirects:\s+- "https://build.custom.example"\s+- "https://review.extra.example"'
 
   - it: derives origins and JWT settings from the global domain
     set:

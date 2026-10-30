@@ -17,7 +17,9 @@ import kotlin.test.assertTrue
 
 @Suppress("UNCHECKED_CAST")
 class SwarmServicesTest {
-    private val config = SwarmConfig().withSecrets()
+    private val config = SwarmConfig().withSecrets().let { config ->
+        config.copy(sites = config.sites.map { it.copy(atlas = SwarmAtlas(separateGit = true, separateArtifacts = true)) })
+    }
     private val site = config.sites.first()
 
     private fun services(stack: Map<String, Any>) = stack["services"] as Map<String, Map<String, Any>>
@@ -115,7 +117,7 @@ class SwarmServicesTest {
         }
         assertEquals("node.labels.bosca_data == true", constraint(services(edgeStack(config)).getValue("caddy")))
         val site = services(siteStack(config, site))
-        listOf("server", "runner", "collector", "git", "artifacts", "studio", "bml-message-server",
+        listOf("server", "runner", "collector", "git", "artifacts", "atlas", "studio", "bml-message-server",
             "profiles-web", "notifications-web").forEach {
             assertEquals("node.labels.bosca_data != true", constraint(site.getValue(it)), it)
         }
@@ -166,7 +168,7 @@ class SwarmServicesTest {
     fun `memory limits follow the production Helm values while CPUs remain uncapped`() {
         val site = services(siteStack(config, site))
         val expected = mapOf(
-            "server" to "768M", "collector" to "512M", "git" to "4G",
+            "server" to "768M", "collector" to "512M", "git" to "4G", "atlas" to "4G",
             "artifacts" to "2G", "studio" to "1536M", "bml-message-server" to "1G",
             "profiles-web" to "512M", "notifications-web" to "512M",
             "recommendation-trainer" to "4G", "recommendation-model-loader" to "256M",
@@ -207,7 +209,7 @@ class SwarmServicesTest {
                 name,
             )
         }
-        val rolling = setOf("server", "runner", "collector", "git", "artifacts", "studio", "bml-message-server",
+        val rolling = setOf("server", "runner", "collector", "git", "artifacts", "atlas", "studio", "bml-message-server",
             "profiles-web", "notifications-web", "imageprocessor")
         allServices(config).forEach { (name, service) ->
             val update = deployOf(service)["update_config"] as Map<String, String>?
@@ -267,11 +269,11 @@ class SwarmServicesTest {
             assertEquals(0, run(bashHttpCheck(port, "/api/v1/live")))
             assertNotEquals(0, run(bashHttpCheck(port, "/api/v1/down")))
             assertEquals(0, run(bashTcpCheck(port)))
-            val git = services(siteStack(config, site)).getValue("git")
+            val git = services(siteStack(config, site)).getValue("atlas")
             val test = (git["healthcheck"] as Map<String, Any>)["test"] as List<String>
             val combined = test.dropLast(1) + test.last()
-                .replace("127.0.0.1/8091", "127.0.0.1/$port")
-                .replace("127.0.0.1/8093", "127.0.0.1/$port")
+                .replace("127.0.0.1/8094", "127.0.0.1/$port")
+                .replace("127.0.0.1/8095", "127.0.0.1/$port")
             assertEquals(0, run(combined))
             uiStatus.set(503)
             assertNotEquals(0, run(combined), "API liveness alone must not mark the Git host healthy")

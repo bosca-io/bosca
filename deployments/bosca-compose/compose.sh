@@ -9,7 +9,7 @@ test -f .env || {
 }
 
 # Prepare every writable bind-mount source before invoking Docker.
-mkdir -p data/postgres data/nats data/meilisearch data/storage data/server-tmp data/git-tmp data/message-cache
+mkdir -p data/postgres data/nats data/meilisearch data/storage data/server-tmp data/git-tmp data/atlas-tmp data/artifacts-tmp data/message-cache
 
 # Select this installation's configuration and registry login explicitly.
 docker_bin=$(command -v docker)

@@ -382,3 +382,21 @@ gateway:
   # the owning subchart's `gateway.hostnames` — that list still drives the
   # Gateway listener + TLS cert the redirect terminates on.
   canonicalRedirects: {}
+
+# Atlas replaces the registry/API composition when enabled; Git's independent host may remain enabled.
+bosca-atlas-server:
+  enabled: false
+  runner:
+    enabled: false
+    listeners: false
+    scheduler: false
+  secrets:
+    database: {create: false}
+    nats: {create: false}
+    jwt: {create: false}
+    meilisearch: {create: false}
+    s3: {create: false}
+    url: {create: false}
+
+bosca-atlas-ui-server:
+  enabled: false

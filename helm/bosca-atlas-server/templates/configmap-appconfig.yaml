@@ -1,0 +1,159 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bosca-common.fullname" . }}-config
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+data:
+  application.yaml: |
+    packages:
+      - "security-initial"
+      - "git-search-index"
+      - "github"
+      - "default-artifact-sync-pipelines"
+
+    bosca:
+      server:
+        management-port: {{ $.Values.managementPort }}
+        port: 8094
+        development: false
+
+    database:
+      postgres:
+        url: {{ .Values.appConfig.databaseUrl | quote }}
+        user: $DATABASE_USER
+        password: $DATABASE_PASSWORD
+        maxConnections: {{ .Values.appConfig.databaseMaxConnections | default 20 }}
+
+    cache:
+      type: {{ .Values.appConfig.cacheType }}
+
+    jobQueue:
+      factory: nats
+
+    pubsub:
+      type: nats
+
+    distributedLock:
+      type: {{ .Values.appConfig.distributedLockType }}
+
+    {{- if or (eq .Values.appConfig.cacheType "redis") (eq .Values.appConfig.distributedLockType "redis") }}
+    redis:
+      host: {{ .Values.appConfig.redisHost }}.{{ .Release.Namespace }}.svc.cluster.local
+      port: {{ .Values.appConfig.redisPort }}
+    {{- end }}
+
+    counter:
+      type: nats
+
+    nats:
+      url: nats://{{ .Values.appConfig.natsHost }}.{{ .Release.Namespace }}.svc.cluster.local:4222
+      token: $NATS_TOKEN
+
+    jwt:
+      domain: {{ include "bosca-common.domain" . | quote }}
+      admin-domain: admin.{{ include "bosca-common.domain" . }}
+      audience: {{ include "bosca-common.domain" . | quote }}
+      realm: {{ .Values.appConfig.realm | default (include "bosca-common.domain" .) | quote }}
+      issuer: {{ include "bosca-common.domain" . | quote }}
+      secret: $JWT_SECRET
+      expiration-time: 2592000
+      cookie-secure: true
+      cookie-prefixes:
+        {{- toYaml .Values.appConfig.authCookiePrefixes | nindent 8 }}
+
+    initialization:
+      password:
+        admin: $INITIAL_ADMIN_PASSWORD
+
+    security:
+      autoVerify: {{ .Values.appConfig.autoVerify }}
+
+    analyticsServer:
+      appId: bosca-atlas-server
+      url: http://{{ .Release.Name }}-bosca-collector.{{ .Release.Namespace }}.svc.cluster.local:8080
+
+    app:
+      url: {{ include "bosca-atlas-server.atlasUrl" . | quote }}
+      welcome-url: "${WELCOME_EMAIL_URL:}"
+      allowed-origins:
+        {{- range (prepend .Values.appConfig.appAllowedOrigins (include "bosca-atlas-server.atlasUrl" .) | uniq) }}
+        - {{ . | quote }}
+        {{- end }}
+
+    oauth2:
+      providers:
+        - type: google
+          clientId: ${GOOGLE_CLIENT_ID:}
+          clientSecret: ${GOOGLE_CLIENT_SECRET:}
+          callback: {{ printf "%s/oauth2/google/callback" (include "bosca-atlas-server.atlasUrl" .) | quote }}
+          adminCallback: {{ printf "%s/oauth2/google/callback" (include "bosca-atlas-server.atlasUrl" .) | quote }}
+          authorizeUrl: https://accounts.google.com/o/oauth2/auth
+          accessTokenUrl: https://accounts.google.com/o/oauth2/token
+          userInfoUrl: https://www.googleapis.com/oauth2/v1/userinfo
+          scopes:
+            - https://www.googleapis.com/auth/userinfo.profile
+            - https://www.googleapis.com/auth/userinfo.email
+          enabled: {{ .Values.appConfig.googleEnabled }}
+      redirects:
+        {{- range (prepend .Values.appConfig.oauth2Redirects (include "bosca-atlas-server.atlasUrl" .) | uniq) }}
+        - {{ . | quote }}
+        {{- end }}
+
+    webauthn:
+      extraOrigins:
+        - {{ include "bosca-atlas-server.atlasUrl" . | quote }}
+
+    git:
+      url: {{ include "bosca-atlas-server.gitUrl" . | quote }}
+      ui:
+        url: {{ include "bosca-atlas-server.atlasUrl" . | quote }}
+      sync:
+        listeners: {{ .Values.runner.listeners }}
+      push:
+        rate-limit:
+          enabled: {{ .Values.appConfig.pushRateLimit.enabled }}
+          max: {{ .Values.appConfig.pushRateLimit.max }}
+          window-seconds: {{ .Values.appConfig.pushRateLimit.windowSeconds }}
+
+    atlas:
+      api:
+        enabled: {{ .Values.roles.api }}
+      git:
+        enabled: {{ .Values.roles.git }}
+      artifacts:
+        enabled: {{ .Values.roles.artifacts }}
+      ui:
+        enabled: {{ .Values.ui.enabled }}
+        auth-cookie-prefix: {{ .Values.ui.authCookiePrefix | quote }}
+        server:
+          port: {{ .Values.ui.port }}
+          development: false
+      runner:
+        enabled: {{ .Values.runner.enabled }}
+        concurrency: {{ .Values.runner.concurrency }}
+        queues:
+          {{- toYaml .Values.runner.queues | nindent 10 }}
+        listeners: {{ .Values.runner.listeners }}
+
+    pipeline:
+      secretKey: $PIPELINE_SECRET_KEY
+
+    meilisearch:
+      url: http://{{ .Values.appConfig.meilisearchHost }}.{{ .Release.Namespace }}.svc.cluster.local:7700
+      apiKey: $MEILISEARCH_API_KEY
+
+    content:
+      storage:
+        type: s3
+        bucket: $AWS_BUCKET
+        endpoint: $AWS_ENDPOINT
+        region: $AWS_REGION
+        urlPrefix: https://{{ include "bosca-common.domain" . }}
+        urlUploadPrefix: https://upload.{{ include "bosca-common.domain" . }}
+        forcePathStyle: true
+      urlSigner:
+        secretKey: $URL_SECRET_KEY
+
+    scheduler:
+      enabled: {{ .Values.runner.scheduler }}

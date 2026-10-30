@@ -446,3 +446,42 @@ This is a single-module application built on the Clikt command framework for con
 - `io.bosca:core`, `io.bosca:core-security`, `io.bosca:core-graalvm` -- from bosca-core
 - `io.bosca:di`, `io.bosca:service` -- from `services-di`
 - `io.bosca:core-content` -- from bosca-content
+
+## Atlas deployment
+
+`bosca swarm` deploys Atlas with the primary `atlas.<domain>` origin and retained
+Git/registry hostnames. Per-site `atlas` settings select separate UI, Git or
+registry services and embedded queue consumers. See the
+[Swarm deployment guide](../deployments/bosca-swarm/README.md).
+`swarm update-images` and Helm image updates recognize `atlas-server` and
+`atlas-ui-server`; profiles pointed at Atlas derive the existing Git and registry
+hostnames. Helm topology and Gateway examples are in the
+[Helm guide](../helm/README.md#bosca-atlas).
+`bosca helm images` prepares image values; run Helm itself to deploy the charts.
+
+```sh
+bosca swarm update-images --config ./swarm.local.json --image atlas --image atlas-ui
+bosca helm images --service bosca-atlas-server --service bosca-atlas-ui-server --output atlas-images.yaml
+```
+
+For a single Docker host, `bosca compose` bundles the portable Compose installer.
+Python 3 and Docker Compose v2 must be installed on that host:
+
+```sh
+bosca compose init --domain example.com --directory /opt/bosca
+# Configure image versions and message artifacts in /opt/bosca/.env,
+# then configure host nginx and HTTPS using the deployment guide.
+bosca compose config --directory /opt/bosca
+bosca compose up --directory /opt/bosca
+bosca compose status --directory /opt/bosca
+bosca compose down --directory /opt/bosca
+```
+
+Init accepts independent `--separate-git`, `--separate-artifacts`, `--separate-ui`,
+and `--atlas-runner-enabled` flags. Change those public settings in the installed
+`.env` later and run `bosca compose render --directory /opt/bosca`. Lifecycle
+commands also rerender before invoking Compose. `up` removes obsolete project
+containers while retaining bind-mounted data. Install and reload the generated
+host nginx configuration when routing changes. See the
+[Compose deployment guide](../deployments/bosca-compose/README.md) for images,
+credentials, HTTPS, storage, and topology changes.

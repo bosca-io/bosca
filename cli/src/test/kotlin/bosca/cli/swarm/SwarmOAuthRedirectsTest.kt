@@ -49,7 +49,7 @@ class SwarmOAuthRedirectsTest {
                     val application = if (site.oauthRedirects == null) {
                         assertFalse("command" in definition)
                         assertFalse("configs" in definition)
-                        assertFalse(Files.exists(bundle.resolve("config/sites/${site.id}")))
+                        assertFalse(Files.exists(bundle.resolve("config/sites/${site.id}/$service.yaml")))
                         template
                     } else {
                         assertEquals(listOf("-config=/config/application.yaml"),
@@ -98,7 +98,7 @@ class SwarmOAuthRedirectsTest {
                 assertRedirectConfiguration(bundle.resolve("config/sites/site1/$service.yaml"), environment, emptyList())
             }
             renderSwarm(defaults, bundle)
-            assertFalse(Files.exists(bundle.resolve("config/sites")))
+            assertTrue(Files.exists(bundle.resolve("config/sites/site1/atlas.yaml")))
             listOf("server", "runner").forEach { service ->
                 val definition = stack().getValue("services").jsonObject.getValue(service).jsonObject
                 assertFalse("command" in definition)

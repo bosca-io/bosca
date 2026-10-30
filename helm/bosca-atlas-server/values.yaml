@@ -1,0 +1,147 @@
+# Atlas may run combined, API-only, registry-only or worker-only. See helm/README.md.
+replicaCount: 1
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 1
+image:
+  registry: ghcr.io/bosca-io/bosca
+  repository: atlas-server
+  tag: ''
+  pullPolicy: IfNotPresent
+nameOverride: ''
+fullnameOverride: ''
+serviceAccount:
+  create: true
+  name: ''
+  annotations: {}
+commonAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+service:
+  type: ClusterIP
+  port: 8094
+gateway:
+  enabled: true
+  gatewayName: bosca-gateway
+  gatewayNamespace: ''
+  hostnames: []
+  registryHostnames: []
+  gitHostnames: []
+ui:
+  enabled: true
+  port: 8095
+  authCookiePrefix: ''
+  serviceName: ''
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: '1'
+    memory: 512Mi
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+podDisruptionBudget:
+  enabled: false
+  maxUnavailable: 1
+appConfig:
+  domain: ''
+  realm: ''
+  databaseUrl: ''
+  databaseMaxConnections: 20
+  natsHost: nats
+  cacheType: nats
+  distributedLockType: nats
+  redisHost: redis
+  redisPort: 6379
+  meilisearchHost: meilisearch
+  gitUrl: ''
+  autoVerify: false
+  authCookiePrefixes: []
+  googleEnabled: true
+  appAllowedOrigins: []
+  oauth2Redirects: []
+  pushRateLimit:
+    enabled: false
+    max: 10000
+    windowSeconds: 3600
+  atlasUrl: ''
+  artifactsUrl: ''
+  artifactsEndpoint: ''
+envFromConfigMaps:
+- server-v3-env
+- otel-env
+secrets:
+  initialization:
+    secretName: initialization
+    key: admin_password
+  database:
+    create: true
+    secretName: pg-creds-bosca-atlas-server
+    usernameKey: username
+    passwordKey: password
+    username: ''
+    password: ''
+  nats:
+    create: true
+    secretName: nats
+    key: token
+    value: ''
+  jwt:
+    create: true
+    secretName: jwt
+    key: secret
+    value: ''
+  meilisearch:
+    create: true
+    secretName: meilisearch-master-key
+    key: MEILI_MASTER_KEY
+    value: ''
+  s3:
+    create: true
+    secretName: s3
+    accessKeyIdKey: ACCESS_KEY_ID
+    secretAccessKeyKey: ACCESS_SECRET_KEY
+    accessKeyId: ''
+    secretAccessKey: ''
+  url:
+    create: true
+    secretName: url
+    key: secret
+    value: ''
+imagePullSecrets:
+- name: docker-registry
+nodeSelector: {}
+tolerations: []
+affinity: {}
+global:
+  imageRegistry: ''
+  domain: ''
+managementPort: 9090
+roles:
+  api: true
+  git: true
+  artifacts: true
+runner:
+  enabled: true
+  concurrency: 16
+  queues:
+  - git
+  - pipelines
+  - common
+  listeners: true
+  scheduler: true
+
+# Empty serviceName uses the combined Atlas process. These are optional transport backends.
+backends:
+  git:
+    serviceName: ''
+    port: 8091
+  artifacts:
+    serviceName: ''
+    port: 8084

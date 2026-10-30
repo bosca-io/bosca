@@ -1,0 +1,26 @@
+  git:
+    <<: *service
+    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io/bosca}/git-server:${GIT_VERSION:?Set GIT_VERSION}
+    mem_limit: 896m
+    command: ["-Xms64m", "-Xmx640m", "-config=/app/config/application.yaml"]
+    environment:
+      <<: *bosca-env
+      ATLAS_URL: ${ATLAS_URL:?Run install.sh first}
+      INIT_ADMIN_PASSWORD: ${INIT_ADMIN_PASSWORD:?Run install.sh first}
+      INIT_SA_PASSWORD: ${INIT_SA_PASSWORD:?Run install.sh first}
+      OAUTH2_GOOGLE_REDIRECT: ${GIT_URL:?Run install.sh first}/oauth2/google/callback
+      OAUTH2_GOOGLE_ADMIN_REDIRECT: ${GIT_URL:?Run install.sh first}/oauth2/google/callback
+    ports:
+      - "127.0.0.1:${GIT_PORT:-8091}:8091"
+    volumes:
+      - ./config/git.yaml:/app/config/application.yaml:ro
+      - ./data/storage:/storage
+      - ./data/git-tmp:/tmp
+    depends_on:
+      server: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, bash, -ec, "exec 3<>/dev/tcp/127.0.0.1/8091; printf 'GET /api/v1/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; read -r protocol status rest <&3; test \"$$status\" = 200"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s

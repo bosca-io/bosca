@@ -1,0 +1,68 @@
+suite: Atlas composition and independent listeners
+templates:
+  - templates/deployment.yaml
+  - templates/service.yaml
+  - templates/configmap-appconfig.yaml
+set:
+  global.domain: example.com
+tests:
+  - it: serves the combined API and UI with the matching release image
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content: {name: http, containerPort: 8094, protocol: TCP}
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content: {name: ui, containerPort: 8095, protocol: TCP}
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.port
+          value: ui
+  - it: API-only pods expose and probe only their API listener
+    template: templates/deployment.yaml
+    set:
+      ui.enabled: false
+      runner.enabled: false
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].ports
+          content: {name: ui, containerPort: 8095, protocol: TCP}
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.port
+          value: http
+  - it: removes the UI Service port when the listener is elsewhere
+    template: templates/service.yaml
+    set:
+      ui.enabled: false
+    asserts:
+      - lengthEqual:
+          path: spec.ports
+          count: 1
+  - it: configures Atlas auth origin and keeps the canonical Git transport origin
+    template: templates/configmap-appconfig.yaml
+    asserts:
+      - matchRegex:
+          path: data['application.yaml']
+          pattern: 'url: "https://atlas.example.com"'
+      - matchRegex:
+          path: data['application.yaml']
+          pattern: 'url: "https://git.example.com"'
+      - matchRegex:
+          path: data['application.yaml']
+          pattern: 'secretKey: \$PIPELINE_SECRET_KEY'
+      - matchRegex:
+          path: data['application.yaml']
+          pattern: default-artifact-sync-pipelines
+
+  - it: points embedded UI file traffic at the selected dedicated registry
+    template: templates/deployment.yaml
+    set:
+      backends.artifacts.serviceName: registry
+      backends.artifacts.port: 18084
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: BML_ARTIFACTS_ENDPOINT, value: 'http://registry:18084'}

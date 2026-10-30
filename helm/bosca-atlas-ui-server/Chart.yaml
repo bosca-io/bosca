@@ -1,0 +1,10 @@
+apiVersion: v2
+name: bosca-atlas-ui-server
+description: Bosca Atlas standalone BML UI
+type: application
+version: 0.1.0
+appVersion: "0.0.1"
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"

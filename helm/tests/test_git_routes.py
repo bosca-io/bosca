@@ -51,7 +51,7 @@ class GitGatewayRoutesTest(unittest.TestCase):
                 else:
                     self.fail(f"Unsupported path type: {pattern['type']}")
                 if matches:
-                    return rule["backendRefs"][0]["port"]
+                    return "redirect" if "filters" in rule else rule["backendRefs"][0]["port"]
         self.fail(f"No backend for {path}")
 
     def test_regexes_fit_envoy_default_program_limit(self):
@@ -67,7 +67,7 @@ class GitGatewayRoutesTest(unittest.TestCase):
         for rule in self.rules:
             self.assertLessEqual(len(rule["matches"]), 8)
 
-    def test_ui_pages_and_assets_use_ui_listener(self):
+    def test_ui_pages_and_assets_redirect_to_atlas(self):
         pages = [
             "login", "welcome", "404", "500", "compare", "search", "statuses",
             "robots.txt", "llms.txt", "sitemap.xml", "favicon.ico", "settings/github",
@@ -91,7 +91,7 @@ class GitGatewayRoutesTest(unittest.TestCase):
             paths.extend(f"/_git/{endpoint}{suffix}" for suffix in ("", "/", "/nested/asset"))
         for path in paths:
             with self.subTest(path=path):
-                self.assertEqual(8093, self.port_for(path))
+                self.assertEqual("redirect", self.port_for(path))
 
     def test_git_transport_and_api_paths_stay_on_api_listener(self):
         paths = [

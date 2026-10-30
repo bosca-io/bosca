@@ -1,12 +1,12 @@
 # Bosca Compose
 
-A portable installer for a small, Git-focused Bosca installation. It includes the
-API and its background workers, Git server, Studio, BML message templates,
+A portable installer for a small Bosca Atlas installation. It includes the
+API and its background workers, Atlas Git/artifacts server and UI, Studio, BML message templates,
 PostgreSQL with pgvector, NATS, and Meilisearch. Recommendations, embeddings, and
 analytics processing are disabled. Nginx and Certbot run on the host.
 
 The installer copies the package, generates private credentials, prepares storage
-directories, and renders nginx configuration. Registry login, certificate issuance,
+directories, and renders Compose and nginx configuration. Registry login, certificate issuance,
 and starting services are explicit steps below. Installation itself starts no
 services and changes no host nginx configuration.
 
@@ -20,10 +20,12 @@ services and changes no host nginx configuration.
 - An amd64 CPU compatible with the selected native images. The default Bosca images
   require AVX2, BMI1/BMI2, FMA, and F16C; use compatible image builds for other CPUs.
 - Access to the Bosca image registry and a token that can read the BML message artifacts.
-- Two DNS names under a shared domain: `studio.example.com` and `git.example.com`.
+- Four DNS names under a shared domain: `studio.example.com`, `atlas.example.com`,
+  `git.example.com` and `artifacts.example.com`.
 - Host nginx 1.25.1 or newer with HTTP/2 support and Certbot for public HTTPS.
 
-The container limits total 2880 MiB. This is a small-server baseline, not a measured
+The default container limits total 2880 MiB; separate services add to that total.
+This is a small-server baseline, not a measured
 memory guarantee for arbitrary repositories or concurrent pushes. Leave memory for
 Docker, nginx, and the operating system, and test your workload before importing it.
 
@@ -32,23 +34,37 @@ Docker, nginx, and the operating system, and test your workload before importing
 Extract the archive on the intended host, then run:
 
 ```sh
-tar -xzf bosca-compose-0.1.1.tar.gz
-cd bosca-compose-0.1.1
+tar -xzf bosca-compose-0.1.2.tar.gz
+cd bosca-compose-0.1.2
 sudo sh install.sh --domain example.com --directory /opt/bosca
 ```
 
-The default hostnames are `studio.<domain>` and `git.<domain>`. Git API and BML
-UI share the Git hostname. To choose different names:
+With a Bosca CLI built from this workspace, the same installer is bundled:
+
+```sh
+sudo bosca compose init --domain example.com --directory /opt/bosca
+```
+
+The CLI runs Python 3 on the deployment host and uses its Docker Compose installation.
+It prepares the same files as `install.sh`. Follow the image and host nginx/HTTPS
+steps below before starting containers.
+
+The default hostnames are `studio.<domain>`, `atlas.<domain>`, `git.<domain>` and
+`artifacts.<domain>`. Atlas serves Git/artifact administration and the combined
+GraphQL API; the Git hostname retains clone/LFS/API URLs. To choose other names:
 
 ```sh
 sudo sh install.sh --domain example.com \
   --studio-domain admin.example.com --git-domain code.example.com \
+  --atlas-domain build.example.com --artifacts-domain packages.example.com \
   --directory /opt/bosca
 ```
 
-Both names must belong to the shared cookie domain. `--api-port`, `--git-port`,
-`--git-ui-port`, `--studio-port`, and `--bml-port` set the loopback ports; defaults
-are 8080, 8091, 8093, 3000, and 9093. Container ports remain fixed. `--cert-name`
+All four names must belong to the shared cookie domain. `--api-port`, `--atlas-port`,
+`--atlas-ui-port`, `--git-port`, `--artifacts-port`, `--studio-port`, and `--bml-port`
+set the loopback ports; defaults are 8080, 8094, 8095, 8091, 8084, 3000, and 9093.
+These port options and `--cert-name` are available through `install.sh`; CLI users
+can edit the public settings in `.env` and rerender. Container ports remain fixed. `--cert-name`
 defaults to `bosca`.
 
 The destination must be empty for a new installation. Rerunning the same package
@@ -60,6 +76,41 @@ configuration from a different package version.
 database, encryption, signing, NATS, search, and bootstrap administrator credentials.
 The `PIPELINE_SECRET_KEY` is a Base64-encoded 32-byte key.
 
+## Select Atlas services
+
+The default runs Git, artifacts, and all Atlas UIs in `atlas`. Each option below
+is independent, so mixed configurations are supported:
+
+| Installer/CLI init option | Public `.env` setting | Effect |
+| --- | --- | --- |
+| `--separate-git` | `SEPARATE_GIT=true` | Start the backend-only `git` service and route Git protocol requests to it |
+| `--separate-artifacts` | `SEPARATE_ARTIFACTS=true` | Start `artifacts` and route registry requests and UI uploads to it |
+| `--separate-ui` | `SEPARATE_UI=true` | Disable embedded UI and start `atlas-ui` |
+| `--atlas-runner-enabled` | `ATLAS_RUNNER_ENABLED=true` | Enable Atlas queue consumers; event listeners and the scheduler stay with the API workers |
+
+For example, prepare all three separate services:
+
+```sh
+sudo bosca compose init --domain example.com --directory /opt/bosca \
+  --separate-git --separate-artifacts --separate-ui
+```
+
+`atlas.<domain>` serves all Atlas pages and routes protocols to the selected
+backends. Its shared `/graphql` remains on Atlas. `git.<domain>` retains Git
+protocol URLs and redirects UI navigation to Atlas; `artifacts.<domain>` retains
+native registry URLs. Separate backends share the database, signing/encryption
+keys, and storage with Atlas.
+
+To change an existing topology, edit these settings in `.env`, then run
+`sudo bosca compose render --directory /opt/bosca` (or
+`sudo sh install.sh --directory /opt/bosca --render`). This generates
+`compose.yaml` from `compose.yaml.template` and the selected service fragments.
+Edit the templates for persistent customizations. Validate the configuration,
+start the selected services, then install and reload the generated nginx files
+as described below. CLI `up` removes obsolete containers from the same Compose
+project with `--remove-orphans`; bind-mounted data remains in `data/`.
+Plan a maintenance window when changing topology.
+
 ## Configure message artifacts and images
 
 ```sh
@@ -69,6 +120,7 @@ sudo sh compose.sh config --quiet
 sudo sh compose.sh pull
 ```
 
+Set `ATLAS_VERSION` to a published Atlas image release built from these changes.
 Set `BML_MESSAGE_ARTIFACTS_URL` to your Artifacts server and `BML_MESSAGE_ARTIFACTS_TOKEN`
 to a token with read access to its `bml-message` raw repository before validating Compose.
 
@@ -83,7 +135,10 @@ Image registry and versions are configurable in `.env`:
 | --- | --- |
 | `BOSCA_IMAGE_REGISTRY` | `ghcr.io/bosca-io/bosca` |
 | `SERVER_VERSION` | `6.28.2` |
-| `GIT_VERSION` | `6.27.7` |
+| `ATLAS_VERSION` | Required Atlas release tag |
+| `GIT_VERSION` | Required when `SEPARATE_GIT=true`; use a backend-only Git release |
+| `ARTIFACTS_VERSION` | Required when `SEPARATE_ARTIFACTS=true` |
+| `ATLAS_UI_VERSION` | Defaults to `ATLAS_VERSION`; used when `SEPARATE_UI=true` |
 | `STUDIO_VERSION` | `6.28.4` |
 | `BML_MESSAGE_VERSION` | `6.23.0` |
 | `POSTGRES_IMAGE` | `pgvector/pgvector:pg18` |
@@ -98,7 +153,7 @@ does not rebuild Bosca binaries.
 
 ## Set up host nginx and HTTPS
 
-Point both DNS names at the host and allow incoming TCP ports 80 and 443.
+Point all four DNS names at the host and allow incoming TCP ports 80 and 443.
 The commands below use the default certificate name and Debian/Ubuntu nginx paths.
 Replace the domain names and certificate name with the values chosen at installation.
 Install nginx and Certbot using your distribution's packages first.
@@ -116,6 +171,7 @@ sudo systemctl enable --now nginx
 sudo systemctl reload nginx
 sudo certbot certonly --webroot -w /var/www/letsencrypt \
   --cert-name bosca -d studio.example.com -d git.example.com \
+  -d atlas.example.com -d artifacts.example.com \
   --email admin@example.com --agree-tos --non-interactive
 ```
 
@@ -132,16 +188,19 @@ sudo systemctl enable --now certbot.timer
 sudo certbot renew --dry-run --run-deploy-hooks
 ```
 
-Nginx splits the Git hostname by path: UI pages and BML endpoints use the UI
-loopback port; other requests use the Git API loopback port. Studio has its own
-hostname. Only the message server's static assets under
-`/bml-messages/assets/` are public; its rendering and administration endpoints remain
-internal. WebSocket forwarding and streaming Git requests are configured. Request
-bodies are limited to 1 GiB in `config/nginx-proxy.conf`.
+Nginx routes Atlas UI pages/actions/assets to 8095 and its shared API to 8094.
+Git protocols use 8091 with separate Git, otherwise 8094; registry protocols use
+8084 with separate artifacts, otherwise 8094.
+Git transport URLs remain on the Git hostname; Git UI pages redirect to Atlas.
+The artifacts hostname serves native registry URLs, rewriting file protocols into
+Atlas's `/_artifacts` namespace when artifacts are embedded, to avoid Git path conflicts. Studio has its own
+hostname. Only message assets under `/bml-messages/assets/` are public; rendering
+and administration remain internal. WebSockets and streaming requests use the
+shared proxy settings. Request bodies are limited to 1 GiB there.
 
 To change hostnames or loopback ports later, edit the public settings in `.env`
-and rerender the nginx files with `sudo sh install.sh --directory /opt/bosca --render-nginx`.
-URLs in `.env` derive from `STUDIO_DOMAIN` and `GIT_DOMAIN`. Obtain a certificate for
+and rerender the deployment files with `sudo sh install.sh --directory /opt/bosca --render`.
+URLs in `.env` derive from `STUDIO_DOMAIN`, `ATLAS_DOMAIN`, `GIT_DOMAIN` and `ARTIFACTS_DOMAIN`. Obtain a certificate for
 the new names, install the rendered files, validate nginx, and restart the affected
 containers. Edit `.template` files when customizing generated nginx configuration.
 
@@ -152,22 +211,38 @@ cd /opt/bosca
 sudo sh compose.sh config --quiet
 sudo sh compose.sh up -d --wait
 sudo sh compose.sh ps
-sudo sh compose.sh logs --tail=100 server git bml-message-server
+sudo sh compose.sh logs --tail=100 server atlas bml-message-server
 sudo sh compose.sh stats --no-stream
 ```
+
+The CLI provides the corresponding lifecycle commands:
+
+```sh
+sudo bosca compose config --directory /opt/bosca
+sudo bosca compose up --directory /opt/bosca
+sudo bosca compose status --directory /opt/bosca
+sudo bosca compose down --directory /opt/bosca
+```
+
+Each command rerenders from `.env` before invoking Compose. `config` validates
+without printing resolved credentials. `up` waits for health checks, with a
+300-second timeout. `down` retains the bind-mounted data. These commands do not
+install host nginx files, issue certificates, or reload nginx.
 
 Open `https://studio.example.com`. The initial administrator username is `admin`;
 its password is `INIT_ADMIN_PASSWORD` in the private `.env`. Clone URLs use the Git
 hostname. Verify a scratch repository push and clone, including LFS if required,
 and measure memory under your expected workload.
 
-Open `https://git.example.com` for the BML Git application. The same Git process
-serves both ports; its health check requires HTTP readiness from both. Git's auth
-return origin is `GIT_URL`; Studio continues to use `APP_URL`. For Google login,
-set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env` and register
-`https://git.example.com/oauth2/google/callback` with the provider.
+Open `https://atlas.example.com` for Atlas. With embedded UI, one process serves
+both listeners and its health check requires readiness from both. With separate
+UI, each process checks its own listener. Atlas's auth return origin is
+`ATLAS_URL`; Studio continues to use `APP_URL`, and clone URLs retain `GIT_URL`.
+For Google login, set its client credentials in `.env` and register
+`https://atlas.example.com/oauth2/google/callback` with the provider.
 
-The application configuration is in `config/server.yaml` and `config/git.yaml`.
+The application configuration is in `config/server.yaml`, `config/atlas.yaml`,
+`config/git.yaml`, and `config/artifacts.yaml`.
 Configure a mail provider before enabling email workflows. Image processing, CI
 agents, recommendations, model services, and analytics infrastructure are not included.
 The existing Git/WorkOps integration and required GraphQL schemas remain enabled.
@@ -182,7 +257,10 @@ in this package.
 | Service | Container limit | Heap or indexing limit |
 | --- | ---: | ---: |
 | API and workers | 768 MiB | 512 MiB native heap |
-| Git | 896 MiB | 640 MiB native heap |
+| Atlas | 896 MiB | 640 MiB native heap |
+| Optional Git backend | 896 MiB | 640 MiB native heap |
+| Optional artifacts backend | 896 MiB | 640 MiB native heap |
+| Optional Atlas UI | 512 MiB | Native runtime default |
 | PostgreSQL | 320 MiB | 64 MiB shared buffers |
 | Meilisearch | 256 MiB | 64 MB indexing, one thread |
 | Studio | 256 MiB | 160 MiB Node old space |
@@ -191,7 +269,7 @@ in this package.
 
 ## Data, updates, and removal
 
-Persistent state lives under `data/`. API and Git share `data/storage`; PostgreSQL
+Persistent state lives under `data/`. API and Atlas share `data/storage`; PostgreSQL
 uses `data/postgres`. Preserve `.env`, registry credentials, and all data together.
 For an offline backup, stop the stack before copying the installation directory so
 repository metadata and stored objects are consistent. `sh compose.sh down` retains
@@ -204,13 +282,17 @@ new archive separately, compare its files with the installation, and apply the
 desired changes while preserving `.env` and `data/`; the installer does not perform
 automatic upgrades. Stop with `sh compose.sh down` before removing an installation.
 
-When upgrading from package 0.1.0, add `GIT_UI_PORT=8093` to the existing private
-`.env`. This is a loopback backend port; the existing Git public domain and
-certificate serve both listeners. Compare and update `compose.yaml`, `config/git.yaml`,
-`installer.py`, and the nginx templates from the new package while preserving
-credentials and data, then rerender and reload nginx. Use a Git image built with
-the combined BML host; the older default image tag in this package has not been
-validated with these changes. Git applies migration V49 at startup.
+When upgrading an existing Git-only package, keep the existing `.env`, pipeline
+key and data. Compare the new `compose.yaml.template`, service fragments,
+`config/atlas.yaml`, installer, package manifest and
+nginx templates from a separate unpacked archive. Add `ATLAS_DOMAIN`,
+`ARTIFACTS_DOMAIN`, `ATLAS_URL`, `ARTIFACTS_URL`, `ATLAS_PORT=8094`,
+`ATLAS_UI_PORT=8095` and `ATLAS_VERSION` to the private `.env`. Obtain a certificate
+covering the new domains and rerender with `--render`. Select separate Git and
+artifacts if retaining those services; otherwise Atlas replaces them. Stop old
+services using the saved old Compose configuration after the replacement and
+ingress are healthy. Preserve the shared
+storage mount and credentials. The installer does not upgrade files automatically.
 
 ## Build the distributable
 
@@ -221,8 +303,9 @@ python3 -m unittest discover -s tests -v
 sh package.sh
 ```
 
-The builder writes `dist/bosca-compose-0.1.1.tar.gz` and a matching `.sha256` file.
+The builder writes `dist/bosca-compose-0.1.2.tar.gz` and a matching `.sha256` file.
 `VERSION` is the installer package version, independent of application image tags.
 The archive is reproducible and includes only the public files listed in
-`installer.py`. It excludes `.env`, `.docker`, `data`, generated nginx files,
+`package-files.txt`. The CLI bundles that same list. It excludes `.env`, `.docker`,
+`data`, generated Compose and nginx files,
 installation metadata, test files, and output archives.

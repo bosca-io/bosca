@@ -1,13 +1,11 @@
 package bosca.git.server
 
-import bosca.bml.library.BmlApplicationAssets
-import bosca.bml.library.BmlClientManifest
 import bosca.bml.project.ContentDigest
 import java.io.File
 import java.net.URI
-import java.time.Instant
 import java.util.jar.JarFile
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertNotNull
 import kotlinx.serialization.json.*
 
@@ -18,26 +16,11 @@ internal fun verifyGitServerNativeResources(report: File, artifacts: File) {
         .associateBy { it.jsonObject.getValue("name").jsonPrimitive.content }
     val loader = GitServerIntegrationTest::class.java.classLoader
     val expected = linkedMapOf<String, List<String>>()
-    // The host manifest includes consumed library assets under the application resource root.
-    val root = "bml/applications/bml.generated"
-    val manifestPath = "$root/client-manifest.json"
-    val manifestBytes = requireNotNull(loader.getResourceAsStream(manifestPath)).use { it.readAllBytes() }
-    val manifest = Json.decodeFromString(BmlClientManifest.serializer(), manifestBytes.decodeToString())
-    BmlApplicationAssets.validateFiles(manifest.files)
-    val indexedAssets = manifest.files.size
-    expected.putAll(manifest.files.associate { "$root/${it.path}" to listOf(it.digest) })
-    expected[manifestPath] = listOf(ContentDigest.sha256(manifestBytes))
-    for (name in listOf("geist", "lucide", "source-view", "json-editor")) {
-        val path = "META-INF/licenses/bml-design/$name.txt"
+    assertTrue(resources.keys.none { it.startsWith("bml/") || it.startsWith("META-INF/bml/") ||
+        it == "META-INF/bosca/bml/build-id" || it == "git-ui.css" || it == "git-ui.js" },
+        "Backend-only Git must not embed a BML application")
+    for (path in listOf("application.yaml", "graphql/git-server.graphqls", "db/migrations/V49__pull_request_merge_base.sql")) {
         expected[path] = listOf(requireNotNull(loader.getResourceAsStream(path)).use { ContentDigest.sha256(it.readAllBytes()) })
-    }
-    for (path in listOf("git-ui.css", "git-ui.js", "auth-ui.css")) {
-        expected[path] = listOf(requireNotNull(loader.getResourceAsStream(path)).use { ContentDigest.sha256(it.readAllBytes()) })
-    }
-    expected["META-INF/bosca/bml/build-id"] = listOf("host", "ui").map { host ->
-        val bytes = File(requireNotNull(System.getProperty("gitServer.native.${host}BuildId"))).readBytes()
-        Instant.parse(bytes.decodeToString())
-        ContentDigest.sha256(bytes)
     }
     val verified = expected.mapValues { (path, digests) ->
         val resource = assertNotNull(resources[path], "Native resource missing: $path").jsonObject
@@ -59,8 +42,7 @@ internal fun verifyGitServerNativeResources(report: File, artifacts: File) {
         JsonArray(entries)
     }
     File(artifacts, "resource-origins.json").writeText(buildJsonObject {
-        put("evidence", "Compiler-reported embedding origins and sizes; hashes verify input JAR bytes. HTTP font bytes are verified separately.")
-        put("indexedAssets", indexedAssets)
+        put("evidence", "Compiler-reported backend resource origins, sizes and input JAR digests; no BML UI assets.")
         put("resources", JsonObject(verified))
     }.toString())
 }

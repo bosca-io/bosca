@@ -102,6 +102,15 @@ tasks.test {
         rootProject.file("git/git-server/src/main/resources/application.yaml"),
         rootProject.file("analytics/analytics-collector/src/main/resources/application.yaml"),
         rootProject.file("artifacts/artifacts-server/src/main/resources/application.yaml"),
+        rootProject.file("server/atlas-server/src/main/resources/atlas-server.yaml"),
+    ).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(
+        rootProject.file("deployments/local/Caddyfile"),
+        rootProject.file("deployments/bosca-compose/config/nginx.conf.template"),
+        rootProject.file("deployments/bosca-compose/config/nginx-proxy.conf"),
+        rootProject.fileTree("git/git-ui/src/main/bml/pages"),
+        rootProject.fileTree("artifacts/artifacts-ui/src/main/bml/pages"),
+        rootProject.fileTree("server/atlas-ui/src/main/bml/pages"),
     ).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files(rootProject.fileTree(".bosca/pipelines") { include("*.yaml") })
         .withPathSensitivity(PathSensitivity.RELATIVE)
@@ -183,8 +192,37 @@ val generateVersionResource = tasks.register("generateVersionResource") {
 sourceSets["main"].resources.srcDir(generatedVersionDir)
 tasks.named("processResources") { dependsOn(generateVersionResource) }
 
+val composePackageDir = rootProject.layout.projectDirectory.dir("deployments/bosca-compose")
+val composePackageFiles = providers.fileContents(composePackageDir.file("package-files.txt"))
+    .asText.get().lineSequence().filter(String::isNotBlank).toList()
+// Gradle excludes .gitignore from resource trees and jars; embed it under a public resource name.
+val composeIgnoreSource = composePackageDir.file(".gitignore")
+val composeIgnoreResource = layout.buildDirectory.file("generated/compose/bosca/cli/compose/package-gitignore")
+val generateComposeIgnoreResource = tasks.register("generateComposeIgnoreResource") {
+    val sourceFile = composeIgnoreSource.asFile
+    val resourceFile = composeIgnoreResource.get().asFile
+    inputs.file(sourceFile)
+    outputs.file(resourceFile)
+    doLast {
+        resourceFile.apply {
+            parentFile.mkdirs()
+            writeBytes(sourceFile.readBytes())
+        }
+    }
+}
+sourceSets["main"].resources.srcDir(layout.buildDirectory.dir("generated/compose"))
+
 // Swarm renders site-specific application YAML from the owning applications' current defaults.
 tasks.processResources {
+    dependsOn(generateComposeIgnoreResource)
+    from(composePackageDir) {
+        include(composePackageFiles.filterNot { it == ".gitignore" })
+        into("bosca/cli/compose")
+    }
+    from(rootProject.file("server/atlas-server/src/main/resources/atlas-server.yaml")) {
+        into("swarm")
+        rename { "application-atlas.yaml" }
+    }
     from(rootProject.file("server/bosca-server/src/main/resources/application.yaml")) {
         into("swarm")
         rename { "application-server.yaml" }

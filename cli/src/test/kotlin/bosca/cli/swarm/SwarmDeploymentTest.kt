@@ -258,14 +258,14 @@ class SwarmDeploymentTest {
         @Suppress("UNCHECKED_CAST")
         val services = siteStack(config, site)["services"] as Map<String, Map<String, Any>>
         // Both the server and the runner install `security-initial`; whichever wins creates the accounts.
-        listOf("server", "runner", "collector", "git").forEach { name ->
+        listOf("server", "runner", "collector", "atlas").forEach { name ->
             @Suppress("UNCHECKED_CAST")
             val environment = services.getValue(name)["environment"] as Map<String, String>
             assertEquals(site.secrets.initialAdmin, environment["INIT_ADMIN_PASSWORD"], name)
             assertEquals(site.secrets.initialSa, environment["INIT_SA_PASSWORD"], name)
             assertEquals(site.secrets.gatewayProxy, environment["GATEWAY_PROXY_SHARED_TOKEN"], name)
-            val appHost = if (name == "git") site.hosts.git else site.hosts.studio
-            val callbackHost = if (name == "git") site.hosts.git else site.hosts.root
+            val appHost = if (name == "atlas") site.hosts.atlas else site.hosts.studio
+            val callbackHost = if (name == "atlas") site.hosts.atlas else site.hosts.root
             assertEquals("https://$appHost", environment["OAUTH2_ALLOWED_REDIRECT"], name)
             assertEquals("https://$callbackHost/oauth2/google/callback", environment["OAUTH2_GOOGLE_REDIRECT"], name)
             assertEquals("https://${site.domain}/oauth2/facebook/callback", environment["OAUTH2_FACEBOOK_ADMIN_REDIRECT"], name)
@@ -309,7 +309,7 @@ class SwarmDeploymentTest {
         assertEquals("git.example.org", site.hosts.git)
         assertEquals("notifications.example.org", site.hosts.notifications)
         assertEquals("messages.example.org", site.hosts.messages)
-        assertEquals("code.example.org", site.copy(gitDomain = "code.example.org").hosts.git)
+        assertEquals("code.example.org", site.copy(gitDomain = "code.example.org", atlas = SwarmAtlas(separateGit = true)).hosts.git)
 
         // A configuration written before hosts were derived still names its Git host explicitly.
         val legacy = swarmJson.decodeFromString(
@@ -433,25 +433,25 @@ class SwarmDeploymentTest {
     @Test
     fun `Git auth uses its browser origin and API callback without changing Studio`() {
         val config = SwarmConfig().withSecrets()
-        val site = config.sites.first().copy(gitDomain = "code.example.org")
+        val site = config.sites.first().copy(gitDomain = "code.example.org", atlas = SwarmAtlas(separateGit = true))
         @Suppress("UNCHECKED_CAST")
         val services = siteStack(config, site)["services"] as Map<String, Map<String, Any>>
         @Suppress("UNCHECKED_CAST")
         val git = services.getValue("git")["environment"] as Map<String, String>
         listOf("APP_URL", "APP_ALLOWED_ORIGIN", "OAUTH2_ALLOWED_REDIRECT", "WEBAUTHN_EXTRA_ORIGIN", "GIT_UI_URL")
-            .forEach { assertEquals("https://code.example.org", git[it], it) }
+            .forEach { assertEquals("https://${site.hosts.atlas}", git[it], it) }
         assertEquals("https://code.example.org", git["GIT_URL"])
         assertEquals("https://code.example.org/oauth2/google/callback", git["OAUTH2_GOOGLE_REDIRECT"])
         assertEquals(git["OAUTH2_GOOGLE_REDIRECT"], git["OAUTH2_GOOGLE_ADMIN_REDIRECT"])
-        assertEquals("8093", git["GIT_UI_HTTP_PORT"])
+        assertFalse("GIT_UI_HTTP_PORT" in git)
         @Suppress("UNCHECKED_CAST")
         val server = services.getValue("server")["environment"] as Map<String, String>
         assertEquals("https://${site.hosts.studio}", server["APP_URL"])
-        assertTrue(caddyfile(config.copy(sites = listOf(site))).contains("reverse_proxy @gitUi ${site.id}-git:8093"))
+        assertTrue(caddyfile(config.copy(sites = listOf(site))).contains("redir @gitUi https://${site.hosts.atlas}{uri} 302"))
         @Suppress("UNCHECKED_CAST")
         val check = (services.getValue("git")["healthcheck"] as Map<String, Any>)["test"] as List<String>
         assertTrue(check.last().contains("127.0.0.1/8091"))
-        assertTrue(check.last().contains("127.0.0.1/8093"))
+        assertFalse(check.last().contains("8093"))
     }
 
     @Test
@@ -499,8 +499,8 @@ class SwarmDeploymentTest {
         assertTrue(caddy.contains("profiles.$d {\n    reverse_proxy site1-profiles-web:9095\n}"))
         assertTrue(caddy.contains("notifications.$d {\n    reverse_proxy site1-notifications-web:9094\n}"))
         assertTrue(caddy.contains("git.$d {\n    @gitUi path_regexp"))
-        assertTrue(caddy.contains("reverse_proxy site1-git:8091"))
-        assertTrue(caddy.contains("reverse_proxy @gitUi site1-git:8093"))
+        assertTrue(caddy.contains("reverse_proxy site1-atlas:8094"))
+        assertTrue(caddy.contains("redir @gitUi https://atlas.$d{uri} 302"))
         val messages = caddy.substringAfter("messages.$d {").substringBefore("\n}\n")
         assertTrue(messages.contains("@public path /assets /assets/* /c /c/* /o /o/*"))
         assertTrue(messages.contains("reverse_proxy @public site1-bml-message-server:9093"))
@@ -531,12 +531,12 @@ class SwarmDeploymentTest {
         assertEquals(
             listOf("https://api.example.org/api/v1/ready", "https://studio.example.org/health",
                 "https://profiles.example.org/login", "https://notifications.example.org/",
-                "https://example.org/", "https://www.example.org/"),
+                "https://example.org/", "https://www.example.org/", "https://atlas.example.org/login"),
             publicReadinessUrls(config),
         )
         assertEquals(
             listOf("https://example.org/api/v1/ready", "https://studio.example.org/health",
-                "https://profiles.example.org/login", "https://notifications.example.org/"),
+                "https://profiles.example.org/login", "https://notifications.example.org/", "https://atlas.example.org/login"),
             publicReadinessUrls(config.copy(sites = listOf(site.copy(rootImage = "")))),
         )
     }
