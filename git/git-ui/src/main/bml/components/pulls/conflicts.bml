@@ -3,7 +3,7 @@
   <card :padded="false">
     <section-heading title="Merge Conflicts">
       <badge color="#ff5d6c">
-        { page.pull.conflictingFiles.size.toString() + if (page.pull.conflictingFiles.size == 1) " conflict" else " conflicts" }
+        { page.pull.conflictingFiles.orEmpty().size.toString() + if (page.pull.conflictingFiles.orEmpty().size == 1) " conflict" else " conflicts" }
       </badge>
     </section-heading>
     <div class="conflict-body">
@@ -21,7 +21,7 @@
         </div>
       </div>
       <ul class="conflict-files">
-        <for file in page.pull.conflictingFiles>
+        <for file in page.pull.conflictingFiles.orEmpty()>
           <li>
             <span class="conflict-icon"><icon name="alert" :size="13" /></span>
             <code>{ file }</code>

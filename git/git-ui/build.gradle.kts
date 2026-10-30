@@ -58,10 +58,10 @@ val typecheckClient by tasks.registering(Exec::class) {
 
 val testClient by tasks.registering(Exec::class) {
     group = "verification"
-    description = "Test Git pipeline log behavior."
+    description = "Test Git pipeline log and diff workspace behavior."
     dependsOn("bmlInstallClientDependencies")
     workingDir(projectDir)
-    commandLine(bml.nodeExecutable.get(), "--test", "src/test/client-pipeline-logs.test.mjs")
+    commandLine(bml.nodeExecutable.get(), "--test", "src/test/client-pipeline-logs.test.mjs", "src/test/client-diff-workspace.test.mjs")
 }
 
 tasks.named("check") { dependsOn(typecheckClient, testClient) }

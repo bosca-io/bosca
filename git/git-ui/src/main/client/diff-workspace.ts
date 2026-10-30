@@ -54,12 +54,23 @@ export function diffWorkspace(ctx: ClientContext) {
   const root = ctx.root;
   const scroller = scrollContainer(root);
   const collapsed = collapsedPaths();
-  const files = () =>
-    [...root.querySelectorAll<HTMLElement>(".diff-file[data-path]")];
-  const treeItem = (path: string) =>
-    [...root.querySelectorAll<HTMLElement>('.diff-sidebar [role="treeitem"]')].find(
-      (item) => item.dataset.path === path,
+  let fileElements: HTMLElement[] = [];
+  let filesByPath = new Map<string, HTMLElement>();
+  let treeByPath = new Map<string, HTMLElement>();
+  let selectedItem: HTMLElement | undefined;
+  let tree: HTMLElement | null = null;
+  const refreshElements = () => {
+    fileElements = [...root.querySelectorAll<HTMLElement>(".diff-file[data-path]")];
+    filesByPath = new Map(fileElements.map((file) => [file.dataset.path ?? "", file]));
+    treeByPath = new Map(
+      [...root.querySelectorAll<HTMLElement>('.diff-sidebar [role="treeitem"]')]
+        .map((item) => [item.dataset.path ?? "", item]),
     );
+    for (const item of treeByPath.values()) item.setAttribute("aria-selected", "false");
+    selectedItem = undefined;
+    tree = root.querySelector<HTMLElement>(".sidebar-tree");
+  };
+  refreshElements();
 
   const setCollapsed = (file: HTMLElement, value: boolean) => {
     const path = file.dataset.path ?? "";
@@ -71,9 +82,10 @@ export function diffWorkspace(ctx: ClientContext) {
     toggle?.setAttribute("aria-label", `${value ? "Expand" : "Collapse"} ${path}`);
     if (value) collapsed.add(path);
     else collapsed.delete(path);
+    onScroll();
   };
   const restore = () => {
-    for (const file of files())
+    for (const file of fileElements)
       if (collapsed.has(file.dataset.path ?? "")) setCollapsed(file, true);
   };
 
@@ -97,17 +109,17 @@ export function diffWorkspace(ctx: ClientContext) {
       return;
     }
     if (target.closest("[data-diff-collapse-all]")) {
-      for (const file of files()) setCollapsed(file, true);
+      for (const file of fileElements) setCollapsed(file, true);
       return;
     }
     if (target.closest("[data-diff-expand-all]")) {
-      for (const file of files()) setCollapsed(file, false);
+      for (const file of fileElements) setCollapsed(file, false);
       return;
     }
     const link = target.closest<HTMLAnchorElement>('.diff-sidebar a[href^="#"]');
     if (link) {
       const path = link.closest<HTMLElement>('[role="treeitem"]')?.dataset.path;
-      const file = files().find((entry) => entry.dataset.path === path);
+      const file = filesByPath.get(path ?? "");
       if (file?.hasAttribute("data-collapsed")) setCollapsed(file, false);
     }
   });
@@ -117,12 +129,11 @@ export function diffWorkspace(ctx: ClientContext) {
   const select = (path: string) => {
     if (path === current) return;
     current = path;
-    for (const item of root.querySelectorAll<HTMLElement>(
-      '.diff-sidebar [role="treeitem"]',
-    ))
-      item.setAttribute("aria-selected", String(item.dataset.path === path));
-    const item = treeItem(path);
-    const list = root.querySelector<HTMLElement>(".sidebar-tree");
+    selectedItem?.setAttribute("aria-selected", "false");
+    const item = treeByPath.get(path);
+    item?.setAttribute("aria-selected", "true");
+    selectedItem = item;
+    const list = tree;
     if (item && list) {
       const itemBox = item.getBoundingClientRect();
       const listBox = list.getBoundingClientRect();
@@ -137,13 +148,19 @@ export function diffWorkspace(ctx: ClientContext) {
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
-      if (top) top.hidden = scroller.scrollTop < TOP_THRESHOLD;
       const edge = scroller.getBoundingClientRect().top + 48;
-      const visible = files().filter(
-        (file) => file.getBoundingClientRect().bottom > edge,
-      );
-      const file = visible[0];
+      // Files are stacked in document order. Read only the bounds needed to find
+      // the first file below the viewport edge, even for large comparisons.
+      let low = 0;
+      let high = fileElements.length;
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        if (fileElements[middle].getBoundingClientRect().bottom > edge) high = middle;
+        else low = middle + 1;
+      }
+      const file = fileElements[low];
       if (file) select(file.dataset.path ?? "");
+      if (top) top.hidden = scroller.scrollTop < TOP_THRESHOLD;
     });
   };
   ctx.on(scroller, "scroll", onScroll, { passive: true });
@@ -233,6 +250,11 @@ export function diffWorkspace(ctx: ClientContext) {
   }
 
   restore();
-  ctx.onUpdate(restore);
+  ctx.onUpdate(() => {
+    refreshElements();
+    current = "";
+    restore();
+    onScroll();
+  });
   onScroll();
 }
