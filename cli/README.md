@@ -306,6 +306,13 @@ bosca swarm update-images --config ./swarm.local.json
 bosca swarm deploy --config ./swarm.local.json
 ```
 
+`swarm deploy` checks node disk space before pulling, removes omitted services
+after readiness passes, and reclaims retired images and stopped task containers.
+It preserves active and rollback images. Configure `imageRetention.enabled`
+and `imageRetention.minimumFreeGiB` (defaults: `true` and `4`) in the Swarm
+configuration. See [Swarm deployment](../deployments/bosca-swarm/README.md)
+for retention and rollback details.
+
 `update-images` saves version pins locally. It keeps each configured image
 repository, infrastructure images, root website images, and secrets. Repeat
 `--image` to update selected Swarm image keys, for example `--image server
