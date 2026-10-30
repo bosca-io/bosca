@@ -1,7 +1,6 @@
 package bosca.cli.a2a
 
 import ai.koog.a2a.model.AgentCard
-import ai.koog.a2a.server.A2AServer
 import ai.koog.a2a.transport.server.jsonrpc.http.HttpJSONRPCServerTransport
 import bosca.cli.BoscaCliCommand
 import bosca.cli.api.KitApi
@@ -97,7 +96,7 @@ internal fun createKitA2AHttpServer(
     path: String,
     accessToken: String?,
 ) = embeddedServer(Netty, host = host, port = port) {
-    val transport = HttpJSONRPCServerTransport(A2AServer(agentExecutor = executor, agentCard = agentCard))
+    val transport = HttpJSONRPCServerTransport(KitA2AServer(executor, agentCard, coroutineContext))
     install(SSE)
     if (!accessToken.isNullOrBlank()) {
         install(Authentication) {
