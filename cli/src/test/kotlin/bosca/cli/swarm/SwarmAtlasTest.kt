@@ -42,24 +42,33 @@ class SwarmAtlasTest {
     @Test
     fun `UI Git registry and embedded workers can be selected independently`() {
         val defaults = SwarmConfig().withSecrets()
-        val site = defaults.sites.first().copy(domain = "example.org", atlas = SwarmAtlas(
-            domain = "build.example.org", separateUi = true, separateGit = true, separateArtifacts = true, runnerEnabled = true,
-        ))
-        val config = defaults.copy(sites = listOf(site))
-        config.validate()
-        val services = siteStack(config, site).getValue("services") as Map<String, Map<String, Any>>
-        assertTrue(services.keys.containsAll(listOf("atlas", "atlas-ui", "git", "artifacts")))
-        val backend = services.getValue("atlas").getValue("environment") as Map<String, String>
-        assertEquals("false", backend["ATLAS_UI_ENABLED"])
-        assertEquals("true", backend["ATLAS_RUNNER_ENABLED"])
-        val ui = services.getValue("atlas-ui").getValue("environment") as Map<String, String>
-        assertEquals("http://${site.id}-atlas:8094/graphql", ui["BML_GRAPHQL_ENDPOINT"])
-        val routes = caddyfile(config)
-        assertTrue(routes.contains("reverse_proxy @atlasUi ${site.id}-atlas-ui:8095"))
-        assertTrue(routes.contains("reverse_proxy @gitBackend ${site.id}-git:8091"))
-        assertTrue(routes.contains("reverse_proxy @registry ${site.id}-artifacts:8084"))
-        assertEquals("http://${site.id}-artifacts:8084", ui["BML_ARTIFACTS_ENDPOINT"])
-        assertTrue(routes.contains("reverse_proxy ${site.id}-artifacts:8084"))
+        for (git in listOf(false, true)) for (artifacts in listOf(false, true))
+            for (separateUi in listOf(false, true)) for (runner in listOf(false, true)) {
+                val site = defaults.sites.first().copy(domain = "example.org", atlas = SwarmAtlas(
+                    domain = "build.example.org", separateUi = separateUi, separateGit = git,
+                    separateArtifacts = artifacts, runnerEnabled = runner,
+                ))
+                val config = defaults.copy(sites = listOf(site))
+                config.validate()
+                val services = siteStack(config, site).getValue("services") as Map<String, Map<String, Any>>
+                assertEquals(git, "git" in services)
+                assertEquals(artifacts, "artifacts" in services)
+                assertEquals(separateUi, "atlas-ui" in services)
+                val backend = services.getValue("atlas").getValue("environment") as Map<String, String>
+                assertEquals((!separateUi).toString(), backend["ATLAS_UI_ENABLED"])
+                assertEquals(runner.toString(), backend["ATLAS_RUNNER_ENABLED"])
+                val registry = if (artifacts) "http://${site.id}-artifacts:8084" else ""
+                assertEquals(registry, backend["BML_ARTIFACTS_ENDPOINT"])
+                if (separateUi) {
+                    val ui = services.getValue("atlas-ui").getValue("environment") as Map<String, String>
+                    assertEquals("http://${site.id}-atlas:8094/graphql", ui["BML_GRAPHQL_ENDPOINT"])
+                    assertEquals(registry, ui["BML_ARTIFACTS_ENDPOINT"])
+                }
+                val routes = caddyfile(config)
+                assertTrue(routes.contains("reverse_proxy @atlasUi ${site.id}-${if (separateUi) "atlas-ui" else "atlas"}:8095"))
+                assertTrue(routes.contains("reverse_proxy @gitBackend ${site.id}-${if (git) "git:8091" else "atlas:8094"}"))
+                assertTrue(routes.contains("reverse_proxy @registry ${site.id}-${if (artifacts) "artifacts:8084" else "atlas:8094"}"))
+            }
     }
 
     @Test

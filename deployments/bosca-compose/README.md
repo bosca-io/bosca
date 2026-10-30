@@ -224,7 +224,9 @@ sudo bosca compose status --directory /opt/bosca
 sudo bosca compose down --directory /opt/bosca
 ```
 
-Each command rerenders from `.env` before invoking Compose. `config` validates
+`up` and `config` rerender from `.env` before invoking Compose. `status` and `down`
+use the existing generated files without rerunning the installer.
+`config` validates
 without printing resolved credentials. `up` waits for health checks, with a
 300-second timeout. `down` retains the bind-mounted data. These commands do not
 install host nginx files, issue certificates, or reload nginx.
@@ -274,6 +276,10 @@ uses `data/postgres`. Preserve `.env`, registry credentials, and all data togeth
 For an offline backup, stop the stack before copying the installation directory so
 repository metadata and stored objects are consistent. `sh compose.sh down` retains
 the bind-mounted files.
+
+The generated PostgreSQL connection limit is 40 with combined Atlas, plus ten
+for each separate Git or artifacts backend. This covers the configured pools
+while retaining ten slots for maintenance and startup operations.
 
 For an image update, edit the relevant version in `.env`, pull that service, then
 run `sh compose.sh up -d --wait SERVICE`. Keep a backup and review the release's

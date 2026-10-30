@@ -1,5 +1,6 @@
 """Validate rendered Atlas routes using the Gateway's RE2 engine and API limits."""
 from pathlib import Path
+import itertools
 import shutil
 import subprocess
 import tempfile
@@ -20,12 +21,36 @@ class AtlasRoutesTest(unittest.TestCase):
         cls.chart = Path(stage.name) / "bosca-atlas-server"
         subprocess.run(["helm", "dependency", "build", str(cls.chart), "--skip-refresh"], check=True, capture_output=True)
 
-    def routes(self, *options):
+    def render(self, *options):
         output = subprocess.run(["helm", "template", "test", str(self.chart),
             "--set", "global.domain=example.com", "--set", "gateway.hostnames[0]=atlas.example.com",
             "--set", "gateway.gitHostnames[0]=git.example.com", "--set", "gateway.registryHostnames[0]=artifacts.example.com",
             *options], check=True, capture_output=True, text=True).stdout
-        return {d["spec"]["hostnames"][0]: d["spec"]["rules"] for d in yaml.safe_load_all(output) if d and d["kind"] == "HTTPRoute"}
+        return [d for d in yaml.safe_load_all(output) if d]
+
+    def routes(self, *options):
+        return {d["spec"]["hostnames"][0]: d["spec"]["rules"] for d in self.render(*options) if d["kind"] == "HTTPRoute"}
+
+    def test_all_deployment_combinations_keep_graphql_and_protocols_on_selected_listeners(self):
+        for git, artifacts, ui, runner in itertools.product((False, True), repeat=4):
+            with self.subTest(git=git, artifacts=artifacts, ui=ui, runner=runner):
+                documents = self.render("--set", f"backends.git.serviceName={'git-api' if git else ''}",
+                                        "--set", f"backends.artifacts.serviceName={'registry' if artifacts else ''}",
+                                        "--set", f"ui.enabled={str(not ui).lower()}",
+                                        "--set", f"ui.serviceName={'atlas-ui' if ui else ''}",
+                                        "--set", f"runner.enabled={str(runner).lower()}")
+                routes = {d["spec"]["hostnames"][0]: d["spec"]["rules"] for d in documents if d["kind"] == "HTTPRoute"}
+                atlas = routes["atlas.example.com"]
+                self.assertEqual(8094, self.rule(atlas, "/graphql")["backendRefs"][0]["port"])
+                self.assertEqual({"name": "atlas-ui" if ui else "test-bosca-atlas-server", "port": 8095},
+                                 self.rule(atlas, "/repositories")["backendRefs"][0])
+                for host in ("atlas.example.com", "git.example.com"):
+                    self.assertEqual(8091 if git else 8094, self.rule(routes[host], "/owner/repo.git/info/refs")["backendRefs"][0]["port"])
+                for host in ("atlas.example.com", "artifacts.example.com"):
+                    self.assertEqual(8084 if artifacts else 8094, self.rule(routes[host], "/v2/ns/pkg/manifests/latest")["backendRefs"][0]["port"])
+                config = yaml.safe_load(next(d["data"]["application.yaml"] for d in documents if d["kind"] == "ConfigMap"))
+                self.assertEqual(not ui, config["atlas"]["ui"]["enabled"])
+                self.assertEqual(runner, config["atlas"]["runner"]["enabled"])
 
     def rule(self, rules, path):
         for rule in rules:

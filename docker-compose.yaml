@@ -327,7 +327,7 @@ services:
 
   atlas-server:
     <<: *bosca-service
-    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io/bosca}/atlas-server:${BOSCA_ATLAS_VERSION:?Set BOSCA_ATLAS_VERSION to a release containing Atlas}
+    image: ${BOSCA_ATLAS_IMAGE_REGISTRY:-ghcr.io/bosca-io/bosca}/atlas-server:${BOSCA_ATLAS_VERSION:?Set BOSCA_ATLAS_VERSION to a release containing Atlas}
     environment:
       <<: *bosca-environment
       ATLAS_HTTP_PORT: "8094"

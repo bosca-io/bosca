@@ -260,6 +260,11 @@ class InstallerTest(unittest.TestCase):
                 self.assertEqual(git, "git" in services)
                 self.assertEqual(registry, "artifacts" in services)
                 self.assertEqual(ui, "atlas-ui" in services)
+                postgres_command = services["postgres"]["command"]
+                connection_limit = int(next(value.split("=", 1)[1] for value in postgres_command
+                                            if value.startswith("max_connections=")))
+                # The main API owns 20 connections; each domain process owns 10.
+                self.assertGreaterEqual(connection_limit, 20 + 10 + 10 * (git + registry) + 10)
                 self.assertEqual(str(not ui).lower(), services["atlas"]["environment"]["ATLAS_UI_ENABLED"])
                 self.assertEqual(str(runner).lower(), services["atlas"]["environment"]["ATLAS_RUNNER_ENABLED"])
                 expected_registry = "http://artifacts:8084" if registry else ""

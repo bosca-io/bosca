@@ -200,7 +200,7 @@ and their companion hostnames send protocol requests to the selected backend.
 When a backend is off, those routes use Atlas. UI pages always stay on Atlas;
 Git-host UI entry points redirect there. Shared `/graphql` remains on Atlas. These options also use
 `images.atlas-ui`, `images.git` and `images.artifacts`, respectively. After new
-services and ingress become healthy, deployment retires only the replaced managed
+services and ingress become healthy and Atlas's API passes readiness, deployment retires only the replaced managed
 Git/registry/UI services; their data and other services remain intact.
 
 ## OAuth redirects

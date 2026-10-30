@@ -125,6 +125,9 @@ def render_compose(directory: Path, settings: dict[str, str]) -> None:
     separate_ui = settings["SEPARATE_UI"] == "true"
     registry = "http://artifacts:8084" if settings["SEPARATE_ARTIFACTS"] == "true" else ""
     substitutions = {
+        # Preserve the baseline's ten spare slots as optional backend pools are added.
+        "POSTGRES_MAX_CONNECTIONS": str(40 + 10 * sum(settings[key] == "true"
+                                                     for key in ("SEPARATE_GIT", "SEPARATE_ARTIFACTS"))),
         "ATLAS_UI_PORT_BINDING": "" if separate_ui else '      - "127.0.0.1:${ATLAS_UI_PORT:-8095}:8095"',
         "ATLAS_HEALTH_PORTS": "8094" if separate_ui else "8094 8095",
         "ATLAS_UI_ENABLED": "false" if separate_ui else "true",

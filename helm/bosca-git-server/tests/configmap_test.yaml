@@ -37,6 +37,9 @@ tests:
       - matchRegex:
           path: data["application.yaml"]
           pattern: 'cookie-secure: true'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'encryption:\s+key: \$SECURITY_ENCRYPTION_KEY'
 
   - it: uses custom API and UI origins consistently
     set:

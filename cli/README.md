@@ -511,7 +511,8 @@ bosca compose down --directory /opt/bosca
 Init accepts independent `--separate-git`, `--separate-artifacts`, `--separate-ui`,
 and `--atlas-runner-enabled` flags. Change those public settings in the installed
 `.env` later and run `bosca compose render --directory /opt/bosca`. Lifecycle
-commands also rerender before invoking Compose. `up` removes obsolete project
+commands `up` and `config` also rerender before invoking Compose. `status` and
+`down` use the existing configuration. `up` removes obsolete project
 containers while retaining bind-mounted data. Install and reload the generated
 host nginx configuration when routing changes. See the
 [Compose deployment guide](../deployments/bosca-compose/README.md) for images,

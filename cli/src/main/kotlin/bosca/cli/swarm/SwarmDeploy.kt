@@ -479,7 +479,7 @@ internal fun readinessFailure(url: String, timeoutMillis: Int = 10_000): String?
 
 internal fun publicReadinessUrls(config: SwarmConfig) = config.sites.flatMap { site ->
     val hosts = site.hosts
-    if (site.rootImage.isBlank()) {
+    val urls = if (site.rootImage.isBlank()) {
         listOf("https://${hosts.root}/api/v1/ready", "https://${hosts.studio}/health",
             "https://${hosts.profiles}/login", "https://${hosts.notifications}/", "https://${hosts.atlas}/login")
     } else {
@@ -487,6 +487,8 @@ internal fun publicReadinessUrls(config: SwarmConfig) = config.sites.flatMap { s
             "https://${hosts.profiles}/login", "https://${hosts.notifications}/",
             "https://${hosts.root}/", "https://${hosts.www}/", "https://${hosts.atlas}/login")
     }
+    // A static UI login page does not establish that the API schema is ready.
+    urls + "https://${hosts.atlas}/api/v1/ready"
 }
 
 private fun checkPublicSites(config: SwarmConfig) {

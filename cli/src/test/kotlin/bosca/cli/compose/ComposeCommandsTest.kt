@@ -56,7 +56,7 @@ class ComposeCommandsTest {
     }
 
     @Test
-    fun `CLI uses argument arrays and renders before running Docker commands without removing data`() {
+    fun `CLI renders before startup and validation and keeps operational commands read only`() {
         val directory = Files.createTempDirectory("compose-cli-execution-")
         try {
             val installation = directory.resolve("installation with spaces")
@@ -73,14 +73,22 @@ class ComposeCommandsTest {
                 "--wait-timeout", "300", "--remove-orphans"), calls[1])
             calls.clear()
             assertEquals(0, ComposeDownCommand(execute).test(args).statusCode)
-            assertEquals(listOf("sh", installation.resolve("compose.sh").toString(), "down", "--remove-orphans"), calls[1])
+            assertEquals(listOf(listOf("sh", installation.resolve("compose.sh").toString(), "down", "--remove-orphans")), calls)
             assertFalse(calls.flatten().any { it == "--volumes" || it == "-v" })
             calls.clear()
             assertEquals(0, ComposeConfigCommand(execute).test(args).statusCode)
             assertEquals(listOf("config", "--quiet"), calls[1].takeLast(2))
             calls.clear()
             assertEquals(0, ComposeStatusCommand(execute).test(args).statusCode)
-            assertEquals("ps", calls[1].last())
+            assertEquals(listOf(listOf("sh", installation.resolve("compose.sh").toString(), "ps")), calls)
+            calls.clear()
+            val composed = Files.readString(installation.resolve("compose.yaml"))
+            val env = installation.resolve(".env")
+            Files.writeString(env, Files.readString(env).replace("ATLAS_DOMAIN=atlas.example.test", "ATLAS_DOMAIN=invalid/domain"))
+            assertEquals(0, ComposeStatusCommand(execute).test(args).statusCode)
+            assertEquals(0, ComposeDownCommand(execute).test(args).statusCode)
+            assertTrue(calls.all { it.first() == "sh" })
+            assertEquals(composed, Files.readString(installation.resolve("compose.yaml")))
         } finally { directory.toFile().deleteRecursively() }
     }
 

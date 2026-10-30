@@ -531,12 +531,14 @@ class SwarmDeploymentTest {
         assertEquals(
             listOf("https://api.example.org/api/v1/ready", "https://studio.example.org/health",
                 "https://profiles.example.org/login", "https://notifications.example.org/",
-                "https://example.org/", "https://www.example.org/", "https://atlas.example.org/login"),
+                "https://example.org/", "https://www.example.org/", "https://atlas.example.org/login",
+                "https://atlas.example.org/api/v1/ready"),
             publicReadinessUrls(config),
         )
         assertEquals(
             listOf("https://example.org/api/v1/ready", "https://studio.example.org/health",
-                "https://profiles.example.org/login", "https://notifications.example.org/", "https://atlas.example.org/login"),
+                "https://profiles.example.org/login", "https://notifications.example.org/", "https://atlas.example.org/login",
+                "https://atlas.example.org/api/v1/ready"),
             publicReadinessUrls(config.copy(sites = listOf(site.copy(rootImage = "")))),
         )
     }

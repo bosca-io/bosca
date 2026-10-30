@@ -54,6 +54,8 @@ jwt:
 
 security:
   autoVerify: ${SECURITY_AUTO_VERIFY:false}
+  encryption:
+    key: "$SECURITY_ENCRYPTION_KEY:changeme"
 
 analyticsServer:
   appId: "$ANALYTICS_APP_ID:bosca-git-server"

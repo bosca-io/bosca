@@ -11,16 +11,21 @@ internal abstract class ComposeAction(name: String, protected val execute: Compo
     private val location by option("--directory", help = "Compose installation directory").default("/opt/bosca")
     protected fun directory(): Path = Path.of(location).toAbsolutePath().normalize()
 
-    protected fun render() {
+    private fun installation(): Path {
         val directory = directory()
         if (!Files.isRegularFile(directory.resolve(".bosca-compose-install.json"))) {
             throw CliktError("Run bosca compose init for $directory first")
         }
+        return directory
+    }
+
+    protected fun render() {
+        val directory = installation()
         ComposePackage.install(directory, listOf("--render"), execute)
     }
 
     protected fun compose(vararg arguments: String) {
-        render()
-        execute(listOf("sh", directory().resolve("compose.sh").toString()) + arguments, directory())
+        val directory = installation()
+        execute(listOf("sh", directory.resolve("compose.sh").toString()) + arguments, directory)
     }
 }

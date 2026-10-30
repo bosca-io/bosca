@@ -61,7 +61,14 @@ data persistence, and troubleshooting.
 For a portable single-host deployment with combined Atlas or separate Git,
 artifacts, and UI services, use `bosca compose init`; see the
 [Compose deployment guide](deployments/bosca-compose/README.md). The root stack
-below keeps separate Git and artifacts services for local development.
+keeps separate Git and artifacts services for local development.
+
+The root stack exposes Atlas on `http://bosca.localhost:8094` (override
+`BOSCA_ATLAS_PORT`). Its UI/API share that proxy port; Git remains available on
+8091 and the separate registry on 8084. Set `BOSCA_ATLAS_VERSION` to a published
+Atlas image release before rendering or starting the stack.
+Use `BOSCA_ATLAS_IMAGE_REGISTRY` when pulling Atlas from a mirror; its default is
+`ghcr.io/bosca-io/bosca`, independent of the other local images' registry setting.
 
 To refresh the default Bosca image versions from the public registry (requires `curl` and `jq`):
 
@@ -96,8 +103,3 @@ Bosca is licensed under the [Apache License 2.0](LICENSE), except for:
 - `bosca-yks`, licensed under the [MIT License](bosca-yks/LICENSE).
 
 Bundled third-party material and its licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-The root Compose stack exposes Atlas on `http://bosca.localhost:8094` (override
-`BOSCA_ATLAS_PORT`). Its UI/API share that proxy port; Git remains available on
-8091 and the separate registry on 8084. Set `BOSCA_ATLAS_VERSION` to a published
-Atlas image release before rendering or starting the stack.

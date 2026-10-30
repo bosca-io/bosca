@@ -68,6 +68,10 @@ class SwarmBackendTest {
                     assertEquals("6379", result.getValue("redis.port").jsonPrimitive.content, service)
                     assertEquals(site.redisDatabase.toString(), result.getValue("redis.database").jsonPrimitive.content, service)
                     assertEquals("${site.id}_", result.getValue("redis.namespace").jsonPrimitive.content, service)
+                    if (service in setOf("server", "runner", "git", "atlas")) {
+                        assertEquals(site.secrets.securityEncryption,
+                            result.getValue("security.encryption.key").jsonPrimitive.content, service)
+                    }
                 }
             }
             saveConfig(path, loaded.copy(sites = loaded.sites.map { it.copy(
@@ -135,6 +139,9 @@ object SwarmBackendProbe {
         val config = ApplicationConfig.loadFromFile(args.single())
         val keys = listOf("cache.type", "jobQueue.factory", "pubsub.type", "distributedLock.type", "counter.type",
             "redis.host", "redis.port", "redis.database", "redis.namespace")
-        println("BACKEND=" + JsonObject(keys.associateWith { JsonPrimitive(config.property(it).getString()) }))
+        println("BACKEND=" + JsonObject(keys.associateWith { JsonPrimitive(config.property(it).getString()) } +
+            listOfNotNull(config.propertyOrNull("security.encryption.key")?.let {
+                "security.encryption.key" to JsonPrimitive(it.getString())
+            })))
     }
 }

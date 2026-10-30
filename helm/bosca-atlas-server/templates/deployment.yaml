@@ -136,10 +136,7 @@ spec:
             - name: app-config
               mountPath: /app/config
               readOnly: true
-          # Liveness only restarts a wedged process: it hits the cheap /api/v1/live endpoint
-          # (no DB/cache/pool access) so a load spike or slow database can't trigger a restart
-          # storm. NOTE: /api/v1/live exists only in images rebuilt from this workspace's
-          # bosca-core — ship this chart change together with a rebuilt git-server image.
+          # Liveness stays independent of contended database and cache resources.
           # The API binds before the UI. Wait for both listeners before admitting traffic.
           startupProbe:
             httpGet:

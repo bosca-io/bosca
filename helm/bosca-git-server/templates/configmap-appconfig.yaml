@@ -66,6 +66,8 @@ data:
 
     security:
       autoVerify: {{ .Values.appConfig.autoVerify }}
+      encryption:
+        key: $SECURITY_ENCRYPTION_KEY
 
     analyticsServer:
       appId: bosca-git-server
