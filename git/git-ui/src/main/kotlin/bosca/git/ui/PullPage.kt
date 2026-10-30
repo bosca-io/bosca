@@ -44,10 +44,10 @@ data class PullPage(
     fun commitsHref(offset: Long = commitOffset): String = "$href&view=commits&commitOffset=$offset"
 
     val hasMergeBlockers: Boolean
-        get() = !pull.mergeable
+        get() = pull.mergeable != true
 
     val hasFailingStatusChecks: Boolean
-        get() = pull.failingStatusChecks.isNotEmpty()
+        get() = !pull.failingStatusChecks.isNullOrEmpty()
 
     val mergeIcon: String
         get() = when (pull.status.name) {
@@ -63,7 +63,7 @@ data class PullPage(
             "CLOSED" -> "Pull request closed"
             "DRAFT" -> "Draft pull request"
             else -> when {
-                pull.conflictingFiles.isNotEmpty() -> "Resolve merge conflicts"
+                !pull.conflictingFiles.isNullOrEmpty() -> "Resolve merge conflicts"
                 hasMergeBlockers -> "Merge unavailable"
                 hasFailingStatusChecks -> "Required status checks are not passing"
                 else -> "No merge conflicts"
@@ -76,10 +76,10 @@ data class PullPage(
             "CLOSED" -> "This pull request was closed without merging."
             "DRAFT" -> "Mark this pull request ready when you want a review."
             else -> when {
-                pull.conflictingFiles.isNotEmpty() ->
+                !pull.conflictingFiles.isNullOrEmpty() ->
                     "Resolve these files locally and push the changes to your source branch."
                 hasMergeBlockers -> "Check that the source and target branches are available."
-                hasFailingStatusChecks -> "Required checks: ${pull.failingStatusChecks.joinToString(", ")}."
+                hasFailingStatusChecks -> "Required checks: ${pull.failingStatusChecks.orEmpty().joinToString(", ")}."
                 else -> "Required reviews and checks must pass before merging."
             }
         }

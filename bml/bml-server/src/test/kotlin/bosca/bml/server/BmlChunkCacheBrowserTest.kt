@@ -55,6 +55,7 @@ class BmlChunkCacheBrowserTest {
                 const lazy = await import('./chunks/lazy-IJKLMNOP.js');
                 const library = await import('/_bml/libraries/key/modules/widget.js');
                 document.getElementById('result').textContent = JSON.stringify([import.meta.url, ...urls, lazy.url, ...library.urls]);
+                document.getElementById('result').dataset.complete = 'true';
             """.trimIndent(),
             "prod/chunks/shared-ABCDEFGH.js" to """
                 import { url } from './nested-QRSTUVWX.js';
@@ -93,7 +94,7 @@ class BmlChunkCacheBrowserTest {
                 override val clientModule = "Page.js"
                 override val assets = applicationAssets
                 override suspend fun render(ctx: RenderContext) {
-                    ctx.writer.markup("<html><head></head><body><pre id=\"result\">pending</pre></body></html>")
+                    ctx.writer.markup("<html><head></head><body><pre id=\"result\"></pre></body></html>")
                 }
             }
             val server = BmlServer(CompiledProject("chunks", version), listOf(page), port, dev = false, clientDir = clientDir)

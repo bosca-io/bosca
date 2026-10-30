@@ -80,9 +80,9 @@ class DesignLibraryTest {
             val manifest = BmlLibraryArtifacts.decode(jar.getInputStream(jar.getJarEntry(BmlLibraryArtifacts.MANIFEST_PATH)).reader().readText())
             assertEquals("io.bosca:bml-design", manifest.library)
             assertEquals("bosca.design.generated", manifest.generatedPackage)
-            assertEquals(setOf("alert", "app-header", "app-shell", "badge", "bosca-mark", "button", "card", "chart", "checkbox", "comment-editor", "confirm-dialog", "copy", "copy-field", "dashboard-grid", "dashboard-item", "dialog", "disclosure-heading",
-                "document-editor", "empty-state", "field", "flow-editor", "fullscreen-button", "icon", "icon-button", "icon-link", "input", "json-editor", "loading-state", "page-heading", "page-shell", "panel", "popover", "profile", "profile-menu",
-                "search-input", "select", "section", "section-heading", "segmented-control", "source-view", "spinner", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs", "workspace"),
+            assertEquals(setOf("alert", "app-header", "app-shell", "badge", "bosca-mark", "button", "button-link", "card", "chart", "checkbox", "comment-editor", "confirm-dialog", "copy", "copy-field", "dashboard-grid", "dashboard-item", "dialog", "disclosure-heading",
+                "document-editor", "empty-state", "field", "file-drop", "flow-editor", "form-actions", "form-body", "fullscreen-button", "icon", "icon-button", "icon-link", "input", "json-editor", "loading-state", "page-heading", "page-shell", "pagination", "panel", "popover", "profile", "profile-menu", "progress-bar",
+                "search-input", "select", "section", "section-heading", "segmented-control", "source-view", "spinner", "subsystem-links", "subsystem-switcher", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs", "workspace"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
             assertTrue(manifest.requirements.isEmpty())
             assertTrue(manifest.providerRegistrars.isEmpty())
@@ -384,7 +384,7 @@ class DesignLibraryTest {
         ServerSocketChannel.open(StandardProtocolFamily.INET).use { ipv4 ->
             ipv4.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
             ServerSocketChannel.open(StandardProtocolFamily.INET6).use { ipv6 ->
-                ipv6.bind(InetSocketAddress(InetAddress.getByName("::1"), 0))
+                ipv6.bind(InetSocketAddress(InetAddress.getByName("::1"), (ipv4.localAddress as InetSocketAddress).port))
                 val occupied = listOf(ipv4, ipv6).map { (it.localAddress as InetSocketAddress).port }
                 withServer(false) { production, productionClient ->
                     withServer(true) { development, developmentClient ->
@@ -486,7 +486,11 @@ class DesignLibraryTest {
     private fun withLauncher(test: (List<String>, File?) -> Unit) {
         val binary = System.getProperty("design.fixture.binary")?.let(::File)
         if (binary == null) {
-            test(listOf(System.getProperty("design.fixture.java"), "-cp", classpath, "bosca.design.example.MainKt"), null)
+            // The runner owns test concurrency; this child serves a single browser check.
+            test(listOf(System.getProperty("design.fixture.java"),
+                "-XX:ActiveProcessorCount=1",
+                "-Djava.net.preferIPv4Stack=false", "-Djava.net.preferIPv6Addresses=true",
+                "-cp", classpath, "bosca.design.example.MainKt"), null)
             return
         }
         assertTrue(binary.isFile && binary.canExecute(), binary.path)
@@ -519,9 +523,11 @@ class DesignLibraryTest {
                 Thread.sleep(25)
             }
             val port = requireNotNull(boundPort) { "Consumer did not report a successful bind: ${log.readText()}" }
-            val endpoint = "http://localhost:$port"
+            val host = if (System.getProperty("design.fixture.binary") == null) "[::1]" else "localhost"
+            val endpoint = "http://$host:$port"
             base = endpoint
-            HttpClient.newBuilder().cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build().use { client ->
+            HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                .cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build().use { client ->
                 test(endpoint, client)
             }
         } catch (failure: Throwable) {

@@ -29,6 +29,7 @@ private val VALID_NAME_PATTERN = Regex("""^[a-zA-Z0-9\-_.@]+$""")
 private fun validateName(name: String, label: String = "name") {
     require(name.isNotBlank()) { "$label must not be blank" }
     require(name.length <= MAX_NAME_LENGTH) { "$label must not exceed $MAX_NAME_LENGTH characters" }
+    require(name != ".") { "$label must not be '.'" }
     require(!name.contains("..")) { "$label must not contain '..'" }
     require(VALID_NAME_PATTERN.matches(name)) { "$label contains invalid characters: only alphanumeric, '-', '_', '.', '@' are allowed" }
 }

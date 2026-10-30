@@ -40,6 +40,9 @@ dependencies {
     add(libraryFixtureClasspath.name, project(":bml:bml-annotations"))
 }
 tasks.test {
+    // Each TestKit class owns its fixture projects; separate JVMs also isolate in-process DI state.
+    maxParallelForks = 2
+    testLogging.events("passed", "failed", "skipped")
     dependsOn(libraryFixtureClasspath)
     inputs.files(libraryFixtureClasspath).withPropertyName("libraryFixtureClasspath").withNormalizer(ClasspathNormalizer::class.java)
     systemProperty("bml.libraryFixtureClasspath", libraryFixtureClasspath.asPath)

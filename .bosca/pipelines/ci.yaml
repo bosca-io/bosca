@@ -49,7 +49,7 @@ jobs:
           esac
           npm config set @bosca:registry "$registry/npm/" --location=user
       - name: Start Shared Test Resources
-        run: ./gradlew --no-daemon testResourcesUp
+        run: ./gradlew --no-daemon -Pbosca.ios.enabled=false testResourcesUp
       - name: Install BML Bundler Dependencies
         # The BML client bundlers do a bare `import "esbuild"` resolved from the
         # bml-runtime checkout's node_modules, which is git-ignored — without
@@ -65,9 +65,14 @@ jobs:
           "$bml_chrome" --version
           printf 'BML_DESIGN_CHROME_BINARY=%q\n' "$bml_chrome" >> "$BOSCA_ENV"
       - name: Run BML Browser Tests
-        run: ./gradlew --no-daemon --parallel --max-workers=8 -Pbml.browser.workers=4 :bml:bml-server:chunkCacheBrowserTest :notifications-web:test :bml:examples:design-library:test :bml:bml-design-catalog:test
+        run: ./gradlew --no-daemon -Pbosca.ios.enabled=false --parallel --max-workers=8 -Pbml.browser.workers=4 testBmlBrowser
       - name: Run JVM Tests
-        run: ./gradlew --no-daemon --max-workers=8 -Pbml.browser.workers=4 test
+        run: >-
+          ./gradlew --no-daemon -Pbosca.ios.enabled=false --max-workers=8 test
+          -x :bml:bml-server:chunkCacheBrowserTest
+          -x :notifications-web:test
+          -x :bml:examples:design-library:test
+          -x :bml:bml-design-catalog:test
       - name: Stop Shared Test Resources
-        run: ./gradlew --no-daemon testResourcesDown
+        run: ./gradlew --no-daemon -Pbosca.ios.enabled=false testResourcesDown
         if: always()

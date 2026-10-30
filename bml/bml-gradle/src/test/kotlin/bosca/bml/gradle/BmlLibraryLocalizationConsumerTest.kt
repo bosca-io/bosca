@@ -18,12 +18,12 @@ import groovy.json.JsonSlurper
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
 import java.io.File
-import java.net.ServerSocket
 import java.net.URI
 import java.net.URLClassLoader
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.time.Duration
 import java.util.Locale
 import java.util.jar.JarFile
 import kotlin.concurrent.thread
@@ -166,7 +166,7 @@ class BmlLibraryLocalizationConsumerTest {
                     }
                 }
                 for (dev in listOf(false, true)) {
-                    val port = ServerSocket(0).use { it.localPort }
+                    val port = 0
                     val host = BmlServer(CompiledProject(name = "localized", version = "1"), pages, port, dev = dev,
                         components = components, componentRenderers = renderers,
                         localePolicy = BmlLocalePolicy.static(BmlLocales(listOf("en", "es-MX"))), messageSource = messages)
@@ -176,56 +176,58 @@ class BmlLibraryLocalizationConsumerTest {
                     val engine = NettyServerEngine(app, port)
                     thread(isDaemon = true, name = "bml-library-localization") { engine.start() }
                     try {
-                        awaitServer(port)
-                        val client = HttpClient.newHttpClient()
-                        fun get(path: String, etag: String? = null): HttpResponse<String> {
-                            val request = HttpRequest.newBuilder(URI("http://localhost:$port$path")).header("Accept-Language", "es-MX")
-                            etag?.let { request.header("If-None-Match", it) }
-                            return client.send(request.GET().build(), HttpResponse.BodyHandlers.ofString())
+                        val boundPort = awaitServer(engine)
+                        HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5))
+                            .version(HttpClient.Version.HTTP_1_1).build().use { client ->
+                            fun get(path: String, etag: String? = null): HttpResponse<String> {
+                                val request = HttpRequest.newBuilder(URI("http://[::1]:$boundPort$path")).timeout(Duration.ofSeconds(10)).header("Accept-Language", "es-MX")
+                                etag?.let { request.header("If-None-Match", it) }
+                                return client.send(request.GET().build(), HttpResponse.BodyHandlers.ofString())
+                            }
+                            greeting = "Hola {name}"
+                            val negotiated = get("/")
+                            assertEquals("private, no-store", negotiated.headers().firstValue("Cache-Control").orElseThrow())
+                            val first = get("/?lang=es-MX")
+                            assertEquals(200, first.statusCode(), first.body())
+                            for (text in listOf("Hola Ada", "2 artículos", "Un artículo", "Buscar", "Privado", "Host source function", "Panel")) {
+                                assertTrue(text in first.body(), "Missing $text: ${first.body()}")
+                            }
+                            val fallback = get("/?lang=en").body()
+                            for (text in listOf("Hello Ada", "2 items", "One item", "Search", "Private default")) assertTrue(text in fallback, fallback)
+                            val etag = first.headers().firstValue("ETag").orElse(null)
+                            if (dev) {
+                                assertEquals(null, etag)
+                                assertEquals("no-store", first.headers().firstValue("Cache-Control").orElseThrow())
+                            } else {
+                                assertTrue(etag != null, first.headers().toString())
+                                assertEquals(304, get("/?lang=es-MX", etag).statusCode())
+                            }
+                            val catalogResponse = get("/_bml/i18n/es-MX.json")
+                            assertTrue("Host source function" in catalogResponse.body(), catalogResponse.body())
+                            val catalogEtag = catalogResponse.headers().firstValue("ETag").orElseThrow()
+                            assertEquals(304, get("/_bml/i18n/es-MX.json", catalogEtag).statusCode())
+                            greeting = "Saludos {name}"
+                            val changed = get("/?lang=es-MX", etag)
+                            assertEquals(200, changed.statusCode(), changed.body())
+                            assertTrue("Saludos Ada" in changed.body(), changed.body())
+                            if (!dev) assertFalse(etag == changed.headers().firstValue("ETag").orElseThrow())
+                            assertEquals(200, get("/_bml/i18n/es-MX.json", catalogEtag).statusCode())
                         }
-                        greeting = "Hola {name}"
-                        val negotiated = get("/")
-                        assertEquals("private, no-store", negotiated.headers().firstValue("Cache-Control").orElseThrow())
-                        val first = get("/?lang=es-MX")
-                        assertEquals(200, first.statusCode(), first.body())
-                        for (text in listOf("Hola Ada", "2 artículos", "Un artículo", "Buscar", "Privado", "Host source function", "Panel")) {
-                            assertTrue(text in first.body(), "Missing $text: ${first.body()}")
-                        }
-                        val fallback = get("/?lang=en").body()
-                        for (text in listOf("Hello Ada", "2 items", "One item", "Search", "Private default")) assertTrue(text in fallback, fallback)
-                        val etag = first.headers().firstValue("ETag").orElse(null)
-                        if (dev) {
-                            assertEquals(null, etag)
-                            assertEquals("no-store", first.headers().firstValue("Cache-Control").orElseThrow())
-                        } else {
-                            assertTrue(etag != null, first.headers().toString())
-                            assertEquals(304, get("/?lang=es-MX", etag).statusCode())
-                        }
-                        val catalogResponse = get("/_bml/i18n/es-MX.json")
-                        assertTrue("Host source function" in catalogResponse.body(), catalogResponse.body())
-                        val catalogEtag = catalogResponse.headers().firstValue("ETag").orElseThrow()
-                        assertEquals(304, get("/_bml/i18n/es-MX.json", catalogEtag).statusCode())
-                        greeting = "Saludos {name}"
-                        val changed = get("/?lang=es-MX", etag)
-                        assertEquals(200, changed.statusCode(), changed.body())
-                        assertTrue("Saludos Ada" in changed.body(), changed.body())
-                        if (!dev) assertFalse(etag == changed.headers().firstValue("ETag").orElseThrow())
-                        assertEquals(200, get("/_bml/i18n/es-MX.json", catalogEtag).statusCode())
                     } finally { engine.stopWithoutHalting() }
                 }
             }
         } finally { work.deleteRecursively() }
     }
 
-    private fun awaitServer(port: Int) {
+    private fun awaitServer(engine: NettyServerEngine): Int {
         repeat(100) {
-            try { java.net.Socket("localhost", port).use { return } }
-            catch (_: java.net.ConnectException) { Thread.sleep(25) }
+            engine.boundPort?.let { return it }
+            Thread.sleep(25)
         }
         error("BML localization fixture server did not start")
     }
 
     private fun runner(project: File, vararg tasks: String): GradleRunner = GradleRunner.create()
         .withProjectDir(project).withPluginClasspath()
-        .withArguments(*tasks, "--stacktrace", "--configuration-cache", "--max-workers=2")
+        .withArguments(*tasks, "--stacktrace", "--configuration-cache", "--no-watch-fs", "--max-workers=2")
 }

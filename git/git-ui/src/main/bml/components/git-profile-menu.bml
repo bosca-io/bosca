@@ -1,0 +1,16 @@
+<component tag="git-profile-menu">
+  <div>
+    <profile-menu label="Profile" name="Profile" subtitle="Signed in">
+      <button ref="appearance" type="button" role="menuitem" class="profile-action" disabled>
+        <span class="menu-icon" ref="appearanceLightIcon"><icon name="sun" /></span>
+        <span class="menu-icon" ref="appearanceDarkIcon" hidden><icon name="moon" /></span>
+        <span ref="appearanceLabel">Light mode</span>
+      </button>
+      <button ref="signout" type="button" role="menuitem" class="profile-action danger" icon="log-out" disabled><span>Sign out</span></button>
+    </profile-menu>
+  </div>
+  <script client scoped>
+    import { mountProfileMenu } from "@bosca/bml-auth-ui/profile-menu";
+    mountProfileMenu(ctx);
+  </script>
+</component>

@@ -46,22 +46,6 @@ class Configuration {
     ): bosca.workops.deploy.DeployTarget =
         bosca.workops.deploy.GooglePlayDeployTarget(environmentService, secrets, artifacts, blobs, publisher, releaseNotes)
 
-    /** Verifies a CI job's declared artifacts actually landed in the registry — the git-ci run
-     *  finalizer fails the job when they didn't. */
-    @Provider(singleton = true)
-    fun producedArtifactVerifier(
-        artifacts: bosca.artifacts.service.ArtifactRepositoryService,
-    ): bosca.git.service.ProducedArtifactVerifier =
-        bosca.workops.service.RegistryProducedArtifactVerifier(artifacts)
-
-    /** Verifies a CI job's REQUIRED artifacts exist in the registry — the git-ci requirement checker
-     *  gates job dispatch on this. Same registry resolution as the produced verifier. */
-    @Provider(singleton = true)
-    fun requiredArtifactVerifier(
-        artifacts: bosca.artifacts.service.ArtifactRepositoryService,
-    ): bosca.git.service.RequiredArtifactVerifier =
-        bosca.workops.service.RegistryProducedArtifactVerifier(artifacts)
-
     /** Executes git-ci's `uses: deploy` action: deploy.yaml target selection, artifact
      *  routing, environment permission against the initiating principal, adapter invocation. */
     @Provider(singleton = true)

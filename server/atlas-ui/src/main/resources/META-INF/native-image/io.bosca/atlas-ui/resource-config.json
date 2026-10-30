@@ -1,0 +1,18 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "pattern": "atlas-ui\\.(css|js)"
+      },
+      {
+        "pattern": "bml/applications/bosca\\.atlas\\.ui\\.generated/.*"
+      },
+      {
+        "pattern": "META-INF/licenses/bml-design/.*\\.txt"
+      },
+      {
+        "pattern": "atlas-mark\\.svg"
+      }
+    ]
+  }
+}

@@ -8,8 +8,12 @@ withDefaults(defineProps<{
   accent: '#5ec5ff',
 })
 
+/** Lets pages open the menu programmatically (e.g. the command palette's ?new=1 trigger). */
+const open = defineModel<boolean>('open', { default: false })
+
 const { query: gqlQuery, mutation: gqlMutation } = useGraphQL()
 const router = useRouter()
+const toast = useToast()
 
 const templatesGql = gql`
   query GetDocumentTemplates {
@@ -33,6 +37,8 @@ const templatesGql = gql`
   }
 `
 
+// setReady: true moves the new document out of the pending workflow state so
+// it lands in the editor as an editable draft.
 const addDocumentGql = gql`
   mutation AddDocument($parentCollectionId: UUID!, $templateId: UUID!, $templateVersion: Int!) {
     content {
@@ -54,7 +60,8 @@ interface TemplateInfo {
 
 const templates = ref<TemplateInfo[]>([])
 const rootCollectionId = ref<string>('')
-const loading = ref(false)
+const templatesLoading = ref(true)
+const creating = ref(false)
 
 onMounted(async () => {
   try {
@@ -74,21 +81,29 @@ onMounted(async () => {
       .sort((a, b) => a.name.localeCompare(b.name))
   } catch (e) {
     console.error('Failed to load document templates', e)
+  } finally {
+    templatesLoading.value = false
   }
 })
 
-const menuItems = computed<OverflowMenuItem[]>(() =>
-  templates.value.map(t => ({
+const menuItems = computed<OverflowMenuItem[]>(() => {
+  if (templatesLoading.value) {
+    return [{ id: 'loading', label: 'Loading templates…', disabled: true }]
+  }
+  if (templates.value.length === 0) {
+    return [{ id: 'empty', label: 'No templates available', disabled: true }]
+  }
+  return templates.value.map(t => ({
     id: t.id,
     label: t.name,
     icon: 'file',
-  })),
-)
+  }))
+})
 
 async function onSelect(templateId: string) {
   const template = templates.value.find(t => t.id === templateId)
-  if (!template || !rootCollectionId.value) return
-  loading.value = true
+  if (!template || !rootCollectionId.value || creating.value) return
+  creating.value = true
   try {
     const result = await gqlMutation<{
       content: { metadata: { addDocument: { id: string } } }
@@ -99,18 +114,20 @@ async function onSelect(templateId: string) {
     })
     const newId = result?.content?.metadata?.addDocument?.id
     if (newId) {
-      await router.push(`/cms/editor/${newId}`)
+      await router.push(getEditorRoute(newId, 'bosca/v-document'))
     }
   } catch (e) {
     console.error('Failed to create document', e)
+    toast.error('Failed to create document')
   } finally {
-    loading.value = false
+    creating.value = false
   }
 }
 </script>
 
 <template>
   <OverflowMenu
+    v-model:open="open"
     :items="menuItems"
     @select="onSelect"
   >
@@ -120,7 +137,7 @@ async function onSelect(templateId: string) {
         icon="plus"
         size="sm"
         :accent="accent"
-        :disabled="loading || templates.length === 0"
+        :disabled="creating"
         @click="toggle">
         New Document
       </Button>

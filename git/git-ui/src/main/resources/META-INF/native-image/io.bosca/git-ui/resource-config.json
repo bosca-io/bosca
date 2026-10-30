@@ -1,8 +1,15 @@
 {
   "resources": {
     "includes": [
-      { "pattern": "bml/applications/bml\\.generated/.*" },
-      { "pattern": "META-INF/licenses/bml-design/.*\\.txt" }
+      {
+        "pattern": "bml/applications/bml\\.generated/.*"
+      },
+      {
+        "pattern": "META-INF/licenses/bml-design/.*\\.txt"
+      },
+      {
+        "pattern": "git-ui\\.(css|js)"
+      }
     ]
   }
 }

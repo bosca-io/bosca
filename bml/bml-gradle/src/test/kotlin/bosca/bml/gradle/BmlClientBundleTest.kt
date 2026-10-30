@@ -124,5 +124,5 @@ class BmlClientBundleTest {
     }
 
     private fun runner(project: File, vararg tasks: String) = GradleRunner.create().withProjectDir(project).withPluginClasspath()
-        .withArguments(*tasks, "--configuration-cache", "--no-build-cache", "--stacktrace", "--max-workers=2")
+        .withArguments(*tasks, "--configuration-cache", "--no-build-cache", "--no-watch-fs", "--stacktrace", "--max-workers=2")
 }

@@ -17,18 +17,21 @@ internal fun verifyGitServerNativeResources(report: File, artifacts: File) {
     val resources = Json.parseToJsonElement(report.readText()).jsonArray
         .associateBy { it.jsonObject.getValue("name").jsonPrimitive.content }
     val loader = GitServerIntegrationTest::class.java.classLoader
+    val expected = linkedMapOf<String, List<String>>()
+    // The host manifest includes consumed library assets under the application resource root.
     val root = "bml/applications/bml.generated"
     val manifestPath = "$root/client-manifest.json"
     val manifestBytes = requireNotNull(loader.getResourceAsStream(manifestPath)).use { it.readAllBytes() }
     val manifest = Json.decodeFromString(BmlClientManifest.serializer(), manifestBytes.decodeToString())
     BmlApplicationAssets.validateFiles(manifest.files)
-    val expected = manifest.files.associate { "$root/${it.path}" to listOf(it.digest) }.toMutableMap()
+    val indexedAssets = manifest.files.size
+    expected.putAll(manifest.files.associate { "$root/${it.path}" to listOf(it.digest) })
     expected[manifestPath] = listOf(ContentDigest.sha256(manifestBytes))
     for (name in listOf("geist", "lucide", "source-view", "json-editor")) {
         val path = "META-INF/licenses/bml-design/$name.txt"
         expected[path] = listOf(requireNotNull(loader.getResourceAsStream(path)).use { ContentDigest.sha256(it.readAllBytes()) })
     }
-    for (path in listOf("git-ui.css", "git-ui.js")) {
+    for (path in listOf("git-ui.css", "git-ui.js", "auth-ui.css")) {
         expected[path] = listOf(requireNotNull(loader.getResourceAsStream(path)).use { ContentDigest.sha256(it.readAllBytes()) })
     }
     expected["META-INF/bosca/bml/build-id"] = listOf("host", "ui").map { host ->
@@ -57,7 +60,7 @@ internal fun verifyGitServerNativeResources(report: File, artifacts: File) {
     }
     File(artifacts, "resource-origins.json").writeText(buildJsonObject {
         put("evidence", "Compiler-reported embedding origins and sizes; hashes verify input JAR bytes. HTTP font bytes are verified separately.")
-        put("indexedAssets", manifest.files.size)
+        put("indexedAssets", indexedAssets)
         put("resources", JsonObject(verified))
     }.toString())
 }

@@ -366,10 +366,10 @@ class GitUiRoutesTest {
         )).use { Json.parseToJsonElement(it.readBytes().decodeToString()).jsonObject }
         val nativePatterns = nativeConfig.getValue("resources").jsonObject.getValue("includes").jsonArray
             .map { Regex(it.jsonObject.getValue("pattern").jsonPrimitive.content) }
-        val manifestPath = "bml/applications/bml.generated/client-manifest.json"
-        assertTrue(nativePatterns.any { it.matches(manifestPath) })
-        assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$manifestPath")?.use { it.readBytes() })
-        assertTrue(nativePatterns.any { it.matches("META-INF/licenses/bml-design/geist.txt") })
+        for (resource in listOf("git-ui.css", "git-ui.js")) {
+            assertTrue(nativePatterns.any { it.matches(resource) }, resource)
+            assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$resource")?.use { it.readBytes() })
+        }
         paths.forEach { path ->
             val resource = "bml/applications/bml.generated/" + path.removePrefix("/_bml/")
             assertTrue(nativePatterns.any { it.matches(resource) }, resource)
@@ -1191,13 +1191,30 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `only overview requests trial merge and required check details`() {
+        for (view in listOf("overview", "files", "commits", "reviews")) {
+            val before = requests.size
+            val response = get("/pulls/pull?view=$view")
+            assertEquals(200, response.statusCode(), response.body())
+            val lookup = requests.drop(before).single { it.operation == "GitUiPull" }
+            assertEquals(view == "overview", lookup.variables["mergeDetails"]?.jsonPrimitive?.boolean)
+            for (field in listOf("mergeable", "conflictingFiles", "failingStatusChecks")) {
+                assertTrue("$field @include(if: ${'$'}mergeDetails)" in lookup.query, lookup.query)
+            }
+        }
+    }
+
+    @Test
     fun `pull detail resolves its path ID without repository and number parameters`() {
         for (suffix in listOf("", "?view=files", "?view=reviews", "?repo=other&number=99")) {
             val response = get("/pulls/pull$suffix")
             assertEquals(200, response.statusCode(), response.body())
             assertTrue("Alice · @alice" in response.body(), response.body())
             val lookup = requests.last { it.operation == "GitUiPull" }
-            assertEquals(buildJsonObject { put("id", "pull") }, lookup.variables)
+            assertEquals(buildJsonObject {
+                put("id", "pull")
+                put("mergeDetails", "view=files" !in suffix && "view=reviews" !in suffix)
+            }, lookup.variables)
         }
         assertEquals(404, get("/pulls/missing?repo=repo&number=1").statusCode())
     }
@@ -3318,6 +3335,19 @@ class GitUiRoutesTest {
                         operation == "SignOut" ->
                             """{"data":{"security":{"login":{"signOut":true}}}}"""
                         else -> """{"data":{"probe":true}}"""
+                    }.let { response ->
+                        if (operation != "GitUiPull" || variables["mergeDetails"]?.jsonPrimitive?.boolean != false) response
+                        else {
+                            val root = Json.parseToJsonElement(response).jsonObject
+                            val data = root.getValue("data").jsonObject
+                            val git = data.getValue("git").jsonObject
+                            val current = git["pullRequest"]
+                            if (current == null || current == JsonNull) response
+                            else {
+                                val details = JsonObject(current.jsonObject - setOf("mergeable", "conflictingFiles", "failingStatusChecks"))
+                                JsonObject(root + ("data" to JsonObject(data + ("git" to JsonObject(git + ("pullRequest" to details)))))).toString()
+                            }
+                        }
                     }.toByteArray()
                 exchange.responseHeaders.set("Content-Type", "application/json")
                 exchange.sendResponseHeaders(200, result.size.toLong())

@@ -1,0 +1,19 @@
+<component tag="pagination">
+  <prop name="page" type="Long" default="1L" />
+  <prop name="previousHref" type="String" default="" />
+  <prop name="nextHref" type="String" default="" />
+  <prop name="hasPrevious" type="Boolean" default="false" />
+  <prop name="hasNext" type="Boolean" default="false" />
+  <prop name="label" type="String" default="Pages" />
+  <if hasPrevious || hasNext || previousHref.isNotBlank() || nextHref.isNotBlank()>
+    <nav class="pagination" :aria-label="label" {...attrs}>
+      <span class="page-number">{ "Page " + page }</span>
+      <div class="page-actions"><if previousHref.isNotBlank()><button-link :href="previousHref" icon="arrow-left">Previous</button-link></if><if nextHref.isNotBlank()><button-link :href="nextHref" icon="arrow-right">Next</button-link></if><slot /></div>
+    </nav>
+  </if>
+  <style scoped>
+    .pagination { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding:12px 16px; border-top:1px solid var(--line); }
+    .page-number { color:var(--fg-3); font-size:12px; }
+    .page-actions { display:flex; align-items:center; gap:8px; }
+  </style>
+</component>

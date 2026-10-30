@@ -47,6 +47,8 @@ does not establish readiness. The same lifecycle is used for workspace, source-f
 native launches. An integration check holds separate IPv4/IPv6 listeners open while production and
 development children bind distinct endpoints. The application packages its logging configuration
 for the native executable as well as the JVM.
+JVM fixtures bind and connect through IPv6 loopback and use HTTP/1.1, matching Chromium's
+fixture transport while keeping server ports separate from its IPv4 debugging listener.
 
 The compiled-consumer browser checks also verify empty tabs, segments and tree bodies at desktop
 and phone widths, with scripts enabled and disabled. Empty widgets stay out of the accessibility
@@ -222,6 +224,8 @@ no producer sources or source archives. Framework support JARs, the Gradle/compi
 browser toolchain are staged separately; this check does not publish to Maven Local or a remote registry.
 It verifies cached compilation/bundling, identical asset hashes after a clean build, a JAR-only runtime,
 strict generated-client/public-type checking and the same production/development browser suite.
+The two browser modes run concurrently after the shared artifact build, with separate servers,
+profiles, cookies and report names.
 It does not establish native executable or IDE source-navigation acceptance.
 
 Run that check alone from the workspace root:

@@ -1,0 +1,6 @@
+<page route="/artifacts/repositories/{id}" requireAuth>
+  <script server provides="page">bosca.artifacts.ui.artifactRepository()</script>
+  <artifacts-layout :admin="page.admin" :title="page.title">
+    <artifacts-repository :initial="page" />
+  </artifacts-layout>
+</page>

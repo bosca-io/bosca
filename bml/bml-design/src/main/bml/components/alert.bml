@@ -21,6 +21,9 @@
     .alert[data-tone="success"] {
       color: var(--ok);
     }
+    .alert[data-tone="info"] {
+      color: var(--info);
+    }
     .alert[data-compact] {
       margin: 0;
       font-size: 12px;

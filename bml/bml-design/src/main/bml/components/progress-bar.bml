@@ -1,0 +1,22 @@
+<component tag="progress-bar">
+  <prop name="value" type="Double" default="0.0" />
+  <prop name="max" type="Double" default="100.0" />
+  <prop name="label" type="String" required />
+  <html:progress class="progress-bar" :value="value" :max="max" :aria-label="label" {...attrs} />
+  <style scoped>
+    .progress-bar {
+      appearance:none;
+      display:block;
+      width:100%;
+      height:6px;
+      overflow:hidden;
+      border:0;
+      border-radius:var(--r-xs);
+      background:var(--bg-3);
+      accent-color:var(--accent);
+    }
+    .progress-bar::-webkit-progress-bar { background:var(--bg-3); border-radius:var(--r-xs); }
+    .progress-bar::-webkit-progress-value { background:var(--accent); border-radius:var(--r-xs); }
+    .progress-bar::-moz-progress-bar { background:var(--accent); border-radius:var(--r-xs); }
+  </style>
+</component>

@@ -1,0 +1,47 @@
+<component tag="subsystem-links">
+  <prop name="items" type="List<bosca.design.model.SubsystemNavigationItem>" required />
+  <prop name="currentId" type="String" default="" />
+  <prop name="variant" type="String" default="home" />
+  <prop name="recent" type="Boolean" default="false" />
+  <div :class='"subsystem-grid variant-" + variant' :data-subsystem-recents="recent" :data-current-subsystem="currentId">
+    <for item in items>
+      <a :href="item.href" class="subsystem-item" :data-subsystem-id="item.id" :data-subsystem-label="item.label" :data-subsystem-description="item.description" :aria-current='if (item.id == currentId) "page" else "false"' :style='"--item-accent: " + item.accent'>
+        <span class="subsystem-item-icon"><icon :name="item.icon" :size='if (variant == "home") 16 else 14' /></span>
+        <span class="subsystem-item-text">
+          <strong>{ item.label }</strong>
+          <span>{ item.description }</span>
+        </span>
+      </a>
+    </for>
+  </div>
+  <style scoped>
+    .subsystem-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr)); gap:8px; }
+    .subsystem-grid[hidden],.subsystem-item[hidden] { display:none; }
+    .subsystem-item { display:flex; align-items:flex-start; gap:12px; padding:14px 16px; border-radius:12px; background:color-mix(in oklch,var(--fg-3) 5%,transparent); border:1px solid color-mix(in oklch,var(--fg-3) 11%,transparent); text-align:left; color:var(--fg-0); min-width:0; transition:background .15s,border-color .15s,transform .15s; text-decoration:none; }
+    .subsystem-item:hover { text-decoration:none; background:color-mix(in oklch,var(--item-accent) 10%,transparent); border-color:color-mix(in oklch,var(--item-accent) 32%,transparent); transform:translateY(-1px); }
+    .subsystem-item-icon { display:flex; align-items:center; justify-content:center; width:34px; height:34px; flex:0 0 34px; margin-top:1px; border-radius:9px; color:var(--item-accent); background:color-mix(in oklch,var(--item-accent) 14%,transparent); border:1px solid color-mix(in oklch,var(--item-accent) 24%,transparent); }
+    .subsystem-item-text { display:flex; flex-direction:column; gap:3px; min-width:0; }
+    .subsystem-item-text strong { font-size:13.5px; line-height:19px; font-weight:600; letter-spacing:-.01em; color:var(--fg-0); }
+    .subsystem-item-text > span { font-size:12px; color:var(--fg-3); line-height:1.4; }
+    .variant-menu { grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .variant-menu .subsystem-item { border:0; border-radius:10px; background:transparent; transform:none; }
+    .variant-menu .subsystem-item-icon { width:32px; height:32px; flex-basis:32px; border-radius:8px; }
+    .variant-menu .subsystem-item[aria-current="page"] { box-shadow:inset 0 0 0 1px color-mix(in oklch,var(--item-accent) 40%,transparent); }
+    .variant-menu .subsystem-item:hover,.variant-menu .subsystem-item[data-nav-cursor] { background:color-mix(in oklch,var(--item-accent) 10%,transparent); }
+    .variant-recent { display:flex; flex-wrap:wrap; gap:8px; }
+    .variant-recent .subsystem-item { align-items:center; gap:9px; padding:8px 14px 8px 8px; border-radius:10px; }
+    .variant-recent .subsystem-item-icon { width:26px; height:26px; flex-basis:26px; border-radius:7px; margin:0; }
+    .variant-recent .subsystem-item-text > span { display:none; }
+    @media(max-width:700px) { .subsystem-grid { grid-template-columns:minmax(0,1fr); } .variant-menu { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media(max-width:480px) { .variant-menu { grid-template-columns:minmax(0,1fr); } }
+    @media(prefers-reduced-motion:reduce) { .subsystem-item { transition:none; transform:none; } }
+  </style>
+  <script client scoped>
+    import { recentSubsystemLinks } from "@client/helpers/subsystems";
+    if (ctx.root.hasAttribute("data-subsystem-recents")) {
+      const count = recentSubsystemLinks(ctx.root, ctx.root.dataset.currentSubsystem ?? "");
+      ctx.root.hidden = count === 0;
+      ctx.root.closest("[data-subsystem-recent-block]")?.toggleAttribute("hidden", count === 0);
+    }
+  </script>
+</component>

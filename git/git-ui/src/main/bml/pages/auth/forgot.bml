@@ -1,0 +1,10 @@
+<page route="/auth/forgot">
+  <git-auth-layout title="Forgot your password?">
+    <auth-heading
+      eyebrow="Account recovery"
+      title="Forgot your password?"
+      sub="Enter your email and we’ll send a reset link."
+    />
+    <auth-forgot-form />
+  </git-auth-layout>
+</page>

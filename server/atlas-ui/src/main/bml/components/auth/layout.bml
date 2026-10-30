@@ -1,0 +1,6 @@
+<component tag="atlas-auth-layout">
+  <prop name="title" type="String" required />
+  <auth-layout :title="title" product="Atlas" heading="Source repositories and build artifacts." description="Build &amp; Deliver with Bosca Atlas.">
+    <slot />
+  </auth-layout>
+</component>

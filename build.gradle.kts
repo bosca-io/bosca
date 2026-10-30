@@ -73,6 +73,19 @@ tasks.register("testResourcesDown") {
     dependsOn(":bosca-core:test-support:testResourcesDown")
 }
 
+val bmlBrowserTestTasks = listOf(
+    ":bml:bml-server:chunkCacheBrowserTest",
+    ":notifications-web:test",
+    ":bml:examples:design-library:test",
+    ":bml:bml-design-catalog:test",
+)
+
+tasks.register("testBmlBrowser") {
+    group = "verification"
+    description = "Build and execute BML browser suites using Gradle's worker budget"
+    dependsOn(bmlBrowserTestTasks)
+}
+
 tasks.register("publishExceptFirebaseScrypt") {
     group = "publishing"
     description = "Publish workspace libraries and Gradle plugins except Firebase Scrypt"

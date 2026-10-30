@@ -10,6 +10,10 @@ normalization.runtimeClasspath { ignore("META-INF/bosca/bml/build-id") }
 
 tasks.withType<Test>().configureEach {
     if (name != "firefoxTest" && (project.path != ":bml:bml-server" || name == "chunkCacheBrowserTest")) {
+        inputs.files(rootProject.file("gradle/bml-test-browser.mjs"),
+            rootProject.file("gradle/bml-test-browser.test.mjs"),
+            rootProject.file("bml/bml-design-catalog/package-lock.json"))
+            .withPropertyName("browserLauncher").withPathSensitivity(PathSensitivity.RELATIVE)
         if (!chromeOverride.isPresent) dependsOn(":bml:bml-design-catalog:prepareTestBrowser")
         val selectedBrowser = browserPath
         val executionProviders = browserProviders

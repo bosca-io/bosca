@@ -33,6 +33,13 @@ Run these commands from the **workspace root**. `content` is part of the root Gr
 ./gradlew :content:bible-providers:test  # Provider adapters and configuration/source/cache tests
 ```
 
+The `:content:content:test` suite runs classes in up to four isolated JVMs, capped by Gradle's
+`--max-workers` limit. Each JVM keeps its own DI and MockK state; database fixtures lease separate
+databases from the shared test server. `ContentTestInfrastructure` migrates once per class and
+copies that pristine database before later test methods, preserving seed data and sequence values.
+Use `-Pbosca.content.testForks=1` for serial debugging or
+set another positive fork count within the worker budget.
+
 API.Bible chapter reads enqueue edition-wide cache cleanup on the content queue after the
 response is stored. The worker keeps the newest responses within 499 verses across
 configurations. This limit is eventual while jobs are pending; the worker evicts whole

@@ -15,7 +15,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class ConfigurationTest {
-
     private val configuration = Configuration()
 
     @Test

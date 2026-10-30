@@ -21,6 +21,8 @@ if (androidEnabled) {
     apply(plugin = "com.android.kotlin.multiplatform.library")
 }
 
+val iosEnabled = gradle.extra["iosEnabled"] as Boolean
+
 kotlin {
     applyDefaultHierarchyTemplate()
 
@@ -40,13 +42,15 @@ kotlin {
 
     jvm("desktop")
 
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64(),
-    ).forEach {
-        it.binaries.framework {
-            baseName = "BoscaAnalyticsKit"
-            isStatic = true
+    if (iosEnabled) {
+        listOf(
+            iosArm64(),
+            iosSimulatorArm64(),
+        ).forEach {
+            it.binaries.framework {
+                baseName = "BoscaAnalyticsKit"
+                isStatic = true
+            }
         }
     }
 
@@ -88,9 +92,11 @@ kotlin {
             }
         }
 
-        val iosMain by getting {
-            dependencies {
-                api(libs.ktor.client.darwin)
+        if (iosEnabled) {
+            val iosMain by getting {
+                dependencies {
+                    api(libs.ktor.client.darwin)
+                }
             }
         }
 
@@ -101,16 +107,18 @@ kotlin {
         }
     }
 
-    cocoapods {
-        version = "1.0"
-        ios.deploymentTarget = iosDeploymentTarget
-        // client-core exposes auth-shared, whose native implementation links
-        // GoogleSignIn. The final analytics framework/test binary must own the
-        // pod search path as well as the transitive linker option.
-        pod("GoogleSignIn")
-        framework {
-            baseName = "BoscaAnalyticsKit"
-            isStatic = true
+    if (iosEnabled) {
+        cocoapods {
+            version = "1.0"
+            ios.deploymentTarget = iosDeploymentTarget
+            // client-core exposes auth-shared, whose native implementation links
+            // GoogleSignIn. The final analytics framework/test binary must own the
+            // pod search path as well as the transitive linker option.
+            pod("GoogleSignIn")
+            framework {
+                baseName = "BoscaAnalyticsKit"
+                isStatic = true
+            }
         }
     }
 }
@@ -125,8 +133,10 @@ dependencies {
         add("kspAndroid", libs.androidx.room3.compiler)
     }
     add("kspDesktop", libs.androidx.room3.compiler)
-    add("kspIosArm64", libs.androidx.room3.compiler)
-    add("kspIosSimulatorArm64", libs.androidx.room3.compiler)
+    if (iosEnabled) {
+        add("kspIosArm64", libs.androidx.room3.compiler)
+        add("kspIosSimulatorArm64", libs.androidx.room3.compiler)
+    }
 }
 
 ksp {
@@ -190,16 +200,21 @@ val verifyAnalyticsProviderBindings by tasks.registering {
     inputs.file(registrar)
     doLast {
         val source = registrar.get().asFile.readText()
+        // Named and unnamed providers occupy separate registry slots.
         val bindings = Regex("ProviderRegistry\\.register\\(([^,]+)::class[^\\n]*")
             .findAll(source)
-            .map { it.groupValues[1].trim() }
+            .map {
+                val type = it.groupValues[1].trim()
+                val name = Regex(", \"([^\"]+)\", (?:true|false)\\)").find(it.value)?.groupValues?.get(1)
+                type to name
+            }
             .toList()
         val duplicates = bindings.groupingBy { it }.eachCount().filterValues { it > 1 }
         check(duplicates.isEmpty()) { "Generated analytics registrar contains duplicate bindings: $duplicates" }
-        check(bindings.count { it == "AnalyticsService" } == 1) {
+        check(bindings.count { it.first == "AnalyticsService" } == 1) {
             "Generated analytics registrar must contain exactly one AnalyticsService binding"
         }
-        check(bindings.count { it == "AnalyticsLifecycle" } == 1) {
+        check(bindings.count { it.first == "AnalyticsLifecycle" } == 1) {
             "Generated analytics registrar must contain exactly one AnalyticsLifecycle binding"
         }
     }

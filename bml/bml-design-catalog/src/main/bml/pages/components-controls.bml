@@ -3,6 +3,7 @@
     <nav class="reference-jumps" aria-label="On this page">
       <a href="#ref-button">button</a>
       <a href="#ref-input">input</a>
+      <a href="#ref-file-drop">file-drop</a>
       <a href="#ref-field">field</a>
       <a href="#ref-checkbox">checkbox</a>
       <a href="#ref-switch">switch</a>
@@ -20,6 +21,14 @@
       :css='"Palette and typography inherit from the consuming application. Component hooks: --accent, --bg-2, --bg-3, --control-bg, --control-border, --control-gap, --control-height-md, --control-height-sm, --control-height-xs, --control-radius, --err, --fg-0, --fg-1, --fg-2, --focus-offset, --focus-width, --line, --line-2, --r-sm. Forward an application class only through the documented native target; generated scope markers are private."'
       :snippet='"<div class=\"example-actions\"><button primary icon=\"save\">Save</button><button size=\"sm\" class=\"ghost\">Cancel</button><button size=\"xs\">Small</button><button disabled>Disabled</button><button loading>Saving</button></div>"'>
       <div class="example-actions"><button primary icon="save">Save</button><button size="sm" class="ghost">Cancel</button><button size="xs">Small</button><button disabled>Disabled</button><button loading>Saving</button></div>
+    </reference-entry>
+    <reference-entry name="file-drop"
+      :api='"ref: String = \"\"\nlabel: String = \"Choose files or drop them here\"\ndescription: String = \"\"\naccept: String = \"\"\nmultiple: Boolean = false\ndisabled: Boolean = false"'
+      :contract='"Root attributes and classes reach the drop area. The bubbling filesselected event carries File[]; the application owns validation, staging and transport. Selection clears the picker for repeated choices. multiple applies to picker and drops; accept is a picker hint. Toggle data-disabled by presence for pending operations."'
+      :keyboard='"Tab focuses the labelled native file input; Enter or Space opens the platform picker. Disabled selection is excluded from keyboard navigation."'
+      :css='"Colors inherit from the consumer palette through --accent, --fg-1 and --fg-3. Focus uses --focus-width; corners use --r-sm and --r-xs."'
+      :snippet='"<file-drop label=\"Choose files or drop them here\" description=\"Select local attachments\" multiple />"'>
+      <file-drop label="Choose files or drop them here" description="Select local attachments" multiple />
     </reference-entry>
     <reference-entry name="input"
       :api='"size: String = \"md\"\nmono: Boolean = false\ntype: String = \"text\"\nref: String = \"\"\nvalue: String = \"\"\nrequired: Boolean = false"'
