@@ -4,36 +4,32 @@ const { chromium, errors } = createRequire(new URL('../bml/bml-design-catalog/pa
 
 /** Read from the current document while allowing an in-progress navigation to replace its context. */
 export async function waitForTestCondition(page, expression, { scriptsDisabled = false } = {}) {
-  // Page timers are disabled along with authored scripts; native HTML checks poll from Node.
-  if (scriptsDisabled) {
-    let timer, stopped = false;
-    const timeout = () => new errors.TimeoutError(`Timed out waiting for native HTML: ${expression}`);
-    const poll = async () => {
-      for (let attempt = 0; attempt < 120 && !stopped; attempt++) {
-        try {
-          const value = await page.evaluate(expression);
-          if (value) return value;
-        } catch (error) {
-          // A native link can replace the inspected document while its readiness read is in flight.
-          if (stopped || !error.message.includes('Execution context was destroyed')) throw error;
-          await page.waitForLoadState('load', { timeout: 5100 });
-        }
-        await new Promise(resolve => setTimeout(resolve, attempt < 20 ? 5 : 50));
+  // Await the predicate's value: a Promise resolving false must keep polling.
+  // Poll from Node so the same contract also works with page scripts disabled.
+  let timer, stopped = false;
+  const timeout = () => new errors.TimeoutError(`Timed out waiting for ${scriptsDisabled ? 'native HTML' : 'browser condition'}: ${expression}`);
+  const poll = async () => {
+    for (let attempt = 0; attempt < 120 && !stopped; attempt++) {
+      try {
+        const value = await page.evaluate(expression);
+        if (value) return value;
+      } catch (error) {
+        // Navigation can replace the inspected document while its readiness read is in flight.
+        if (stopped || !error.message.includes('Execution context was destroyed')) throw error;
+        await page.waitForLoadState('load', { timeout: 5100 });
       }
-      throw timeout();
+      await new Promise(resolve => setTimeout(resolve, attempt < 20 ? 5 : 50));
     }
-    try {
-      return await Promise.race([poll(), new Promise((resolve, reject) => {
-        timer = setTimeout(() => reject(timeout()), 5100);
-      })]);
-    } finally {
-      stopped = true;
-      clearTimeout(timer);
-    }
+    throw timeout();
+  };
+  try {
+    return await Promise.race([poll(), new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(timeout()), 5100);
+    })]);
+  } finally {
+    stopped = true;
+    clearTimeout(timer);
   }
-  const handle = await page.waitForFunction(expression, undefined, { timeout: 5100, polling: 50 });
-  try { return await handle.jsonValue(); }
-  finally { await handle.dispose(); }
 }
 
 /** Reap the owned browser process tree even when its control connection is unresponsive. */

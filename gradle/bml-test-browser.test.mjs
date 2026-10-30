@@ -39,6 +39,23 @@ test('readiness follows a navigation that destroys the original document', { tim
   }
 });
 
+test('readiness awaits asynchronous false results before accepting a fulfilled condition', { timeout: 15000 }, async () => {
+  const owned = await launchTestBrowser(0);
+  try {
+    const page = owned.connection.contexts()[0].pages()[0];
+    await page.evaluate('window.asyncConditionPasses=0');
+    const value = await waitForTestCondition(page, `(async()=>{
+      await new Promise(resolve=>requestAnimationFrame(resolve));
+      const passes=++window.asyncConditionPasses;
+      return passes>=3 ? {ready:true,passes} : false;
+    })()`);
+    assert.deepEqual(value, { ready: true, passes: 3 });
+    await assert.rejects(waitForTestCondition(page, '(async()=>{throw new Error("invalid async predicate");})()'), /invalid async predicate/);
+  } finally {
+    await owned.close();
+  }
+});
+
 test('readiness observes changes with page scripts disabled', { timeout: 15000 }, async () => {
   const owned = await launchTestBrowser(0);
   try {
