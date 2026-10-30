@@ -6,8 +6,8 @@ const { accent } = useCurrentSubsystem()
 const { useAsyncQuery, query: gqlQuery, mutation: gqlMutation } = useGraphQL()
 const router = useRouter()
 const toast = useToast()
-const showAddGuide = ref(false)
-useCreateFromQuery(() => { showAddGuide.value = true })
+const createMenuOpen = ref(false)
+useCreateFromQuery(() => { createMenuOpen.value = true })
 
 const STATUS: Record<string, [string, string]> = {
   draft: ['Draft', '#6c7388'],
@@ -324,13 +324,6 @@ function resetFilters() {
   searchQuery.value = ''
   activeTab.value = 'All'
 }
-
-async function onGuideCreated(id: string) {
-  showAddGuide.value = false
-  await refresh()
-  await loadFacets()
-  router.push(`/cms/guides/${id}`)
-}
 </script>
 
 <template>
@@ -354,12 +347,10 @@ async function onGuideCreated(id: string) {
             size="sm"
             icon="globe"
           />
-          <Button
-            primary
-            icon="plus"
-            size="sm"
+          <AddGuideMenu
+            v-model:open="createMenuOpen"
             :accent="accent"
-            @click="showAddGuide = true">New Guide</Button>
+          />
         </template>
       </PageHeader>
     </template>
@@ -457,15 +448,6 @@ async function onGuideCreated(id: string) {
       </SectionCard>
     </div>
   </PageShell>
-
-  <!-- Add guide modal -->
-  <AddGuideModal
-    v-if="showAddGuide"
-    :accent="accent"
-    :language-tag="selectedLanguage"
-    @close="showAddGuide = false"
-    @created="onGuideCreated"
-  />
 
   <!-- Delete confirmation -->
   <ConfirmModal

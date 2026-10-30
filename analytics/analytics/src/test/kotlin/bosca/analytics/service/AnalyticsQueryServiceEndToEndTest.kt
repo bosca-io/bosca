@@ -12,6 +12,7 @@ import bosca.analytics.repository.QueryCacheEntryRepositoryImpl
 import bosca.analytics.repository.QueryDefinitionRepositoryImpl
 import bosca.analytics.repository.QueryParameterRepositoryImpl
 import bosca.analytics.repository.QueryPermissionRepositoryImpl
+import bosca.analytics.AnalyticsTestDatabase
 import bosca.cache.CacheManager
 import bosca.cache.RequestCache
 import bosca.cache.RequestCacheSerializer
@@ -24,8 +25,6 @@ import bosca.db.ConnectionManager
 import bosca.db.ConnectionPool
 import bosca.db.asCoroutineContext
 import bosca.db.connection
-import bosca.db.migrations.CoreMigration
-import bosca.db.migrations.FlywayMigration
 import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provides
@@ -47,7 +46,8 @@ import kotlinx.serialization.modules.contextual
 import bosca.test.resources.SharedPostgreSQLContainer
 import bosca.test.resources.SharedNatsContainer
 import org.testcontainers.containers.wait.strategy.Wait
-import org.testcontainers.lifecycle.Startables
+import org.junit.AfterClass
+import org.junit.BeforeClass
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -89,15 +89,9 @@ class AnalyticsQueryServiceEndToEndTest {
             .withReuse(true)
             .waitingFor(Wait.forListeningPort())
 
-        postgresContainer = SharedPostgreSQLContainer()
-            .withExposedPorts(5432)
-            .withEnv("POSTGRES_USER", "test")
-            .withEnv("POSTGRES_PASSWORD", "test")
-            .withEnv("POSTGRES_DB", "test")
-            .withReuse(true)
-            .waitingFor(Wait.forLogMessage(".*database system is ready to accept connections.*\\s", 2))
+        postgresContainer = database.copy()
 
-        Startables.deepStart(natsContainer, postgresContainer).join()
+        natsContainer.start()
 
         val factory = ConnectionFactoryImpl(
             ConnectionConfig(
@@ -108,8 +102,6 @@ class AnalyticsQueryServiceEndToEndTest {
             key = "test"
         )
         connectionPool = ConnectionPool(factory)
-
-        FlywayMigration(connectionPool).migrate(listOf(CoreMigration()))
 
         val natsUrl = "nats://${natsContainer.host}:${natsContainer.getMappedPort(4222)}"
         val natsPool = natsContainer.newConnectionPool(1)
@@ -643,5 +635,17 @@ class AnalyticsQueryServiceEndToEndTest {
         assertEquals("startDate", afterParams.single().parameter)
         assertEquals(QueryParameterType.DATE, afterParams.single().type)
         assertTrue(afterParams.single().required)
+    }
+
+    companion object {
+        private val database = AnalyticsTestDatabase()
+
+        @BeforeClass
+        @JvmStatic
+        fun startDatabase() = runBlocking { database.start() }
+
+        @AfterClass
+        @JvmStatic
+        fun stopDatabase() = database.stop()
     }
 }

@@ -20,7 +20,7 @@
                 </div>
               </card>
               <git-pull-review :page="page" />
-              <if page.pull.conflictingFiles.isNotEmpty()>
+              <if !page.pull.conflictingFiles.isNullOrEmpty()>
                 <git-pull-conflicts :page="page" />
               </if>
               <if page.pull.status.name == "OPEN" || page.pull.status.name == "DRAFT">

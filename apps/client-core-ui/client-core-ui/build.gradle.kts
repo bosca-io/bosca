@@ -26,6 +26,8 @@ compose.resources {
     generateResClass = ResourcesExtension.ResourceClassGeneration.Auto
 }
 
+val iosEnabled = gradle.extra["iosEnabled"] as Boolean
+
 kotlin {
     applyDefaultHierarchyTemplate {
         common {
@@ -60,14 +62,16 @@ kotlin {
         binaries.executable()
     }
 
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64(),
-    ).forEach {
-        it.binaries.framework {
-            baseName = "BoscaCoreKit"
-            freeCompilerArgs += listOf("-Xbinary=bundleId=bosca.core.kit")
-            isStatic = true
+    if (iosEnabled) {
+        listOf(
+            iosArm64(),
+            iosSimulatorArm64(),
+        ).forEach {
+            it.binaries.framework {
+                baseName = "BoscaCoreKit"
+                freeCompilerArgs += listOf("-Xbinary=bundleId=bosca.core.kit")
+                isStatic = true
+            }
         }
     }
 
@@ -119,9 +123,11 @@ kotlin {
             }
         }
 
-        val iosMain by getting {
-            dependencies {
-                api(libs.ktor.client.darwin)
+        if (iosEnabled) {
+            val iosMain by getting {
+                dependencies {
+                    api(libs.ktor.client.darwin)
+                }
             }
         }
 
@@ -168,8 +174,10 @@ tasks.matching { it.name == "sourcesJar" || it.name.endsWith("SourcesJar") }.con
 }
 
 kotlin {
-    cocoapods {
-        version = "1.0"
-        ios.deploymentTarget = "18.2"
+    if (iosEnabled) {
+        cocoapods {
+            version = "1.0"
+            ios.deploymentTarget = "18.2"
+        }
     }
 }

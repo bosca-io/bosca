@@ -2056,7 +2056,7 @@ class CiPipelineRepositoryIntegrationTest {
         }
 
         transaction {
-            assertTrue(pipelineRepo.lockForSync(repositoryId))
+            assertTrue(pipelineRepo.tryLockForSync(repositoryId))
             assertFalse(contenderCanLock())
         }
         assertTrue(contenderCanLock())

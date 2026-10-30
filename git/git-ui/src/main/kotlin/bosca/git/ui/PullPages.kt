@@ -131,15 +131,15 @@ suspend fun pullListPage(
 suspend fun pullPage(): PullPage? = supervisorScope {
     val ctx = currentRenderContext()
     val id = ctx.params["id"] ?: return@supervisorScope null.also { ctx.notFound = true }
+    val view = ctx.query["view"]?.takeIf { it in setOf("overview", "files", "commits", "reviews") } ?: "overview"
     val pull =
         ctx.gql
-            .execute(GitUiPull, GitUiPull.Variables(id))
+            .execute(GitUiPull, GitUiPull.Variables(id, view == "overview"))
             .git
             .pullRequest
             ?.takeIf { it.id == id } ?: return@supervisorScope null.also { ctx.notFound = true }
     val repository = pull.repositoryId
     val number = pull.number
-    val view = ctx.query["view"]?.takeIf { it in setOf("overview", "files", "commits", "reviews") } ?: "overview"
     val merged = pull.status == GitPullRequestStatus.MERGED
     val sourceId = if (merged) repository else pull.sourceRepositoryId ?: repository
     val repositoryRequest = async {

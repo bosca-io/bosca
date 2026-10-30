@@ -12,6 +12,11 @@ import java.time.Duration
 import java.util.concurrent.TimeUnit
 import java.util.jar.JarFile
 import kotlin.io.path.createTempDirectory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.runInterruptible
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -131,12 +136,18 @@ class PublishedDesignLibraryTest {
 
             runProcess(listOf(System.getProperty("design.fixture.node"), System.getProperty("design.fixture.typechecker"),
                 "--project", File(consumer, "tsconfig.json").absolutePath), consumer, File(reports, "types.log"), 30)
-            for (development in listOf(false, true)) {
-                val mode = if (development) "development" else "production"
-                withServer(classpath, development, File(reports, "$mode-server.log")) { base ->
-                    runProcess(listOf(System.getProperty("design.fixture.node"), System.getProperty("design.fixture.browser"),
-                        base, "published-$mode"), consumer, File(reports, "$mode-browser.log"), 90)
-                }
+            runBlocking {
+                listOf(false, true).map { development ->
+                    async {
+                        runInterruptible(Dispatchers.IO) {
+                            val mode = if (development) "development" else "production"
+                            withServer(classpath, development, File(reports, "$mode-server.log")) { base ->
+                                runProcess(listOf(System.getProperty("design.fixture.node"), System.getProperty("design.fixture.browser"),
+                                    base, "published-$mode"), consumer, File(reports, "$mode-browser.log"), 90)
+                            }
+                        }
+                    }
+                }.awaitAll()
             }
             File(consumer, "build/reports/browser").copyRecursively(File(reports, "browser"), overwrite = true)
         } finally {
@@ -152,7 +163,10 @@ class PublishedDesignLibraryTest {
 
     private fun withServer(classpath: String, development: Boolean, log: File, check: (String) -> Unit) {
         var base: String? = null
-        val process = ProcessBuilder(System.getProperty("design.fixture.java"), "-Dbml.dev=$development", "-cp", classpath,
+        // The runner owns test concurrency; this child serves a single browser check.
+        val process = ProcessBuilder(System.getProperty("design.fixture.java"),
+            "-XX:ActiveProcessorCount=1",
+            "-Djava.net.preferIPv4Stack=false", "-Djava.net.preferIPv6Addresses=true", "-Dbml.dev=$development", "-cp", classpath,
             "bosca.design.example.MainKt", "0").redirectErrorStream(true).redirectOutput(log).start()
         try {
             var boundPort: Int? = null
@@ -163,12 +177,14 @@ class PublishedDesignLibraryTest {
                 Thread.sleep(25)
             }
             val port = requireNotNull(boundPort) { "Published consumer did not report a successful bind: ${log.readText()}" }
-            val endpoint = "http://localhost:$port"
+            val endpoint = "http://[::1]:$port"
             base = endpoint
-            val response = requestDesignFixture(HttpClient.newHttpClient(),
-                HttpRequest.newBuilder(URI(endpoint)).timeout(Duration.ofSeconds(10)).GET().build())
-            assertEquals(200, response.statusCode(), response.body())
-            check(endpoint)
+            HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build().use { client ->
+                val response = requestDesignFixture(client,
+                    HttpRequest.newBuilder(URI(endpoint)).timeout(Duration.ofSeconds(10)).GET().build())
+                assertEquals(200, response.statusCode(), response.body())
+                check(endpoint)
+            }
         } catch (failure: Throwable) {
             val state = if (process.isAlive) "alive" else "exit=${process.exitValue()}"
             failure.addSuppressed(IllegalStateException("Published design development=$development at ${base ?: "unbound port"} " +
@@ -185,7 +201,12 @@ class PublishedDesignLibraryTest {
         try {
             assertTrue(process.waitFor(seconds, TimeUnit.SECONDS), "Process timed out: ${log.readText()}")
             assertEquals(0, process.exitValue(), log.readText())
-        } finally { process.destroyForcibly() }
+        } finally {
+            if (process.isAlive) {
+                process.descendants().use { children -> children.toList().asReversed().forEach { it.destroyForcibly() } }
+                process.destroyForcibly()
+            }
+        }
     }
 
     private fun quote(file: File) = "'" + file.absolutePath.replace("\\", "\\\\").replace("'", "\\'") + "'"

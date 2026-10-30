@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { launchTestBrowser, waitForTestCondition } from '../../../../../gradle/bml-test-browser.mjs';
 import { checkReferences } from './references.mjs';
 import { checkPresentation } from './presentation.mjs';
 import { checkPickers } from './picker.mjs';
@@ -48,29 +47,18 @@ if (!base || !['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostnam
 }
 const artifacts = resolve('build/reports/browser');
 await mkdir(artifacts, { recursive: true });
-const profile = await mkdtemp(join(tmpdir(), 'bosca-catalog-browser-'));
 const listener = createServer();
 await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
 const port = listener.address().port;
 await new Promise(resolve => listener.close(resolve));
 const cdp = `http://127.0.0.1:${port}`;
-const browser = spawn(process.env.BML_DESIGN_CHROME_BINARY ?? (process.platform === 'darwin'
-  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : 'google-chrome'), [
-  '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-  `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank',
-], { stdio: 'ignore' });
-let launchError;
-browser.on('error', error => { launchError = error; });
+const ownedBrowser = await launchTestBrowser(port);
+const browser = ownedBrowser.process;
+const page = ownedBrowser.connection.contexts()[0].pages()[0];
+const keyboard = page.keyboard;
 let ws, diagnostics;
+let scriptsDisabled = false;
 try {
-  let ready = false;
-  for (let attempt = 0; attempt < 100; attempt++) {
-    if (launchError) throw launchError;
-    try { ready = (await fetch(`${cdp}/json/version`)).ok; } catch { /* Starting our own browser. */ }
-    if (ready) break;
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
-  assert.ok(ready, 'The isolated Chrome instance did not start.');
   const targets = await (await fetch(`${cdp}/json`)).json();
   ws = new WebSocket(targets.find(target => target.type === 'page').webSocketDebuggerUrl);
   await new Promise(resolve => ws.addEventListener('open', resolve, { once: true }));
@@ -100,6 +88,9 @@ try {
     else item.resolve(message.result);
   });
   function call(method, params = {}, deadline = 10000) {
+    if (method === 'Emulation.setScriptExecutionDisabled') scriptsDisabled = params.value;
+    if (method === 'Page.navigate') return page.goto(params.url, { waitUntil: 'load', timeout: deadline });
+    if (method === 'Page.reload') return page.reload({ waitUntil: 'load', timeout: deadline });
     return new Promise((resolve, reject) => {
       const id = ++sequence;
       diagnostics?.sent(id, method, params);
@@ -115,10 +106,9 @@ try {
     return result.result.value;
   }
   async function until(expression) {
-    for (let attempt = 0; attempt < 100; attempt++) {
-      if (await evaluate(expression)) return;
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
+    let timeout;
+    try { return await waitForTestCondition(page, expression, { scriptsDisabled }); }
+    catch (error) { if (error.name !== 'TimeoutError') throw error; timeout = error; }
     const context = await evaluate(`({ url: location.href, ready: document.readyState,
       active: document.activeElement?.outerHTML.slice(0, 1500),
       actions: Array.from(document.querySelectorAll('[data-bml-method]'), el => ({ text: el.textContent.trim(),
@@ -129,7 +119,7 @@ try {
         .catch(error => ({ body: `Response body unavailable: ${error.message}` }));
       failures.push({ ...response, body: body.body.slice(0, 2000) });
     }
-    throw new Error(`Timed out: ${expression}\n${JSON.stringify({ context, responses, failures, consoleErrors })}`);
+    throw new Error(`Timed out: ${expression}\n${JSON.stringify({ context, responses, failures, consoleErrors })}`, { cause: timeout });
   }
 
   await call('Page.enable');await call('Runtime.enable');await call('Network.enable');await call('Page.bringToFront');
@@ -167,7 +157,7 @@ try {
   } else if(process.argv[4]==='--tree-accessibility') {
     await checkAccessibility({navigate,evaluate,until,call,artifacts,mode,paths:['/trees'],reportName:'tree-accessibility'});
   } else if(process.argv[4]==='--surfaces') {
-    await checkSurfaces({navigate,evaluate,until,call,artifacts,mode});
+    await checkSurfaces({navigate,evaluate,until,call,key:value=>keyboard.press(value),artifacts,mode});
   } else if(process.argv[4]==='--feedback') {
     await checkFeedback({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--dashboards') {
@@ -276,19 +266,22 @@ try {
   await checkPickers({navigate,evaluate,until,call,artifacts,mode});
   checkpoint('pickers complete');
   await checkSources({navigate,evaluate,until,key,call,artifacts,mode});
-  await checkToastNavigation({navigate,evaluate,until,call});
+  await checkToastNavigation({navigate,evaluate,until,call,page});
   await checkJsonEditors({navigate,evaluate,until,call,artifacts,mode});
   checkpoint('editors complete');
   await checkComments({navigate,evaluate,until,call,artifacts,mode});
   await checkOverlays({navigate,evaluate,until,call,artifacts,mode});
-  await checkLocalChoices({navigate,evaluate,until,call,artifacts,mode});
-  checkpoint('choices complete');
+  // Native qualification has one browser entry point; JVM checks have dedicated concurrent cases.
+  if(mode.startsWith('native-')) await checkLocalChoices({navigate,evaluate,until,call,artifacts,mode});
+  checkpoint('overlays complete');
   await checkSearchViews({navigate,evaluate,until,call,artifacts,mode});
   await checkTrees({navigate,evaluate,until,call,artifacts,mode});
   checkpoint('trees complete');
   await checkRouteNavigation({navigate,evaluate,until,call,artifacts,mode});
-  await checkFeedback({navigate,evaluate,until,call,artifacts,mode});
-  await checkSurfaces({navigate,evaluate,until,call,artifacts,mode});
+  if(mode.startsWith('native-')) {
+    await checkFeedback({navigate,evaluate,until,call,artifacts,mode});
+    await checkSurfaces({navigate,evaluate,until,call,key:value=>keyboard.press(value),artifacts,mode});
+  }
   }
   assert.deepEqual(exceptions,[]);
   if(!process.argv[4]?.startsWith('--')) console.log(`Catalog ${mode}: foundation, themes, ${Object.keys(JSON.parse(process.argv[4])).length} packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
@@ -298,13 +291,7 @@ try {
   throw error;
 } finally {
   checkpoint('cleanup started');
-  if(ws)ws.close();browser.kill('SIGTERM');
-  await new Promise(resolve => {
-    if (browser.exitCode !== null || browser.signalCode !== null) return resolve();
-    const timeout = setTimeout(resolve, 2000);
-    browser.once('exit', () => { clearTimeout(timeout); resolve(); });
-  });
-  checkpoint('browser wait finished');
-  await rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});
-  checkpoint('profile removed');
+  ws?.close();
+  await ownedBrowser.close();
+  checkpoint('browser closed');
 }

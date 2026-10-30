@@ -22,7 +22,9 @@ import java.util.concurrent.TimeUnit
 import java.util.Properties
 import java.util.jar.JarFile
 import kotlin.io.path.createTempDirectory
-import kotlin.test.Test
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.parallel.Execution
+import org.junit.jupiter.api.parallel.ExecutionMode
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -31,6 +33,7 @@ import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
+@Execution(ExecutionMode.CONCURRENT)
 class DesignLibraryTest {
     private val classpath = System.getProperty("design.fixture.classpath")
     private val designJar = classpath.split(File.pathSeparator).map(::File).single { it.name.startsWith("bml-design-") }
@@ -381,7 +384,7 @@ class DesignLibraryTest {
         ServerSocketChannel.open(StandardProtocolFamily.INET).use { ipv4 ->
             ipv4.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
             ServerSocketChannel.open(StandardProtocolFamily.INET6).use { ipv6 ->
-                ipv6.bind(InetSocketAddress(InetAddress.getByName("::1"), 0))
+                ipv6.bind(InetSocketAddress(InetAddress.getByName("::1"), (ipv4.localAddress as InetSocketAddress).port))
                 val occupied = listOf(ipv4, ipv6).map { (it.localAddress as InetSocketAddress).port }
                 withServer(false) { production, productionClient ->
                     withServer(true) { development, developmentClient ->
@@ -422,7 +425,7 @@ class DesignLibraryTest {
             val log = File.createTempFile("design-typed-choices-", ".log")
             val process = ProcessBuilder(System.getProperty("design.fixture.node"),
                 System.getProperty("design.fixture.browser"), base,
-                if (development) "development" else "production", "typed-choices")
+                if (development) "development-typed-choices" else "production-typed-choices", "typed-choices")
                 .redirectErrorStream(true).redirectOutput(log).start()
             try {
                 assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Choice check timed out: ${log.readText()}")
@@ -437,7 +440,7 @@ class DesignLibraryTest {
             val log = File.createTempFile("design-structured-", ".log")
             val process = ProcessBuilder(System.getProperty("design.fixture.node"),
                 System.getProperty("design.fixture.browser"), base,
-                if (development) "development" else "production", "structured")
+                if (development) "development-structured" else "production-structured", "structured")
                 .redirectErrorStream(true).redirectOutput(log).start()
             try {
                 assertTrue(process.waitFor(90, TimeUnit.SECONDS), "Structured input check timed out: ${log.readText()}")
@@ -452,7 +455,7 @@ class DesignLibraryTest {
             val log = File.createTempFile("design-workspaces-", ".log")
             val process = ProcessBuilder(System.getProperty("design.fixture.node"),
                 System.getProperty("design.fixture.browser"), base,
-                if (development) "development" else "production", "workspace")
+                if (development) "development-workspace" else "production-workspace", "workspace")
                 .redirectErrorStream(true).redirectOutput(log).start()
             try {
                 assertTrue(process.waitFor(90, TimeUnit.SECONDS), "Workspace check timed out: ${log.readText()}")
@@ -467,7 +470,7 @@ class DesignLibraryTest {
             val log = File.createTempFile("design-shell-", ".log")
             val process = ProcessBuilder(System.getProperty("design.fixture.node"),
                 System.getProperty("design.fixture.browser"), base,
-                if (development) "development" else "production", "shell")
+                if (development) "development-shell" else "production-shell", "shell")
                 .redirectErrorStream(true).redirectOutput(log).start()
             try {
                 assertTrue(process.waitFor(90, TimeUnit.SECONDS), "Shell check timed out: ${log.readText()}")
@@ -483,7 +486,11 @@ class DesignLibraryTest {
     private fun withLauncher(test: (List<String>, File?) -> Unit) {
         val binary = System.getProperty("design.fixture.binary")?.let(::File)
         if (binary == null) {
-            test(listOf(System.getProperty("design.fixture.java"), "-cp", classpath, "bosca.design.example.MainKt"), null)
+            // The runner owns test concurrency; this child serves a single browser check.
+            test(listOf(System.getProperty("design.fixture.java"),
+                "-XX:ActiveProcessorCount=1",
+                "-Djava.net.preferIPv4Stack=false", "-Djava.net.preferIPv6Addresses=true",
+                "-cp", classpath, "bosca.design.example.MainKt"), null)
             return
         }
         assertTrue(binary.isFile && binary.canExecute(), binary.path)
@@ -516,10 +523,13 @@ class DesignLibraryTest {
                 Thread.sleep(25)
             }
             val port = requireNotNull(boundPort) { "Consumer did not report a successful bind: ${log.readText()}" }
-            val endpoint = "http://localhost:$port"
+            val host = if (System.getProperty("design.fixture.binary") == null) "[::1]" else "localhost"
+            val endpoint = "http://$host:$port"
             base = endpoint
-            val client = HttpClient.newBuilder().cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build()
-            test(endpoint, client)
+            HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                .cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build().use { client ->
+                test(endpoint, client)
+            }
         } catch (failure: Throwable) {
             val state = if (process.isAlive) "alive" else "exit=${process.exitValue()}"
             failure.addSuppressed(IllegalStateException("Design fixture development=$development at ${base ?: "unbound port"} " +

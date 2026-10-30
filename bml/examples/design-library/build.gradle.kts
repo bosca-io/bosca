@@ -19,6 +19,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     runtimeOnly(libs.logback.classic)
     testImplementation(libs.kotlin.test.junit)
+    testImplementation(libs.junit.platform.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+    testRuntimeOnly(libs.junit.platform.vintage)
     testImplementation(project(":bml:bml-compiler"))
     testImplementation(gradleTestKit())
 }
@@ -66,6 +69,15 @@ dependencies {
     add(publishedFixtureCompiler.name, project(":bml:bml-annotations"))
 }
 tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
+    // Only explicitly concurrent browser classes opt in. Cap compensation threads too:
+    // blocking HTTP calls can otherwise grow the pool beyond its target parallelism.
+    val browserWorkers = providers.gradleProperty("bml.browser.workers")
+        .getOrElse(gradle.startParameter.maxWorkerCount.toString())
+    systemProperty("junit.jupiter.execution.parallel.enabled", "true")
+    systemProperty("junit.jupiter.execution.parallel.config.strategy", "fixed")
+    systemProperty("junit.jupiter.execution.parallel.config.fixed.parallelism", browserWorkers)
+    systemProperty("junit.jupiter.execution.parallel.config.fixed.max-pool-size", browserWorkers)
     dependsOn(tasks.jar, fixtureRuntime, publishedFixturePlugin, publishedFixtureCompiler,
         ":bml:bml-design:sourcesJar", ":bml:bml-design:generatePomFileForMavenPublication")
     inputs.dir(layout.projectDirectory.dir("src/test/browser"))

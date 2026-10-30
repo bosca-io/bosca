@@ -223,7 +223,10 @@ const canPublish = computed(() => wfState.value !== 'published' && !activeWorkfl
 const canUnpublish = computed(() => wfState.value === 'published' && !activeWorkflow.value?.pending)
 
 const documentName = computed(() => {
-  return contentEditorRef.value?.documentName ?? activeMetadata.value?.name ?? guideMetadata.value?.name ?? ''
+  // The editor reports an empty title while the guide is untitled (the H1
+  // shows its "Title..." placeholder); fall back to the metadata name so the
+  // header doesn't sit on the "Loading…" fallback for a loaded guide.
+  return contentEditorRef.value?.documentName || activeMetadata.value?.name || guideMetadata.value?.name || ''
 })
 
 const hasUnsavedChanges = computed(() => contentEditorRef.value?.hasUnsavedChanges ?? false)

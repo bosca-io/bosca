@@ -30,6 +30,10 @@ Run these commands from the **workspace root**. `analytics` is part of the root 
 ./gradlew :analytics:analytics-collector:nativeCompile  # Build a native image
 ```
 
+The database-backed query, dashboard, visualization, script-binding, and error-group tests
+migrate a PostgreSQL template once per class. Every test copies that template into its own
+database with a separate client pool. Tests using NATS retain separate accounts.
+
 ## Local Infrastructure
 
 From the workspace root:

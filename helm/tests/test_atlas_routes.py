@@ -46,7 +46,10 @@ class AtlasRoutesTest(unittest.TestCase):
         for path in ("/graphql", "/graphqlws", "/oauth2/google/callback", "/v2/", "/raw/ns/pkg/build/file.zip",
                      "/owner/project.git/git-upload-pack", "/artifacts/project.git/info/refs", f"/repositories/{ID}/raw/main/logo.png"):
             self.assertEqual(8094, self.rule(rules, path)["backendRefs"][0]["port"], path)
-        for path in ("/_bml/action", "/_git/subscriptions", "/_artifacts/raw/ns/pkg/build/file.zip", "/favicon.svg"):
+        for path in ("/_bml/action", "/_git/subscriptions", "/_artifacts/raw/ns/pkg/build/file.zip", "/favicon.svg",
+                     f"/_bml/libraries/{'a' * 64}/styles/design.css",
+                     f"/_bml/libraries/{'a' * 64}/chunks/chunk-ABCDEFGH.js",
+                     f"/_bml/libraries/{'a' * 64}/fonts/geist-latin.woff2"):
             self.assertEqual(8095, self.rule(rules, path)["backendRefs"][0]["port"], path)
 
     def test_matchers_fit_gateway_and_envoy_limits(self):
@@ -63,6 +66,7 @@ class AtlasRoutesTest(unittest.TestCase):
         git = routes["git.example.com"]
         redirect = self.rule(git, "/repositories")["filters"][0]["requestRedirect"]
         self.assertEqual("atlas.example.com", redirect["hostname"])
+        self.assertEqual("atlas.example.com", self.rule(git, f"/_bml/libraries/{'a' * 64}/styles/design.css")["filters"][0]["requestRedirect"]["hostname"])
         self.assertEqual(8094, self.rule(git, "/owner/project.git/info/refs")["backendRefs"][0]["port"])
         registry = routes["artifacts.example.com"]
         for protocol in ("raw", "maven", "npm", "helm", "ml"):

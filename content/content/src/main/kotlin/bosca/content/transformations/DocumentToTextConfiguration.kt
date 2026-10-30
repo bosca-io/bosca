@@ -236,7 +236,7 @@ private fun append(component: JsonElement, context: TextContext, key: String?, b
 private fun StringBuilder.appendText(text: String, context: TextContext, length: AtomicLong) {
     if (context.configuration.includeTtsMarkup) {
         val len = length.addAndFetch(text.toByteArray().size.toLong())
-        if (len > 4000) {
+        if (len > 2500) {
             length.store(0)
             append("[split]")
         }

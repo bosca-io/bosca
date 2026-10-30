@@ -105,7 +105,10 @@ class SwarmAtlasRoutingTest {
                     }
                     val id = "382b5ae6-f5f4-47b7-8216-fa76e707e588"
                     listOf("/", "/login", "/repositories/$id", "/artifacts/repositories/upload", "/artifacts/settings/repositories/$id",
-                        "/artifacts/runs/$id", "/_bml/app.css", "/favicon.svg").forEach { request("atlas", it, "ui") }
+                        "/artifacts/runs/$id", "/_bml/app.css", "/favicon.svg",
+                        "/_bml/libraries/${"a".repeat(64)}/styles/design.css",
+                        "/_bml/libraries/${"a".repeat(64)}/chunks/chunk-ABCDEFGH.js",
+                        "/_bml/libraries/${"a".repeat(64)}/fonts/geist-latin.woff2").forEach { request("atlas", it, "ui") }
                     val payload = "atlas-file-payload".repeat(4096)
                     request("atlas", "/_bml/action?target=save", "ui", payload = payload)
                     request("atlas", "/_artifacts/raw/ns/pkg/build/file%20name.zip?checksum=true", "ui", payload = payload)

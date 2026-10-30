@@ -3,8 +3,41 @@ package bosca.bml.server
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class BmlClientAssetsTest {
+
+    @Test
+    fun `deployment import maps version every module deterministically and escape script content`() {
+        val urls = listOf("/_bml/js/chunks/shared.js", "/_bml/libraries/key/lazy.js", "/_bml/js/chunks/</script>.js")
+        val first = BmlClientAssets.importMap(urls + urls.first(), "deploy one")
+        assertEquals(first, BmlClientAssets.importMap(urls.reversed(), "deploy one"))
+        assertFalse(first.substringBeforeLast("</script>").contains("</script>"))
+        for (token in listOf("deploy one", "deploy two")) {
+            val tag = BmlClientAssets.importMap(urls, token)
+            val imports = Json.parseToJsonElement(tag.substringAfter('>').substringBeforeLast("</script>")).jsonObject
+                .getValue("imports").jsonObject
+            assertEquals(urls.toSet(), imports.keys)
+            urls.forEach { assertEquals("$it?_ts=${token.replace(" ", "%20")}", imports.getValue(it).jsonPrimitive.content) }
+        }
+        assertEquals("", BmlClientAssets.importMap(emptyList(), "deploy"))
+    }
+
+    @Test
+    fun `import map precedes authored module scripts with and without an explicit head`() {
+        val map = BmlClientAssets.importMap(listOf("/_bml/js/chunks/shared.js"), "deploy")
+        for (html in listOf(
+            "<html><HEAD lang=\"en\"><script type=\"module\" src=\"/early.js\"></script></HEAD></html>",
+            "<script type=\"module\" src=\"/early.js\"></script>",
+        )) {
+            val rendered = BmlClientAssets.injectImportMap(html, map)
+            assertTrue(rendered.indexOf("type=\"importmap\"") < rendered.indexOf("type=\"module\""), rendered)
+            assertEquals(html, BmlClientAssets.injectImportMap(html, ""))
+        }
+    }
 
     @Test
     fun `inject page context escapes and places its marker before body close`() {

@@ -46,6 +46,11 @@ import bosca.cli.ci.CiRunCommand
 import bosca.cli.ci.CiSecretCommand
 import bosca.cli.ci.RunCancelCommand
 import bosca.cli.ci.RunListCommand
+import bosca.cli.ci.CiPipelineCommand
+import bosca.cli.ci.PipelineListCommand
+import bosca.cli.ci.RunGetCommand
+import bosca.cli.ci.RunJobsCommand
+import bosca.cli.ci.RunStepsCommand
 import bosca.cli.ci.RunLogsCommand
 import bosca.cli.ci.RunRerunCommand
 import bosca.cli.ci.RunLocalCommand
@@ -451,6 +456,7 @@ fun main(args: Array<String>) {
             ),
         ),
         CiCommand().subcommands(
+            CiPipelineCommand().subcommands(PipelineListCommand()),
             CiAgentCommand().subcommands(
                 AgentRegisterCommand(),
                 AgentListCommand(),
@@ -462,6 +468,9 @@ fun main(args: Array<String>) {
                 RunLocalCommand(),
                 RunTriggerCommand(),
                 RunListCommand(),
+                RunGetCommand(),
+                RunJobsCommand(),
+                RunStepsCommand(),
                 RunCancelCommand(),
                 RunRerunCommand(),
                 RunLogsCommand(),

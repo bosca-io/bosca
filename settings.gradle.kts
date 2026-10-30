@@ -75,6 +75,10 @@ val androidSdkDirectory = androidProperties.getProperty("sdk.dir")
         .firstOrNull { file(it).exists() }
 gradle.extra.set("androidEnabled", androidSdkDirectory != null)
 
+// JVM CI must not build iOS metadata and CocoaPods through common-source KSP dependencies.
+gradle.extra.set("iosEnabled", providers.gradleProperty("bosca.ios.enabled")
+    .map(String::toBooleanStrict).getOrElse(true))
+
 // IntelliJ supplies Kotlin's standard library for these plugin projects.
 gradle.beforeProject {
     if (path == ":bml:bml-ide" || path == ":workops:workops-ide") {

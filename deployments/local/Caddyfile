@@ -30,7 +30,7 @@
 
 # Git transports use the dedicated backend; UI entry points go to Atlas.
 :8091 {
-	@gitUi path_regexp git_ui "^(/|/(login|welcome|404|500|compare|search|statuses|robots[.]txt|llms[.]txt|sitemap[.]xml|favicon[.]ico)/?|/auth/(signup|forgot|verify|reset-password|link/confirm)/?|/settings/github/?|/repositories(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}(/(settings|secrets|github))?)?/?|/(pulls|pipelines|ci-agents)(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})?/?|/_bml/(js|css|i18n|identity|render|contract|action|deferred|reload|app[.]css|app[.]js)(/.*)?|/_git/(fonts|subscriptions)(/.*)?)$"
+	@gitUi path_regexp git_ui "^(/|/(login|welcome|404|500|compare|search|statuses|robots[.]txt|llms[.]txt|sitemap[.]xml|favicon[.]ico)/?|/auth/(signup|forgot|verify|reset-password|link/confirm)/?|/settings/github/?|/repositories(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}(/(settings|secrets|github))?)?/?|/(pulls|pipelines|ci-agents)(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})?/?|/_bml/(libraries|js|css|i18n|identity|render|contract|action|deferred|reload|app[.]css|app[.]js)(/.*)?|/_git/(fonts|subscriptions)(/.*)?)$"
 	route {
 		redir @gitUi http://{host}:{$BOSCA_ATLAS_PORT:8094}{uri} 302
 		reverse_proxy git-server:8091
@@ -39,7 +39,7 @@
 
 # The public Atlas port fronts the imported Git/artifact UIs and Atlas API.
 :8094 {
-	@atlasUi path_regexp atlas_ui "^(/|/(login|welcome|404|500|compare|search|statuses|robots[.]txt|llms[.]txt|sitemap[.]xml|favicon[.]ico)/?|/auth/(signup|forgot|verify|reset-password|link/confirm)/?|/settings/github/?|/repositories(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}(/(settings|secrets|github))?)?/?|/(pulls|pipelines|ci-agents)(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})?/?|/_bml/(js|css|i18n|identity|render|contract|action|deferred|reload|app[.]css|app[.]js)(/.*)?|/_git/(fonts|subscriptions)(/.*)?|/favicon[.]svg|/artifacts/namespaces(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})?/?|/artifacts/repositories(/([0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}|upload))?/?|/artifacts/settings/permissions/?|/artifacts/settings/repositories/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/?|/artifacts/runs/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/?|/_artifacts(/.*)?)$"
+	@atlasUi path_regexp atlas_ui "^(/|/(login|welcome|404|500|compare|search|statuses|robots[.]txt|llms[.]txt|sitemap[.]xml|favicon[.]ico)/?|/auth/(signup|forgot|verify|reset-password|link/confirm)/?|/settings/github/?|/repositories(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}(/(settings|secrets|github))?)?/?|/(pulls|pipelines|ci-agents)(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})?/?|/_bml/(libraries|js|css|i18n|identity|render|contract|action|deferred|reload|app[.]css|app[.]js)(/.*)?|/_git/(fonts|subscriptions)(/.*)?|/favicon[.]svg|/artifacts/namespaces(/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})?/?|/artifacts/repositories(/([0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}|upload))?/?|/artifacts/settings/permissions/?|/artifacts/settings/repositories/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/?|/artifacts/runs/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/?|/_artifacts(/.*)?)$"
 	@gitBackend path_regexp git_backend "^(/[^/]+/[^/]+[.]git(/.*)?|/[^/]+/[^/]+/raw(/.*)?|/ci(/.*)?|/api/webhooks(/.*)?)$"
 	@registry path /v2 /v2/* /raw /raw/* /maven /maven/* /npm /npm/* /helm /helm/* /ml /ml/*
 	route {

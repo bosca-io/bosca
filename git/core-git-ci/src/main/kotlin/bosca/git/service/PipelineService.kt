@@ -21,6 +21,9 @@ interface PipelineService : Service {
      * preserving pipeline IDs, runs, and trigger occurrences. [ref] determines whether default-branch
      * schedules and environments are announced. Returns pipeline metadata from [commitSha] with
      * stable persisted IDs for trigger evaluation; historical definitions never overwrite the catalog.
+     * Reads Git snapshots before opening its own catalog transaction, revalidates the default-branch
+     * head under the catalog lock, and releases the connection between contended lock attempts.
+     * Must be called outside an existing database transaction so Git reads cannot retain its connection.
      */
     suspend fun syncPipelines(repositoryId: UUID, ref: String, commitSha: String): List<Pipeline>
 
