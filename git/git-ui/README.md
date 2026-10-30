@@ -17,8 +17,11 @@ Overview and Reviews do not compute or serialize the diff; **View changes** open
 Files Changed when needed. PR pages resolve only their source and target branch
 heads, without calculating ahead/behind history for every branch. Dependency
 choices and PR lists omit unused mergeability checks; the current PR and its merge
-confirmation retain their checks. Dependency choices and status checks load only
-on Overview.
+confirmation retain their checks. Trial merges, conflict paths, dependency choices
+and status checks load only on Overview. Files Changed indexes line discussions once
+per review snapshot instead of regrouping and sorting comments for each diff line. The browser caches
+file and tree elements after each render, searches the stacked files by their bounds
+on scroll, and updates only the previous and current tree selections.
 
 Pull-request details label the conflict-only result **Merge conflicts**. Required checks that are failed, pending, or missing appear in the overview and merge confirmation. Administrators can explicitly choose **Bypass status checks and merge** for the displayed plan; repository write access, reviews, dependencies, PR version checks and Git conflicts still apply. The API authorizes the override on both merge mutations, defaults it to false, and logs its use with the merging profile. Deploy the API's `failingStatusChecks` field and `bypassStatusChecks` arguments with or before this UI.
 
