@@ -73,7 +73,6 @@ tasks.register("testResourcesDown") {
     dependsOn(":bosca-core:test-support:testResourcesDown")
 }
 
-// Compile independent suites in parallel while keeping their browser processes within one suite's budget.
 val bmlBrowserTestTasks = listOf(
     ":bml:bml-server:chunkCacheBrowserTest",
     ":notifications-web:test",
@@ -83,15 +82,8 @@ val bmlBrowserTestTasks = listOf(
 
 tasks.register("testBmlBrowser") {
     group = "verification"
-    description = "Build BML browser suites in parallel and execute the suites serially"
+    description = "Build and execute BML browser suites using Gradle's worker budget"
     dependsOn(bmlBrowserTestTasks)
-}
-
-subprojects {
-    tasks.withType<Test>().configureEach {
-        val index = bmlBrowserTestTasks.indexOf(path)
-        if (index > 0) mustRunAfter(bmlBrowserTestTasks[index - 1])
-    }
 }
 
 tasks.register("publishExceptFirebaseScrypt") {

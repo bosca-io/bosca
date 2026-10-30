@@ -26,7 +26,13 @@ class WorkspaceCiBrowserTest {
     }
 
     @Test
-    fun `CI and release exclude iOS within the shared worker budget`() {
+    fun `CI and release use Gradle browser scheduling and run browser suites once`() {
+        val browserSuites = setOf(
+            ":bml:bml-server:chunkCacheBrowserTest",
+            ":notifications-web:test",
+            ":bml:examples:design-library:test",
+            ":bml:bml-design-catalog:test",
+        )
         for (pipeline in listOf("ci", "release")) {
             val pipelineSteps = PipelineYamlParser().parse(File("../.bosca/pipelines/$pipeline.yaml").readText())
                 .jobs.getValue("test-jvm").steps
@@ -38,8 +44,12 @@ class WorkspaceCiBrowserTest {
             val browserCommand = pipelineSteps.single { it.name == "Run BML Browser Tests" }.run.orEmpty()
                 .split(Regex("\\s+"))
             assertTrue("testBmlBrowser" in browserCommand, pipeline)
-            assertTrue("--parallel" in browserCommand, pipeline)
-            assertTrue("--max-workers=4" in browserCommand, pipeline)
+            assertFalse(browserCommand.any { it.startsWith("--max-workers") }, pipeline)
+            assertFalse("--no-parallel" in browserCommand, pipeline)
+            assertEquals(browserSuites, command.windowed(2)
+                .filter { it.first() == "-x" }.map { it.last() }.toSet(), pipeline)
+            assertTrue(pipelineSteps.indexOfFirst { it.name == "Run BML Browser Tests" } <
+                pipelineSteps.indexOfFirst { it.name == "Run JVM Tests" }, pipeline)
             for (step in pipelineSteps.filter { it.run?.startsWith("./gradlew ") == true }) {
                 assertTrue("-Pbosca.ios.enabled=false" in step.run.orEmpty(), "$pipeline: ${step.name}")
             }

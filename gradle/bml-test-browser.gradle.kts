@@ -5,6 +5,10 @@ val executableFile = project(":bml:bml-design-catalog").layout.buildDirectory
     .file("test-browser/executable.txt").get().asFile
 tasks.withType<Test>().configureEach {
     if (name != "firefoxTest") {
+        inputs.files(rootProject.file("gradle/bml-test-browser.mjs"),
+            rootProject.file("gradle/bml-test-browser.test.mjs"),
+            rootProject.file("bml/bml-design-catalog/package-lock.json"))
+            .withPropertyName("browserLauncher").withPathSensitivity(PathSensitivity.RELATIVE)
         if (chromeOverride.isPresent) {
             inputs.property("testBrowserOverride", chromeOverride.get())
         } else {

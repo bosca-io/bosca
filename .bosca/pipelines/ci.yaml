@@ -65,9 +65,14 @@ jobs:
           "$bml_chrome" --version
           printf 'BML_DESIGN_CHROME_BINARY=%q\n' "$bml_chrome" >> "$BOSCA_ENV"
       - name: Run BML Browser Tests
-        run: ./gradlew --no-daemon -Pbosca.ios.enabled=false --parallel --max-workers=4 testBmlBrowser
+        run: ./gradlew --no-daemon -Pbosca.ios.enabled=false testBmlBrowser
       - name: Run JVM Tests
-        run: ./gradlew --no-daemon -Pbosca.ios.enabled=false --max-workers=4 test
+        run: >-
+          ./gradlew --no-daemon -Pbosca.ios.enabled=false --max-workers=4 test
+          -x :bml:bml-server:chunkCacheBrowserTest
+          -x :notifications-web:test
+          -x :bml:examples:design-library:test
+          -x :bml:bml-design-catalog:test
       - name: Stop Shared Test Resources
         run: ./gradlew --no-daemon -Pbosca.ios.enabled=false testResourcesDown
         if: always()

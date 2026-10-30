@@ -486,7 +486,9 @@ class DesignLibraryTest {
     private fun withLauncher(test: (List<String>, File?) -> Unit) {
         val binary = System.getProperty("design.fixture.binary")?.let(::File)
         if (binary == null) {
+            // The runner owns test concurrency; this child serves a single browser check.
             test(listOf(System.getProperty("design.fixture.java"),
+                "-XX:ActiveProcessorCount=1",
                 "-Djava.net.preferIPv4Stack=false", "-Djava.net.preferIPv6Addresses=true",
                 "-cp", classpath, "bosca.design.example.MainKt"), null)
             return
