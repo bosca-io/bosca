@@ -46,7 +46,11 @@ validation. Within the catalog and Design Library consumer suites, independent t
 a pool of four while test classes remain serial. Each method owns its server, browser profile and
 cookies; focused checks use distinct report names. Set `-Pbml.browser.workers=1` to run methods
 serially, or choose another pool size for the available machine. The aggregate task reuses those
-results, and its Gradle worker count is bounded independently.
+results, and its Gradle worker count is bounded independently. CI runs the four suites concurrently
+with four method workers per suite. Successful browser tests use Gradle's build cache across clean
+checkouts: code, resources, browser scripts, Node and Chromium versions remain inputs; absolute
+launch paths and the generated deployment identity do not. Browser preparation is up to date while
+its lockfile, installed Playwright and browser executable remain available.
 
 `./gradlew :bml:bml-server:chunkCacheBrowserTest` checks module requests across two deployments
 with unchanged JavaScript and a retained browser cache, for both filesystem and packaged assets.

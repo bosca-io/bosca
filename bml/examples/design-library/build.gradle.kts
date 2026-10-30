@@ -81,35 +81,46 @@ tasks.withType<Test>().configureEach {
         ":bml:bml-design:sourcesJar", ":bml:bml-design:generatePomFileForMavenPublication")
     inputs.dir(layout.projectDirectory.dir("src/test/browser"))
         .withPropertyName("browserChecks").withPathSensitivity(PathSensitivity.RELATIVE)
-    inputs.file(rootProject.file("gradle/bml-test-browser.gradle.kts"))
-        .withPropertyName("browserTestSetup").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir(layout.projectDirectory.dir("src/test/types"))
         .withPropertyName("typeChecks").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file(layout.projectDirectory.file("tsconfig.json"))
         .withPropertyName("typeScriptConfiguration").withPathSensitivity(PathSensitivity.RELATIVE)
-    systemProperty("design.fixture.classpath", files(tasks.jar.flatMap { it.archiveFile }, fixtureRuntime).asPath)
-    systemProperty("design.fixture.java", javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath)
-    systemProperty("design.fixture.node", bml.nodeExecutable.get())
-    systemProperty("design.fixture.browser", layout.projectDirectory.file("src/test/browser/controls.mjs").asFile.absolutePath)
-    systemProperty("design.fixture.typechecker", rootProject.layout.projectDirectory.file("bml/bml-runtime/node_modules/typescript/bin/tsc").asFile.absolutePath)
-    systemProperty("design.fixture.tsconfig", layout.projectDirectory.file("tsconfig.json").asFile.absolutePath)
+    inputs.files(tasks.jar.flatMap { it.archiveFile }, fixtureRuntime)
+        .withPropertyName("applicationRuntime").withNormalizer(ClasspathNormalizer::class.java)
+    // Absolute launch paths are runtime arguments; content inputs above determine reuse.
+    inputs.dir(layout.projectDirectory.dir("src/main"))
+        .withPropertyName("publishedConsumerSources").withPathSensitivity(PathSensitivity.RELATIVE)
+    val testNode = bml.nodeExecutable.get()
+    inputs.property("testNodeVersion", providers.exec {
+        commandLine(testNode, "--version")
+    }.standardOutput.asText.map { it.trim() })
+    val artifactPaths = (fixtureRuntime.get().resolvedConfiguration.resolvedArtifacts +
+        publishedFixtureCompiler.resolvedConfiguration.resolvedArtifacts).distinctBy { it.file }.joinToString("\n") {
+        "${it.moduleVersion.id.group}\t${it.moduleVersion.id.name}\t${it.moduleVersion.id.version}\t${it.classifier.orEmpty()}\t${it.file.absolutePath}"
+    }
+    val runtimeProperties = mapOf(
+        "design.fixture.classpath" to files(tasks.jar.flatMap { it.archiveFile }, fixtureRuntime).asPath,
+        "design.fixture.java" to javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath,
+        "design.fixture.node" to bml.nodeExecutable.get(),
+        "design.fixture.browser" to layout.projectDirectory.file("src/test/browser/controls.mjs").asFile.absolutePath,
+        "design.fixture.typechecker" to rootProject.layout.projectDirectory.file("bml/bml-runtime/node_modules/typescript/bin/tsc").asFile.absolutePath,
+        "design.fixture.tsconfig" to layout.projectDirectory.file("tsconfig.json").asFile.absolutePath,
+        "design.fixture.plugin" to publishedFixturePlugin.asPath,
+        "design.fixture.compiler" to publishedFixtureCompiler.asPath,
+        "design.fixture.pom" to project(":bml:bml-design").layout.buildDirectory.file("publications/maven/pom-default.xml").get().asFile.absolutePath,
+        "design.fixture.project" to layout.projectDirectory.asFile.absolutePath,
+        "design.fixture.runtime" to rootProject.layout.projectDirectory.dir("bml/bml-runtime").asFile.absolutePath,
+        "design.fixture.artifacts" to artifactPaths,
+    )
+    doFirst { systemProperties(runtimeProperties) }
     inputs.files(publishedFixturePlugin, publishedFixtureCompiler).withPropertyName("publishedFixtureTools")
         .withNormalizer(ClasspathNormalizer::class.java)
     inputs.files(rootProject.fileTree("bml/bml-runtime/tools"), rootProject.fileTree("bml/bml-runtime/src"),
         rootProject.file("bml/bml-runtime/package-lock.json"))
         .withPropertyName("publishedFixtureClientToolchain").withPathSensitivity(PathSensitivity.RELATIVE)
-    systemProperty("design.fixture.plugin", publishedFixturePlugin.asPath)
-    systemProperty("design.fixture.compiler", publishedFixtureCompiler.asPath)
     systemProperty("design.fixture.version", project(":bml:bml-design").version.toString())
-    systemProperty("design.fixture.pom", project(":bml:bml-design").layout.buildDirectory.file("publications/maven/pom-default.xml").get().asFile.absolutePath)
     inputs.file(project(":bml:bml-design").layout.buildDirectory.file("publications/maven/pom-default.xml"))
         .withPropertyName("publishedDesignPom").withPathSensitivity(PathSensitivity.NONE)
-    systemProperty("design.fixture.project", layout.projectDirectory.asFile.absolutePath)
-    systemProperty("design.fixture.runtime", rootProject.layout.projectDirectory.dir("bml/bml-runtime").asFile.absolutePath)
-    systemProperty("design.fixture.artifacts", (fixtureRuntime.get().resolvedConfiguration.resolvedArtifacts +
-        publishedFixtureCompiler.resolvedConfiguration.resolvedArtifacts).distinctBy { it.file }.joinToString("\n") {
-        "${it.moduleVersion.id.group}\t${it.moduleVersion.id.name}\t${it.moduleVersion.id.version}\t${it.classifier.orEmpty()}\t${it.file.absolutePath}"
-    })
 }
 
 tasks.register<Test>("publishedConsumerTest") {
