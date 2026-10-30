@@ -1,0 +1,29 @@
+suite: Separate Atlas UI
+templates: [templates/deployment.yaml]
+release:
+  name: test
+tests:
+  - it: proxies to the Atlas backend in this release and binds the configured UI port
+    set:
+      service.port: 18095
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: BML_GRAPHQL_ENDPOINT, value: 'http://test-bosca-atlas-server:8094/graphql'}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: ATLAS_UI_HTTP_PORT, value: '18095'}
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /api/v1/ready
+  - it: uses explicitly selected backend and registry endpoints
+    set:
+      appConfig.graphqlEndpoint: http://api:8094/graphql
+      appConfig.artifactsEndpoint: http://registry:8084
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: BML_GRAPHQL_ENDPOINT, value: 'http://api:8094/graphql'}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: BML_ARTIFACTS_ENDPOINT, value: 'http://registry:8084'}

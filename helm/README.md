@@ -103,47 +103,116 @@ use that same fallback; moving stored secrets to a different key requires an
 explicit re-encryption migration. Restart all affected pods after changing a
 shared environment ConfigMap.
 
-## Git API and BML UI
+## Optional Git backend
 
-`bosca-git-server` runs the API on 8091 and the BML UI on 8093 in one pod.
-Both share the existing `git.<domain>` public origin. Chart version 0.1.2 adds
-the UI listener configuration, Service port, startup probe and path routing.
-For the services chart, set these values in the deployment's operations repository:
+`bosca-git-server` serves only the Git API and transports on 8091. Its image,
+Service and probes have no UI listener. Use an image built from this revision.
+Set `appConfig.gitUrl` for canonical transport URLs and `appConfig.uiUrl` for the
+external UI origin (default `https://atlas.<domain>`). Its Git hostname route
+redirects known UI pages/assets to that external origin and sends API/transport
+requests to 8091. Authentication return origins follow the UI URL; provider
+callbacks remain on the configured Git API URL.
+
+Git shares the existing database, storage, JWT and pipeline key. It has no runtime
+Atlas, Git UI or artifact registry dependencies. Registered migrations still run
+at startup. The standalone artifacts chart remains available on 8084.
+
+## Bosca Atlas
+
+`bosca-atlas-server` serves Git, artifact protocols and the composed `/graphql` API on
+8094, with the optional BML UI on 8095. Enable it explicitly in deployment-owned
+values. This combined example replaces the separate Git and registry pods:
+
+```yaml
+global:
+  domain: example.com
+bosca-git-server:
+  enabled: false
+bosca-artifacts-server:
+  enabled: false
+bosca-atlas-server:
+  enabled: true
+  gateway:
+    hostnames: [atlas.example.com]
+    gitHostnames: [git.example.com]
+    registryHostnames: [artifacts.example.com]
+  appConfig:
+    databaseUrl: jdbc:postgresql://postgres:5432/bosca
+    artifactsUrl: https://artifacts.example.com
+```
+
+Supply the existing database/storage/auth environment and initialization Secret,
+and pre-create the Atlas
+PostgreSQL credential Secret (`pg-creds-bosca-atlas-server` by default), as with the
+other server charts. Atlas must use the same database, storage, JWT, realm and
+`PIPELINE_SECRET_KEY` as the main server and runner. The umbrella defaults Atlas's
+embedded workers/listeners/scheduler off because the platform runner already owns
+them. A standalone chart defaults to embedded workers; `runner.enabled`,
+`runner.queues`, `runner.concurrency`, `runner.listeners` and `runner.scheduler`
+select that responsibility.
+
+The shared Gateway adds TLS listeners, certificates and HTTPS redirects for all
+three configured hostname lists. Atlas UI pages/actions/assets use 8095; GraphQL,
+Git smart HTTP/LFS/raw files, webhooks, CI files and registry protocols use 8094.
+The Git alias preserves transport URLs and redirects Git UI pages to Atlas.
+The registry alias rewrites raw/Maven/npm/Helm/ML file paths into Atlas's existing
+`/_artifacts` namespace, avoiding Git raw-file ambiguity. Docker `/v2` paths stay
+unchanged. Atlas's own file UI also uses `/_artifacts`.
+
+To run dedicated backends, enable their existing charts and select their Service
+names in Atlas. Git remains backend-only; all UI stays on Atlas:
 
 ```yaml
 bosca-git-server:
   enabled: true
   gateway:
-    hostnames: [git.example.com]
-  appConfig:
-    gitUrl: https://git.example.com
+    hostnames: []
+bosca-artifacts-server:
+  enabled: true
+  gateway:
+    hostnames: []
+bosca-atlas-server:
+  backends:
+    git:
+      serviceName: bosca-bosca-git-server
+      port: 8091
+    artifacts:
+      serviceName: bosca-bosca-artifacts-server
+      port: 8084
 ```
 
-The existing Git TLS listener and certificate serve both applications. The
-HTTPRoute sends known UI pages, `/_bml` endpoints and `/_git` assets/subscriptions
-to 8093. Other paths stay on 8091: smart HTTP, LFS, raw files, GraphQL/WebSockets,
-OAuth callbacks, webhooks and CI artifacts. Matching UI repository IDs explicitly
-keeps clone URLs such as `/repositories/project.git/info/refs` on the API.
-The route uses regular-expression matching supported by the chart's Cilium Gateway.
-Git and services chart version `0.1.4` splits the matchers to fit Envoy's default
-RE2 program-size limit of 100 and Gateway API's limit of eight matches per rule.
+Use the actual release's Service names. Atlas's routes own all configured public
+hostnames. Git transports, raw files, CI files and webhooks go to the selected Git
+backend; registry protocols go to the selected artifacts backend. Shared
+`/graphql` and authentication stay on Atlas. Embedded UI file proxies use the
+selected registry endpoint automatically. For a separate UI, also set that UI's
+`appConfig.artifactsEndpoint` to the registry's private URL. Empty backend Service
+names select Atlas itself; disable the dedicated charts when falling back. A
+backend's own Gateway route is only needed when it owns a separate hostname; avoid
+duplicate routes for the same host.
 
-Custom public origins use `appConfig.gitUrl`. It also configures Git UI links,
-auth returns and passkey origins; defaults derive from `appConfig.domain`, falling
-back to `global.domain`. Remove the former Git chart's `appConfig.studioUrl`
-setting. Studio's own configuration continues to use its existing origin.
+For a separate UI, enable `bosca-atlas-ui-server`, set the backend's `ui.enabled`
+to false and `ui.serviceName` to that UI's Kubernetes Service name. `ui.port` is the
+UI Service port (8095 by default). The UI chart's `appConfig.graphqlEndpoint`
+selects the Atlas API; its default targets Atlas in the same release. Set
+`appConfig.artifactsEndpoint` only when UI file requests use another registry,
+and `appConfig.artifactsUrl` for its public protocol origin. The backend's Gateway
+route still owns the public Atlas hostname. UI and API replicas/HPA scale independently.
+The same backend chart can run workers or registry REST separately by selecting
+`roles.api`, `roles.git`, `roles.artifacts`, `ui.enabled` and `runner.enabled`, with
+`gateway.enabled: false` for workers. Embedded UI requires the API role.
 
-Register `<gitUrl>/oauth2/google/callback` with the Google provider and supply
-`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` through the Git pod's environment
-sources. `ui.authCookiePrefix` can select a prefix configured under
-`appConfig.authCookiePrefixes` for the shared Git hostname. The default uses the
-existing `_bat` cookies.
+Register `https://atlas.example.com/oauth2/google/callback` with the Google provider
+and supply its client credentials through the existing environment sources. Custom
+origins use `appConfig.atlasUrl` and `appConfig.gitUrl`. Use Atlas/Atlas UI images
+built from the matching release; image publication is separate from chart rendering.
 
-Deploy the chart with a Git image built from the same revision. Git applies its
-registered V49 migration at startup before serving PR queries. Preserve the
-shared pipeline encryption key during the rollout. API readiness still checks
-its dependencies; the UI startup probe waits for the second listener before
-admitting traffic. A failed listener stops the combined host.
+Routing verification:
+
+```sh
+python3 helm/tests/test_atlas_routes.py
+helm unittest helm/bosca-atlas-server helm/bosca-atlas-ui-server helm/bosca-services
+```
 
 ## Maintainer release process
 

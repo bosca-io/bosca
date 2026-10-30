@@ -479,14 +479,16 @@ internal fun readinessFailure(url: String, timeoutMillis: Int = 10_000): String?
 
 internal fun publicReadinessUrls(config: SwarmConfig) = config.sites.flatMap { site ->
     val hosts = site.hosts
-    if (site.rootImage.isBlank()) {
+    val urls = if (site.rootImage.isBlank()) {
         listOf("https://${hosts.root}/api/v1/ready", "https://${hosts.studio}/health",
-            "https://${hosts.profiles}/login", "https://${hosts.notifications}/")
+            "https://${hosts.profiles}/login", "https://${hosts.notifications}/", "https://${hosts.atlas}/login")
     } else {
         listOf("https://${hosts.api}/api/v1/ready", "https://${hosts.studio}/health",
             "https://${hosts.profiles}/login", "https://${hosts.notifications}/",
-            "https://${hosts.root}/", "https://${hosts.www}/")
+            "https://${hosts.root}/", "https://${hosts.www}/", "https://${hosts.atlas}/login")
     }
+    // A static UI login page does not establish that the API schema is ready.
+    urls + "https://${hosts.atlas}/api/v1/ready"
 }
 
 private fun checkPublicSites(config: SwarmConfig) {
@@ -519,9 +521,18 @@ internal fun deploySwarm(config: SwarmConfig, bundle: Path, skipPublicCheck: Boo
     waitServices(config, expected = setOf("infra_postgres", "infra_pgbouncer", "infra_dragonfly"))
     bootstrapDatabases(config)
     config.sites.forEach { stackDeploy(config, it.id) }
+    waitServices(config, expected = config.sites.flatMap { site ->
+        buildList {
+            add("${site.id}_atlas")
+            if (site.atlas.separateUi) add("${site.id}_atlas-ui")
+            if (site.atlas.separateGit) add("${site.id}_git")
+            if (site.atlas.separateArtifacts) add("${site.id}_artifacts")
+        }
+    }.toSet())
     stackDeploy(config, "edge")
     waitServices(config)
     if (!skipPublicCheck) checkPublicSites(config)
+    retireReplacedAtlasServices(config)
     deploymentNotices(config).forEach { println("Notice: $it") }
     println("Swarm deployment is running. Verify Git, search, analytics, mail, and backups before use.")
 }
@@ -548,5 +559,23 @@ internal fun deploymentNotices(config: SwarmConfig): List<String> = buildList {
         listOf(site.ml.boscaToken, site.ml.artifactsPushToken, site.ml.artifactsPullToken).any(String::isBlank)
     }.forEach { site ->
         add("Recommendation training for ${site.id} needs ml.boscaToken, ml.artifactsPushToken and ml.artifactsPullToken.")
+    }
+}
+
+/** Retires only superseded managed services after the replacement and ingress are healthy. */
+internal fun retireReplacedAtlasServices(config: SwarmConfig) {
+    for (site in config.sites) {
+        val retired = buildList {
+            if (!site.atlas.separateGit) add("${site.id}_git")
+            if (!site.atlas.separateArtifacts) add("${site.id}_artifacts")
+            if (!site.atlas.separateUi) add("${site.id}_atlas-ui")
+        }
+        for (service in retired) {
+            val existing = script(config.manager.ssh,
+                "sudo -n docker service ls --filter name=${shell(service)} --format '{{.Name}}'", true)
+            if (service in existing.lineSequence()) {
+                script(config.manager.ssh, "sudo -n docker service rm ${shell(service)}")
+            }
+        }
     }
 }

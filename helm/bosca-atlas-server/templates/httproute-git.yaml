@@ -1,0 +1,41 @@
+{{- if and .Values.gateway.enabled .Values.gateway.gitHostnames }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "bosca-common.fullname" . }}-git
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.gatewayName }}
+      {{- with .Values.gateway.gatewayNamespace }}
+      namespace: {{ . }}
+      {{- end }}
+      port: 443
+  {{- with .Values.gateway.gitHostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- /* Gateway API allows at most eight matches per HTTPRoute rule. */}}
+    {{- range chunk 8 (include "bosca-atlas-server.gitUiRoutes" . | fromYamlArray) }}
+    - matches:
+        {{- range . }}
+        - path:
+            type: RegularExpression
+            value: {{ . | quote }}
+        {{- end }}
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            hostname: {{ (urlParse (include "bosca-atlas-server.atlasUrl" $)).hostname | quote }}
+            statusCode: 302
+    {{- end }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - {{ include "bosca-atlas-server.gitBackend" . | nindent 10 | trim }}
+{{- end }}

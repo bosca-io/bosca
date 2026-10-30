@@ -2,7 +2,7 @@ apiVersion: v2
 name: bosca-services
 description: Bosca application services — requires bosca-infra to be deployed first
 type: application
-version: 0.1.6
+version: 0.1.7
 dependencies:
   - name: bosca-common
     version: ">=0.1.0"
@@ -27,6 +27,14 @@ dependencies:
     version: ">=0.1.0"
     repository: "file://../bosca-artifacts-server"
     condition: bosca-artifacts-server.enabled
+  - name: bosca-atlas-server
+    version: ">=0.1.0"
+    repository: "file://../bosca-atlas-server"
+    condition: bosca-atlas-server.enabled
+  - name: bosca-atlas-ui-server
+    version: ">=0.1.0"
+    repository: "file://../bosca-atlas-ui-server"
+    condition: bosca-atlas-ui-server.enabled
   - name: bosca-git-server
     version: ">=0.1.0"
     repository: "file://../bosca-git-server"

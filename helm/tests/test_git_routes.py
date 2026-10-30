@@ -56,7 +56,7 @@ class GitGatewayRoutesTest(unittest.TestCase):
                 else:
                     self.fail(f"Unsupported path type: {pattern['type']}")
                 if matches:
-                    return rule["backendRefs"][0]["port"]
+                    return "redirect" if "filters" in rule else rule["backendRefs"][0]["port"]
         self.fail(f"No backend for {path}")
 
     def test_regexes_fit_envoy_default_program_limit(self):
@@ -72,7 +72,7 @@ class GitGatewayRoutesTest(unittest.TestCase):
         for rule in self.rules:
             self.assertLessEqual(len(rule["matches"]), 8)
 
-    def test_ui_pages_and_assets_use_ui_listener(self):
+    def test_ui_pages_and_assets_redirect_to_atlas(self):
         pages = [
             "login", "welcome", "404", "500", "compare", "search", "statuses",
             "robots.txt", "llms.txt", "sitemap.xml", "favicon.ico", "settings/github",
@@ -97,15 +97,15 @@ class GitGatewayRoutesTest(unittest.TestCase):
         paths.extend(LIBRARY_ASSETS)
         for path in paths:
             with self.subTest(path=path):
-                self.assertEqual(8093, self.port_for(path))
+                self.assertEqual("redirect", self.port_for(path))
 
-    def test_library_assets_use_ui_listener_in_local_and_compose_proxies(self):
+    def test_library_assets_redirect_to_atlas_in_local_and_compose_proxies(self):
         workspace = HELM_ROOT.parent
         proxies = [
             ("deployments/local/Caddyfile", r'@gitUi path_regexp git_ui "([^"]+)"',
-             "reverse_proxy @gitUi git-server:8093"),
+             "redir @gitUi http://{host}:{$BOSCA_ATLAS_PORT:8094}{uri} 302"),
             ("deployments/bosca-compose/config/nginx.conf.template", r'location ~ "([^"]+)"',
-             "proxy_pass http://127.0.0.1:@@GIT_UI_PORT@@;"),
+             "return 302 https://@@ATLAS_DOMAIN@@$request_uri;"),
         ]
         for file, expression, upstream in proxies:
             config = (workspace / file).read_text()

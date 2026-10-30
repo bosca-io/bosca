@@ -44,14 +44,6 @@ jobs:
         uses: setup-rust
         with:
           toolchain: stable
-      - name: Setup Node
-        uses: setup-node
-        with:
-          version: "22"
-      - name: Setup pnpm
-        uses: setup-pnpm
-        with:
-          version: "10"
       - name: Build and push image
         run: scripts/release/build-image.sh "$IMAGE" "$VERSION"
         env:

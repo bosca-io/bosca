@@ -1,0 +1,54 @@
+# Route through bosca-atlas-server.gateway with ui.enabled=false and ui.serviceName set.
+replicaCount: 1
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 1
+image:
+  registry: ghcr.io/bosca-io/bosca
+  repository: atlas-ui-server
+  tag: ''
+  pullPolicy: IfNotPresent
+nameOverride: ''
+fullnameOverride: ''
+serviceAccount:
+  create: true
+  name: ''
+  annotations: {}
+commonAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+service:
+  type: ClusterIP
+  port: 8095
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+podDisruptionBudget:
+  enabled: false
+  maxUnavailable: 1
+extraEnv: {}
+envFromConfigMaps: []
+imagePullSecrets:
+- name: docker-registry
+nodeSelector: {}
+tolerations: []
+affinity: {}
+global:
+  imageRegistry: ''
+  domain: ''
+appConfig:
+  graphqlEndpoint: ''
+  artifactsEndpoint: ''
+  artifactsUrl: ''
+  authCookiePrefix: ''

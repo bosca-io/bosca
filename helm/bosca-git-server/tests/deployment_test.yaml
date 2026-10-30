@@ -23,35 +23,15 @@ tests:
           path: spec.template.spec.containers[0].ports[0].containerPort
           value: 8091
 
-  - it: exposes the UI and waits for its listener before API readiness
+  - it: starts and probes only the backend listener
     template: templates/deployment.yaml
     asserts:
-      - contains:
+      - lengthEqual:
           path: spec.template.spec.containers[0].ports
-          content:
-            name: ui
-            containerPort: 8093
-            protocol: TCP
+          count: 2
       - equal:
           path: spec.template.spec.containers[0].startupProbe.httpGet
-          value:
-            path: /api/v1/ready
-            port: ui
-      - equal:
-          path: spec.template.spec.containers[0].readinessProbe.httpGet.port
-          value: http
-
-  - it: exposes a custom UI port
-    template: templates/deployment.yaml
-    set:
-      ui.port: 18093
-    asserts:
-      - contains:
-          path: spec.template.spec.containers[0].ports
-          content:
-            name: ui
-            containerPort: 18093
-            protocol: TCP
+          value: {path: /api/v1/ready, port: http}
 
   - it: passes config arg
     template: templates/deployment.yaml

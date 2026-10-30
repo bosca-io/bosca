@@ -141,6 +141,13 @@ import bosca.cli.service.ServiceCommand
 import bosca.cli.service.ServiceInstallCommand
 import bosca.cli.service.ServiceStatusCommand
 import bosca.cli.service.ServiceUninstallCommand
+import bosca.cli.compose.ComposeCommand
+import bosca.cli.compose.ComposeConfigCommand
+import bosca.cli.compose.ComposeDownCommand
+import bosca.cli.compose.ComposeInitCommand
+import bosca.cli.compose.ComposeRenderCommand
+import bosca.cli.compose.ComposeStatusCommand
+import bosca.cli.compose.ComposeUpCommand
 import bosca.cli.swarm.SwarmCommand
 import bosca.cli.swarm.SwarmEncryptCommand
 import bosca.cli.swarm.SwarmDecryptCommand
@@ -521,6 +528,10 @@ fun main(args: Array<String>) {
             SwarmUpdateImagesCommand(),
         ),
         HelmCommand().subcommands(HelmImagesCommand()),
+        ComposeCommand().subcommands(
+            ComposeInitCommand(), ComposeRenderCommand(), ComposeConfigCommand(),
+            ComposeUpCommand(), ComposeDownCommand(), ComposeStatusCommand(),
+        ),
     )
     .main(args)
 

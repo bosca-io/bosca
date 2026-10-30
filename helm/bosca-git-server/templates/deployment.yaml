@@ -39,9 +39,6 @@ spec:
             - name: http
               containerPort: 8091
               protocol: TCP
-            - name: ui
-              containerPort: {{ .Values.ui.port }}
-              protocol: TCP
             - name: management
               containerPort: {{ $.Values.managementPort }}
               protocol: TCP
@@ -125,11 +122,10 @@ spec:
           # (no DB/cache/pool access) so a load spike or slow database can't trigger a restart
           # storm. NOTE: /api/v1/live exists only in images rebuilt from this workspace's
           # bosca-core — ship this chart change together with a rebuilt git-server image.
-          # The API binds before the UI. Wait for both listeners before admitting traffic.
           startupProbe:
             httpGet:
               path: /api/v1/ready
-              port: ui
+              port: http
             periodSeconds: 5
             failureThreshold: 60
           livenessProbe:

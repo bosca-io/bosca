@@ -13,5 +13,5 @@ WORKDIR /app
 COPY artifacts/${ARTIFACT_SHA}/git-server-native/bosca-git-server /app/bosca-git-server
 RUN chmod +x ./bosca-git-server
 
-EXPOSE 8091 8093
+EXPOSE 8091
 ENTRYPOINT ["./bosca-git-server"]

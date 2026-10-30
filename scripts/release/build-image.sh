@@ -25,7 +25,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 IMAGES=(
-  bosca-server bosca-runner analytics-collector artifacts-server git-server
+  bosca-server bosca-runner analytics-collector artifacts-server git-server atlas-server atlas-ui-server
   kubernetes-controller bml-message-server notifications-web profiles-web bml-design-catalog
   bosca-cli bosca-studio bosca-io imageprocessor bosca-gateway
   recommendation-trainer recommendation-model-loader
@@ -133,10 +133,14 @@ case "$IMAGE" in
     docker_build artifacts artifacts/artifacts-server/Dockerfile.graalvm --build-arg "ARTIFACT_SHA=$STAGE"
     ;;
   git-server)
-    require_linux_x86_64
-    (cd bml/bml-runtime && npm ci --no-audit --no-fund)
     stage_native :git:git-server git/git-server bosca-git-server git git-server-native
     docker_build git git/git-server/Dockerfile --build-arg "ARTIFACT_SHA=$STAGE"
+    ;;
+  atlas-server | atlas-ui-server)
+    require_linux_x86_64
+    (cd bml/bml-runtime && npm ci --no-audit --no-fund)
+    stage_native ":server:$IMAGE" "server/$IMAGE" "bosca-$IMAGE" server "$IMAGE-native"
+    docker_build server "server/$IMAGE/Dockerfile" --build-arg "ARTIFACT_SHA=$STAGE"
     ;;
   kubernetes-controller)
     stage_native :kubernetes:kubernetes-controller kubernetes/kubernetes-controller bosca-kubernetes-controller kubernetes kubernetes-controller-native

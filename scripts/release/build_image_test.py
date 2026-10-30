@@ -43,6 +43,12 @@ case "$*" in
     mkdir -p git/git-server/build/native/nativeCompile
     printf native > git/git-server/build/native/nativeCompile/bosca-git-server
     ;;
+  *:server:atlas-server:nativeCompile*|*:server:atlas-ui-server:nativeCompile*)
+    for application in atlas-server atlas-ui-server; do
+      mkdir -p server/$application/build/native/nativeCompile
+      printf native > server/$application/build/native/nativeCompile/bosca-$application
+    done
+    ;;
   *:bml:bml-design-catalog:nativeCompile*)
     mkdir -p bml/bml-design-catalog/build/native/nativeCompile
     printf native > bml/bml-design-catalog/build/native/nativeCompile/bml-design-catalog
@@ -72,6 +78,16 @@ esac
             text=True,
         )
         return self.commands.read_text().splitlines()
+
+    def test_atlas_native_images_prepare_bml_and_stage_the_matching_binary(self):
+        for image in ("atlas-server", "atlas-ui-server"):
+            with self.subTest(image=image):
+                self.commands.unlink(missing_ok=True)
+                commands = self.build(image)
+                self.assertEqual("npm ci --no-audit --no-fund", commands[0])
+                self.assertEqual(f"gradle --no-daemon --no-configuration-cache :server:{image}:nativeCompile", commands[1])
+                self.assertIn(f"server/{image}/Dockerfile", commands[2])
+                self.assertEqual("native", (self.root / f"server/artifacts/release-test/{image}-native/bosca-{image}").read_text())
 
     def test_native_server_disables_local_scripting(self):
         commands = self.build("bosca-server")
@@ -112,26 +128,18 @@ esac
         ])
         self.assertEqual((self.root / "bml/artifacts/release-test/bml-design-catalog-native/bml-design-catalog").read_text(), "native")
 
-    def test_git_installs_runtime_dependencies_before_native_compilation(self):
+    def test_git_builds_only_the_backend_native_image(self):
         self.environment["RUNTIME_DIRECTORY"] = str(self.root / "bml/bml-runtime")
         self.write_executable(self.bin / "npm", """#!/bin/bash
 [[ "$PWD" == "$RUNTIME_DIRECTORY" ]] || exit 1
 printf 'npm %s\\n' "$*" >> "$COMMAND_LOG"
 """)
         self.assertEqual(self.build("git-server"), [
-            "npm ci --no-audit --no-fund",
             "gradle --no-daemon --no-configuration-cache :git:git-server:nativeCompile",
             "docker build --platform linux/amd64 -f git/git-server/Dockerfile "
             "-t example.invalid/bosca/git-server:test --build-arg ARTIFACT_SHA=release-test git",
         ])
         self.assertEqual((self.root / "git/artifacts/release-test/git-server-native/bosca-git-server").read_text(), "native")
-
-    def test_git_stops_when_runtime_installation_fails(self):
-        self.write_executable(self.bin / "npm", '#!/bin/bash\nexit 42\n')
-        result = subprocess.run(["bash", str(self.script), "git-server", "test"],
-                                env=self.environment, capture_output=True, text=True)
-        self.assertEqual(result.returncode, 42)
-        self.assertFalse(self.commands.exists())
 
     def test_git_rejects_non_linux_builds_before_installation(self):
         self.write_executable(self.bin / "uname", '#!/bin/bash\ncase "$1" in -s) echo Darwin;; -m) echo arm64;; esac\n')

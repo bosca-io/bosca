@@ -118,6 +118,8 @@ data class SwarmConfig(
     val serverMemory: String = "768M",
     /** Enables API.Bible usage reporting in this site's Analytics collector. */
     val fumsEnabled: Boolean = true,
+    /** Atlas host and optional independently deployed services. */
+    val atlas: SwarmAtlas = SwarmAtlas(),
 )
 
 /** Per-site host, auth cookie domain, and optional branding for profiles-web. */
@@ -162,7 +164,8 @@ data class SwarmConfig(
 /**
  * Public hostnames of one site, laid out like the Kubernetes Gateway routes: the base domain and its
  * `api.`, `upload.` and `ws.` hosts serve bosca-server, `studio.` serves Studio with same-origin API paths,
- * `a.` the analytics collector, `git.` the Git API and BML UI, `artifacts.` the artifacts registry,
+ * `a.` the analytics collector, `atlas.` the combined Git/artifact UI and API, `git.` the Git transport alias,
+ * `artifacts.` the native registry alias,
  * `notifications.` the preference site, and `messages.` the message server's public assets.
  */
 internal data class SiteHosts(
@@ -178,9 +181,10 @@ internal data class SiteHosts(
     val notifications: String,
     val messages: String,
     val artifacts: String,
+    val atlas: String,
 ) {
     val server: List<String> get() = listOf(root, api, upload, ws)
-    val all: List<String> get() = server + listOf(www, studio, profiles, analytics, git, notifications, messages, artifacts)
+    val all: List<String> get() = server + listOf(www, studio, profiles, analytics, git, notifications, messages, artifacts, atlas)
 }
 
 internal val SwarmSite.hosts: SiteHosts
@@ -197,6 +201,7 @@ internal val SwarmSite.hosts: SiteHosts
         notifications = notificationsWeb.host.ifBlank { "notifications.$domain" },
         messages = "messages.$domain",
         artifacts = "artifacts.$domain",
+        atlas = atlas.domain.ifBlank { "atlas.$domain" },
     )
 
 /** Default images, pinned to exact versions; configurations keep the images they already name. */
@@ -212,6 +217,8 @@ internal fun defaultImages() = mapOf(
     "runner" to "ghcr.io/bosca-io/bosca/bosca-runner:SET_NEW_TAG",
     "collector" to "ghcr.io/bosca-io/bosca/analytics-collector:SET_NEW_TAG",
     "git" to "ghcr.io/bosca-io/bosca/git-server:SET_NEW_TAG",
+    "atlas" to "ghcr.io/bosca-io/bosca/atlas-server:SET_NEW_TAG",
+    "atlas-ui" to "ghcr.io/bosca-io/bosca/atlas-ui-server:SET_NEW_TAG",
     "studio" to "ghcr.io/bosca-io/bosca/bosca-studio:SET_NEW_TAG",
     "profiles-web" to "ghcr.io/bosca-io/bosca/profiles-web:6.17.3",
     "notifications-web" to "ghcr.io/bosca-io/bosca/notifications-web:6.17.3",
@@ -314,6 +321,9 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
     for (site in sites) {
         require(idPattern.matches(site.id) && site.id !in setOf("infra", "edge")) { "Invalid site id: ${site.id}" }
         require(site.hosts.all.all(domainPattern::matches)) { "Invalid domain for ${site.id}" }
+        require(site.hosts.atlas.endsWith(".${site.domain}")) {
+            "atlas.domain for ${site.id} must share the site's cookie domain"
+        }
         require(site.redisDatabase in 1..15) { "Redis database must be between 1 and 15 for ${site.id}" }
         mapOf(
             "cacheBackend" to site.cacheBackend, "pubsubBackend" to site.pubsubBackend,
@@ -402,7 +412,12 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
     }
     if (deploy) {
         require(!manager.ssh.endsWith(".invalid") && workers.none { it.ssh.endsWith(".invalid") }) { "Replace example SSH hosts" }
-        require(images.values.none { it.contains("SET_") }) { "Replace example image tags" }
+        val unused = buildSet {
+            if (sites.none { it.atlas.separateUi }) add("atlas-ui")
+            if (sites.none { it.atlas.separateGit }) add("git")
+            if (sites.none { it.atlas.separateArtifacts }) add("artifacts")
+        }
+        require(images.filterKeys { it !in unused }.values.none { it.contains("SET_") }) { "Replace example image tags" }
     }
 }
 

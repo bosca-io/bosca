@@ -44,9 +44,9 @@ security:
     key: $SECURITY_ENCRYPTION_KEY
 
 app:
-  url: $GIT_URL
+  url: $ATLAS_URL
   allowed-origins:
-    - $GIT_URL
+    - $ATLAS_URL
   welcome-url: "${WELCOME_EMAIL_URL:}"
 
 oauth2:
@@ -64,19 +64,22 @@ oauth2:
         - https://www.googleapis.com/auth/userinfo.email
       enabled: ${GOOGLE_ENABLED:true}
   redirects:
-    - $GIT_URL
+    - $ATLAS_URL
 
 webauthn:
   extraOrigins:
-    - $GIT_URL
+    - $ATLAS_URL
 
 git:
   url: $GIT_URL
   ui:
-    url: $GIT_URL
-    server:
-      port: 8093
-      development: false
+    url: $ATLAS_URL
+  sync:
+    listeners: false
+initialization:
+  password:
+    admin: $INIT_ADMIN_PASSWORD
+    sa: $INIT_SA_PASSWORD
 pipeline:
   secretKey: $PIPELINE_SECRET_KEY
 

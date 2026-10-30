@@ -9,6 +9,8 @@ internal val boscaImages = listOf(
     BoscaImage("bosca-server", "bosca-server", "server"),
     BoscaImage("bosca-runner", "bosca-runner", "runner"),
     BoscaImage("analytics-collector", "bosca-collector", "collector"),
+    BoscaImage("atlas-server", "bosca-atlas-server", "atlas"),
+    BoscaImage("atlas-ui-server", "bosca-atlas-ui-server", "atlas-ui"),
     BoscaImage("git-server", "bosca-git-server", "git"),
     BoscaImage("bosca-studio", "bosca-studio", "studio"),
     BoscaImage("profiles-web", "profiles-web", "profiles-web"),

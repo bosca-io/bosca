@@ -30,7 +30,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 
-/** Exercises both production listeners in one process with isolated PostgreSQL and NATS. */
+/** Exercises the backend through a separate HTTP UI client with isolated PostgreSQL and NATS. */
 class GitServerIntegrationTest {
     private fun JsonElement.at(vararg fields: String): JsonElement =
         fields.fold(this) { value, field -> value.jsonObject.getValue(field) }
@@ -78,7 +78,7 @@ class GitServerIntegrationTest {
     fun `HTTP API authenticates browser SSR actions file delivery and subscription relay`() = verify("_bat")
 
     @Test
-    fun `custom cookie prefix works through UI and API listeners`() = verify("_git_review")
+    fun `custom cookie prefix works with an independent UI host`() = verify("_git_review")
 
     private fun verify(cookiePrefix: String) {
         val postgres = SharedPostgreSQLContainer().withDatabaseName("git_http_ui")
@@ -86,6 +86,7 @@ class GitServerIntegrationTest {
         val directory = kotlin.io.path.createTempDirectory("git-http-ui").toFile()
         val storageDirectory = File(directory, "storage")
         var process: Process? = null
+        var uiProcess: Process? = null
         var apiPort: Int? = null
         var uiListenerPort: Int? = null
         val nativeBinary = System.getenv("GIT_SERVER_TEST_BINARY")?.takeIf(String::isNotBlank)?.let(::File)
@@ -158,7 +159,6 @@ class GitServerIntegrationTest {
                             .putAll(
                                 mapOf(
                                     "GIT_HTTP_PORT" to port.toString(),
-                                    "GIT_UI_HTTP_PORT" to uiPort.toString(),
                                     "BML_AUTH_COOKIE_PREFIX" to cookiePrefix,
                                     "BML_GRAPHQL_ENDPOINT" to "http://127.0.0.1:1/graphql",
                                     "GIT_DEVELOPMENT" to "true",
@@ -216,6 +216,15 @@ class GitServerIntegrationTest {
                 ready,
                 "Git server failed to start. Log: ${log.absolutePath}\n${log.readText().takeLast(12_000)}",
             )
+            ServerSocket(uiPort).use { assertTrue(it.isBound, "Git must not bind the UI listener") }
+            val uiConfig = File(directory, "ui.yaml")
+            uiConfig.writeText("bosca:\n  server:\n    port: $uiPort\nbml:\n  graphqlEndpoint: $apiOrigin/graphql\n  authCookiePrefix: $cookiePrefix\n")
+            uiProcess = ProcessBuilder(
+                File(System.getProperty("java.home"), "bin/java").absolutePath,
+                "--enable-native-access=ALL-UNNAMED", "-cp",
+                requireNotNull(System.getProperty("gitUiTestClasspath")),
+                "bosca.git.ui.server.ApplicationKt", "-config=${uiConfig.absolutePath}",
+            ).directory(directory).redirectErrorStream(true).redirectOutput(File(directory, "ui.log")).start()
             val uiDeadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
             var uiReady = false
             while (process.isAlive && System.nanoTime() < uiDeadline) {
@@ -224,7 +233,6 @@ class GitServerIntegrationTest {
                 Thread.sleep(100)
             }
             assertTrue(uiReady, "UI server failed to start. ${log.readText().takeLast(12_000)}")
-            assertFalse("bml: no META-INF/bosca/bml/build-id resource" in log.readText(), log.readText())
             assertEquals(404, request("/login", base = apiOrigin).statusCode())
             assertEquals(404, request("/_bml/app.css", base = apiOrigin).statusCode())
             fun graphql(
@@ -1338,17 +1346,22 @@ class GitServerIntegrationTest {
             )
             assertFalse("graphql proxy upstream unreachable" in log.readText(), log.readText())
         } finally {
+            uiProcess?.destroy()
+            val uiStopped = uiProcess?.waitFor(30, TimeUnit.SECONDS) ?: true
+            if (!uiStopped) uiProcess?.destroyForcibly()?.waitFor(10, TimeUnit.SECONDS)
             process?.destroy()
             val stopped = process?.waitFor(45, TimeUnit.SECONDS) ?: true
             if (!stopped) process.destroyForcibly().waitFor(10, TimeUnit.SECONDS)
             try {
-                assertTrue(stopped, "Git host did not shut down both listeners gracefully")
+                assertTrue(stopped && uiStopped, "Git backend and independent UI must stop gracefully")
                 apiPort?.let { ServerSocket(it).use { socket -> assertTrue(socket.isBound) } }
                 uiListenerPort?.let { ServerSocket(it).use { socket -> assertTrue(socket.isBound) } }
             } finally {
                 try {
                     val log = File(directory, "server.log")
                     if (artifacts != null && log.isFile) log.copyTo(File(artifacts, "server.log"), overwrite = true)
+                    val uiLog = File(directory, "ui.log")
+                    if (artifacts != null && uiLog.isFile) uiLog.copyTo(File(artifacts, "ui.log"), overwrite = true)
                 } finally {
                     try {
                         nats.stop()

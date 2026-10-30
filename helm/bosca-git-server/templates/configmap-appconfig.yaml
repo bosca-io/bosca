@@ -66,16 +66,18 @@ data:
 
     security:
       autoVerify: {{ .Values.appConfig.autoVerify }}
+      encryption:
+        key: $SECURITY_ENCRYPTION_KEY
 
     analyticsServer:
       appId: bosca-git-server
       url: http://{{ .Release.Name }}-bosca-collector.{{ .Release.Namespace }}.svc.cluster.local:8080
 
     app:
-      url: {{ include "bosca-git-server.gitUrl" . | quote }}
+      url: {{ include "bosca-git-server.uiUrl" . | quote }}
       welcome-url: "${WELCOME_EMAIL_URL:}"
       allowed-origins:
-        {{- range (prepend .Values.appConfig.appAllowedOrigins (include "bosca-git-server.gitUrl" .) | uniq) }}
+        {{- range (prepend .Values.appConfig.appAllowedOrigins (include "bosca-git-server.uiUrl" .) | uniq) }}
         - {{ . | quote }}
         {{- end }}
 
@@ -94,22 +96,18 @@ data:
             - https://www.googleapis.com/auth/userinfo.email
           enabled: {{ .Values.appConfig.googleEnabled }}
       redirects:
-        {{- range (prepend .Values.appConfig.oauth2Redirects (include "bosca-git-server.gitUrl" .) | uniq) }}
+        {{- range (prepend .Values.appConfig.oauth2Redirects (include "bosca-git-server.uiUrl" .) | uniq) }}
         - {{ . | quote }}
         {{- end }}
 
     webauthn:
       extraOrigins:
-        - {{ include "bosca-git-server.gitUrl" . | quote }}
+        - {{ include "bosca-git-server.uiUrl" . | quote }}
 
     git:
       url: {{ include "bosca-git-server.gitUrl" . | quote }}
       ui:
-        url: {{ include "bosca-git-server.gitUrl" . | quote }}
-        auth-cookie-prefix: {{ .Values.ui.authCookiePrefix | quote }}
-        server:
-          port: {{ .Values.ui.port }}
-          development: false
+        url: {{ include "bosca-git-server.uiUrl" . | quote }}
       push:
         rate-limit:
           enabled: {{ .Values.appConfig.pushRateLimit.enabled }}
