@@ -522,9 +522,16 @@ class BmlBinaryRuntimeTest {
                             return client.send(request.GET().build(), HttpResponse.BodyHandlers.ofByteArray())
                         }
                         val page = get("/green").body().decodeToString()
-                        assertTrue(page.indexOf("/_bml/libraries/") < page.indexOf("<style>"), page)
                         val styles = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(page).map { it.groupValues[1].replace("&amp;", "&") }.toList()
-                        assertEquals(4, styles.count { "/_bml/libraries/" in it })
+                        val libraryStyles = styles.filter { path ->
+                            if (development) path.startsWith("/_bml/libraries/")
+                            else path.startsWith("/_bml/content/") && !path.substringAfterLast('/').startsWith("green.page-")
+                        }
+                        // The two identical theme globals share one content URL in production.
+                        assertEquals(if (development) 4 else 3, libraryStyles.size, styles.toString())
+                        libraryStyles.forEach { path ->
+                            assertTrue(page.indexOf(path) in 0 until page.indexOf("<style>"), page)
+                        }
                         val css = styles.joinToString("\n") { path ->
                             val response = get(path)
                             assertEquals(200, response.statusCode(), path)
@@ -532,14 +539,15 @@ class BmlBinaryRuntimeTest {
                             assertEquals(304, get(path, etag).statusCode(), path)
                             response.body().decodeToString()
                         }
-                        val binaryUrls = Regex("/_bml/libraries/[^\\s)\\\"']+").findAll(css).map { it.value }.distinct().toList()
+                        val binaryUrls = Regex("/_bml/(?:libraries|content)/[^\\s)\\\"']+").findAll(css).map { it.value }.distinct().toList()
                         assertTrue(binaryUrls.any { it.endsWith(".woff2") } && binaryUrls.any { it.endsWith(".svg") }, css)
                         for (path in binaryUrls) {
                             val response = get(path)
                             assertEquals(200, response.statusCode(), path)
+                            assertEquals(if (development) "no-cache" else "public, max-age=31536000, immutable",
+                                response.headers().firstValue("Cache-Control").orElseThrow(), path)
                             if (path.endsWith(".woff2")) {
                                 assertTrue(response.headers().firstValue("Content-Type").orElseThrow().startsWith("font/woff2"))
-                                assertEquals("no-cache", response.headers().firstValue("Cache-Control").orElseThrow())
                                 assertTrue(response.body().contentEquals(byteArrayOf(0, 1, 2, -1)))
                             }
                         }
@@ -574,7 +582,7 @@ class BmlBinaryRuntimeTest {
                         """.trimIndent()) }
                         node(check.path)
                         val empty = get("/empty").body().decodeToString()
-                        assertFalse("/_bml/libraries/" in empty || "/_bml/js/" in empty, empty)
+                        assertFalse(listOf("/_bml/libraries/", "/_bml/content/", "/_bml/js/").any { it in empty }, empty)
                         for ((name, color) in listOf("green" to "rgb(0, 128, 0)", "blue" to "rgb(0, 0, 255)")) {
                             var html = get("/$name").body().decodeToString()
                             for (match in Regex("<link[^>]+href=\"([^\"]+)\"[^>]*>").findAll(html).toList()) {
