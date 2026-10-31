@@ -130,6 +130,13 @@ Packaged response bytes are digest-verified and cached within the active applica
 Unknown paths remain unavailable. The build identity continues to invalidate rendered shared HTML
 when server code changes; it is independent of browser asset URLs.
 
+The library and application CSS bundlers resolve local `url()` dependencies and `@import` sources
+before emitting CSS. Bundled local assets use same-origin paths beginning with `/`; unresolved
+source files or relative URLs left in the bundled output fail the build. Public-root paths,
+external URLs, data URLs and fragment references are preserved. Application CSS dependencies are
+packaged with the application's indexed resources, including sites with no client JavaScript.
+CSS supplied directly to `BmlServer` must already use root paths or absolute URLs for assets.
+
 The Design Library's [CSS variables](../bml-design/css-tokens.md) let applications set colors,
 fonts, spacing, radii, focus and editor presentation in their own CSS, globally or on a themed
 container. The application still chooses its document font, reset and layout.

@@ -1,5 +1,6 @@
 import { build, transform } from "esbuild"
 import { parse } from "acorn"
+import { assetLoaders, validateCssOutputs } from "./css-assets.mjs"
 import { dependencyGraph, dependencyPlugin, installedPackageRoots } from "./dependencies.mjs"
 import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync, copyFileSync } from "node:fs"
@@ -71,7 +72,6 @@ export function libraryAssetNamespace(library, version) {
 }
 const prefix = (library, version) => `bml/libraries/${libraryAssetNamespace(library, version)}`
 const publicPath = (library, version) => `/_bml/libraries/${libraryAssetNamespace(library, version)}`
-const loaders = Object.fromEntries(["png", "jpg", "jpeg", "gif", "svg", "webp", "avif", "ico", "woff", "woff2", "ttf", "otf", "eot", "mp3", "mp4", "webm", "pdf", "wasm"].map((ext) => [`.${ext}`, "file"]))
 
 function publicAssets(publicDir) {
   return {
@@ -96,7 +96,7 @@ function options(library, version, publicDir, projectDir, inputs) {
     define: { "process.env.NODE_ENV": "process.env.NODE_ENV" },
     minifySyntax: true, minifyWhitespace: true, minifyIdentifiers: true,
     sourcemap: false, logLevel: "silent", legalComments: "eof",
-    external: ["@bosca/bml", "@bosca/bml/*"], loader: loaders,
+    external: ["@bosca/bml", "@bosca/bml/*"], loader: assetLoaders,
     assetNames: "assets/[name]-[hash]", publicPath: publicPath(library, version),
     plugins: [publicAssets(publicDir), {
       name: "bml-library-source-inputs",
@@ -127,6 +127,7 @@ export async function bundleLibraryStyles({ input, sourceRoot, publicDir, projec
       stdin: { contents: entry.css, loader: "css", resolveDir: dirname(source), sourcefile: source },
       outfile: resolve(outdir, "resources", prefix(library, version), "inline.css"),
     })
+    validateCssOutputs(result)
     for (const output of result.outputFiles) {
       if (basename(output.path) === "inline.css") styles[entry.key] = { digest: entry.digest, css: output.text }
       else write(output.path, output.contents)
@@ -249,6 +250,7 @@ export async function bundleLibraryAssets({ manifestPath, inDir, sourceRoot, cli
       for (const path of entryKinds.keys()) if (path.endsWith(".js") && ordinaryFiles.has(join(root, path)) && sharedFiles.has(join(sharedRoot, path))) sharedEntries[path] = `shared/${path}`
     } else dependencyModules.splice(0)
     for (const { result } of outputs) {
+      validateCssOutputs(result)
       const outputMetadata = new Map(Object.entries(result.metafile.outputs).map(([path, info]) => [resolve(workingDirectory, path), info]))
       const scripts = new Map()
       for (const output of result.outputFiles.filter(file => file.path.endsWith(".js"))) {

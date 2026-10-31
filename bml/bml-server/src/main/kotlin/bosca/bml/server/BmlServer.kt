@@ -99,7 +99,10 @@ class BmlServer(
      * page renders (the three-tier asset model) instead of inlining — see [bosca.bml.render.BmlComponentInfo].
      */
     components: List<bosca.bml.render.BmlComponentInfo> = emptyList(),
-    /** Global, every-page CSS (the `app.css` tier). Served at `/_bml/app.css` and linked on every page. */
+    /**
+     * Global, every-page CSS (the `app.css` tier). Asset URLs must use root paths or absolute URLs;
+     * the client bundler resolves local source references before this CSS is loaded.
+     */
     globalCss: String? = null,
     /** Global, every-page client JS (the `app.js` tier). Served at `/_bml/app.js` and linked on every page. */
     globalJs: String? = null,
@@ -909,6 +912,11 @@ class BmlServer(
         // it does path resolution, content types, traversal protection, and ETag revalidation.
         router.get("/_bml/content/{file}") {
             if (!respondContentAsset(state.get(), call)) call.respond(bosca.server.HttpStatusCode.NotFound)
+        }
+        router.get("/_bml/global/{path...}") {
+            val current = state.get()
+            val path = "global/${call.pathParameters["path"].orEmpty()}"
+            respondPackagedAsset(current, call, "no-cache", path, bmlAssetContentType(path))
         }
         initial.clientDir?.let { dir ->
             router.staticFiles(BmlClientAssets.URL_PREFIX, dir)

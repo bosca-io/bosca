@@ -30,7 +30,9 @@ internal class BmlContentAssets(
                     logical to entry
                 }
         }.toMap()
-        for (source in sources) for (path in source.paths.filter { it.startsWith("libraries/") && !it.endsWith(".css") && !it.endsWith(".js") }) {
+        for (source in sources) for (path in source.paths.filter {
+            (it.startsWith("libraries/") || it.startsWith("global/")) && !it.endsWith(".css") && !it.endsWith(".js")
+        }) {
             val original = "/_bml/$path"
             val url = BmlAssetUrls.content("/_bml/content/${path.substringAfterLast('/')}", requireNotNull(source.digest(path)))
             urls[original] = url

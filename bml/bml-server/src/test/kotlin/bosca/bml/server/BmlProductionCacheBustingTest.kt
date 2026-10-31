@@ -218,6 +218,28 @@ class BmlProductionCacheBustingTest {
         assertEquals(304, get(cssUrl, etag).statusCode())
     }
 
+    @Test
+    fun `global stylesheet dependencies resolve through immutable content URLs and plain URLs revalidate`() {
+        fun get(path: String) = client.send(
+            HttpRequest.newBuilder(URI("http://localhost:$port$path")).timeout(java.time.Duration.ofSeconds(10)).GET().build(),
+            HttpResponse.BodyHandlers.ofString(),
+        )
+        val html = get("/").body()
+        val cssUrl = checkNotNull(Regex("/_bml/content/app-[a-f0-9]{64}\\.css").find(html)).value
+        val css = get(cssUrl).body()
+        val fontUrl = checkNotNull(Regex("url\\(([^)]+)\\)").find(css)).groupValues[1]
+        assertTrue(fontUrl.startsWith("/_bml/content/site-"), css)
+        val font = get(fontUrl)
+        assertEquals(200, font.statusCode())
+        assertEquals("wOF2-site-font", font.body())
+        assertEquals("public, max-age=31536000, immutable", font.headers().firstValue("Cache-Control").orElseThrow())
+        val plain = get("/_bml/global/site.woff2")
+        assertEquals(200, plain.statusCode())
+        assertEquals("wOF2-site-font", plain.body())
+        assertEquals("no-cache", plain.headers().firstValue("Cache-Control").orElseThrow())
+        assertEquals(404, get("/_bml/global/missing.woff2").statusCode())
+    }
+
     companion object {
         private var port = 0
         private lateinit var engine: NettyServerEngine
@@ -245,6 +267,7 @@ class BmlProductionCacheBustingTest {
             val resources = mapOf(
                 "libraries/design/design.css" to "@font-face{font-family:Geist;src:url(/_bml/libraries/design/geist.woff2)}".toByteArray(),
                 "libraries/design/geist.woff2" to "wOF2-test-font".toByteArray(),
+                "global/site.woff2" to "wOF2-site-font".toByteArray(),
             )
             val manifest = Json.encodeToString(BmlClientManifest.serializer(), BmlClientManifest(
                 files = resources.map { (path, bytes) -> BmlAssetFile(path, ContentDigest.sha256(bytes)) },
@@ -264,7 +287,7 @@ class BmlProductionCacheBustingTest {
                 components = listOf(
                     BmlComponentInfo("badge", "badge", ".badge{}", emptyList(), clientModule = "Badge.js"),
                 ),
-                globalCss = "body{}",
+                globalCss = "body{} @font-face{font-family:Site;src:url(/_bml/global/site.woff2)}",
                 globalJs = "console.log('app')",
                 clientDir = clientDir,
                 port = port,

@@ -1,12 +1,14 @@
 import { execFileSync } from "node:child_process"
 // @vitest-environment node
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { describe, expect, it } from "vitest"
 // @ts-expect-error - plain .mjs build helper, no types
-import { bundleGlobalAssets, bundleIslands, bundleProduction, routeSlug } from "../tools/bundle.mjs"
+import { bundleGlobalAssets, bundleIslands, bundleProduction, packageApplicationAssets, routeSlug } from "../tools/bundle.mjs"
+// @ts-expect-error - plain .mjs build helper, no types
+import { validateCssOutputs } from "../tools/css-assets.mjs"
 
 function productionEntry(directory: string, logical: string): string {
   const imports = JSON.parse(readFileSync(join(directory, 'bml-imports.json'), 'utf8'))
@@ -236,6 +238,63 @@ describe("production bundler", () => {
 })
 
 describe("global production assets", () => {
+  it("resolves local CSS imports and packages fonts under same-origin URLs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bml-global-fonts-"))
+    try {
+      mkdirSync(join(dir, "fonts"))
+      writeFileSync(join(dir, "fonts", "site.woff2"), "wOF2-test-font")
+      writeFileSync(join(dir, "fonts", "face.css"), '@font-face{font-family:Site;src:url("./site.woff2?v=1#font")}')
+      writeFileSync(join(dir, "site.css"), '@import "./fonts/face.css"; .site{font-family:Site}')
+      const outdir = join(dir, "out")
+      await bundleGlobalAssets({ inDir: dir, outdir })
+      const css = readFileSync(join(outdir, "site.css"), "utf8")
+      expect(css).not.toContain("@import")
+      const url = /url\(["']?(\/_bml\/global\/[^)"']+\.woff2\?v=1#font)["']?\)/.exec(css)?.[1]
+      expect(url).toBeDefined()
+      const relative = url!.replace('/_bml/', '').split('?')[0]
+      const inputs = JSON.parse(readFileSync(join(outdir, "css-inputs.json"), "utf8"))
+      expect(inputs).toContain(realpathSync(join(dir, "fonts", "site.woff2")))
+      expect(readFileSync(join(outdir, relative), "utf8")).toBe("wOF2-test-font")
+      const packaged = join(dir, "packaged")
+      packageApplicationAssets({ globalDir: outdir, outdir: packaged })
+      const manifest = JSON.parse(readFileSync(join(packaged, "client-manifest.json"), "utf8"))
+      expect(manifest.files.some((file: {path: string}) => file.path === relative)).toBe(true)
+      expect(readFileSync(join(packaged, relative), "utf8")).toBe("wOF2-test-font")
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it.each(['url("./missing.woff2")', 'url("../missing.png")'])("fails the build for an unresolved asset %s", async reference => {
+    const dir = mkdtempSync(join(tmpdir(), "bml-global-unresolved-"))
+    try {
+      writeFileSync(join(dir, "site.css"), `.site{background:${reference}}`)
+      await expect(bundleGlobalAssets({ inDir: dir, outdir: join(dir, "out") })).rejects.toThrow("Could not resolve")
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it("rejects unresolved relative references left external by a CSS bundler", () => {
+    expect(() => validateCssOutputs({ metafile: { outputs: { "site.css": {
+      imports: [{ path: "../fonts/site.woff2", external: true, kind: "url-token" }],
+    } } } })).toThrow("Unresolved relative CSS URL")
+  })
+
+  it("preserves public, external, data and fragment references", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bml-global-public-"))
+    try {
+      writeFileSync(join(dir, "site.css"), `@import "/theme.css";
+        .public{background:url(/images/public.svg)}
+        .external{background:url(https://example.test/icon.svg)}
+        .data{background:url(data:image/png;base64,AAAA)}
+        .fragment{filter:url(#mask)}
+        .literal::before{content:'url(../not-an-asset.png)'}`)
+      const outdir = join(dir, "out")
+      await bundleGlobalAssets({ inDir: dir, outdir })
+      const css = readFileSync(join(outdir, "site.css"), "utf8")
+      for (const value of ['/theme.css', '/images/public.svg', 'https://example.test/icon.svg', 'data:image/png;base64,AAAA', '#mask', 'url(../not-an-asset.png)']) {
+        expect(css).toContain(value)
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
   it("minifies CSS and safely mangles local JS identifiers while preserving public properties", async () => {
     const dir = mkdtempSync(join(tmpdir(), "bml-global-"))
     writeFileSync(

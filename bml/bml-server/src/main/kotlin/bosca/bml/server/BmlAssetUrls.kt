@@ -5,7 +5,7 @@ import java.net.URLEncoder
 /** Builds generated asset URLs and resolves bundled CSS dependencies. */
 internal object BmlAssetUrls {
 
-    private val libraryCssUrl = Regex("""url\(\s*(["']?)(/_bml/libraries/[^\s)"']+)\1\s*\)""")
+    private val libraryCssUrl = Regex("""url\(\s*(["']?)(/_bml/(?:libraries|global)/[^\s)"']+)\1\s*\)""")
 
     /** Resolves CSS dependencies to the same immutable URLs used by the asset inventory. */
     fun libraryCss(css: String, urls: Map<String, String>): String = libraryCssUrl.replace(css) { match ->
