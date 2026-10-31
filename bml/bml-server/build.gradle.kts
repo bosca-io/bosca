@@ -39,7 +39,7 @@ tasks.test {
 
 tasks.register<Test>("chunkCacheBrowserTest") {
     group = "verification"
-    description = "Verify deployment tokens on module imports in a real browser with a retained cache."
+    description = "Verify content-addressed module caching across deployments in a real browser."
     dependsOn(tasks.testClasses)
     testClassesDirs = sourceSets.test.get().output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath

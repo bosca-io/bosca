@@ -350,12 +350,12 @@ class GitUiRoutesTest {
         val html = get("/login", authenticated = false).body()
         val styles = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(html)
             .map { it.groupValues[1].replace("&amp;", "&") }
-            .filter { it.startsWith("/_bml/libraries/") && it.substringBefore('?').endsWith(".css") }
+            .filter { it.startsWith("/_bml/content/") && it.substringBefore('?').endsWith(".css") }
             .map { get(it, authenticated = false).also { response -> assertEquals(200, response.statusCode()) }.body() }
             .joinToString("\n")
         assertFalse("/_git/" in styles)
         val paths =
-            Regex("""url\(["']?(/_bml/libraries/[^)"']+\.woff2)["']?\)""")
+            Regex("""url\(["']?(/_bml/content/[^)"']+\.woff2)["']?\)""")
                 .findAll(styles)
                 .map { it.groupValues[1] }
                 .toList()
@@ -370,10 +370,13 @@ class GitUiRoutesTest {
             assertTrue(nativePatterns.any { it.matches(resource) }, resource)
             assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$resource")?.use { it.readBytes() })
         }
+        val prefix = "bml/applications/bml.generated/"
+        val manifest = requireNotNull(GitUiAssets::class.java.getResourceAsStream("/${prefix}client-manifest.json"))
+            .use { Json.decodeFromString(bosca.bml.library.BmlClientManifest.serializer(), it.readBytes().decodeToString()) }
+        val expectedFonts = manifest.files.filter { it.path.endsWith(".woff2") }.associateBy { it.digest }
+        assertEquals(11, expectedFonts.size)
+        val servedDigests = linkedSetOf<String>()
         paths.forEach { path ->
-            val resource = "bml/applications/bml.generated/" + path.removePrefix("/_bml/")
-            assertTrue(nativePatterns.any { it.matches(resource) }, resource)
-            assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$resource")?.use { it.readBytes() })
             val response =
                 client.send(
                     HttpRequest.newBuilder(URI("http://localhost:$port$path")).GET().build(),
@@ -382,11 +385,15 @@ class GitUiRoutesTest {
             assertEquals(200, response.statusCode(), path)
             assertEquals("font/woff2", response.headers().firstValue("Content-Type").orElse(""))
             assertEquals("wOF2", response.body().take(4).toByteArray().decodeToString())
-            assertEquals(
-                "no-cache",
-                response.headers().firstValue("Cache-Control").orElse(""),
-            )
+            val digest = bosca.bml.project.ContentDigest.sha256(response.body())
+            val resource = prefix + expectedFonts.getValue(digest).path
+            assertTrue(nativePatterns.any { it.matches(resource) }, resource)
+            val expected = requireNotNull(GitUiAssets::class.java.getResourceAsStream("/$resource")) { resource }.use { it.readBytes() }
+            assertTrue(expected.contentEquals(response.body()), path)
+            servedDigests += digest
+            assertEquals("public, max-age=31536000, immutable", response.headers().firstValue("Cache-Control").orElse(""))
         }
+        assertEquals(expectedFonts.keys, servedDigests)
         assertEquals(404, get(paths.first().substringBeforeLast('/') + "/missing.woff2", authenticated = false).statusCode())
         assertEquals(404, get("/_git/fonts/missing.woff2", authenticated = false).statusCode())
     }

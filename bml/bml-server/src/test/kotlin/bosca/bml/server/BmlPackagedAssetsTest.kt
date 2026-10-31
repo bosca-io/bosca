@@ -111,31 +111,28 @@ class BmlPackagedAssetsTest {
     }
 
     @Test
-    fun `production packaged assets are immutable only with the current deployment token`() {
+    fun `production hashed modules are immutable and plain packaged URLs revalidate`() {
         val port = ServerSocket(0).use { it.localPort }
         val server = Fixture("production asset").server(port, development = false)
         val engine = start(server, port)
         try {
             HttpClient.newHttpClient().use { client ->
                 fun get(path: String) = client.send(
-                    HttpRequest.newBuilder(URI.create("http://localhost:$port$path")).GET().build(),
+                    HttpRequest.newBuilder(URI.create("http://localhost:$port$path")).timeout(Duration.ofSeconds(10)).GET().build(),
                     HttpResponse.BodyHandlers.ofString(),
                 )
 
                 val html = get("/").body()
-                val token = checkNotNull(Regex("_ts=([0-9a-f]+)").find(html)?.groupValues?.get(1)) { html }
-                for (path in listOf("/_bml/js/index.page.js", "/_bml/js/chunks/chunk-ABCDEFGH.js", "/_bml/libraries/key/theme.css")) {
-                    for ((query, expected) in listOf(
-                        "" to "no-cache",
-                        "?_ts=old-deployment" to "no-cache",
-                        "?_ts=$token" to "public, max-age=31536000, immutable",
-                    )) {
-                        val response = get(path + query)
-                        assertEquals(200, response.statusCode(), path + query)
-                        assertEquals(listOf(expected), response.headers().allValues("Cache-Control"), path + query)
-                    }
+                assertTrue("importmap" !in html && "_ts=" !in html, html)
+                for ((path, expected) in listOf(
+                    "/_bml/js/index.page.js" to "no-cache",
+                    "/_bml/js/chunks/chunk-ABCDEFGH.js" to "public, max-age=31536000, immutable",
+                    "/_bml/libraries/key/theme.css" to "no-cache",
+                )) {
+                    val response = get(path)
+                    assertEquals(200, response.statusCode(), path)
+                    assertEquals(listOf(expected), response.headers().allValues("Cache-Control"), path)
                 }
-                assertTrue(html.contains("\"/_bml/js/chunks/chunk-ABCDEFGH.js\":\"/_bml/js/chunks/chunk-ABCDEFGH.js?_ts=$token\""), html)
             }
         } finally {
             engine.stopWithoutHalting()

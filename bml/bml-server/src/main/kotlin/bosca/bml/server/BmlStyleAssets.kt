@@ -80,9 +80,9 @@ object BmlStyleAssets {
     fun cssLinksProduction(hasGlobalCss: Boolean, pageCssUrl: String?): String =
         cssLinksProduction(hasGlobalCss, pageCssUrl, null)
 
-    fun cssLinksProduction(hasGlobalCss: Boolean, pageCssUrl: String?, cacheToken: String?): String = buildString {
-        if (hasGlobalCss) append(linkTag(GLOBAL_CSS_URL, cacheToken))
-        pageCssUrl?.let { append(linkTag(it, cacheToken)) }
+    fun cssLinksProduction(hasGlobalCss: Boolean, pageCssUrl: String?, cacheToken: String?, urls: Map<String, String> = emptyMap()): String = buildString {
+        if (hasGlobalCss) append(linkTag(urls[GLOBAL_CSS_URL] ?: GLOBAL_CSS_URL, cacheToken))
+        pageCssUrl?.let { append(linkTag(urls[it] ?: it, cacheToken)) }
     }
 
     /** Library defaults precede authored page styles and the host's global stylesheet. */

@@ -1,12 +1,19 @@
 import { execFileSync } from "node:child_process"
 // @vitest-environment node
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { describe, expect, it } from "vitest"
 // @ts-expect-error - plain .mjs build helper, no types
-import { bundleGlobalAssets, bundleIslands, bundleProduction, routeSlug } from "../tools/bundle.mjs"
+import { bundleGlobalAssets, bundleIslands, bundleProduction, packageApplicationAssets, routeSlug } from "../tools/bundle.mjs"
+// @ts-expect-error - plain .mjs build helper, no types
+import { validateCssOutputs } from "../tools/css-assets.mjs"
+
+function productionEntry(directory: string, logical: string): string {
+  const imports = JSON.parse(readFileSync(join(directory, 'bml-imports.json'), 'utf8'))
+  return join(directory, imports[logical]?.[0] ?? logical)
+}
 
 describe("esbuild island bundler", () => {
   it("bundles an island entry (with the runtime inlined) into a browser module", async () => {
@@ -65,7 +72,7 @@ describe("production bundler", () => {
         const outdir = join(dir, name)
         await bundleProduction({ manifestPath, inDir: dir, outdir })
         return {
-          entry: readFileSync(join(outdir, "index.page.js"), "utf8"),
+          entry: readFileSync(productionEntry(outdir, "index.page.js"), "utf8"),
           chunks: Object.fromEntries(readdirSync(join(outdir, "chunks")).map(file =>
             [file, readFileSync(join(outdir, "chunks", file), "utf8")])) as Record<string, string>,
         }
@@ -105,12 +112,13 @@ describe("production bundler", () => {
       const shared = first.filter(path => second.includes(path))
       expect(shared).toHaveLength(1)
       expect(shared[0]).toMatch(/^chunks\/chunk-[A-Z0-9]+\.js$/)
-      expect(imports['plain.page.js']).toEqual(['plain.page.js'])
+      expect(imports['plain.page.js']).toHaveLength(1)
+      expect(imports['plain.page.js'][0]).toMatch(/^plain\.page-[A-Z0-9]{8}\.js$/)
       const all = [...new Set(Object.values(imports).flat())]
       expect(all.reduce((bytes, path) => bytes + readFileSync(join(outdir, path)).length, 0)).toBeLessThan(payload.length * 1.1)
       for (const [file, page] of [['index.page.js', 'first'], ['second.page.js', 'second'], ['plain.page.js', 'plain']]) {
         const value = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '--eval',
-          `await import(${JSON.stringify(pathToFileURL(join(outdir, file)).href)}); console.log(JSON.stringify(globalThis.result))`], { encoding: 'utf8' }))
+          `await import(${JSON.stringify(pathToFileURL(productionEntry(outdir, file)).href)}); console.log(JSON.stringify(globalThis.result))`], { encoding: 'utf8' }))
         expect(value).toEqual(page === 'plain' ? { page, loads: 0 } : { page, loads: 1, length: payload.length })
       }
       expect(all.some(path => path.endsWith('.map'))).toBe(false)
@@ -146,7 +154,7 @@ describe("production bundler", () => {
 
     // One bundle per page WITH client code; the js-less dashboard produces nothing.
     expect(written.sort()).toEqual(["cart.page.js", "index.page.js"])
-    const home = readFileSync(join(out, "index.page.js"), "utf8")
+    const home = readFileSync(productionEntry(out, "index.page.js"), "utf8")
     expect(home).toContain("home-page-code")
     expect(home).toContain("card-component-code")
     expect(home).not.toContain("cart-page-code")
@@ -154,7 +162,7 @@ describe("production bundler", () => {
     expect(home).toContain("publicMethod")
     expect(home).not.toContain("descriptiveInternalValue")
     expect(existsSync(join(out, "index.page.js.map"))).toBe(false)
-    const cart = readFileSync(join(out, "cart.page.js"), "utf8")
+    const cart = readFileSync(productionEntry(out, "cart.page.js"), "utf8")
     expect(cart).toContain("cart-page-code")
     expect(cart).not.toMatch(/(^|\n)\s*import\s/)
   })
@@ -173,8 +181,8 @@ describe("production bundler", () => {
 
     expect(await bundleProduction({ manifestPath: manifest, inDir: dir, outdir: out }))
       .toEqual(["a-b-2.page.js"])
-    expect(readFileSync(join(out, "a-b-2.page.js"), "utf8")).toContain("client page")
-    expect(existsSync(join(out, "a-b.page.js"))).toBe(false)
+    expect(readFileSync(productionEntry(out, "a-b-2.page.js"), "utf8")).toContain("client page")
+    expect(existsSync(productionEntry(out, "a-b.page.js"))).toBe(false)
   })
 
   it("writes an empty bundle when a page's declared client modules produced no TypeScript", async () => {
@@ -190,7 +198,7 @@ describe("production bundler", () => {
     expect(await bundleProduction({ manifestPath: manifest, inDir: dir, outdir: out }))
       .toEqual(["quiet.page.js"])
     // bml-server links /_bml/js/quiet.page.js for this page, so the file must exist.
-    expect(readFileSync(join(out, "quiet.page.js"), "utf8")).toBe("")
+    expect(readFileSync(productionEntry(out, "quiet.page.js"), "utf8")).toBe("")
   })
 
   it("writes empty page bundles from the command line when a site has no TypeScript at all", () => {
@@ -208,7 +216,7 @@ describe("production bundler", () => {
     ])
 
     // bml-server links /_bml/js/quiet.page.js for this page, so the file must exist.
-    expect(readFileSync(join(prod, "quiet.page.js"), "utf8")).toBe("")
+    expect(readFileSync(productionEntry(prod, "quiet.page.js"), "utf8")).toBe("")
   })
 
   it("does not reserve a slug when a page's CSS is entirely shared", async () => {
@@ -225,11 +233,68 @@ describe("production bundler", () => {
 
     expect(await bundleProduction({ manifestPath: manifest, inDir: dir, outdir: out }))
       .toEqual(["a-b.page.js"])
-    expect(existsSync(join(out, "a-b-2.page.js"))).toBe(false)
+    expect(existsSync(productionEntry(out, "a-b-2.page.js"))).toBe(false)
   })
 })
 
 describe("global production assets", () => {
+  it("resolves local CSS imports and packages fonts under same-origin URLs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bml-global-fonts-"))
+    try {
+      mkdirSync(join(dir, "fonts"))
+      writeFileSync(join(dir, "fonts", "site.woff2"), "wOF2-test-font")
+      writeFileSync(join(dir, "fonts", "face.css"), '@font-face{font-family:Site;src:url("./site.woff2?v=1#font")}')
+      writeFileSync(join(dir, "site.css"), '@import "./fonts/face.css"; .site{font-family:Site}')
+      const outdir = join(dir, "out")
+      await bundleGlobalAssets({ inDir: dir, outdir })
+      const css = readFileSync(join(outdir, "site.css"), "utf8")
+      expect(css).not.toContain("@import")
+      const url = /url\(["']?(\/_bml\/global\/[^)"']+\.woff2\?v=1#font)["']?\)/.exec(css)?.[1]
+      expect(url).toBeDefined()
+      const relative = url!.replace('/_bml/', '').split('?')[0]
+      const inputs = JSON.parse(readFileSync(join(outdir, "css-inputs.json"), "utf8"))
+      expect(inputs).toContain(realpathSync(join(dir, "fonts", "site.woff2")))
+      expect(readFileSync(join(outdir, relative), "utf8")).toBe("wOF2-test-font")
+      const packaged = join(dir, "packaged")
+      packageApplicationAssets({ globalDir: outdir, outdir: packaged })
+      const manifest = JSON.parse(readFileSync(join(packaged, "client-manifest.json"), "utf8"))
+      expect(manifest.files.some((file: {path: string}) => file.path === relative)).toBe(true)
+      expect(readFileSync(join(packaged, relative), "utf8")).toBe("wOF2-test-font")
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it.each(['url("./missing.woff2")', 'url("../missing.png")'])("fails the build for an unresolved asset %s", async reference => {
+    const dir = mkdtempSync(join(tmpdir(), "bml-global-unresolved-"))
+    try {
+      writeFileSync(join(dir, "site.css"), `.site{background:${reference}}`)
+      await expect(bundleGlobalAssets({ inDir: dir, outdir: join(dir, "out") })).rejects.toThrow("Could not resolve")
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it("rejects unresolved relative references left external by a CSS bundler", () => {
+    expect(() => validateCssOutputs({ metafile: { outputs: { "site.css": {
+      imports: [{ path: "../fonts/site.woff2", external: true, kind: "url-token" }],
+    } } } })).toThrow("Unresolved relative CSS URL")
+  })
+
+  it("preserves public, external, data and fragment references", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bml-global-public-"))
+    try {
+      writeFileSync(join(dir, "site.css"), `@import "/theme.css";
+        .public{background:url(/images/public.svg)}
+        .external{background:url(https://example.test/icon.svg)}
+        .data{background:url(data:image/png;base64,AAAA)}
+        .fragment{filter:url(#mask)}
+        .literal::before{content:'url(../not-an-asset.png)'}`)
+      const outdir = join(dir, "out")
+      await bundleGlobalAssets({ inDir: dir, outdir })
+      const css = readFileSync(join(outdir, "site.css"), "utf8")
+      for (const value of ['/theme.css', '/images/public.svg', 'https://example.test/icon.svg', 'data:image/png;base64,AAAA', '#mask', 'url(../not-an-asset.png)']) {
+        expect(css).toContain(value)
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
   it("minifies CSS and safely mangles local JS identifiers while preserving public properties", async () => {
     const dir = mkdtempSync(join(tmpdir(), "bml-global-"))
     writeFileSync(

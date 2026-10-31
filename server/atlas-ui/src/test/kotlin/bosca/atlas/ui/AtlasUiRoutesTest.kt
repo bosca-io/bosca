@@ -53,7 +53,7 @@ class AtlasUiRoutesTest {
         val html = get("/login").body()
         val resources = Regex("(?:src|href)=\"(/_bml/[^\"]+)\"").findAll(html)
             .map { it.groupValues[1].replace("&amp;", "&") }.toList()
-        assertTrue(resources.any { it.substringBefore('?').endsWith(".page.js") }, html)
+        assertTrue(resources.any { Regex("""/_bml/js/[^/]+\.page-[A-Z0-9]{8}\.js""").matches(it) }, html)
         assertTrue(resources.any { it.substringBefore('?').endsWith(".css") }, html)
         resources.forEach { path ->
             val response = get(path)

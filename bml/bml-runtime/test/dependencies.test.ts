@@ -10,6 +10,11 @@ import { bundleLibraryAssets } from "../tools/library.mjs"
 // @ts-expect-error - plain .mjs build helper
 import { bundleIslands, bundleProduction } from "../tools/bundle.mjs"
 
+function productionEntry(directory: string, logical: string): string {
+  const imports = JSON.parse(readFileSync(join(directory, 'bml-imports.json'), 'utf8'))
+  return join(directory, imports[logical][0])
+}
+
 const directories: string[] = []
 afterEach(() => directories.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })))
 const write = (path: string, value: string) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, value) }
@@ -125,7 +130,7 @@ describe("compiled library dependency sharing", () => {
     if (mode === "production") await bundleProduction({ manifestPath: join(linkedDir, "manifest.tsv"), inDir: linkedDir, outdir })
     else await bundleIslands({ entryPoints: [join(linkedDir, "Page.ts")], outdir, linkedDir, splitting: true })
     const production = mode === "production"
-    expect(evaluate(join(outdir, production ? "index.page.js" : "Page.js"))).toEqual({
+    expect(evaluate(production ? productionEntry(outdir, "index.page.js") : join(outdir, "Page.js"))).toEqual({
       library: mode, app: mode, shared: true, development: !production,
     })
     if (production) {
@@ -139,10 +144,10 @@ describe("compiled library dependency sharing", () => {
     const outdir = join(consumer, mode)
     if (mode === "production") {
       await bundleProduction({ manifestPath: join(linkedDir, 'manifest.tsv'), inDir: linkedDir, outdir })
-      expect(readFileSync(join(outdir, 'index.page.js'), 'utf8')).not.toContain('UNUSED_DEPENDENCY_EXPORT')
+      expect(readFileSync(productionEntry(outdir, "index.page.js"), 'utf8')).not.toContain('UNUSED_DEPENDENCY_EXPORT')
       const imports = JSON.parse(readFileSync(join(outdir, 'bml-imports.json'), 'utf8'))['index.page.js'] as string[]
       expect(imports.map(path => readFileSync(join(outdir, path), 'utf8')).join('')).not.toContain('UNUSED_NAMESPACE_MEMBER')
-      expect(evaluate(join(outdir, 'index.page.js'))).toEqual({ shared: true, value: 'app-only-export', loads: 1 })
+      expect(evaluate(productionEntry(outdir, "index.page.js"))).toEqual({ shared: true, value: 'app-only-export', loads: 1 })
     } else {
       await bundleIslands({ entryPoints: [join(linkedDir, 'Viewer.ts'), join(linkedDir, 'Page.ts')], outdir, linkedDir, splitting: true })
       write(join(outdir, 'check.js'), `import './Viewer.js'; import './Page.js';`)
@@ -156,7 +161,7 @@ describe("compiled library dependency sharing", () => {
       globalThis.result = { shared: globalThis.viewerDocument instanceof Document, namespace: all.namespaceOnly, token: all.token() };`)
     const outdir = join(consumer, 'production')
     await bundleProduction({ manifestPath: join(linkedDir, 'manifest.tsv'), inDir: linkedDir, outdir })
-    expect(evaluate(join(outdir, 'index.page.js'))).toEqual({ shared: true, namespace: 'UNUSED_NAMESPACE_MEMBER', token: 'leaf' })
+    expect(evaluate(productionEntry(outdir, "index.page.js"))).toEqual({ shared: true, namespace: 'UNUSED_NAMESPACE_MEMBER', token: 'leaf' })
   })
 
   it("keeps pages without application dependencies on the lean library graph", async () => {
@@ -171,8 +176,8 @@ describe("compiled library dependency sharing", () => {
     const simple = imports['simple.page.js'].map((path: string) => readFileSync(join(outdir, path), 'utf8')).join('')
     expect(simple).not.toContain('app-only-export')
     expect(simple).not.toContain('UNUSED_NAMESPACE_MEMBER')
-    expect(evaluate(join(outdir, 'simple.page.js'))).toEqual({ value: 'leaf', loads: 1 })
-    expect(evaluate(join(outdir, 'index.page.js'))).toEqual({ shared: true, value: 'app-only-export', loads: 1 })
+    expect(evaluate(productionEntry(outdir, "simple.page.js"))).toEqual({ value: 'leaf', loads: 1 })
+    expect(evaluate(productionEntry(outdir, "index.page.js"))).toEqual({ shared: true, value: 'app-only-export', loads: 1 })
   })
 
   it("does not rewrite namespace-looking code samples inside tagged template strings", async () => {
@@ -181,7 +186,7 @@ describe("compiled library dependency sharing", () => {
       globalThis.result = { shared: globalThis.viewerDocument instanceof Document, sample: globalThis.viewerSample };`)
     const outdir = join(consumer, 'production')
     await bundleProduction({ manifestPath: join(linkedDir, 'manifest.tsv'), inDir: linkedDir, outdir })
-    expect(evaluate(join(outdir, 'index.page.js'))).toEqual({ shared: true,
+    expect(evaluate(productionEntry(outdir, "index.page.js"))).toEqual({ shared: true,
       sample: "var pretend_exports = {};\n__export(pretend_exports, {\n  value: () => value\n});" })
   })
 
@@ -191,20 +196,20 @@ describe("compiled library dependency sharing", () => {
       globalThis.result = { shared: globalThis.viewerDocument instanceof Document, effects: globalThis.namespaceEffects };`)
     const outdir = join(consumer, 'production')
     await bundleProduction({ manifestPath: join(linkedDir, 'manifest.tsv'), inDir: linkedDir, outdir })
-    expect(evaluate(join(outdir, 'index.page.js'))).toEqual({ shared: true, effects: 1 })
+    expect(evaluate(productionEntry(outdir, "index.page.js"))).toEqual({ shared: true, effects: 1 })
   })
 
   it.each(["version", "bytes", "transitive", "nested", "css", "dynamic", "commonjs"])("preserves separate implementations for a %s graph", async (mismatch) => {
     const { consumer, linkedDir } = await fixture(mismatch)
     const outdir = join(consumer, 'production')
     await bundleProduction({ manifestPath: join(linkedDir, 'manifest.tsv'), inDir: linkedDir, outdir })
-    expect(evaluate(join(outdir, 'index.page.js'))).toEqual({ shared: false, value: 'app-only-export', loads: 2 })
+    expect(evaluate(productionEntry(outdir, "index.page.js"))).toEqual({ shared: false, value: 'app-only-export', loads: 2 })
   })
 
   it("shares identical package graphs installed at multiple producer paths", async () => {
     const { consumer, linkedDir } = await fixture('duplicate')
     const outdir = join(consumer, 'production')
     await bundleProduction({ manifestPath: join(linkedDir, 'manifest.tsv'), inDir: linkedDir, outdir })
-    expect(evaluate(join(outdir, 'index.page.js'))).toEqual({ shared: true, duplicateShared: true, value: 'app-only-export', loads: 1 })
+    expect(evaluate(productionEntry(outdir, "index.page.js"))).toEqual({ shared: true, duplicateShared: true, value: 'app-only-export', loads: 1 })
   })
 })

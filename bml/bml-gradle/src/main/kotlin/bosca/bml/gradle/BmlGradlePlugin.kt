@@ -334,6 +334,10 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
         // resources under their established basenames, which BmlServer launchers load as app.css/js.
         val globalAssetSourceDir = target.layout.projectDirectory.dir("src/main/client")
         val globalAssetOutputDir = target.layout.buildDirectory.dir("generated/bml/client-assets")
+        val globalCssInputs = globalAssetOutputDir.map { it.file("css-inputs.json") }
+        val globalCssTracking = globalAssetOutputDir.map { it.file("css-tracking.json") }
+        val globalAssetBuildDir = target.layout.buildDirectory
+        val libraryMode = ext.library.enabled
         val manifestFile = target.layout.buildDirectory.file("generated/bml/metrics/$MANIFEST_FILE_NAME")
         val applicationOutputDir = target.layout.buildDirectory.dir("generated/bml/application-assets")
         val applicationResourcesDir = target.layout.buildDirectory.dir(ext.packageName.map { "generated/bml/resources/bml/applications/$it" })
@@ -404,6 +408,11 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             task.outputs.dir(jsDir).withPropertyName("clientJs")
             task.outputs.dir(jsProdDir).withPropertyName("clientJsProd")
             task.outputs.dir(globalAssetOutputDir).withPropertyName("globalClientAssetsOptimized")
+            task.outputs.upToDateWhen {
+                libraryMode.get() || globalAssetSourceDir.asFile.listFiles().orEmpty().none { it.isFile && it.extension == "css" } ||
+                    BmlLibraryTrackedFiles.isCurrent(globalCssTracking.get().asFile, globalCssInputs.get().asFile,
+                        globalAssetBuildDir.get().asFile, listOf(globalAssetSourceDir.asFile))
+            }
             task.executable = ext.nodeExecutable.get()
             task.onlyIf {
                 val dir = tsDir.get().asFile
@@ -429,6 +438,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 available && (ext.library.enabled.get() || hasPageInputs || hasGlobalInputs || hasStaleOutputs || importedInputs)
             }
             task.doFirst {
+                globalCssTracking.get().asFile.delete()
                 require(applicationOutputDir.get().asFile.deleteRecursively()) { "Cannot clear packaged BML application assets" }
                 if (ext.library.enabled.get()) {
                     // Require output from this invocation, including when a different bundler is selected.
@@ -439,6 +449,10 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 }
             }
             task.doLast {
+                if (!libraryMode.get() && globalCssInputs.get().asFile.isFile) {
+                    BmlLibraryTrackedFiles.store(globalCssTracking.get().asFile, globalCssInputs.get().asFile,
+                        globalAssetBuildDir.get().asFile, listOf(globalAssetSourceDir.asFile))
+                }
                 if (ext.library.enabled.get()) {
                     require(libraryOutputDir.get().file("META-INF/bml/client-manifest.json").asFile.isFile) {
                         "BML bundler did not produce library client assets; install the current @bosca/bml package or configure bml.clientBundler"
@@ -485,7 +499,11 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 spec.into(ext.packageName.map { "bml/applications/$it" })
                 spec.exclude { ext.library.enabled.get() }
             }
-            task.from(globalAssetOutputDir) { spec -> spec.exclude { ext.library.enabled.get() } }
+            task.from(globalAssetOutputDir) { spec ->
+                spec.exclude("global/**")
+                spec.exclude("css-inputs.json", "css-tracking.json")
+                spec.exclude { ext.library.enabled.get() }
+            }
             task.from(target.layout.buildDirectory.dir(BmlLibraryAssets.OUTPUT)) { spec -> spec.exclude { !ext.library.enabled.get() } }
         }
         BmlLibraryAssets.configure(target, ext)

@@ -82,7 +82,9 @@ The library packages the existing Geist v5 and Geist Mono v6 WOFF2 subsets forme
 Git UI. Font bytes, Unicode ranges, normal style, variable weights 400–700 and `font-display: swap`
 are preserved. Its global stylesheet declares the faces; BML bundles their relative URLs into
 same-origin `/_bml/libraries/` assets. Consumers need no font copies, external font service or
-private Git asset route. Unversioned asset requests follow BML's revalidation cache policy.
+private Git asset route. In production, BML uses content-hashed font URLs
+so repeat navigations and builds with unchanged fonts reuse the browser cache. Development and unversioned asset requests
+follow BML's revalidation cache policy.
 
 The original font files are in `src/main/client/fonts/` and in the source archive under
 `client/fonts/`. The binary and source archives retain the [Geist OFL notice](src/main/resources/META-INF/licenses/bml-design/geist.txt)

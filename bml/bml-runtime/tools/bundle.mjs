@@ -1,5 +1,6 @@
 import { build } from "esbuild"
 import { bundleLibraryAssets } from "./library.mjs"
+import { assetLoaders, publicCssUrls, validateCssOutputs } from "./css-assets.mjs"
 import { dependencyGraph, dependencyPlugin, installedPackageRoots, linkedDependencies } from "./dependencies.mjs"
 import { readdirSync, readFileSync, existsSync, mkdirSync, rmSync, writeFileSync, cpSync, realpathSync } from "node:fs"
 import { createHash } from "node:crypto"
@@ -79,7 +80,7 @@ export function routeSlug(route) {
  * The page→module mapping comes from the compiler's
  * metrics manifest (`manifest.tsv`); output names use the same route-slug algorithm as
  * `BmlProductionAssets` in bml-server (uniqueness by sorted-route order with `-2`, `-3`… suffixes),
- * so server and build agree without a lookup file.
+ * and `bml-imports.json` maps those logical names to content-hashed output files.
  *
  * Production deliberately uses esbuild's syntax, whitespace, and identifier minifiers but does
  * not enable property mangling: generated contracts, DOM datasets, and public `window` properties
@@ -87,7 +88,7 @@ export function routeSlug(route) {
  * output so the original identifiers and sources are not shipped beside the optimized bundle.
  *
  * @param {{ manifestPath: string, inDir: string, outdir: string, runtime?: string }} options
- * @returns {Promise<string[]>} the bundle file names written
+ * @returns {Promise<string[]>} logical entry names indexed in bml-imports.json
  */
 export async function bundleProduction({ manifestPath, inDir, outdir, runtime }) {
   const lines = readFileSync(manifestPath, "utf8")
@@ -120,15 +121,6 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
     const entries = orderedModules
       .map((m) => m.replace(/\.js$/, ""))
       .filter((m) => existsSync(join(inDir, `${m}.ts`)))
-    const outfile = join(outdir, `${slug}.page.js`)
-    if (entries.length === 0) {
-      // The server links this page's bundle because the manifest names client modules; none of them
-      // produced TypeScript, so publish an empty module rather than leave the link returning 404.
-      mkdirSync(outdir, { recursive: true })
-      writeFileSync(outfile, "")
-      written.push(`${slug}.page.js`)
-      continue
-    }
     let shared = false
     if (linked.modules.size > 0) {
       const graph = await applicationGraph({
@@ -149,6 +141,7 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
       outdir: resolve(outdir),
       bundle: true,
       splitting: true,
+      entryNames: "[name]-[hash]",
       chunkNames: "chunks/[name]-[hash]",
       format: "esm",
       platform: "browser",
@@ -174,7 +167,7 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
         seen.add(path)
         for (const child of outputs[path]?.imports ?? []) if (!child.external && child.kind === "import-statement") visit(child.path)
       }
-      const entry = Object.keys(outputs).find((path) => resolve(inDir, path) === resolve(outdir, name))
+      const entry = Object.keys(outputs).find((path) => outputs[path].entryPoint === `bml-page:bml-page:${name.slice(0, -8)}`)
       if (entry) visit(entry)
       imports[name] = entry ? [...seen].map((path) => relative(resolve(outdir), resolve(inDir, path)).replaceAll("\\", "/")) : [name]
     }
@@ -198,6 +191,7 @@ export async function bundleGlobalAssets({ inDir, outdir }) {
   const scripts = sources.filter((file) => /\.(?:js|ts)$/.test(file) && !file.endsWith(".d.ts")).map((file) => join(inDir, file))
   const styles = sources.filter((file) => file.endsWith(".css")).map((file) => join(inDir, file))
   if (scripts.length === 0 && styles.length === 0) return []
+  const cssInputs = new Map()
   await Promise.all([
     scripts.length > 0 && build({
       entryPoints: scripts,
@@ -216,22 +210,39 @@ export async function bundleGlobalAssets({ inDir, outdir }) {
       entryPoints: styles,
       outdir,
       entryNames: "[name]",
-      // Keep public-root url()/@import references intact; BmlServer serves this CSS in memory,
-      // not esbuild's otherwise-emitted content-hashed dependency files.
-      bundle: false,
+      bundle: true,
+      loader: assetLoaders,
+      assetNames: "global/[name]-[hash]",
+      publicPath: "/_bml/",
+      plugins: [publicCssUrls, {
+        name: "bml-global-css-inputs",
+        setup(builder) {
+          builder.onLoad({ filter: /.*/, namespace: "file" }, ({ path, suffix }) => {
+            cssInputs.set(path + suffix, path)
+          })
+        },
+      }],
+      metafile: true,
       ...productionOptimization,
       logLevel: "silent",
+    }).then(result => {
+      validateCssOutputs(result)
+      const files = Object.keys(result.metafile.inputs).map(path => cssInputs.get(resolve(path))).filter(Boolean)
+      writeFileSync(join(outdir, "css-inputs.json"), JSON.stringify([...new Set(files.map(path => realpathSync(path)))].sort()))
     }),
   ])
   return readdirSync(outdir).filter((file) => /\.(?:css|js)$/.test(file)).sort()
 }
 
 /** Packages both client modes and indexes the exact application/library resource bytes. */
-export function packageApplicationAssets({ devDir, prodDir, resourcesDir, outdir }) {
+export function packageApplicationAssets({ devDir, prodDir, resourcesDir, globalDir, outdir }) {
   rmSync(outdir, { recursive: true, force: true })
   mkdirSync(outdir, { recursive: true })
   for (const [mode, source] of [["dev", devDir], ["prod", prodDir]]) {
     if (source && existsSync(source)) cpSync(source, join(outdir, mode), { recursive: true })
+  }
+  if (globalDir && existsSync(join(globalDir, "global"))) {
+    cpSync(join(globalDir, "global"), join(outdir, "global"), { recursive: true })
   }
   const files = []
   function inventory(root, directory = root) {
@@ -310,7 +321,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     jobs.push(bundleIslands({ entryPoints, outdir: outDir, runtime, splitting: true, linkedDir: inDir }))
   }
   // Production bundles follow the manifest, not the .ts inputs: a page whose declared client modules
-  // produced no TypeScript still needs its (empty) <slug>.page.js, because bml-server links it.
+  // produced no TypeScript still needs an indexed, content-hashed empty entry.
   if (manifest && prodOut && existsSync(manifest)) {
     jobs.push(bundleProduction({ manifestPath: manifest, inDir, outdir: prodOut, runtime }))
   }
@@ -321,7 +332,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     () => {
       const applicationOut = argOf("--application-out")
       if (applicationOut) packageApplicationAssets({ devDir: outDir, prodDir: prodOut,
-        resourcesDir: argOf("--application-resources"), outdir: applicationOut })
+        resourcesDir: argOf("--application-resources"), globalDir: assetsOut, outdir: applicationOut })
       process.exit(0)
     },
     (err) => {

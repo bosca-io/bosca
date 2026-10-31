@@ -28,12 +28,12 @@ class BmlProductionClientOnlyPageTest {
             HttpResponse.BodyHandlers.ofString(),
         )
         assertEquals(200, page.statusCode())
-        assertTrue("type=\"importmap\"" in page.body(), page.body())
-        assertTrue("/_bml/js/index.page.js?_ts=" in page.body(), page.body())
+        assertFalse("type=\"importmap\"" in page.body(), page.body())
+        assertTrue("/_bml/js/index.page-ABCDEFGH.js" in page.body(), page.body())
         assertTrue("/_bml/js/Page.js" !in page.body(), page.body())
 
         val bundle = client.send(
-            HttpRequest.newBuilder(URI.create("http://localhost:$port/_bml/js/index.page.js")).GET().build(),
+            HttpRequest.newBuilder(URI.create("http://localhost:$port/_bml/js/index.page-ABCDEFGH.js")).GET().build(),
             HttpResponse.BodyHandlers.ofString(),
         )
         assertEquals(200, bundle.statusCode())
@@ -62,7 +62,10 @@ class BmlProductionClientOnlyPageTest {
         fun boot() {
             port = ServerSocket(0).use { it.localPort }
             clientDir = java.nio.file.Files.createTempDirectory("bml-client-only-production-test").toFile()
-                .also { it.resolve("index.page.js").writeText("console.log('page only')") }
+                .also {
+                    it.resolve("index.page-ABCDEFGH.js").writeText("console.log('page only')")
+                    it.resolve("bml-imports.json").writeText("""{"index.page.js":["index.page-ABCDEFGH.js"]}""")
+                }
             val page = object : BmlPageRenderer {
                 override val route = "/"
                 override val clientModule = "Page.js"

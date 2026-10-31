@@ -20,21 +20,49 @@ class BmlClientBundleTest {
             page(project).writeText(serverPage)
             val css = File(project, "src/main/client/app.css").apply {
                 parentFile.mkdirs()
-                writeText("body { color: #123456; }\n")
+                writeText("@import './fonts/face.css'; body { color: #123456; }\n")
+            }
+            File(project, "src/main/client/fonts/face.css").apply {
+                parentFile.mkdirs()
+                writeText("@font-face {font-family: Site; src: url('../../fonts/site.woff2')}")
+            }
+            val fontSource = File(project, "src/main/fonts/site.woff2").apply {
+                parentFile.mkdirs()
+                writeText("wOF2-test-font")
             }
             val built = runner(project, "jar").build()
             assertEquals(TaskOutcome.SUCCESS, built.task(":bmlBundleClient")?.outcome)
             assertPackagedCss(project, "#123456")
+            JarFile(File(project, "build/libs/site.jar")).use { jar ->
+                val font = jar.entries().asSequence().single { it.name.contains("/global/") && it.name.endsWith(".woff2") }
+                assertEquals("wOF2-test-font", jar.getInputStream(font).reader().use { it.readText() })
+                val manifest = jar.entries().asSequence().single { it.name.endsWith("/client-manifest.json") }
+                assertTrue("global/site-" in jar.getInputStream(manifest).reader().use { it.readText() })
+                val output = jar.getInputStream(jar.getJarEntry("app.css")).reader().use { it.readText() }
+                assertTrue("/_bml/global/site-" in output, output)
+                assertFalse("@import" in output, output)
+            }
 
             val reused = runner(project, "jar").build()
             assertTrue("Reusing configuration cache" in reused.output, reused.output)
             assertEquals(TaskOutcome.UP_TO_DATE, reused.task(":bmlBundleClient")?.outcome)
+
+            fontSource.writeText("wOF2-changed-font")
+            val changedFont = runner(project, "jar").build()
+            assertEquals(TaskOutcome.SUCCESS, changedFont.task(":bmlBundleClient")?.outcome)
+            JarFile(File(project, "build/libs/site.jar")).use { jar ->
+                val font = jar.entries().asSequence().single { it.name.endsWith(".woff2") }
+                assertEquals("wOF2-changed-font", jar.getInputStream(font).reader().use { it.readText() })
+            }
 
             css.writeText("body { color: #654321; }\n")
             val changed = runner(project, "jar").build()
             assertTrue("Reusing configuration cache" in changed.output, changed.output)
             assertEquals(TaskOutcome.SUCCESS, changed.task(":bmlBundleClient")?.outcome)
             assertPackagedCss(project, "#654321")
+            JarFile(File(project, "build/libs/site.jar")).use { jar ->
+                assertFalse(jar.entries().asSequence().any { it.name.endsWith(".woff2") }, "Unused fonts must not remain packaged")
+            }
 
             val clean = runner(project, "clean", "jar").build()
             assertEquals(TaskOutcome.SUCCESS, clean.task(":bmlBundleClient")?.outcome)
@@ -55,9 +83,9 @@ class BmlClientBundleTest {
             assertEquals(TaskOutcome.SUCCESS, first.task(":bmlBundleClient")?.outcome)
             val generated = File(project, "build/generated/bml")
             val development = File(generated, "js/HomePage.js")
-            val production = File(generated, "js-prod/index.page.js")
+            fun production() = File(generated, "js-prod").listFiles().orEmpty().single { it.name.matches(Regex("""index\.page-[A-Z0-9]{8}\.js""")) }
             assertTrue(development.readText().contains("first-client"))
-            assertTrue(production.readText().contains("first-client"))
+            assertTrue(production().readText().contains("first-client"))
 
             page.writeText(serverPage)
             val removed = runner(project, "jar").build()
@@ -76,8 +104,8 @@ class BmlClientBundleTest {
             assertTrue("Reusing configuration cache" in restored.output, restored.output)
             assertEquals(TaskOutcome.SUCCESS, restored.task(":bmlBundleClient")?.outcome)
             assertTrue(development.readText().contains("replacement-client"))
-            assertTrue(production.readText().contains("replacement-client"))
-            assertFalse(production.readText().contains("first-client"))
+            assertTrue(production().readText().contains("replacement-client"))
+            assertFalse(production().readText().contains("first-client"))
         } finally {
             work.deleteRecursively()
         }

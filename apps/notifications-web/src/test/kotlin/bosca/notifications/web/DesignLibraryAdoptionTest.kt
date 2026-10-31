@@ -165,7 +165,7 @@ class DesignLibraryAdoptionTest {
                 val response = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI(base)).timeout(Duration.ofSeconds(10)).build(),
                     HttpResponse.BodyHandlers.ofString())
                 assertEquals(200, response.statusCode(), response.body())
-                verifyAssets(base, reports, mode)
+                verifyAssets(base, reports, mode, development)
                 runProcess(listOf(System.getProperty("adoption.node"),
                     File(System.getProperty("adoption.project"), "src/test/browser/preferences.mjs").absolutePath,
                     base, api.origin, File(reports, mode).absolutePath), directory, File(reports, "$mode-browser.log"), 120)
@@ -181,7 +181,7 @@ class DesignLibraryAdoptionTest {
         }
     }
 
-    private fun verifyAssets(base: String, reports: File, mode: String) {
+    private fun verifyAssets(base: String, reports: File, mode: String, development: Boolean) {
         val client = HttpClient.newHttpClient()
         fun get(url: URI) = client.send(HttpRequest.newBuilder(url).timeout(Duration.ofSeconds(10)).build(),
             HttpResponse.BodyHandlers.ofByteArray()).also { assertEquals(200, it.statusCode(), url.toString()) }.body()
@@ -193,14 +193,24 @@ class DesignLibraryAdoptionTest {
                 .map { style.resolve(it.groupValues[1]) }.toList()
         }.distinct()
         assertEquals(11, fonts.size)
+        val prefix = "bml/applications/bml.generated/"
+        val manifest = requireNotNull(javaClass.classLoader.getResourceAsStream(prefix + "client-manifest.json"))
+            .use { kotlinx.serialization.json.Json.decodeFromString(bosca.bml.library.BmlClientManifest.serializer(), it.readAllBytes().decodeToString()) }
+        val expectedFonts = manifest.files.filter { it.path.endsWith(".woff2") }.associateBy { it.digest }
+        assertEquals(11, expectedFonts.size)
+        val servedDigests = linkedSetOf<String>()
         val digests = fonts.associate { font ->
             assertEquals(URI(base).authority, font.authority)
-            val path = "bml/applications/bml.generated/" + font.path.removePrefix("/_bml/")
-            val expected = requireNotNull(javaClass.classLoader.getResourceAsStream(path)).use { it.readAllBytes() }
-            val actual = bosca.bml.project.ContentDigest.sha256(get(font))
-            assertEquals(bosca.bml.project.ContentDigest.sha256(expected), actual, font.toString())
+            assertTrue(font.path.startsWith(if (development) "/_bml/libraries/" else "/_bml/content/"), font.toString())
+            val bytes = get(font)
+            val actual = bosca.bml.project.ContentDigest.sha256(bytes)
+            val path = prefix + expectedFonts.getValue(actual).path
+            val expected = requireNotNull(javaClass.classLoader.getResourceAsStream(path)) { path }.use { it.readAllBytes() }
+            assertTrue(expected.contentEquals(bytes), font.toString())
+            servedDigests += actual
             font.path to kotlinx.serialization.json.JsonPrimitive(actual)
         }
+        assertEquals(expectedFonts.keys, servedDigests, "Every packaged font subset must be served")
         File(reports, "$mode-fonts.json").writeText(kotlinx.serialization.json.JsonObject(digests).toString())
         val modules = linkedSetOf<URI>()
         fun verifyModule(uri: URI) {

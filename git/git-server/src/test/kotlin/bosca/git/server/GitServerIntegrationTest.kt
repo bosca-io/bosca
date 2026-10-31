@@ -259,17 +259,23 @@ class GitServerIntegrationTest {
             assertEquals(200, loginPage.statusCode())
             val designStyles = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(loginPage.body())
                 .map { it.groupValues[1].replace("&amp;", "&") }
-                .filter { it.startsWith("/_bml/libraries/") && it.substringBefore('?').endsWith(".css") }
+                .filter { it.startsWith("/_bml/content/") && it.substringBefore('?').endsWith(".css") }
                 .map { request(it).also { response -> assertEquals(200, response.statusCode()) }.body() }
                 .joinToString("\n")
             assertFalse("/_git/" in designStyles)
             val designFonts =
-                Regex("""url\(["']?(/_bml/libraries/[^)"']+\.woff2)["']?\)""")
+                Regex("""url\(["']?(/_bml/content/[^)"']+\.woff2)["']?\)""")
                     .findAll(designStyles)
                     .map { it.groupValues[1] }
                     .toList()
             assertEquals(11, designFonts.size)
             assertEquals(designFonts.distinct(), designFonts)
+            val prefix = "bml/applications/bml.generated/"
+            val manifest = requireNotNull(javaClass.classLoader.getResourceAsStream(prefix + "client-manifest.json"))
+                .use { Json.decodeFromString(bosca.bml.library.BmlClientManifest.serializer(), it.readAllBytes().decodeToString()) }
+            val expectedFonts = manifest.files.filter { it.path.endsWith(".woff2") }.associateBy { it.digest }
+            assertEquals(11, expectedFonts.size)
+            val servedDigests = linkedSetOf<String>()
             val fontDigests = designFonts.associateWith { path ->
                 val uri = URI.create(origin + path)
                 val font = client.send(HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(15)).build(),
@@ -277,13 +283,15 @@ class GitServerIntegrationTest {
                 assertEquals(200, font.statusCode(), path)
                 assertEquals("font/woff2", font.headers().firstValue("Content-Type").orElse(""))
                 assertEquals("wOF2", font.body().take(4).toByteArray().decodeToString(), path)
-                val resource = "bml/applications/bml.generated/" + uri.path.removePrefix("/_bml/")
+                val digest = ContentDigest.sha256(font.body())
+                val resource = prefix + expectedFonts.getValue(digest).path
                 val expected = requireNotNull(javaClass.classLoader.getResourceAsStream(resource)) { resource }
                     .use { it.readAllBytes() }
-                val digest = ContentDigest.sha256(font.body())
-                assertEquals(ContentDigest.sha256(expected), digest, path)
+                assertTrue(expected.contentEquals(font.body()), path)
+                servedDigests += digest
                 JsonPrimitive(digest)
             }
+            assertEquals(expectedFonts.keys, servedDigests)
             artifacts?.let { File(it, "font-sha256.json").writeText(JsonObject(fontDigests).toString()) }
             val signup =
                 graphql(

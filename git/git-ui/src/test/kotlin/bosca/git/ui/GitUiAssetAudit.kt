@@ -26,6 +26,11 @@ internal class GitUiAssetAudit(
     private val assets = linkedMapOf<URI, Pair<ByteArray, String>>()
 
     fun verify() {
+        val prefix = "bml/applications/bml.generated/"
+        val manifest = requireNotNull(javaClass.classLoader.getResourceAsStream(prefix + "client-manifest.json"))
+            .use { kotlinx.serialization.json.Json.decodeFromString(bosca.bml.library.BmlClientManifest.serializer(), it.readAllBytes().decodeToString()) }
+        val expectedFonts = manifest.files.filter { it.path.endsWith(".woff2") }.associateBy { it.digest }
+        assertEquals(11, expectedFonts.size)
         val cases = mapOf(
             "/login" to emptySet(),
             "/repositories" to emptySet(),
@@ -48,8 +53,8 @@ internal class GitUiAssetAudit(
                 .toList()
             assertEquals(scripts.distinct(), scripts, "$path repeats a script")
             assertEquals(styles.distinct(), styles, "$path repeats a stylesheet")
-            assertEquals(1, scripts.count { it.path == "/_bml/app.js" }, path)
-            assertEquals(1, scripts.count { it.path.endsWith(".page.js") }, path)
+            assertEquals(1, scripts.count { Regex("""/_bml/content/app-[a-f0-9]{64}\.js""").matches(it.path) }, path)
+            assertEquals(1, scripts.count { Regex("""/_bml/js/[^/]+\.page-[A-Z0-9]{8}\.js""").matches(it.path) }, path)
             assertEquals(2, scripts.size, "$path declares global authentication and its page entry")
             assertTrue(styles.isNotEmpty(), path)
 
@@ -90,11 +95,12 @@ internal class GitUiAssetAudit(
             fonts.forEach { font ->
                 val bytes = asset(font)
                 assertEquals("wOF2", bytes.take(4).toByteArray().decodeToString(), font.toString())
-                val resource = "bml/applications/bml.generated/" + font.path.removePrefix("/_bml/")
+                val resource = prefix + expectedFonts.getValue(bosca.bml.project.ContentDigest.sha256(bytes)).path
                 val expected = requireNotNull(javaClass.classLoader.getResourceAsStream(resource)) { resource }
                     .use { it.readAllBytes() }
                 assertEquals(digest(expected), digest(bytes), "$font must retain the packaged font bytes")
             }
+            assertEquals(expectedFonts.keys, fonts.map { bosca.bml.project.ContentDigest.sha256(asset(it)) }.toSet())
             buildJsonObject {
                 put("path", path)
                 put("engines", JsonArray(engines.map(::JsonPrimitive)))
