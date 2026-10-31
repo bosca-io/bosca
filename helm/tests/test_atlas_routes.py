@@ -10,6 +10,10 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 ID = "382b5ae6-f5f4-47b7-8216-fa76e707e588"
+CONTENT_ASSETS = [
+    f"/_bml/content/{name}-{'a' * 64}.{extension}"
+    for name, extension in (("design", "css"), ("app", "js"), ("geist-latin", "woff2"))
+] + ["/_bml/global/logo-ABCDEFGH.svg", "/_bml/js/chunks/chunk-ABCDEFGH.js"]
 
 class AtlasRoutesTest(unittest.TestCase):
     @classmethod
@@ -44,6 +48,9 @@ class AtlasRoutesTest(unittest.TestCase):
                 self.assertEqual(8094, self.rule(atlas, "/graphql")["backendRefs"][0]["port"])
                 self.assertEqual({"name": "atlas-ui" if ui else "test-bosca-atlas-server", "port": 8095},
                                  self.rule(atlas, "/repositories")["backendRefs"][0])
+                for path in CONTENT_ASSETS:
+                    self.assertEqual({"name": "atlas-ui" if ui else "test-bosca-atlas-server", "port": 8095},
+                                     self.rule(atlas, path)["backendRefs"][0], path)
                 for host in ("atlas.example.com", "git.example.com"):
                     self.assertEqual(8091 if git else 8094, self.rule(routes[host], "/owner/repo.git/info/refs")["backendRefs"][0]["port"])
                 for host in ("atlas.example.com", "artifacts.example.com"):
@@ -92,6 +99,8 @@ class AtlasRoutesTest(unittest.TestCase):
         redirect = self.rule(git, "/repositories")["filters"][0]["requestRedirect"]
         self.assertEqual("atlas.example.com", redirect["hostname"])
         self.assertEqual("atlas.example.com", self.rule(git, f"/_bml/libraries/{'a' * 64}/styles/design.css")["filters"][0]["requestRedirect"]["hostname"])
+        for path in CONTENT_ASSETS:
+            self.assertEqual("atlas.example.com", self.rule(git, path)["filters"][0]["requestRedirect"]["hostname"], path)
         self.assertEqual(8094, self.rule(git, "/owner/project.git/info/refs")["backendRefs"][0]["port"])
         registry = routes["artifacts.example.com"]
         for protocol in ("raw", "maven", "npm", "helm", "ml"):

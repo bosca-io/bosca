@@ -123,6 +123,11 @@ class SwarmAtlasRoutingTest {
                     val id = "382b5ae6-f5f4-47b7-8216-fa76e707e588"
                     listOf("/", "/login", "/repositories/$id", "/artifacts/repositories/upload", "/artifacts/settings/repositories/$id",
                         "/artifacts/runs/$id", "/_bml/app.css", "/favicon.svg",
+                        "/_bml/content/design-${"a".repeat(64)}.css",
+                        "/_bml/content/app-${"b".repeat(64)}.js",
+                        "/_bml/content/geist-latin-${"c".repeat(64)}.woff2",
+                        "/_bml/global/logo-ABCDEFGH.svg",
+                        "/_bml/js/chunks/chunk-ABCDEFGH.js",
                         "/_bml/libraries/${"a".repeat(64)}/styles/design.css",
                         "/_bml/libraries/${"a".repeat(64)}/chunks/chunk-ABCDEFGH.js",
                         "/_bml/libraries/${"a".repeat(64)}/fonts/geist-latin.woff2").forEach { request("atlas", it, "ui") }
@@ -146,10 +151,12 @@ class SwarmAtlasRoutingTest {
                     }
                     request("artifacts", "/npm/ns/@scope%2Fpkg?revision=one%2Ftwo", if (split) "registry" else "api", (if (split) "" else "/_artifacts") + "/npm/ns/@scope%2Fpkg?revision=one%2Ftwo")
                     request("artifacts", "/v2/ns/pkg/manifests/latest", if (split) "registry" else "api")
-                    client.newCall(Request.Builder().url("http://${proxy.host}:${proxy.getMappedPort(80)}/repositories?view=recent")
-                        .header("Host", "git.example.test").build()).execute().use { response ->
-                        assertEquals(302, response.code)
-                        assertEquals("https://atlas.example.test/repositories?view=recent", response.header("Location"))
+                    for (path in listOf("/repositories?view=recent", "/_bml/content/design-${"a".repeat(64)}.css", "/_bml/global/logo-ABCDEFGH.svg")) {
+                        client.newCall(Request.Builder().url("http://${proxy.host}:${proxy.getMappedPort(80)}$path")
+                            .header("Host", "git.example.test").build()).execute().use { response ->
+                            assertEquals(302, response.code)
+                            assertEquals("https://atlas.example.test$path", response.header("Location"))
+                        }
                     }
                 }
             }
