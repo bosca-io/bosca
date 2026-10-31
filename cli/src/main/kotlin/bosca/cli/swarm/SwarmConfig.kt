@@ -29,6 +29,7 @@ data class SwarmConfig(
     ),
     val secrets: SwarmSharedSecrets = SwarmSharedSecrets(),
     val backup: SwarmBackup = SwarmBackup(),
+    val imageRetention: SwarmImageRetention = SwarmImageRetention(),
 )
 
 /**
@@ -301,6 +302,7 @@ internal fun loadConfig(path: Path, deploy: Boolean = false): SwarmConfig =
     SwarmConfigFile(path).use { it.load(deploy) }
 
 internal fun SwarmConfig.validate(deploy: Boolean = false) {
+    require(imageRetention.minimumFreeGiB in 1..1024) { "imageRetention.minimumFreeGiB must be between 1 and 1024" }
     require(version == 1) { "Unsupported configuration version" }
     val target = Regex("[A-Za-z0-9_.-]+@[A-Za-z0-9_.:-]+")
     require(target.matches(manager.ssh)) { "manager.ssh must be user@host" }

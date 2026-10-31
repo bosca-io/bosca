@@ -5,7 +5,7 @@ import java.net.URI
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 
-private fun shell(value: String) = "'" + value.replace("'", "'\\''") + "'"
+internal fun shell(value: String) = "'" + value.replace("'", "'\\''") + "'"
 
 /**
  * Runs [command], feeding it [input]. With [capture], returns standard output only: SSH and sudo write
@@ -56,7 +56,7 @@ internal var remoteShell: RemoteShell = SshRemoteShell
 private fun ssh(target: String, command: String, input: ByteArray? = null, capture: Boolean = false): String =
     remoteShell.run(target, command, input, capture)
 
-private fun script(target: String, body: String, capture: Boolean = false) =
+internal fun script(target: String, body: String, capture: Boolean = false) =
     ssh(target, "bash -se", body.toByteArray(Charsets.UTF_8), capture)
 
 private val dockerBootstrap = """set -euo pipefail
@@ -513,6 +513,7 @@ private fun checkPublicSites(config: SwarmConfig) {
 
 internal fun deploySwarm(config: SwarmConfig, bundle: Path, skipPublicCheck: Boolean) {
     verifyBootstrappedNodes(config)
+    val retention = prepareSwarmStorage(config)
     registryLogin(config)
     uploadBundle(config, bundle)
     script(config.manager.ssh,
@@ -533,6 +534,7 @@ internal fun deploySwarm(config: SwarmConfig, bundle: Path, skipPublicCheck: Boo
     waitServices(config)
     if (!skipPublicCheck) checkPublicSites(config)
     retireReplacedAtlasServices(config)
+    finishSwarmStorage(config, retention)
     deploymentNotices(config).forEach { println("Notice: $it") }
     println("Swarm deployment is running. Verify Git, search, analytics, mail, and backups before use.")
 }

@@ -58,6 +58,12 @@ The CLI runs on the operator's computer and needs `ssh` and `tar`. The VMs need 
 
 For an image upgrade, change the relevant image tags in the same config file and run `bosca swarm deploy` again. The CLI resolves changed image tags from the registry and Swarm updates services whose image changed. Use new, immutable tags for releases. To roll back an image, restore its previous tag in the config and deploy again. Database migrations and data rollback need separate review; the CLI does not automatically discover releases or reverse migrations.
 
+Deployment checks free space on each node before uploading files or pulling images. After all services finish updating and readiness checks pass, it removes services omitted from the configured `infra`, `edge`, and site stacks. It then removes retired images from the repositories used by those stacks, first removing stopped Swarm task containers that would pin those images. This applies to every configured node; it does not prune volumes, persistent directories, other stacks, or manually created containers.
+
+Image cleanup preserves configured images, all current and previous Swarm service images, images needed by other containers, and one preceding successful deployment's image pins. The rollback pins are recorded on the manager at `<dataRoot>/image-retention/history.json`; repeated deployments with the same images keep that rollback generation. A failed rollout does not advance the history or remove obsolete services. On the first deployment with retention enabled, the existing service specifications supply the initial rollback pins.
+
+The configuration defaults to `"imageRetention": { "enabled": true, "minimumFreeGiB": 4 }`. Set `enabled` to `false` to disable image and stopped-container cleanup. The free-space check and removal of omitted services still apply. If a node has less than `minimumFreeGiB` available, deployment first attempts conservative image cleanup when enabled, then stops before any pull if space is still insufficient. The threshold is a minimum reserve, not an estimate of the incoming image sizes; raise it for larger upgrades. Cleanup prints reclaimed space and remaining capacity for each node. Shared layers remain until Docker no longer needs them.
+
 If a provider firewall is active, allow Swarm traffic between the VMs there as well (TCP 2377, TCP/UDP 7946, UDP 4789). Point every hostname of each site at the manager VM (twelve records per site, including Atlas, plus `www` when `rootImage` is set, or the base domain plus a `*.<domain>` wildcard); expose TCP 80 and 443 there for Caddy. Other service ports stay on the overlay network. The CLI waits for PostgreSQL, PgBouncer, and Dragonfly before updating site services, then waits up to 20 minutes for every service to report one healthy replica and finish its Swarm update; the embeddings model downloads on first start, so the first deployment can take several minutes. The CLI reports waiting services and public URLs as it retries. A service that does not become healthy is reported with its latest task error. Finally the CLI checks the public API, Studio, Profiles, Notifications, and Atlas HTTPS endpoints and, when `rootImage` is set, the root and `www` websites. Atlas checks include its login page and API readiness. Use `--skip-public-check` only when DNS or HTTPS is intentionally not yet available.
 
 ## Dragonfly
@@ -77,9 +83,8 @@ Deployment waits for Dragonfly readiness and starts the sites with the new
 endpoint. Stopping clients together prevents old and new processes from using
 separate lock stores during cutover. Resume traffic after verifying the sites.
 
-Swarm retains services omitted from a stack update. After all clients have
-switched, remove the old service on the manager with
-`sudo docker service rm infra_redis`. Its `<dataRoot>/redis` directory is left
+After all clients have switched and readiness checks pass, deployment removes
+the omitted `infra_redis` service. Its `<dataRoot>/redis` directory is left
 untouched. This fresh-start procedure assumes no jobs or counters need to be
 retained from the old store.
 
