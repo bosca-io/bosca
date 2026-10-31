@@ -183,7 +183,7 @@ class DesignLibraryTest {
             val html = aliases.body()
             val links = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(html)
                 .map { it.groupValues[1].replace("&amp;", "&") }
-                .filter { it.startsWith("/_bml/libraries/") && it.substringBefore('?').endsWith(".css") }.toList()
+                .filter { it.startsWith(if (development) "/_bml/libraries/" else "/_bml/content/") && it.substringBefore('?').endsWith(".css") }.toList()
             assertEquals(links.distinct(), links)
             val styles = links.map { request(client, base, it).also { response -> assertEquals(200, response.statusCode()) }.body() }
             val fontStyles = styles.filter { "@font-face" in it }
@@ -191,14 +191,14 @@ class DesignLibraryTest {
             val css = fontStyles.single()
             assertFalse("/_git/" in css || "https://" in css || "file:" in css)
             assertEquals(11, Regex("@font-face").findAll(css).count())
-            val urls = Regex("""url\(["']?(/_bml/libraries/[^)"']+\.woff2)["']?\)""").findAll(css).map { it.groupValues[1] }.toList()
+            val urls = Regex("""url\(["']?(/_bml/(?:libraries|content)/[^)"']+\.woff2)["']?\)""").findAll(css).map { it.groupValues[1] }.toList()
             assertEquals(11, urls.size)
             assertEquals(urls.distinct(), urls)
             val served = urls.map { url ->
                 val response = client.send(HttpRequest.newBuilder(URI(base + url)).GET().build(), HttpResponse.BodyHandlers.ofByteArray())
                 assertEquals(200, response.statusCode(), url)
                 assertEquals("font/woff2", response.headers().firstValue("Content-Type").orElse(""))
-                assertEquals("no-cache", response.headers().firstValue("Cache-Control").orElse(""))
+                assertEquals(if (development) "no-cache" else "public, max-age=31536000, immutable", response.headers().firstValue("Cache-Control").orElse(""))
                 val digest = ContentDigest.sha256(response.body())
                 assertTrue(response.body().contentEquals(originalBytes.getValue(digest)), url)
                 digest
@@ -213,7 +213,7 @@ class DesignLibraryTest {
         val application = classpath.split(File.pathSeparator).map(::File).single { it.name.startsWith("design-library-") }
         JarFile(application).use { jar ->
             fun script(name: String): String {
-                val entry = jar.entries().asSequence().single { it.name.endsWith("/prod/$name.page.js") }
+                val entry = jar.entries().asSequence().single { it.name.endsWith("/prod/bml-imports.json") }
                 val prefix = entry.name.substringBeforeLast('/') + "/"
                 val imports = jar.getInputStream(jar.getJarEntry(prefix + "bml-imports.json")).reader().use {
                     Json.decodeFromString(MapSerializer(String.serializer(), ListSerializer(String.serializer())), it.readText())
@@ -316,7 +316,7 @@ class DesignLibraryTest {
             assertTrue("id=\"native-button\"" in html && "id=\"native-input\"" in html, html)
             assertFalse("/_git/" in html)
             val links = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(html).map { it.groupValues[1].replace("&amp;", "&") }.toList()
-            assertTrue(links.any { it.startsWith("/_bml/libraries/") }, html)
+            assertTrue(links.any { it.startsWith(if (development) "/_bml/libraries/" else "/_bml/content/") }, html)
             for (link in links) assertEquals(200, request(client, base, link).statusCode(), link)
             val layout = request(client, base, "/layout").body()
             assertTrue("Workspace" in layout && "Components" in layout && "Layout preview" in layout, layout)
@@ -395,7 +395,7 @@ class DesignLibraryTest {
                             val response = request(client, base, "/aliases")
                             assertEquals(200, response.statusCode(), response.body())
                             assertTrue("data-alias=\"plain\"" in response.body(), response.body())
-                            assertTrue("/_bml/libraries/" in response.body(), response.body())
+                            assertTrue("/_bml/content/" in response.body() || "/_bml/libraries/" in response.body(), response.body())
                         }
                     }
                 }
