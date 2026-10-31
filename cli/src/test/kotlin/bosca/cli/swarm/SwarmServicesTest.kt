@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
 @Suppress("UNCHECKED_CAST")
 class SwarmServicesTest {
     private val config = SwarmConfig().withSecrets().let { config ->
-        config.copy(sites = config.sites.map { it.copy(atlas = SwarmAtlas(separateGit = true, separateArtifacts = true)) })
+        config.copy(sites = config.sites.map { it.copy(gitServer = SwarmStandaloneServer(true), artifactsServer = SwarmStandaloneServer(true)) })
     }
     private val site = config.sites.first()
 

@@ -70,6 +70,28 @@ class ImageRegistryTest {
     }
 
     @Test
+    fun `token rejection identifies the image and authentication mode without exposing credentials`() = runBlocking {
+        for (credentials in listOf(false, true)) {
+            server { base, exchange ->
+                if (exchange.requestURI.path == "/token") {
+                    exchange.reply(403, "{}")
+                } else {
+                    exchange.responseHeaders.add("WWW-Authenticate", "Bearer realm=\"$base/token\",service=\"registry\"")
+                    exchange.reply(401, "{}")
+                }
+            }.use { fixture ->
+                val registry = if (credentials) ImageRegistry("api_token", "private-password") else ImageRegistry()
+                val failure = assertFailsWith<IllegalArgumentException> { registry.latest("${fixture.base}/bosca/atlas-ui-server") }
+                val message = failure.message.orEmpty()
+                assertTrue(message.contains("${fixture.base.removePrefix("http://")}/bosca/atlas-ui-server"), message)
+                assertTrue(message.contains("HTTP 403"), message)
+                assertTrue(message.contains(if (credentials) "configured credentials" else "anonymous request"), message)
+                assertTrue(!message.contains("private-password"), message)
+            }
+        }
+    }
+
+    @Test
     fun `pagination cannot send credentials to another registry`() = runBlocking<Unit> {
         server { _, exchange ->
             exchange.responseHeaders.add("Link", "<http://example.invalid/v2/bosca/server/tags/list>; rel=\"next\"")

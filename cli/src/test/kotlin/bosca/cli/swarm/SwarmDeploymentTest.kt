@@ -309,7 +309,7 @@ class SwarmDeploymentTest {
         assertEquals("git.example.org", site.hosts.git)
         assertEquals("notifications.example.org", site.hosts.notifications)
         assertEquals("messages.example.org", site.hosts.messages)
-        assertEquals("code.example.org", site.copy(gitDomain = "code.example.org", atlas = SwarmAtlas(separateGit = true)).hosts.git)
+        assertEquals("code.example.org", site.copy(gitDomain = "code.example.org", gitServer = SwarmStandaloneServer(true)).hosts.git)
 
         // A configuration written before hosts were derived still names its Git host explicitly.
         val legacy = swarmJson.decodeFromString(
@@ -433,7 +433,7 @@ class SwarmDeploymentTest {
     @Test
     fun `Git auth uses its browser origin and API callback without changing Studio`() {
         val config = SwarmConfig().withSecrets()
-        val site = config.sites.first().copy(gitDomain = "code.example.org", atlas = SwarmAtlas(separateGit = true))
+        val site = config.sites.first().copy(gitDomain = "code.example.org", gitServer = SwarmStandaloneServer(true))
         @Suppress("UNCHECKED_CAST")
         val services = siteStack(config, site)["services"] as Map<String, Map<String, Any>>
         @Suppress("UNCHECKED_CAST")

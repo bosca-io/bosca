@@ -23,7 +23,7 @@ class SwarmAtlasTest {
         assertEquals("https://${site.hosts.git}", env["GIT_URL"])
         assertEquals("https://${site.hosts.atlas}", env["APP_URL"])
         assertEquals("https://${site.hosts.artifacts}", env["ATLAS_ARTIFACTS_URL"])
-        assertEquals("false", env["ATLAS_RUNNER_ENABLED"])
+        assertEquals("true", env["ATLAS_RUNNER_ENABLED"])
         assertEquals("true", env["ATLAS_UI_ENABLED"])
         assertEquals(site.secrets.pipeline, env["PIPELINE_SECRET_KEY"])
         val trainer = services.getValue("recommendation-trainer").getValue("environment") as Map<String, String>
@@ -45,9 +45,9 @@ class SwarmAtlasTest {
         for (git in listOf(false, true)) for (artifacts in listOf(false, true))
             for (separateUi in listOf(false, true)) for (runner in listOf(false, true)) {
                 val site = defaults.sites.first().copy(domain = "example.org", atlas = SwarmAtlas(
-                    domain = "build.example.org", separateUi = separateUi, separateGit = git,
-                    separateArtifacts = artifacts, runnerEnabled = runner,
-                ))
+                    domain = "build.example.org", servers = SwarmAtlasServers(runner = runner),
+                ), atlasUiServer = SwarmStandaloneServer(separateUi), gitServer = SwarmStandaloneServer(git),
+                    artifactsServer = SwarmStandaloneServer(artifacts))
                 val config = defaults.copy(sites = listOf(site))
                 config.validate()
                 val services = siteStack(config, site).getValue("services") as Map<String, Map<String, Any>>
@@ -55,7 +55,7 @@ class SwarmAtlasTest {
                 assertEquals(artifacts, "artifacts" in services)
                 assertEquals(separateUi, "atlas-ui" in services)
                 val backend = services.getValue("atlas").getValue("environment") as Map<String, String>
-                assertEquals((!separateUi).toString(), backend["ATLAS_UI_ENABLED"])
+                assertEquals("true", backend["ATLAS_UI_ENABLED"])
                 assertEquals(runner.toString(), backend["ATLAS_RUNNER_ENABLED"])
                 val registry = if (artifacts) "http://${site.id}-artifacts:8084" else ""
                 assertEquals(registry, backend["BML_ARTIFACTS_ENDPOINT"])
@@ -74,7 +74,7 @@ class SwarmAtlasTest {
     @Test
     fun `retirement removes only replaced managed services and preserves independent hosts`() {
         val config = SwarmConfig().withSecrets().let { config -> config.copy(sites = listOf(
-            config.sites[0], config.sites[1].copy(atlas = SwarmAtlas(separateUi = true, separateGit = true, separateArtifacts = true)),
+            config.sites[0], config.sites[1].copy(atlasUiServer = SwarmStandaloneServer(true), gitServer = SwarmStandaloneServer(true), artifactsServer = SwarmStandaloneServer(true)),
         )) }
         val previous = remoteShell
         val removals = mutableListOf<String>()

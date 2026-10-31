@@ -183,30 +183,51 @@ pipeline key are reused. Add DNS for `atlas.<domain>` and register
 `https://atlas.<domain>/oauth2/google/callback` with the site's Google client.
 The default public origin is `https://atlas.<domain>`; clone URLs retain
 `https://git.<domain>`. The existing platform runner continues consuming jobs.
-Set `atlas.runnerEnabled: true` to add Atlas queue consumers; the platform runner
-continues owning event listeners and scheduling.
-
-Each site's optional `atlas` settings select independent processes:
+Atlas capabilities are configured independently from standalone services. Every
+Atlas capability defaults to enabled. Standalone servers default to disabled:
 
 ```json
 "atlas": {
   "domain": "build.example.com",
-  "separateUi": true,
-  "separateGit": false,
-  "separateArtifacts": false,
-  "runnerEnabled": false
-}
+  "servers": {
+    "api": true,
+    "ui": true,
+    "git": true,
+    "artifacts": true,
+    "runner": true
+  }
+},
+"gitServer": { "enabled": false },
+"artifactsServer": { "enabled": false },
+"atlasUiServer": { "enabled": false }
 ```
 
-`separateUi` starts `atlas-ui-server` with the same Atlas origin and a private
-GraphQL endpoint. `separateGit` starts the backend-only Git server;
-`separateArtifacts` starts the existing registry service. Both the Atlas hostname
-and their companion hostnames send protocol requests to the selected backend.
-When a backend is off, those routes use Atlas. UI pages always stay on Atlas;
-Git-host UI entry points redirect there. Shared `/graphql` remains on Atlas. These options also use
-`images.atlas-ui`, `images.git` and `images.artifacts`, respectively. After new
-services and ingress become healthy and Atlas's API passes readiness, deployment retires only the replaced managed
-Git/registry/UI services; their data and other services remain intact.
+The `atlas.servers` flags enable capabilities inside the Atlas process. Setting
+one to `false` does not start a replacement server. The embedded UI requires the
+Atlas API. Set `atlas.servers.runner` to `false` when only the platform runner
+should consume background jobs; the platform runner continues owning event
+listeners and scheduling in either case.
+
+Enable `gitServer`, `artifactsServer`, or `atlasUiServer` explicitly to deploy
+that standalone service. Their image keys are `git`, `artifacts`, and `atlas-ui`.
+Enabling a standalone service routes the corresponding public requests to it
+without changing Atlas's own capabilities. For a fully split deployment, enable
+the standalone services and explicitly disable the matching Atlas capabilities.
+If neither Atlas nor a standalone service enables a surface, its ingress routes
+return 404 and deployment omits its public readiness probe.
+
+`swarm update-images` queries only images used by the configured deployment by
+default. An unused standalone image cannot block updates with a registry error.
+An explicit `--image` selects that image even when its service is disabled.
+
+When updating an older configuration, move `atlas.separateGit`,
+`atlas.separateArtifacts`, and `atlas.separateUi` to the corresponding standalone
+`enabled` flags. Replace `atlas.runnerEnabled` with `atlas.servers.runner`.
+To retain the previous behavior of a separate UI, set `atlas.servers.ui` to
+`false`; other Atlas capabilities keep their defaults. Remove the old keys;
+the new CLI does not interpret them as aliases. Update the config together with
+the CLI. After services and ingress pass readiness, deployment retires omitted
+managed services while preserving their data.
 
 ## OAuth redirects
 

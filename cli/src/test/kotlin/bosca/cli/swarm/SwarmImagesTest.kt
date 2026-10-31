@@ -1,5 +1,6 @@
 package bosca.cli.swarm
 
+import bosca.cli.images.boscaImages
 import kotlinx.coroutines.runBlocking
 import com.github.ajalt.clikt.testing.test
 import com.sun.net.httpserver.HttpServer
@@ -12,6 +13,84 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class SwarmImagesTest {
+    @Test
+    fun `default image lookups follow optional services enabled by any site`() = runBlocking {
+        for (ui in listOf(false, true)) for (git in listOf(false, true)) for (artifacts in listOf(false, true)) {
+            val original = SwarmConfig().withSecrets().let { config ->
+                config.copy(sites = listOf(config.sites[0], config.sites[1].copy(
+                    atlasUiServer = SwarmStandaloneServer(ui), gitServer = SwarmStandaloneServer(git), artifactsServer = SwarmStandaloneServer(artifacts))))
+            }
+            val lookups = mutableSetOf<String>()
+            val updated = updateSwarmImages(original, null, emptySet()) { repository -> lookups += repository; "9.0.0" }
+            for ((key, enabled) in mapOf("atlas-ui" to ui, "git" to git, "artifacts" to artifacts)) {
+                val repository = original.images.getValue(key).substringBeforeLast(':')
+                assertEquals(enabled, repository in lookups, "$key in $ui/$git/$artifacts")
+                assertEquals(if (enabled) "$repository:9.0.0" else original.images.getValue(key), updated.images[key])
+            }
+            assertTrue(lookups.contains(original.images.getValue("atlas").substringBeforeLast(':')))
+            assertEquals(original.sites, updated.sites)
+            assertEquals(original.secrets, updated.secrets)
+        }
+    }
+
+    @Test
+    fun `explicit keys still select inactive services`() = runBlocking {
+        val config = SwarmConfig()
+        val selected = mutableListOf<String>()
+        val updated = updateSwarmImages(config, null, setOf("atlas-ui", "git", "artifacts")) {
+            selected += it; "9.0.0"
+        }
+        assertEquals(3, selected.size)
+        for (key in listOf("atlas-ui", "git", "artifacts")) assertTrue(updated.images.getValue(key).endsWith(":9.0.0"))
+        assertEquals(config.images["runner"], updated.images["runner"])
+    }
+
+    @Test
+    fun `command skips unused forbidden registries and explicit failures preserve the config`() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val requests = mutableListOf<String>()
+        val base = "http://127.0.0.1:${server.address.port}"
+        server.createContext("/") { exchange ->
+            val path = exchange.requestURI.path
+            requests += path
+            val blocked = listOf("atlas-ui-server", "git-server", "artifacts-server").any { path.contains("/$it/") }
+            val (status, body) = when {
+                path == "/token" -> 403 to "{}"
+                blocked -> {
+                    exchange.responseHeaders.add("WWW-Authenticate", "Bearer realm=\"$base/token\",service=\"registry\"")
+                    401 to "{}"
+                }
+                else -> 200 to "{\"tags\":[\"9.0.0\"]}"
+            }
+            val bytes = body.toByteArray()
+            exchange.sendResponseHeaders(status, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        val directory = Files.createTempDirectory("swarm-active-registry-")
+        val path = directory.resolve("config.json")
+        try {
+            val config = SwarmConfig().withSecrets()
+            val images = config.images.toMutableMap()
+            boscaImages.filter { it.swarmKey != null }.forEach { images[requireNotNull(it.swarmKey)] =
+                "127.0.0.1:${server.address.port}/bosca/${it.repository}:1.0.0" }
+            saveConfig(path, config.copy(images = images, registrySchemes = mapOf("127.0.0.1:${server.address.port}" to "http")))
+            val args = listOf("--config", path.toString())
+            val result = SwarmUpdateImagesCommand().test(args)
+            assertEquals(0, result.statusCode, result.output)
+            assertTrue(requests.none { it.contains("atlas-ui-server") || it.contains("git-server") || it.contains("artifacts-server") })
+            val saved = Files.readString(path)
+            val failure = SwarmUpdateImagesCommand().test(args + listOf("--image", "atlas-ui"))
+            assertEquals(1, failure.statusCode, failure.output)
+            assertTrue(failure.output.contains("/bosca/atlas-ui-server"), failure.output)
+            assertTrue(failure.output.contains("HTTP 403"), failure.output)
+            assertEquals(saved, Files.readString(path))
+        } finally {
+            server.stop(0)
+            Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
+        }
+    }
+
     @Test
     fun `command check and failed lookup leave the config byte for byte unchanged`() {
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)

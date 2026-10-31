@@ -95,7 +95,7 @@ class SwarmGitRoutingTest {
             Testcontainers.exposeHostPorts(api.address.port, ui.address.port)
             val apiUpstream = "host.testcontainers.internal:${api.address.port}"
             val uiUpstream = "host.testcontainers.internal:${ui.address.port}"
-            val config = SwarmConfig(sites = listOf(SwarmSite("site1", "localhost", "Test", "test@localhost", 1, atlas = SwarmAtlas(separateGit = true))))
+            val config = SwarmConfig(sites = listOf(SwarmSite("site1", "localhost", "Test", "test@localhost", 1, gitServer = SwarmStandaloneServer(true))))
             val gitBlock = caddyfile(config).substringAfter("atlas.localhost {\n")
                 .substringBefore("\n\nartifacts.localhost {")
                 .replace("site1-git:8091", apiUpstream).replace("site1-atlas:8094", apiUpstream).replace("site1-atlas:8095", uiUpstream)
