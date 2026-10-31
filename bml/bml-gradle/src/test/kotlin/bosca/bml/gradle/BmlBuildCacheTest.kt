@@ -75,7 +75,7 @@ class BmlBuildCacheTest {
             val graphql = File(generated, "graphql/Greeting.ts").readText()
             assertTrue("salutation" in graphql)
             assertEquals(graphql, File(generated, "ts/graphql/Greeting.ts").readText())
-            assertTrue(File(generated, "js-prod/index.page.js").readText().contains("salutation"))
+            assertTrue(File(generated, "js-prod").listFiles().orEmpty().single { it.name.matches(Regex("""index\.page-[A-Z0-9]{8}\.js""")) }.readText().contains("salutation"))
 
             val reused = runner(project, "clean", "bmlBundleClient").build()
             assertTrue("Reusing configuration cache" in reused.output, reused.output)

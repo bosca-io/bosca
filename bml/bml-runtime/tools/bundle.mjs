@@ -79,7 +79,7 @@ export function routeSlug(route) {
  * The page→module mapping comes from the compiler's
  * metrics manifest (`manifest.tsv`); output names use the same route-slug algorithm as
  * `BmlProductionAssets` in bml-server (uniqueness by sorted-route order with `-2`, `-3`… suffixes),
- * so server and build agree without a lookup file.
+ * and `bml-imports.json` maps those logical names to content-hashed output files.
  *
  * Production deliberately uses esbuild's syntax, whitespace, and identifier minifiers but does
  * not enable property mangling: generated contracts, DOM datasets, and public `window` properties
@@ -87,7 +87,7 @@ export function routeSlug(route) {
  * output so the original identifiers and sources are not shipped beside the optimized bundle.
  *
  * @param {{ manifestPath: string, inDir: string, outdir: string, runtime?: string }} options
- * @returns {Promise<string[]>} the bundle file names written
+ * @returns {Promise<string[]>} logical entry names indexed in bml-imports.json
  */
 export async function bundleProduction({ manifestPath, inDir, outdir, runtime }) {
   const lines = readFileSync(manifestPath, "utf8")
@@ -120,15 +120,6 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
     const entries = orderedModules
       .map((m) => m.replace(/\.js$/, ""))
       .filter((m) => existsSync(join(inDir, `${m}.ts`)))
-    const outfile = join(outdir, `${slug}.page.js`)
-    if (entries.length === 0) {
-      // The server links this page's bundle because the manifest names client modules; none of them
-      // produced TypeScript, so publish an empty module rather than leave the link returning 404.
-      mkdirSync(outdir, { recursive: true })
-      writeFileSync(outfile, "")
-      written.push(`${slug}.page.js`)
-      continue
-    }
     let shared = false
     if (linked.modules.size > 0) {
       const graph = await applicationGraph({
@@ -149,6 +140,7 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
       outdir: resolve(outdir),
       bundle: true,
       splitting: true,
+      entryNames: "[name]-[hash]",
       chunkNames: "chunks/[name]-[hash]",
       format: "esm",
       platform: "browser",
@@ -174,7 +166,7 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
         seen.add(path)
         for (const child of outputs[path]?.imports ?? []) if (!child.external && child.kind === "import-statement") visit(child.path)
       }
-      const entry = Object.keys(outputs).find((path) => resolve(inDir, path) === resolve(outdir, name))
+      const entry = Object.keys(outputs).find((path) => outputs[path].entryPoint === `bml-page:bml-page:${name.slice(0, -8)}`)
       if (entry) visit(entry)
       imports[name] = entry ? [...seen].map((path) => relative(resolve(outdir), resolve(inDir, path)).replaceAll("\\", "/")) : [name]
     }
@@ -310,7 +302,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     jobs.push(bundleIslands({ entryPoints, outdir: outDir, runtime, splitting: true, linkedDir: inDir }))
   }
   // Production bundles follow the manifest, not the .ts inputs: a page whose declared client modules
-  // produced no TypeScript still needs its (empty) <slug>.page.js, because bml-server links it.
+  // produced no TypeScript still needs an indexed, content-hashed empty entry.
   if (manifest && prodOut && existsSync(manifest)) {
     jobs.push(bundleProduction({ manifestPath: manifest, inDir, outdir: prodOut, runtime }))
   }

@@ -118,15 +118,17 @@ common engines download once across pages. A page still loads only its reachable
 this adds no public helper imports or component props. `bmlMetrics` includes the entry's full static
 module closure in its first-load figures.
 
-Production pages that load client JavaScript include an import map that adds the deployment's
-`_ts` token to application chunks and compiled library modules, including nested and lazy imports.
-When the deployment token changes, browsers request new module URLs even when their packaged bytes
-are unchanged. Module URLs remain stable within a deployment. Immutable caching requires the
-current token; requests without it or with an older token revalidate.
+Production page entries and shared chunks use content-hashed filenames. The server selects each
+page's entry from the packaged build metadata and emits a direct module script; pages do not carry
+an import map. Static and lazy imports reference the emitted filenames directly. Unchanged files
+retain their URLs across builds; a changed dependency also changes the filenames of the bundles
+that reference it.
 
-Packaged asset responses use the indexed content digest for conditional requests before loading a
-body. Response bytes are verified and cached within the active application generation; a reload
-uses its new inventory and cache. Unknown paths remain unavailable.
+Library styles, fonts and other bundled resources, plus the host's global styles and scripts, use
+content-addressed URLs. Hashed assets are cached immutably; plain asset URLs revalidate.
+Packaged response bytes are digest-verified and cached within the active application generation.
+Unknown paths remain unavailable. The build identity continues to invalidate rendered shared HTML
+when server code changes; it is independent of browser asset URLs.
 
 The Design Library's [CSS variables](../bml-design/css-tokens.md) let applications set colors,
 fonts, spacing, radii, focus and editor presentation in their own CSS, globally or on a themed

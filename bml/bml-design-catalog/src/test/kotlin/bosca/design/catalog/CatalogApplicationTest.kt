@@ -224,9 +224,9 @@ class CatalogApplicationTest {
             assertEquals(200, search("""[{"query":"layout","offset":0}]""").statusCode())
             val links = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(foundation)
                 .map { it.groupValues[1].replace("&amp;", "&") }
-                .filter { it.startsWith("/_bml/libraries/") && it.substringBefore('?').endsWith(".css") }.toList()
+                .filter { (it.startsWith("/_bml/libraries/") || it.startsWith("/_bml/content/")) && it.substringBefore('?').endsWith(".css") }.toList()
             val styles = links.map { request(client, base, it).also { response -> assertEquals(200, response.statusCode()) }.body() }
-            val fonts = Regex("""url\(["']?(/_bml/libraries/[^)"']+\.woff2)["']?\)""")
+            val fonts = Regex("""url\(["']?(/_bml/(?:libraries|content)/[^)"']+\.woff2(?:\?[^)"']*)?)["']?\)""")
                 .findAll(styles.joinToString("\n")).map { it.groupValues[1] }.toList()
             assertEquals(11, fonts.size)
             assertEquals(fonts.distinct(), fonts)

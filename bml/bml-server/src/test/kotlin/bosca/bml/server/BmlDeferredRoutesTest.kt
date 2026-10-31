@@ -318,7 +318,7 @@ class BmlDeferredRoutesTest {
     @Test
     fun `public assets never carry browser identity cookies`() {
         val html = get("/shared/42").body()
-        val versioned = checkNotNull(Regex("/_bml/app\\.js\\?_ts=[0-9a-f]+").find(html)?.value) { html }
+        val versioned = checkNotNull(Regex("/_bml/content/app-[0-9a-f]{64}\\.js").find(html)?.value) { html }
         for ((path, policy) in listOf(
             "/_bml/app.js" to "no-cache",
             versioned to "public, max-age=31536000, immutable",

@@ -23,8 +23,8 @@ object BmlProductionAssets {
 
     /**
      * Suffix of the per-page production bundle in the client dir. The bundler (`bundle.mjs
-     * --manifest … --prod-out …`) names bundles with the same route slug algorithm, so the server
-     * and the build agree without a lookup file.
+     * --manifest … --prod-out …`) names bundles with the same route slug algorithm, and indexes their content-hashed filenames
+     * in `bml-imports.json`, which the server reads when constructing a generation.
      */
     const val PAGE_JS_SUFFIX = ".page.js"
 

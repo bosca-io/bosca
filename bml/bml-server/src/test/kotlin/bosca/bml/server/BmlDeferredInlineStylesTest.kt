@@ -31,7 +31,7 @@ class BmlDeferredInlineStylesTest {
 
         assertEquals(200, response.statusCode())
         assertTrue("<style>.shell-card{display:block}</style>" in response.body(), response.body())
-        assertTrue("/_bml/app.css?_ts=" in response.body(), response.body())
+        assertTrue(Regex("/_bml/content/app-[a-f0-9]{64}\\.css").containsMatchIn(response.body()), response.body())
     }
 
     @Test

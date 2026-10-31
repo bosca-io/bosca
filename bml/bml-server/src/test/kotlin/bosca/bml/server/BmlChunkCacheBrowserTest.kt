@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -32,7 +32,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class BmlChunkCacheBrowserTest {
     @Test
-    fun `new deployments download unchanged shared nested lazy and library modules with a new token`() {
+    fun `content addressed modules remain cached across deployments and changed graphs load new bytes`() {
         val chrome = File(checkNotNull(System.getProperty("bml.test.browser")))
         check(chrome.isFile && chrome.canExecute()) { "Missing browser: $chrome" }
         for (packaged in listOf(false, true)) {
@@ -49,44 +49,48 @@ class BmlChunkCacheBrowserTest {
     }
 
     private fun verifyDeployments(browser: BmlChunkTestBrowser, directory: File, packaged: Boolean) {
-        val scripts = mapOf(
-            "prod/index.page.js" to """
-                import { urls } from './chunks/shared-ABCDEFGH.js';
-                const lazy = await import('./chunks/lazy-IJKLMNOP.js');
-                const library = await import('/_bml/libraries/key/modules/widget.js');
-                document.getElementById('result').textContent = JSON.stringify([import.meta.url, ...urls, lazy.url, ...library.urls]);
-            """.trimIndent(),
-            "prod/chunks/shared-ABCDEFGH.js" to """
-                import { url } from './nested-QRSTUVWX.js';
-                export const urls = [import.meta.url, url];
-            """.trimIndent(),
-            "prod/chunks/nested-QRSTUVWX.js" to "export const url = import.meta.url;",
-            "prod/chunks/lazy-IJKLMNOP.js" to "export const url = import.meta.url;",
-            "libraries/key/modules/widget.js" to """
-                import { url } from '../chunks/library-ABCDEFGH.js';
-                export const urls = [import.meta.url, url];
-            """.trimIndent(),
-            "libraries/key/chunks/library-ABCDEFGH.js" to "export const url = import.meta.url;",
-        )
-        val clientDir = if (packaged) null else directory.resolve("js").apply {
-            scripts.filterKeys { it.startsWith("prod/") }.forEach { (path, body) ->
-                resolve(path.removePrefix("prod/")).apply { parentFile.mkdirs() }.writeText(body)
-            }
-        }
-        val resources = scripts.filterKeys { packaged || it.startsWith("libraries/") }
-        val manifest = Json.encodeToString(BmlClientManifest.serializer(), BmlClientManifest(files = resources.map { (path, body) ->
-            BmlAssetFile(path, ContentDigest.sha256(body))
-        }))
-        val applicationAssets = BmlApplicationAssets("app", emptyMap(), emptyMap()) { path ->
-            if (path == "app/client-manifest.json") manifest.encodeToByteArray()
-            else resources[path.removePrefix("app/")]?.encodeToByteArray()
-        }
-        val expectedPaths = scripts.keys.map { path ->
-            if (path.startsWith("prod/")) BmlClientAssets.URL_PREFIX + path.removePrefix("prod/") else "/_bml/$path"
-        }.toSet()
         val port = ServerSocket(0).use { it.localPort }
-        var previousToken: String? = null
-        for (version in listOf("first-deploy", "second-deploy")) {
+        var previousResult: String? = null
+        for ((deployment, version) in listOf("first-deploy", "same-assets", "changed-assets").withIndex()) {
+            val entry = if (deployment == 2) "index.page-CHANGED1.js" else "index.page-ORIGINAL.js"
+            val lazy = if (deployment == 2) "lazy-CHANGED1.js" else "lazy-IJKLMNOP.js"
+            val scripts = mapOf(
+                "prod/$entry" to """
+                    import { urls } from './chunks/shared-ABCDEFGH.js';
+                    const lazy = await import('./chunks/$lazy');
+                    const library = await import('/_bml/libraries/key/modules/widget-ABCDEFGH.js');
+                    document.getElementById('result').textContent = JSON.stringify([import.meta.url, ...urls, lazy.url, ...library.urls]);
+                """.trimIndent(),
+                "prod/chunks/shared-ABCDEFGH.js" to """
+                    import { url } from './nested-QRSTUVWX.js';
+                    export const urls = [import.meta.url, url];
+                """.trimIndent(),
+                "prod/chunks/nested-QRSTUVWX.js" to "export const url = import.meta.url;",
+                "prod/chunks/$lazy" to "export const url = import.meta.url;",
+                "libraries/key/modules/widget-ABCDEFGH.js" to """
+                    import { url } from '../chunks/library-ABCDEFGH.js';
+                    export const urls = [import.meta.url, url];
+                """.trimIndent(),
+                "libraries/key/chunks/library-ABCDEFGH.js" to "export const url = import.meta.url;",
+            )
+            val files = scripts + ("prod/bml-imports.json" to """{"index.page.js":["$entry","chunks/shared-ABCDEFGH.js"]}""")
+            val clientDir = if (packaged) null else directory.resolve("js").apply {
+                deleteRecursively(); mkdirs()
+                files.filterKeys { it.startsWith("prod/") }.forEach { (path, body) ->
+                    resolve(path.removePrefix("prod/")).apply { parentFile.mkdirs() }.writeText(body)
+                }
+            }
+            val resources = files.filterKeys { packaged || it.startsWith("libraries/") }
+            val manifest = Json.encodeToString(BmlClientManifest.serializer(), BmlClientManifest(files = resources.map { (path, body) ->
+                BmlAssetFile(path, ContentDigest.sha256(body))
+            }))
+            val applicationAssets = BmlApplicationAssets("app", emptyMap(), emptyMap()) { path ->
+                if (path == "app/client-manifest.json") manifest.encodeToByteArray()
+                else resources[path.removePrefix("app/")]?.encodeToByteArray()
+            }
+            val expectedPaths = scripts.keys.map { path ->
+                if (path.startsWith("prod/")) BmlClientAssets.URL_PREFIX + path.removePrefix("prod/") else "/_bml/$path"
+            }.toSet()
             val requests = ConcurrentLinkedQueue<Pair<String, String?>>()
             val page = object : BmlPageRenderer, BmlBundledPage {
                 override val route = "/"
@@ -112,19 +116,25 @@ class BmlChunkCacheBrowserTest {
                 val html = HttpClient.newHttpClient().use { client ->
                     client.send(HttpRequest.newBuilder(URI("http://localhost:$port/")).GET().build(), HttpResponse.BodyHandlers.ofString()).body()
                 }
-                val token = checkNotNull(Regex("_ts=([0-9a-f]+)").find(html)?.groupValues?.get(1)) { html }
-                if (previousToken != null) assertNotEquals(previousToken, token, "A deployment changes tokens even with identical module bytes")
+                assertFalse("importmap" in html, html)
+                assertFalse("_ts=" in html, html)
                 val result = browser.result("http://localhost:$port/?visit=$version")
                 val urls = Json.parseToJsonElement(result).jsonArray.map { URI(it.jsonPrimitive.content) }
                 assertEquals(expectedPaths, urls.map { it.path }.toSet())
-                urls.forEach { assertEquals("_ts=$token", it.rawQuery, it.toString()) }
-                assertEquals(expectedPaths, requests.map { it.first }.toSet(), "Every module is downloaded after each deployment")
-                requests.forEach { assertEquals(token, it.second, it.first) }
+                urls.forEach { assertEquals(null, it.rawQuery, it.toString()) }
+                when (deployment) {
+                    0 -> assertEquals(expectedPaths, requests.map { it.first }.toSet())
+                    1 -> {
+                        assertEquals(previousResult, result)
+                        assertTrue(requests.isEmpty(), "Unchanged modules survive a deployment: $requests")
+                    }
+                    2 -> assertEquals(setOf("/_bml/js/$entry", "/_bml/js/chunks/$lazy"), requests.map { it.first }.toSet())
+                }
                 requests.clear()
                 val cached = browser.result("http://localhost:$port/?visit=$version-cached")
                 assertEquals(result, cached, "Cached navigation executes the same complete module graph")
                 assertTrue(requests.isEmpty(), "The retained browser cache reuses modules within a deployment: $requests")
-                previousToken = token
+                previousResult = result
             } finally {
                 engine.stopWithoutHalting()
             }

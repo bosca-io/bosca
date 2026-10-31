@@ -103,7 +103,7 @@ class BmlTransitiveLibraryConsumerTest {
             JarFile(File(consumer, "build/libs/consumer.jar")).use { jar ->
                 val root = "bml/applications/consumer.generated/"
                 assertTrue(jar.getJarEntry(root + "client-manifest.json") != null)
-                val page = jar.getJarEntry(root + "prod/index.page.js")
+                val page = jar.entries().asSequence().single { it.name.startsWith(root + "prod/index.page-") && it.name.endsWith(".js") }
                 assertTrue(page != null, "The consumer JAR must carry its production entry")
                 assertTrue("bml-6578616d706c653a62617365-button" in jar.getInputStream(page).reader().readText())
                 assertTrue(jar.entries().asSequence().any { it.name.startsWith(root + "dev/L") && it.name.endsWith("_ButtonPage.js") })

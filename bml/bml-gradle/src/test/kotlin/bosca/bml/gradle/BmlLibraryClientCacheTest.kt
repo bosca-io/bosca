@@ -82,7 +82,7 @@ class BmlLibraryClientCacheTest {
             assertEquals(TaskOutcome.SUCCESS, changed.task(":bmlBundleClient")?.outcome)
             assertNotEquals(before.toList(), index().toList())
             JarFile(packaged).use { jar ->
-                val js = jar.getInputStream(jar.getJarEntry(prefix + "prod/index.page.js")).reader().readText()
+                val js = jar.getInputStream(jar.entries().asSequence().single { it.name.startsWith(prefix + "prod/index.page-") && it.name.endsWith(".js") }).reader().readText()
                 assertTrue("AFTER_ASSET_CHANGE" in js && "BEFORE_ASSET_CHANGE" !in js, js)
             }
             @Suppress("UNCHECKED_CAST") val report = JsonSlurper().parse(File(consumer, "build/reports/bml/site-metrics.json")) as Map<String, Any?>

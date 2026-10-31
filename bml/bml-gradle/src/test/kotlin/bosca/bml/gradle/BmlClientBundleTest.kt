@@ -55,9 +55,9 @@ class BmlClientBundleTest {
             assertEquals(TaskOutcome.SUCCESS, first.task(":bmlBundleClient")?.outcome)
             val generated = File(project, "build/generated/bml")
             val development = File(generated, "js/HomePage.js")
-            val production = File(generated, "js-prod/index.page.js")
+            fun production() = File(generated, "js-prod").listFiles().orEmpty().single { it.name.matches(Regex("""index\.page-[A-Z0-9]{8}\.js""")) }
             assertTrue(development.readText().contains("first-client"))
-            assertTrue(production.readText().contains("first-client"))
+            assertTrue(production().readText().contains("first-client"))
 
             page.writeText(serverPage)
             val removed = runner(project, "jar").build()
@@ -76,8 +76,8 @@ class BmlClientBundleTest {
             assertTrue("Reusing configuration cache" in restored.output, restored.output)
             assertEquals(TaskOutcome.SUCCESS, restored.task(":bmlBundleClient")?.outcome)
             assertTrue(development.readText().contains("replacement-client"))
-            assertTrue(production.readText().contains("replacement-client"))
-            assertFalse(production.readText().contains("first-client"))
+            assertTrue(production().readText().contains("replacement-client"))
+            assertFalse(production().readText().contains("first-client"))
         } finally {
             work.deleteRecursively()
         }

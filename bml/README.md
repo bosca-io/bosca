@@ -48,8 +48,8 @@ cookies; focused checks use distinct report names. Set `-Pbml.browser.workers=1`
 serially, or choose another pool size for the available machine. The aggregate task reuses those
 results, and its Gradle worker count is bounded independently.
 
-`./gradlew :bml:bml-server:chunkCacheBrowserTest` checks module requests across two deployments
-with unchanged JavaScript and a retained browser cache, for both filesystem and packaged assets.
+`./gradlew :bml:bml-server:chunkCacheBrowserTest` checks module requests across deployments
+with unchanged and changed JavaScript and a retained browser cache, for both filesystem and packaged assets.
 It covers shared, nested, lazy and compiled-library imports and runs in the CI and release browser
 phase. It uses the same managed browser and `BML_DESIGN_CHROME_BINARY` override described above.
 The browser stays open across deployments and waits for module completion through DevTools.
