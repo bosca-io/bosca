@@ -313,7 +313,11 @@ and `imageRetention.minimumFreeGiB` (defaults: `true` and `4`) in the Swarm
 configuration. See [Swarm deployment](../deployments/bosca-swarm/README.md)
 for retention and rollback details.
 
-`update-images` saves version pins locally. It keeps each configured image
+`update-images` saves version pins locally for services used by the configured
+topology. Separate Atlas UI, Git, and artifacts images are skipped unless at
+least one site enables the corresponding separate service. An explicit
+`--image` also selects an inactive service, for example before changing topology.
+It keeps each configured image
 repository, infrastructure images, root website images, and secrets. Repeat
 `--image` to update selected Swarm image keys, for example `--image server
 --image runner`. Use `--registry artifacts.example.com/bosca` to move the

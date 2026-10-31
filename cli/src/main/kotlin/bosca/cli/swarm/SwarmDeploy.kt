@@ -481,14 +481,17 @@ internal fun publicReadinessUrls(config: SwarmConfig) = config.sites.flatMap { s
     val hosts = site.hosts
     val urls = if (site.rootImage.isBlank()) {
         listOf("https://${hosts.root}/api/v1/ready", "https://${hosts.studio}/health",
-            "https://${hosts.profiles}/login", "https://${hosts.notifications}/", "https://${hosts.atlas}/login")
+            "https://${hosts.profiles}/login", "https://${hosts.notifications}/")
     } else {
         listOf("https://${hosts.api}/api/v1/ready", "https://${hosts.studio}/health",
             "https://${hosts.profiles}/login", "https://${hosts.notifications}/",
-            "https://${hosts.root}/", "https://${hosts.www}/", "https://${hosts.atlas}/login")
+            "https://${hosts.root}/", "https://${hosts.www}/")
     }
     // A static UI login page does not establish that the API schema is ready.
-    urls + "https://${hosts.atlas}/api/v1/ready"
+    urls + buildList {
+        if (site.atlas.servers.ui || site.atlasUiServer.enabled) add("https://${hosts.atlas}/login")
+        if (site.atlas.servers.api) add("https://${hosts.atlas}/api/v1/ready")
+    }
 }
 
 private fun checkPublicSites(config: SwarmConfig) {
@@ -525,9 +528,9 @@ internal fun deploySwarm(config: SwarmConfig, bundle: Path, skipPublicCheck: Boo
     waitServices(config, expected = config.sites.flatMap { site ->
         buildList {
             add("${site.id}_atlas")
-            if (site.atlas.separateUi) add("${site.id}_atlas-ui")
-            if (site.atlas.separateGit) add("${site.id}_git")
-            if (site.atlas.separateArtifacts) add("${site.id}_artifacts")
+            if (site.atlasUiServer.enabled) add("${site.id}_atlas-ui")
+            if (site.gitServer.enabled) add("${site.id}_git")
+            if (site.artifactsServer.enabled) add("${site.id}_artifacts")
         }
     }.toSet())
     stackDeploy(config, "edge")
@@ -568,9 +571,9 @@ internal fun deploymentNotices(config: SwarmConfig): List<String> = buildList {
 internal fun retireReplacedAtlasServices(config: SwarmConfig) {
     for (site in config.sites) {
         val retired = buildList {
-            if (!site.atlas.separateGit) add("${site.id}_git")
-            if (!site.atlas.separateArtifacts) add("${site.id}_artifacts")
-            if (!site.atlas.separateUi) add("${site.id}_atlas-ui")
+            if (!site.gitServer.enabled) add("${site.id}_git")
+            if (!site.artifactsServer.enabled) add("${site.id}_artifacts")
+            if (!site.atlasUiServer.enabled) add("${site.id}_atlas-ui")
         }
         for (service in retired) {
             val existing = script(config.manager.ssh,

@@ -19,7 +19,7 @@ class SwarmBackendTest {
         val directory = Files.createTempDirectory("swarm-backend-test-")
         try {
             val defaults = SwarmConfig(sites = (1..5).map {
-                SwarmSite("site$it", "site$it.example.invalid", "Site $it", "noreply@site$it.example.invalid", it, atlas = SwarmAtlas(separateGit = true, separateArtifacts = true))
+                SwarmSite("site$it", "site$it.example.invalid", "Site $it", "noreply@site$it.example.invalid", it, gitServer = SwarmStandaloneServer(true), artifactsServer = SwarmStandaloneServer(true))
             }).withSecrets()
             val config = defaults.copy(sites = defaults.sites.mapIndexed { index, site ->
                 when (index) {

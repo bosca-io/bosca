@@ -61,7 +61,10 @@ class SwarmAtlasRoutingTest {
             }
             Files.writeString(directory.resolve("Caddyfile"), caddy(config))
             Files.writeString(directory.resolve("CaddySplit"), caddy(config.copy(sites = config.sites.map {
-                it.copy(atlas = SwarmAtlas(separateUi = true, separateGit = true, separateArtifacts = true))
+                it.copy(atlasUiServer = SwarmStandaloneServer(true), gitServer = SwarmStandaloneServer(true), artifactsServer = SwarmStandaloneServer(true))
+            })))
+            Files.writeString(directory.resolve("CaddyDisabled"), caddy(config.copy(sites = config.sites.map {
+                it.copy(atlas = SwarmAtlas(servers = SwarmAtlasServers(ui = false, git = false, artifacts = false)))
             })))
             for (split in listOf(false, true)) {
                 val template = installedComposeNginx(directory.resolve(if (split) "nginx-split" else "nginx-combined"), split)
@@ -76,6 +79,7 @@ class SwarmAtlasRoutingTest {
             for ((image, source, target) in listOf(
                 Triple(config.images.getValue("caddy"), "Caddyfile", "/etc/caddy/Caddyfile"),
                 Triple(config.images.getValue("caddy"), "CaddySplit", "/etc/caddy/Caddyfile"),
+                Triple(config.images.getValue("caddy"), "CaddyDisabled", "/etc/caddy/Caddyfile"),
                 Triple("nginx:stable-alpine", "nginx.conf", "/etc/nginx/nginx.conf"),
                 Triple("nginx:stable-alpine", "nginx-split.conf", "/etc/nginx/nginx.conf"),
             )) {
@@ -89,6 +93,19 @@ class SwarmAtlasRoutingTest {
                     proxy.start()
                     val split = source == "CaddySplit" || source == "nginx-split.conf"
                     val client = OkHttpClient.Builder().followRedirects(false).build()
+                    if (source == "CaddyDisabled") {
+                        for ((host, path, status) in listOf(
+                            Triple("atlas", "/login", 404), Triple("atlas", "/owner/project.git/info/refs", 404),
+                            Triple("atlas", "/v2/ns/pkg/manifests/latest", 404),
+                            Triple("git", "/owner/project.git/info/refs", 404),
+                            Triple("artifacts", "/v2/ns/pkg/manifests/latest", 404), Triple("atlas", "/graphql", 200),
+                        )) {
+                            client.newCall(Request.Builder().url("http://${proxy.host}:${proxy.getMappedPort(80)}$path")
+                                .header("Host", "$host.example.test").header("Authorization", "Bearer fixture").build())
+                                .execute().use { response -> assertEquals(status, response.code, "$host$path") }
+                        }
+                        return@use
+                    }
                     fun request(host: String, path: String, listener: String, upstream: String = path, payload: String? = null) {
                         val request = Request.Builder().url("http://${proxy.host}:${proxy.getMappedPort(80)}$path")
                             .header("Host", "$host.example.test").header("Authorization", "Bearer fixture")

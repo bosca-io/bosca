@@ -119,8 +119,11 @@ data class SwarmConfig(
     val serverMemory: String = "768M",
     /** Enables API.Bible usage reporting in this site's Analytics collector. */
     val fumsEnabled: Boolean = true,
-    /** Atlas host and optional independently deployed services. */
+    /** Atlas host and capabilities enabled in its combined process. */
     val atlas: SwarmAtlas = SwarmAtlas(),
+    val gitServer: SwarmStandaloneServer = SwarmStandaloneServer(),
+    val artifactsServer: SwarmStandaloneServer = SwarmStandaloneServer(),
+    val atlasUiServer: SwarmStandaloneServer = SwarmStandaloneServer(),
 )
 
 /** Per-site host, auth cookie domain, and optional branding for profiles-web. */
@@ -321,6 +324,11 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
     require(hostnames.distinct().size == hostnames.size) { "Site hostnames must be unique: ${hostnames.groupBy { it }.filterValues { it.size > 1 }.keys}" }
     require(sites.map { it.redisDatabase }.distinct().size == sites.size) { "Redis databases must be unique" }
     for (site in sites) {
+        require(!site.atlas.servers.ui || site.atlas.servers.api) { "Atlas UI requires atlas.servers.api for ${site.id}" }
+        require(!site.atlasUiServer.enabled || site.atlas.servers.api) { "Standalone Atlas UI requires atlas.servers.api for ${site.id}" }
+        require(site.atlas.servers.api || site.atlas.servers.git || site.atlas.servers.artifacts || site.atlas.servers.runner) {
+            "Enable at least one Atlas backend capability for ${site.id}"
+        }
         require(idPattern.matches(site.id) && site.id !in setOf("infra", "edge")) { "Invalid site id: ${site.id}" }
         require(site.hosts.all.all(domainPattern::matches)) { "Invalid domain for ${site.id}" }
         require(site.hosts.atlas.endsWith(".${site.domain}")) {
@@ -415,9 +423,9 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
     if (deploy) {
         require(!manager.ssh.endsWith(".invalid") && workers.none { it.ssh.endsWith(".invalid") }) { "Replace example SSH hosts" }
         val unused = buildSet {
-            if (sites.none { it.atlas.separateUi }) add("atlas-ui")
-            if (sites.none { it.atlas.separateGit }) add("git")
-            if (sites.none { it.atlas.separateArtifacts }) add("artifacts")
+            if (sites.none { it.atlasUiServer.enabled }) add("atlas-ui")
+            if (sites.none { it.gitServer.enabled }) add("git")
+            if (sites.none { it.artifactsServer.enabled }) add("artifacts")
         }
         require(images.filterKeys { it !in unused }.values.none { it.contains("SET_") }) { "Replace example image tags" }
     }

@@ -13,7 +13,7 @@ import kotlin.coroutines.cancellation.CancellationException
 class SwarmUpdateImagesCommand : SwarmAction(name = "update-images") {
     override fun help(context: Context) = "Pin Bosca images to their newest published stable releases"
     private val registry by option("--registry", help = "Override the image registry and namespace; default: each configured repository")
-    private val images by option("--image", help = "Swarm image key to update; repeat to select images (default: all Bosca images)").multiple()
+    private val images by option("--image", help = "Swarm image key to update, including inactive services; repeat to select images (default: deployed Bosca services)").multiple()
     private val check by option("--check", help = "Show resolved images without saving the configuration").flag()
 
     override fun run() = runBlocking {
@@ -41,7 +41,7 @@ class SwarmUpdateImagesCommand : SwarmAction(name = "update-images") {
     }
 }
 
-/** Resolves all requested releases before changing any image pins; infrastructure and site images stay configured. */
+/** Resolves explicit image keys or the active topology before changing pins; other configured images stay pinned. */
 internal suspend fun updateSwarmImages(
     config: SwarmConfig,
     registry: String?,
@@ -52,7 +52,12 @@ internal suspend fun updateSwarmImages(
     require(keys.all { key -> available.any { it.swarmKey == key } }) { "Unknown Bosca image key; choose ${available.mapNotNull { it.swarmKey }.joinToString()}" }
     val updated = config.images.toMutableMap()
     val schemes = config.registrySchemes.toMutableMap()
-    for (image in available.filter { keys.isEmpty() || it.swarmKey in keys }) {
+    val optionalServices = mapOf(
+        "atlas-ui" to config.sites.any { it.atlasUiServer.enabled },
+        "git" to config.sites.any { it.gitServer.enabled },
+        "artifacts" to config.sites.any { it.artifactsServer.enabled },
+    )
+    for (image in available.filter { if (keys.isEmpty()) optionalServices[it.swarmKey] != false else it.swarmKey in keys }) {
         val key = requireNotNull(image.swarmKey)
         val configured = config.images.getValue(key)
         val repository = registry?.let { "${it.trimEnd('/')}/${image.repository}" } ?: configured.substringBefore('@').let {
