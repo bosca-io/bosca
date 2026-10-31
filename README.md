@@ -48,6 +48,8 @@ The root Docker Compose stack runs Studio, the API, background jobs, content sto
 search, Git hosting, artifacts, and analytics. From the repository root:
 
 ```bash
+: "${BOSCA_ATLAS_VERSION:?Set a published image release containing Atlas}"
+export BOSCA_ATLAS_VERSION
 docker compose up
 ```
 
@@ -55,6 +57,18 @@ Once the services are ready, open [Studio](http://bosca.localhost:3000) and sign
 with username `admin` and password `password`. No `.env` file is required.
 See the [getting started guide](https://bosca.io/developers/run-locally) for configuration,
 data persistence, and troubleshooting.
+
+For a portable single-host deployment with combined Atlas or separate Git,
+artifacts, and UI services, use `bosca compose init`; see the
+[Compose deployment guide](deployments/bosca-compose/README.md). The root stack
+keeps separate Git and artifacts services for local development.
+
+The root stack exposes Atlas on `http://bosca.localhost:8094` (override
+`BOSCA_ATLAS_PORT`). Its UI/API share that proxy port; Git remains available on
+8091 and the separate registry on 8084. Set `BOSCA_ATLAS_VERSION` to a published
+Atlas image release before rendering or starting the stack.
+Use `BOSCA_ATLAS_IMAGE_REGISTRY` when pulling Atlas from a mirror; its default is
+`ghcr.io/bosca-io/bosca`, independent of the other local images' registry setting.
 
 To refresh the default Bosca image versions from the public registry (requires `curl` and `jq`):
 

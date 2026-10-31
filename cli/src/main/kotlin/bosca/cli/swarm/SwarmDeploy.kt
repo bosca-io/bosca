@@ -5,7 +5,7 @@ import java.net.URI
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 
-private fun shell(value: String) = "'" + value.replace("'", "'\\''") + "'"
+internal fun shell(value: String) = "'" + value.replace("'", "'\\''") + "'"
 
 /**
  * Runs [command], feeding it [input]. With [capture], returns standard output only: SSH and sudo write
@@ -56,7 +56,7 @@ internal var remoteShell: RemoteShell = SshRemoteShell
 private fun ssh(target: String, command: String, input: ByteArray? = null, capture: Boolean = false): String =
     remoteShell.run(target, command, input, capture)
 
-private fun script(target: String, body: String, capture: Boolean = false) =
+internal fun script(target: String, body: String, capture: Boolean = false) =
     ssh(target, "bash -se", body.toByteArray(Charsets.UTF_8), capture)
 
 private val dockerBootstrap = """set -euo pipefail
@@ -479,13 +479,18 @@ internal fun readinessFailure(url: String, timeoutMillis: Int = 10_000): String?
 
 internal fun publicReadinessUrls(config: SwarmConfig) = config.sites.flatMap { site ->
     val hosts = site.hosts
-    if (site.rootImage.isBlank()) {
+    val urls = if (site.rootImage.isBlank()) {
         listOf("https://${hosts.root}/api/v1/ready", "https://${hosts.studio}/health",
             "https://${hosts.profiles}/login", "https://${hosts.notifications}/")
     } else {
         listOf("https://${hosts.api}/api/v1/ready", "https://${hosts.studio}/health",
             "https://${hosts.profiles}/login", "https://${hosts.notifications}/",
             "https://${hosts.root}/", "https://${hosts.www}/")
+    }
+    // A static UI login page does not establish that the API schema is ready.
+    urls + buildList {
+        if (site.atlas.servers.ui || site.atlasUiServer.enabled) add("https://${hosts.atlas}/login")
+        if (site.atlas.servers.api) add("https://${hosts.atlas}/api/v1/ready")
     }
 }
 
@@ -511,6 +516,7 @@ private fun checkPublicSites(config: SwarmConfig) {
 
 internal fun deploySwarm(config: SwarmConfig, bundle: Path, skipPublicCheck: Boolean) {
     verifyBootstrappedNodes(config)
+    val retention = prepareSwarmStorage(config)
     registryLogin(config)
     uploadBundle(config, bundle)
     script(config.manager.ssh,
@@ -519,9 +525,19 @@ internal fun deploySwarm(config: SwarmConfig, bundle: Path, skipPublicCheck: Boo
     waitServices(config, expected = setOf("infra_postgres", "infra_pgbouncer", "infra_dragonfly"))
     bootstrapDatabases(config)
     config.sites.forEach { stackDeploy(config, it.id) }
+    waitServices(config, expected = config.sites.flatMap { site ->
+        buildList {
+            add("${site.id}_atlas")
+            if (site.atlasUiServer.enabled) add("${site.id}_atlas-ui")
+            if (site.gitServer.enabled) add("${site.id}_git")
+            if (site.artifactsServer.enabled) add("${site.id}_artifacts")
+        }
+    }.toSet())
     stackDeploy(config, "edge")
     waitServices(config)
     if (!skipPublicCheck) checkPublicSites(config)
+    retireReplacedAtlasServices(config)
+    finishSwarmStorage(config, retention)
     deploymentNotices(config).forEach { println("Notice: $it") }
     println("Swarm deployment is running. Verify Git, search, analytics, mail, and backups before use.")
 }
@@ -548,5 +564,23 @@ internal fun deploymentNotices(config: SwarmConfig): List<String> = buildList {
         listOf(site.ml.boscaToken, site.ml.artifactsPushToken, site.ml.artifactsPullToken).any(String::isBlank)
     }.forEach { site ->
         add("Recommendation training for ${site.id} needs ml.boscaToken, ml.artifactsPushToken and ml.artifactsPullToken.")
+    }
+}
+
+/** Retires only superseded managed services after the replacement and ingress are healthy. */
+internal fun retireReplacedAtlasServices(config: SwarmConfig) {
+    for (site in config.sites) {
+        val retired = buildList {
+            if (!site.gitServer.enabled) add("${site.id}_git")
+            if (!site.artifactsServer.enabled) add("${site.id}_artifacts")
+            if (!site.atlasUiServer.enabled) add("${site.id}_atlas-ui")
+        }
+        for (service in retired) {
+            val existing = script(config.manager.ssh,
+                "sudo -n docker service ls --filter name=${shell(service)} --format '{{.Name}}'", true)
+            if (service in existing.lineSequence()) {
+                script(config.manager.ssh, "sudo -n docker service rm ${shell(service)}")
+            }
+        }
     }
 }

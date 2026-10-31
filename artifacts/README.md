@@ -8,6 +8,7 @@ Artifact storage server for the Bosca platform, providing Docker registry, Maven
 |---|---|
 | `core-artifacts` | Contracts: artifact interfaces, digest utilities, models |
 | `artifacts-base` | Shared artifact storage infrastructure and configuration |
+| `artifacts-git` | Optional registry adapter for Git CI, selected by composed hosts |
 | `artifacts-docker` | Docker registry protocol implementation |
 | `artifacts-helm` | Helm artifact handling |
 | `artifacts-maven` | Maven repository protocol implementation |
@@ -15,6 +16,8 @@ Artifact storage server for the Bosca platform, providing Docker registry, Maven
 | `artifacts-raw` | Raw artifact handling |
 | `artifacts-ml` | Machine learning artifact handling |
 | `artifacts-admin` | GraphQL admin interface for artifacts |
+| `artifacts-installer` | Shared default artifact sync/publication package installer |
+| `artifacts-ui` | BML artifact administration imported by Bosca Atlas |
 | `artifacts-server` | Standalone server application |
 
 ## Prerequisites

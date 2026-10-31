@@ -1,0 +1,85 @@
+<component tag="auth-forgot-form">
+  <div class="auth-flow">
+    <alert ref="error" hidden />
+    <p ref="notice" class="auth-notice" role="status" hidden></p>
+    <form ref="form" class="auth-form">
+      <field label="Email">
+        <input ref="identifier" name="identifier" type="email" autocomplete="email" required />
+      </field>
+      <button ref="submit" type="submit" class="auth-primary">Send reset link</button>
+    </form>
+    <p class="auth-footer">
+      <a ref="login" href="/login">Back to sign in</a>
+    </p>
+  </div>
+  <script client scoped>
+    const form = ctx.ref<HTMLFormElement>("form");
+    const submit = ctx.ref<HTMLButtonElement>("submit");
+    const error = ctx.ref<HTMLParagraphElement>("error");
+    const notice = ctx.ref<HTMLParagraphElement>("notice");
+    const value = (name: string) => ctx.ref<HTMLInputElement>(name)?.value ?? "";
+    let mounted = true;
+    let busy = false;
+
+    ctx.onUnmount(() => {
+      mounted = false;
+    });
+
+    function show(element: HTMLElement | null, message: string) {
+      if (!mounted || !element) return;
+      element.textContent = message;
+      element.hidden = false;
+    }
+
+    async function run(
+      action: () => Promise<void>,
+      fallback: string,
+      button = submit,
+    ) {
+      if (busy) return false;
+      busy = true;
+      const label = button?.textContent ?? "";
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Please wait…";
+      }
+      form?.setAttribute("aria-busy", "true");
+      if (error) error.hidden = true;
+      try {
+        await action();
+        return true;
+      } catch (reason) {
+        if (!mounted) return false;
+        const message = boscaAuthFlow.failure(reason, fallback);
+        if (message) show(error, message);
+        return false;
+      } finally {
+        busy = false;
+        if (mounted) {
+          if (button) {
+            button.disabled = false;
+            button.textContent = label;
+          }
+          form?.removeAttribute("aria-busy");
+        }
+      }
+    }
+
+    const loginLink = ctx.ref<HTMLAnchorElement>("login");
+    if (loginLink) loginLink.href = boscaAuthFlow.url("/login");
+
+    if (form) {
+      ctx.on<SubmitEvent>(form, "submit", (event) => {
+        event.preventDefault();
+        void run(async () => {
+          await boscaAuthFlow.forgotPassword(value("identifier"));
+          if (mounted) form.hidden = true;
+          show(
+            notice,
+            "If an account exists for that email, a password reset link is on its way. Check your inbox and spam folder.",
+          );
+        }, "We couldn't complete your request. Please try again.");
+      });
+    }
+  </script>
+</component>

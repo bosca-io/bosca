@@ -14,7 +14,7 @@ class DeploymentHostsTest {
 
     @Test
     fun `API subdomains resolve to their base domain`() {
-        for (prefix in listOf("api", "studio", "www", "ws", "upload")) {
+        for (prefix in listOf("atlas", "git", "artifacts", "api", "studio", "www", "ws", "upload")) {
             assertEquals("artifacts.example.com", DeploymentHosts.artifactsRegistry("https://$prefix.example.com/graphql"))
             assertEquals("git.example.com", DeploymentHosts.gitHost("https://$prefix.example.com/graphql"))
         }

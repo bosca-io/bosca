@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { launchTestBrowser, waitForTestCondition } from '../../../../../../gradle/bml-test-browser.mjs';
 import { checkLayout } from './layout-checks.mjs';
 import { checkIconActions } from './icon-action-checks.mjs';
 import { checkOverlays } from './overlay-checks.mjs';
@@ -29,29 +28,17 @@ if (!base || !['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostnam
 }
 const artifacts = resolve('build/reports/browser');
 await mkdir(artifacts, { recursive: true });
-const profile = await mkdtemp(join(tmpdir(), 'bosca-design-browser-'));
 const listener = createServer();
 await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
 const port = listener.address().port;
 await new Promise(resolve => listener.close(resolve));
 const cdp = `http://127.0.0.1:${port}`;
-const browser = spawn(process.env.BML_DESIGN_CHROME_BINARY ?? (process.platform === 'darwin'
-  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : 'google-chrome'), [
-  '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-  `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank',
-], { stdio: 'ignore' });
-let launchError;
-browser.on('error', error => { launchError = error; });
+const ownedBrowser = await launchTestBrowser(port);
+const browser = ownedBrowser.process;
+const page = ownedBrowser.connection.contexts()[0].pages()[0];
 let ws;
+let scriptsDisabled = false;
 try {
-  let ready = false;
-  for (let attempt = 0; attempt < 100; attempt++) {
-    if (launchError) throw launchError;
-    try { ready = (await fetch(`${cdp}/json/version`)).ok; } catch { /* Starting our own browser. */ }
-    if (ready) break;
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
-  assert.ok(ready, 'The isolated Chrome instance did not start.');
   const targets = await (await fetch(`${cdp}/json`)).json();
   ws = new WebSocket(targets.find(target => target.type === 'page').webSocketDebuggerUrl);
   await new Promise(resolve => ws.addEventListener('open', resolve, { once: true }));
@@ -79,6 +66,9 @@ try {
     else item.resolve(message.result);
   });
   function call(method, params = {}) {
+    if (method === 'Emulation.setScriptExecutionDisabled') scriptsDisabled = params.value;
+    if (method === 'Page.navigate') return page.goto(params.url, { waitUntil: 'load', timeout: 10000 });
+    if (method === 'Page.reload') return page.reload({ waitUntil: 'load', timeout: 10000 });
     return new Promise((resolve, reject) => {
       const id = ++sequence;
       const timeout = setTimeout(() => {
@@ -98,10 +88,9 @@ try {
     return result.result.value;
   }
   async function until(expression) {
-    for (let attempt = 0; attempt < 100; attempt++) {
-      if (await evaluate(expression)) return;
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
+    let timeout;
+    try { return await waitForTestCondition(page, expression, { scriptsDisabled }); }
+    catch (error) { if (error.name !== 'TimeoutError') throw error; timeout = error; }
     const context = await evaluate(`({ url: location.href, ready: document.readyState,
       active: document.activeElement?.outerHTML.slice(0, 1500),
       actions: Array.from(document.querySelectorAll('[data-bml-method]'), el => ({ text: el.textContent.trim(),
@@ -111,7 +100,7 @@ try {
       const body = await call('Network.getResponseBody', { requestId: response.id });
       failures.push({ ...response, body: body.body.slice(0, 2000) });
     }
-    throw new Error(`Timed out: ${expression}\n${JSON.stringify({ context, responses, failures, consoleErrors })}`);
+    throw new Error(`Timed out: ${expression}\n${JSON.stringify({ context, responses, failures, consoleErrors })}`, { cause: timeout });
   }
   await call('Page.enable');
   await call('Runtime.enable');
@@ -413,10 +402,5 @@ try {
   }
 } finally {
   ws?.close();
-  browser.kill('SIGTERM');
-  await new Promise(resolve => {
-    if (browser.exitCode !== null) resolve();
-    else { browser.once('exit', resolve); setTimeout(resolve, 3000).unref(); }
-  });
-  await rm(profile, { recursive: true, force: true });
+  await ownedBrowser.close();
 }

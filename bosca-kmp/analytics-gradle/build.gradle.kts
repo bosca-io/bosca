@@ -27,8 +27,9 @@ gradlePlugin {
 }
 
 tasks.processResources {
-    inputs.property("analyticsPluginVersion", project.version)
+    val analyticsPluginVersion = project.version.toString()
+    inputs.property("analyticsPluginVersion", analyticsPluginVersion)
     filesMatching("bosca/analytics/gradle/analytics-gradle-plugin.properties") {
-        expand("pluginVersion" to project.version)
+        expand("pluginVersion" to analyticsPluginVersion)
     }
 }

@@ -1,0 +1,53 @@
+<component tag="artifacts-layout">
+  <prop name="title" type="String" required />
+  <prop name="admin" type="Boolean" default="false" />
+  <script server provides="path">ctx.requestPath</script>
+  <script server provides="appearance">if (ctx.cookies["git_ui_appearance"] == "light") "light" else "dark"</script>
+  <html lang="en" :data-theme="appearance">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <meta name="robots" content="noindex,nofollow" />
+      <title>{ title } — Bosca Atlas</title>
+      <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    </head>
+    <body class="artifact-document" :data-theme="appearance">
+      <app-shell>
+        <app-header brand="Bosca" product="Atlas" href="/">
+          <div data-atlas-system-switcher><subsystem-switcher :items="bosca.atlas.ui.AtlasSubsystems.items" currentId="artifacts" product="Atlas" /></div>
+          <nav class="shell-navigation" aria-label="Artifacts">
+            <div class="shell-group">
+              <span class="shell-label">Registry</span>
+              <a href="/artifacts/namespaces" :aria-current='if (path.startsWith("/artifacts/namespaces")) "page" else "false"'>
+                <span class="shell-icon">
+                  <icon name="folder" :size="15" />
+                </span>Namespaces</a>
+              <a href="/artifacts/repositories" :aria-current='if (path.startsWith("/artifacts/repositories")) "page" else "false"'>
+                <span class="shell-icon">
+                  <icon name="boxes" :size="15" />
+                </span>Repositories</a>
+            </div>
+            <if admin>
+              <details class="shell-group shell-settings" :open='path.startsWith("/artifacts/settings/")'>
+                <summary class="shell-label">Settings<span class="shell-chevron">
+                    <icon name="chevron" :size="12" />
+                  </span>
+                </summary>
+                <a href="/artifacts/settings/permissions" :aria-current='if (path == "/artifacts/settings/permissions") "page" else "false"'>
+                  <span class="shell-icon">
+                    <icon name="key" :size="15" />
+                  </span>Permissions</a>
+              </details>
+            </if>
+          </nav>
+          <div class="shell-footer">
+            <artifacts-profile-menu />
+          </div>
+        </app-header>
+        <div class="shell-main">
+          <slot />
+        </div>
+      </app-shell>
+    </body>
+  </html>
+</component>

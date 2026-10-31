@@ -1,6 +1,10 @@
 <page route="/foundation">
   <catalog-document title="Foundation" description="Forms, feedback and native controls composed together." current="/foundation">
     <foundation-form id="foundation" title="A form owned by the application" />
+    <div class="catalog-grid">
+      <div class="catalog-palette-dark"><file-drop-example id="dark" /></div>
+      <div class="catalog-palette-light"><file-drop-example id="light" /></div>
+    </div>
     <card title="Button sizes and states">
       <div class="catalog-stack">
         <div class="example-actions">

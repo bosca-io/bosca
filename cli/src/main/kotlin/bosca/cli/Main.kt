@@ -46,6 +46,11 @@ import bosca.cli.ci.CiRunCommand
 import bosca.cli.ci.CiSecretCommand
 import bosca.cli.ci.RunCancelCommand
 import bosca.cli.ci.RunListCommand
+import bosca.cli.ci.CiPipelineCommand
+import bosca.cli.ci.PipelineListCommand
+import bosca.cli.ci.RunGetCommand
+import bosca.cli.ci.RunJobsCommand
+import bosca.cli.ci.RunStepsCommand
 import bosca.cli.ci.RunLogsCommand
 import bosca.cli.ci.RunRerunCommand
 import bosca.cli.ci.RunLocalCommand
@@ -136,6 +141,13 @@ import bosca.cli.service.ServiceCommand
 import bosca.cli.service.ServiceInstallCommand
 import bosca.cli.service.ServiceStatusCommand
 import bosca.cli.service.ServiceUninstallCommand
+import bosca.cli.compose.ComposeCommand
+import bosca.cli.compose.ComposeConfigCommand
+import bosca.cli.compose.ComposeDownCommand
+import bosca.cli.compose.ComposeInitCommand
+import bosca.cli.compose.ComposeRenderCommand
+import bosca.cli.compose.ComposeStatusCommand
+import bosca.cli.compose.ComposeUpCommand
 import bosca.cli.swarm.SwarmCommand
 import bosca.cli.swarm.SwarmEncryptCommand
 import bosca.cli.swarm.SwarmDecryptCommand
@@ -444,6 +456,7 @@ fun main(args: Array<String>) {
             ),
         ),
         CiCommand().subcommands(
+            CiPipelineCommand().subcommands(PipelineListCommand()),
             CiAgentCommand().subcommands(
                 AgentRegisterCommand(),
                 AgentListCommand(),
@@ -455,6 +468,9 @@ fun main(args: Array<String>) {
                 RunLocalCommand(),
                 RunTriggerCommand(),
                 RunListCommand(),
+                RunGetCommand(),
+                RunJobsCommand(),
+                RunStepsCommand(),
                 RunCancelCommand(),
                 RunRerunCommand(),
                 RunLogsCommand(),
@@ -512,6 +528,10 @@ fun main(args: Array<String>) {
             SwarmUpdateImagesCommand(),
         ),
         HelmCommand().subcommands(HelmImagesCommand()),
+        ComposeCommand().subcommands(
+            ComposeInitCommand(), ComposeRenderCommand(), ComposeConfigCommand(),
+            ComposeUpCommand(), ComposeDownCommand(), ComposeStatusCommand(),
+        ),
     )
     .main(args)
 

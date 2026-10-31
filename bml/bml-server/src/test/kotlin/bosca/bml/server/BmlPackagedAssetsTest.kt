@@ -118,7 +118,7 @@ class BmlPackagedAssetsTest {
         try {
             HttpClient.newHttpClient().use { client ->
                 fun get(path: String) = client.send(
-                    HttpRequest.newBuilder(URI.create("http://localhost:$port$path")).GET().build(),
+                    HttpRequest.newBuilder(URI.create("http://localhost:$port$path")).timeout(Duration.ofSeconds(10)).GET().build(),
                     HttpResponse.BodyHandlers.ofString(),
                 )
 

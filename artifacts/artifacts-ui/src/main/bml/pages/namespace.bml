@@ -1,0 +1,6 @@
+<page route="/artifacts/namespaces/{id}" requireAuth>
+  <script server provides="page">bosca.artifacts.ui.artifactList("namespace")</script>
+  <artifacts-layout :admin="page.admin" :title="page.title">
+    <artifacts-list :initial="page" />
+  </artifacts-layout>
+</page>

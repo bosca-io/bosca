@@ -671,5 +671,5 @@ class BmlLibraryAssetsTest {
     private fun text(jar: JarFile, path: String) = jar.getInputStream(requireNotNull(jar.getJarEntry(path)) { path }).bufferedReader().use { it.readText() }
     private fun jsString(value: String) = groovy.json.JsonOutput.toJson(value)
     private fun runner(project: File, vararg tasks: String) = GradleRunner.create().withProjectDir(project).withPluginClasspath()
-        .withArguments(*tasks, "--configuration-cache", "--no-build-cache", "--stacktrace", "--max-workers=2")
+        .withArguments(*tasks, "--configuration-cache", "--no-build-cache", "--no-watch-fs", "--stacktrace", "--max-workers=2")
 }

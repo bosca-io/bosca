@@ -53,7 +53,7 @@ internal class ImageRegistry(private val username: String = "", private val pass
                 }
                 response = get(page, authorization)
             }
-            require(response.statusCode() == 200) { "Could not list image tags for $name (HTTP ${response.statusCode()})" }
+            require(response.statusCode() == 200) { "Could not list image tags for ${endpoint.rawAuthority}/$name (HTTP ${response.statusCode()})" }
             val batch = json.decodeFromString(Tags.serializer(), response.body()).tags.orEmpty()
             tags.addAll(batch)
             val link = response.headers().allValues("Link").asSequence().flatMap { it.split(',').asSequence() }
@@ -92,7 +92,12 @@ internal class ImageRegistry(private val username: String = "", private val pass
         // Credentials belong to the configured registry; external token services get anonymous requests.
         val auth = if (username.isNotBlank() && realm.rawAuthority == endpoint.rawAuthority) basic() else null
         val response = get(uri, auth)
-        require(response.statusCode() == 200) { "Could not authenticate to image registry (HTTP ${response.statusCode()})" }
+        require(response.statusCode() == 200) {
+            "Could not authenticate to image registry ${endpoint.rawAuthority}/$name " +
+                "(HTTP ${response.statusCode()} from token service ${realm.rawAuthority}; " +
+                "${if (auth == null) "anonymous request" else "configured credentials"}). " +
+                "Check that the repository exists and registryAuth grants pull access."
+        }
         val token = json.decodeFromString(Token.serializer(), response.body()).let { it.token.ifBlank { it.accessToken } }
         require(token.isNotBlank()) { "Registry returned an empty access token" }
         return "Bearer $token"

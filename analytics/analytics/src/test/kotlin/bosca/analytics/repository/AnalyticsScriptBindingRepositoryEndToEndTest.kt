@@ -2,6 +2,7 @@
 
 package bosca.analytics.repository
 
+import bosca.analytics.AnalyticsTestDatabase
 import bosca.cache.CacheManager
 import bosca.cache.RequestCacheSerializer
 import bosca.db.ConnectionConfig
@@ -9,8 +10,6 @@ import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionManager
 import bosca.db.ConnectionPool
 import bosca.db.asCoroutineContext
-import bosca.db.migrations.CoreMigration
-import bosca.db.migrations.FlywayMigration
 import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provides
@@ -26,8 +25,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
 import bosca.test.resources.SharedPostgreSQLContainer
-import org.testcontainers.containers.wait.strategy.Wait
 import java.sql.DriverManager
+import org.junit.AfterClass
+import org.junit.BeforeClass
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -63,14 +63,7 @@ class AnalyticsScriptBindingRepositoryEndToEndTest {
     fun setup() = runBlocking {
         unmockkAll()
 
-        postgresContainer = SharedPostgreSQLContainer()
-            .withExposedPorts(5432)
-            .withEnv("POSTGRES_USER", "test")
-            .withEnv("POSTGRES_PASSWORD", "test")
-            .withEnv("POSTGRES_DB", "test")
-            .withReuse(true)
-            .waitingFor(Wait.forLogMessage(".*database system is ready to accept connections.*\\s", 2))
-        postgresContainer.start()
+        postgresContainer = database.copy()
 
         val url = postgresContainer.jdbcUrl
         val factory = ConnectionFactoryImpl(
@@ -79,7 +72,6 @@ class AnalyticsScriptBindingRepositoryEndToEndTest {
         )
         connectionPool = ConnectionPool(factory)
 
-        FlywayMigration(connectionPool).migrate(listOf(CoreMigration()))
         applyScriptBindingDdl(url)
 
         ProviderRegistry.clear()
@@ -198,5 +190,17 @@ class AnalyticsScriptBindingRepositoryEndToEndTest {
             repository.delete(id)
             assertNull(repository.getById(id))
         }
+    }
+
+    companion object {
+        private val database = AnalyticsTestDatabase()
+
+        @BeforeClass
+        @JvmStatic
+        fun startDatabase() = runBlocking { database.start() }
+
+        @AfterClass
+        @JvmStatic
+        fun stopDatabase() = database.stop()
     }
 }

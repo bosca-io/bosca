@@ -29,6 +29,7 @@ data class SwarmConfig(
     ),
     val secrets: SwarmSharedSecrets = SwarmSharedSecrets(),
     val backup: SwarmBackup = SwarmBackup(),
+    val imageRetention: SwarmImageRetention = SwarmImageRetention(),
 )
 
 /**
@@ -118,6 +119,11 @@ data class SwarmConfig(
     val serverMemory: String = "768M",
     /** Enables API.Bible usage reporting in this site's Analytics collector. */
     val fumsEnabled: Boolean = true,
+    /** Atlas host and capabilities enabled in its combined process. */
+    val atlas: SwarmAtlas = SwarmAtlas(),
+    val gitServer: SwarmStandaloneServer = SwarmStandaloneServer(),
+    val artifactsServer: SwarmStandaloneServer = SwarmStandaloneServer(),
+    val atlasUiServer: SwarmStandaloneServer = SwarmStandaloneServer(),
 )
 
 /** Per-site host, auth cookie domain, and optional branding for profiles-web. */
@@ -162,7 +168,8 @@ data class SwarmConfig(
 /**
  * Public hostnames of one site, laid out like the Kubernetes Gateway routes: the base domain and its
  * `api.`, `upload.` and `ws.` hosts serve bosca-server, `studio.` serves Studio with same-origin API paths,
- * `a.` the analytics collector, `git.` the Git API and BML UI, `artifacts.` the artifacts registry,
+ * `a.` the analytics collector, `atlas.` the combined Git/artifact UI and API, `git.` the Git transport alias,
+ * `artifacts.` the native registry alias,
  * `notifications.` the preference site, and `messages.` the message server's public assets.
  */
 internal data class SiteHosts(
@@ -178,9 +185,10 @@ internal data class SiteHosts(
     val notifications: String,
     val messages: String,
     val artifacts: String,
+    val atlas: String,
 ) {
     val server: List<String> get() = listOf(root, api, upload, ws)
-    val all: List<String> get() = server + listOf(www, studio, profiles, analytics, git, notifications, messages, artifacts)
+    val all: List<String> get() = server + listOf(www, studio, profiles, analytics, git, notifications, messages, artifacts, atlas)
 }
 
 internal val SwarmSite.hosts: SiteHosts
@@ -197,6 +205,7 @@ internal val SwarmSite.hosts: SiteHosts
         notifications = notificationsWeb.host.ifBlank { "notifications.$domain" },
         messages = "messages.$domain",
         artifacts = "artifacts.$domain",
+        atlas = atlas.domain.ifBlank { "atlas.$domain" },
     )
 
 /** Default images, pinned to exact versions; configurations keep the images they already name. */
@@ -212,6 +221,8 @@ internal fun defaultImages() = mapOf(
     "runner" to "ghcr.io/bosca-io/bosca/bosca-runner:SET_NEW_TAG",
     "collector" to "ghcr.io/bosca-io/bosca/analytics-collector:SET_NEW_TAG",
     "git" to "ghcr.io/bosca-io/bosca/git-server:SET_NEW_TAG",
+    "atlas" to "ghcr.io/bosca-io/bosca/atlas-server:SET_NEW_TAG",
+    "atlas-ui" to "ghcr.io/bosca-io/bosca/atlas-ui-server:SET_NEW_TAG",
     "studio" to "ghcr.io/bosca-io/bosca/bosca-studio:SET_NEW_TAG",
     "profiles-web" to "ghcr.io/bosca-io/bosca/profiles-web:6.17.3",
     "notifications-web" to "ghcr.io/bosca-io/bosca/notifications-web:6.17.3",
@@ -294,6 +305,7 @@ internal fun loadConfig(path: Path, deploy: Boolean = false): SwarmConfig =
     SwarmConfigFile(path).use { it.load(deploy) }
 
 internal fun SwarmConfig.validate(deploy: Boolean = false) {
+    require(imageRetention.minimumFreeGiB in 1..1024) { "imageRetention.minimumFreeGiB must be between 1 and 1024" }
     require(version == 1) { "Unsupported configuration version" }
     val target = Regex("[A-Za-z0-9_.-]+@[A-Za-z0-9_.:-]+")
     require(target.matches(manager.ssh)) { "manager.ssh must be user@host" }
@@ -312,8 +324,16 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
     require(hostnames.distinct().size == hostnames.size) { "Site hostnames must be unique: ${hostnames.groupBy { it }.filterValues { it.size > 1 }.keys}" }
     require(sites.map { it.redisDatabase }.distinct().size == sites.size) { "Redis databases must be unique" }
     for (site in sites) {
+        require(!site.atlas.servers.ui || site.atlas.servers.api) { "Atlas UI requires atlas.servers.api for ${site.id}" }
+        require(!site.atlasUiServer.enabled || site.atlas.servers.api) { "Standalone Atlas UI requires atlas.servers.api for ${site.id}" }
+        require(site.atlas.servers.api || site.atlas.servers.git || site.atlas.servers.artifacts || site.atlas.servers.runner) {
+            "Enable at least one Atlas backend capability for ${site.id}"
+        }
         require(idPattern.matches(site.id) && site.id !in setOf("infra", "edge")) { "Invalid site id: ${site.id}" }
         require(site.hosts.all.all(domainPattern::matches)) { "Invalid domain for ${site.id}" }
+        require(site.hosts.atlas.endsWith(".${site.domain}")) {
+            "atlas.domain for ${site.id} must share the site's cookie domain"
+        }
         require(site.redisDatabase in 1..15) { "Redis database must be between 1 and 15 for ${site.id}" }
         mapOf(
             "cacheBackend" to site.cacheBackend, "pubsubBackend" to site.pubsubBackend,
@@ -402,7 +422,12 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
     }
     if (deploy) {
         require(!manager.ssh.endsWith(".invalid") && workers.none { it.ssh.endsWith(".invalid") }) { "Replace example SSH hosts" }
-        require(images.values.none { it.contains("SET_") }) { "Replace example image tags" }
+        val unused = buildSet {
+            if (sites.none { it.atlasUiServer.enabled }) add("atlas-ui")
+            if (sites.none { it.gitServer.enabled }) add("git")
+            if (sites.none { it.artifactsServer.enabled }) add("artifacts")
+        }
+        require(images.filterKeys { it !in unused }.values.none { it.contains("SET_") }) { "Replace example image tags" }
     }
 }
 

@@ -32,7 +32,7 @@
       <div class="example-actions"><badge>Neutral</badge><badge tone="accent">Accent</badge><badge tone="purple">Purple</badge><badge tone="info">Information</badge><badge tone="success">Success</badge><badge tone="warning">Warning</badge><badge tone="error">Error</badge></div>
     </reference-entry>
     <reference-entry name="empty-state"
-      :api='"message: String = \"\"\ntitle: String = \"\"\nicon: String = \"folder\""'
+      :api='"message: String = \"\"\ntitle: String = \"\"\nicon: String = \"folder\"\ncompact: Boolean = false"'
       :contract='"Native div with forwarded attributes/classes, decorative icon, optional title/message and default action children."'
       :keyboard='"Noninteractive icon/title/message, with optional caller-owned action children. The icon is decorative."'
       :css='"Palette and typography inherit from the consuming application. Component hooks: --bg-2, --fg-3, --line. Forward an application class only through the documented native target; generated scope markers are private."'

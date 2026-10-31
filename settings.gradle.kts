@@ -75,6 +75,10 @@ val androidSdkDirectory = androidProperties.getProperty("sdk.dir")
         .firstOrNull { file(it).exists() }
 gradle.extra.set("androidEnabled", androidSdkDirectory != null)
 
+// JVM CI must not build iOS metadata and CocoaPods through common-source KSP dependencies.
+gradle.extra.set("iosEnabled", providers.gradleProperty("bosca.ios.enabled")
+    .map(String::toBooleanStrict).getOrElse(true))
+
 // IntelliJ supplies Kotlin's standard library for these plugin projects.
 gradle.beforeProject {
     if (path == ":bml:bml-ide" || path == ":workops:workops-ide") {
@@ -205,6 +209,7 @@ includeComponent("bml", listOf(
     "bml-annotations",
     "bml-compiler",
     "bml-design",
+    "bml-auth-ui",
     "bml-design-catalog",
     "core-bml",
     "bml",
@@ -268,7 +273,10 @@ includeComponent("backup", listOf(
 includeComponent("artifacts", listOf(
     "core-artifacts",
     "artifacts-base",
+    "artifacts-git",
     "artifacts-admin",
+    "artifacts-ui",
+    "artifacts-installer",
     "artifacts-docker",
     "artifacts-helm",
     "artifacts-maven",
@@ -322,6 +330,9 @@ includeComponent("firebase-scrypt", listOf(
 ))
 
 includeComponent("server", listOf(
+    "atlas-server",
+    "atlas-ui",
+    "atlas-ui-server",
     "bosca-server",
     "bosca-runner",
     "messages-pages",

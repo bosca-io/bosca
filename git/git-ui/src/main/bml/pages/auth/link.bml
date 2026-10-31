@@ -1,0 +1,10 @@
+<page route="/auth/link/confirm">
+  <git-auth-layout title="Confirm your account.">
+    <auth-heading
+      eyebrow="Connect a sign-in method"
+      title="Confirm your account."
+      sub="Prove ownership of your existing account to continue."
+    />
+    <auth-link-form />
+  </git-auth-layout>
+</page>

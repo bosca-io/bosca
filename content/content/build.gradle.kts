@@ -80,6 +80,14 @@ ksp {
     arg("ProviderRegistrarPrefix", "Content")
 }
 
+tasks.test {
+    // Classes use process-global DI and MockK state, so parallelize across isolated JVMs.
+    maxParallelForks = providers.gradleProperty("bosca.content.testForks")
+        .map { value -> value.toInt().also { require(it > 0) { "bosca.content.testForks must be positive" } } }
+        .getOrElse(4)
+        .coerceAtMost(gradle.startParameter.maxWorkerCount)
+}
+
 kover {
     reports {
         filters {

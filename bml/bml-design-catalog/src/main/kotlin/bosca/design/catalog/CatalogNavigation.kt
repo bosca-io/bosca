@@ -1,6 +1,7 @@
 package bosca.design.catalog
 
 import bosca.design.model.NavigationItem
+import bosca.design.model.SubsystemNavigationItem
 import kotlinx.serialization.Serializable
 
 /** Caller-owned destinations and preservation revisions for the route navigation examples. */
@@ -42,6 +43,13 @@ class CatalogNavigation(val id: String) {
     fun refresh() { notice = "Navigation example refreshed."; noticeSequence++ }
 
     companion object {
+        /** Actual catalog destinations demonstrating distinct subsystem identities and categories. */
+        fun subsystems(): List<SubsystemNavigationItem> = listOf(
+            SubsystemNavigationItem("catalog-controls", "Controls", "Inputs, choices, and actions", "code", "#64748b", "/components/controls", "Build"),
+            SubsystemNavigationItem("catalog-content", "Content", "Documents and source presentation", "file", "#f764f6", "/components/content", "Build"),
+            SubsystemNavigationItem("catalog-overlays", "Overlays", "Dialogs and contextual navigation", "boxes", "#268e71", "/overlays", "Explore"),
+        )
+
         private val destinations = listOf(
             NavigationItem("Foundation", "/foundation", false),
             NavigationItem("Controls", "/components/controls", false),

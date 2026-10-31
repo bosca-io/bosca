@@ -1,3 +1,5 @@
+import java.io.File
+
 plugins {
     id("org.jetbrains.kotlin.jvm")
     alias(libs.plugins.kotlin.plugin.serialization)
@@ -60,8 +62,13 @@ tasks.register<Exec>("prepareTestBrowser") {
         layout.buildDirectory.file("test-browser/executable.txt").get().asFile.absolutePath)
     inputs.files("package.json", "package-lock.json", "src/test/browser/prepare-chromium.mjs")
     outputs.file(layout.buildDirectory.file("test-browser/executable.txt"))
-    // Playwright's external browser cache can be removed independently of build outputs.
-    outputs.upToDateWhen { false }
+    // Reinstall only when inputs change or the external browser/dependencies disappear.
+    val browserMarker = layout.buildDirectory.file("test-browser/executable.txt").get().asFile
+    val installedPlaywright = layout.projectDirectory.file("node_modules/playwright-core/package.json").asFile
+    outputs.upToDateWhen {
+        installedPlaywright.isFile && browserMarker.isFile &&
+            File(browserMarker.readText().trim()).canExecute()
+    }
 }
 
 apply(from = rootProject.file("gradle/bml-test-browser.gradle.kts"))
@@ -70,9 +77,11 @@ val catalogRuntime = configurations.named("runtimeClasspath")
 val catalogClasspath = files(tasks.jar.flatMap { it.archiveFile }, catalogRuntime).asPath
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    testLogging.events("passed", "failed", "skipped")
     // Only explicitly concurrent browser classes opt in. Cap compensation threads too:
     // blocking HTTP calls can otherwise grow the pool beyond its target parallelism.
-    val browserWorkers = providers.gradleProperty("bml.browser.workers").getOrElse("4")
+    val browserWorkers = providers.gradleProperty("bml.browser.workers")
+        .getOrElse(gradle.startParameter.maxWorkerCount.toString())
     systemProperty("junit.jupiter.execution.parallel.enabled", "true")
     systemProperty("junit.jupiter.execution.parallel.config.strategy", "fixed")
     systemProperty("junit.jupiter.execution.parallel.config.fixed.parallelism", browserWorkers)
@@ -82,11 +91,21 @@ tasks.withType<Test>().configureEach {
         .withPropertyName("browserChecks").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file(layout.projectDirectory.file("package-lock.json"))
         .withPropertyName("accessibilityDependency").withPathSensitivity(PathSensitivity.RELATIVE)
-    systemProperty("catalog.classpath", catalogClasspath)
-    systemProperty("catalog.java", javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath)
-    systemProperty("catalog.node", bml.nodeExecutable.get())
-    systemProperty("catalog.browser", layout.projectDirectory.file("src/test/browser/catalog.mjs").asFile.absolutePath)
-    systemProperty("catalog.firefoxBrowser", layout.projectDirectory.file("src/test/browser/firefox-tree.mjs").asFile.absolutePath)
+    inputs.files(tasks.jar.flatMap { it.archiveFile }, catalogRuntime)
+        .withPropertyName("applicationRuntime").withNormalizer(ClasspathNormalizer::class.java)
+    // Absolute launch paths are runtime arguments; content inputs above determine reuse.
+    val testNode = bml.nodeExecutable.get()
+    inputs.property("testNodeVersion", providers.exec {
+        commandLine(testNode, "--version")
+    }.standardOutput.asText.map { it.trim() })
+    val runtimeProperties = mapOf(
+        "catalog.classpath" to catalogClasspath,
+        "catalog.java" to javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath,
+        "catalog.node" to bml.nodeExecutable.get(),
+        "catalog.browser" to layout.projectDirectory.file("src/test/browser/catalog.mjs").asFile.absolutePath,
+        "catalog.firefoxBrowser" to layout.projectDirectory.file("src/test/browser/firefox-tree.mjs").asFile.absolutePath,
+    )
+    doFirst { systemProperties(runtimeProperties) }
 }
 
 val firefoxTreeTest = "bosca.design.catalog.CatalogApplicationTest.Firefox trees retain native keyboard navigation"

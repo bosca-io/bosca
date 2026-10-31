@@ -6,7 +6,6 @@ plugins {
     id("org.graalvm.buildtools.native")
     alias(libs.plugins.shadow)
     application
-    id("io.bosca.bml.host")
 }
 
 java {
@@ -61,7 +60,6 @@ dependencies {
     projects.forEach { implementation(it) }
 
     implementation(project(":sharedqueue:sharedqueue"))
-    implementation(project(":git:git-ui-server"))
     implementation(libs.jgit)
     implementation(libs.logback.classic)
     api(libs.postgresql)
@@ -72,6 +70,7 @@ dependencies {
     testImplementation(project(":bosca-core:test-support"))
     testImplementation(project(":bml:core-bml"))
     testImplementation(project(":bml:bml-server"))
+    testImplementation(project(":git:git-ui-server"))
 
     "ksp"(project(":bosca-core:core-ksp"))
     "ksp"(project(":services-di:service-ksp"))
@@ -80,33 +79,33 @@ dependencies {
 
 tasks.test {
     val serverClasspath = sourceSets.main.get().runtimeClasspath
-    doFirst { systemProperty("apiServerClasspath", serverClasspath.asPath) }
+    val uiTestClasspath = sourceSets.test.get().runtimeClasspath
+    doFirst {
+        systemProperty("apiServerClasspath", serverClasspath.asPath)
+        systemProperty("gitUiTestClasspath", uiTestClasspath.asPath)
+    }
     systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
 }
 
 tasks.register<Test>("nativeHostTest") {
     group = "verification"
-    description = "Exercise both production Git listeners from the combined native executable."
+    description = "Exercise the backend-only native Git executable with an independent HTTP UI client."
     dependsOn(tasks.testClasses, "nativeCompile")
     testClassesDirs = sourceSets.test.get().output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath
     filter { includeTestsMatching("bosca.git.server.GitServerIntegrationTest") }
+    val uiTestClasspath = sourceSets.test.get().runtimeClasspath
     val nativeDirectory = layout.buildDirectory.dir("native/nativeCompile")
     val executableName = "bosca-git-server" +
         if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else ""
     val executable = nativeDirectory.map { it.file(executableName) }
     val resources = nativeDirectory.map { it.file("embedded-resources.json") }
-    val buildIdPath = "generated/bml/build-id/META-INF/bosca/bml/build-id"
-    val hostBuildId = layout.buildDirectory.file(buildIdPath)
-    val uiBuildId = project(":git:git-ui-server").layout.buildDirectory.file(buildIdPath)
     inputs.file(executable).withPropertyName("nativeExecutable").withPathSensitivity(PathSensitivity.NONE)
     inputs.file(resources).withPropertyName("nativeResources").withPathSensitivity(PathSensitivity.NONE)
-    inputs.files(hostBuildId, uiBuildId).withPropertyName("nativeBuildIds").withPathSensitivity(PathSensitivity.NONE)
+    doFirst { systemProperty("gitUiTestClasspath", uiTestClasspath.asPath) }
     environment("GIT_SERVER_TEST_BINARY", executable.get().asFile.absolutePath)
     systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
     systemProperty("gitServer.native.resourceReport", resources.get().asFile.absolutePath)
-    systemProperty("gitServer.native.hostBuildId", hostBuildId.get().asFile.absolutePath)
-    systemProperty("gitServer.native.uiBuildId", uiBuildId.get().asFile.absolutePath)
     systemProperty("gitServer.test.artifacts", layout.buildDirectory.dir("reports/native-host").get().asFile.absolutePath)
     outputs.upToDateWhen { false }
 }
@@ -118,11 +117,10 @@ ksp {
 tasks.shadowJar {
     isZip64 = true
     // Merged resources must reach their transformers before duplicate filtering.
-    filesMatching(listOf("META-INF/services/**", "META-INF/bosca/bml/build-id")) {
+    filesMatching("META-INF/services/**") {
         duplicatesStrategy = DuplicatesStrategy.INCLUDE
     }
     mergeServiceFiles()
-    append("META-INF/bosca/bml/build-id")
 }
 
 afterEvaluate {

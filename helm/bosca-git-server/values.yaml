@@ -38,11 +38,6 @@ gateway:
   gatewayNamespace: ""
   hostnames: []
 
-# The embedded BML listener shares the Git origin and is selected by HTTP path.
-ui:
-  port: 8093
-  authCookiePrefix: ""
-
 resources:
   requests:
     cpu: 100m
@@ -75,6 +70,7 @@ appConfig:
   redisPort: 6379
   meilisearchHost: meilisearch
   gitUrl: ""
+  uiUrl: ""
   autoVerify: false
   authCookiePrefixes: []
   googleEnabled: true

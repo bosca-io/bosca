@@ -1,7 +1,13 @@
 <page route="/navigation">
   <script server provides="examples">bosca.design.catalog.CatalogNavigation.examples()</script>
+  <script server provides="subsystems">bosca.design.catalog.CatalogNavigation.subsystems()</script>
   <catalog-document title="Route navigation" description="Native destinations, overflow menus and caller-owned current items." current="/navigation">
     <p class="page-intro">Open More to explore destinations that do not fit. Compare wide and narrow containers, change the current item and try long labels. Each palette keeps its own example state.</p>
+    <card title="Subsystem navigation"><div class="catalog-stack">
+      <p class="catalog-description">Open the subsystem header, filter by name or description, and use the arrow keys and Enter. Each destination keeps its own accent. Escape returns focus to the header.</p>
+      <subsystem-switcher :items="subsystems" currentId="catalog-controls" product="Design Library" homeHref="/navigation" />
+      <subsystem-links :items="subsystems" />
+    </div></card>
     <div class="catalog-palette-dark" data-navigation-palette="dark"><card title="Dark palette"><navigation-example id="dark" /></card></div>
     <div class="catalog-palette-light" data-navigation-palette="light"><card title="Light palette"><navigation-example id="light" /></card></div>
     <div class="catalog-grid" data-navigation-cases>

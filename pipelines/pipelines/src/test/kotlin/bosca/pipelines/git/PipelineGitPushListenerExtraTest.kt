@@ -10,12 +10,17 @@ import bosca.di.provides
 import bosca.git.model.PushEvent
 import bosca.pubsub.Message
 import bosca.pubsub.PubSubService
+import bosca.pipelines.configuration.PipelinesModule
+import bosca.server.BoscaApplication
+import bosca.server.config.ApplicationConfig
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
@@ -34,6 +39,9 @@ class PipelineGitPushListenerExtraTest {
 
     private val pubSubService = mockk<PubSubService>(relaxed = true)
     private val pipelineGitSyncService = mockk<PipelineGitSyncService>(relaxed = true)
+    private val listeners = mutableListOf<PipelineGitPushListener>()
+
+    private fun listener() = PipelineGitPushListener(pubSubService, pipelineGitSyncService).also(listeners::add)
 
     // The subscription loop now wraps each event in withRequestCache + withConnectionManager
     // (mirroring JobRunner), so the loop-driving tests need these resolvable as relaxed no-ops.
@@ -46,7 +54,10 @@ class PipelineGitPushListenerExtraTest {
     }
 
     @AfterTest
-    fun teardown() = ProviderRegistry.clear()
+    fun teardown() {
+        listeners.forEach { it.stop() }
+        ProviderRegistry.clear()
+    }
 
     private fun pushEvent() = PushEvent(
         repositoryId = Uuid.random(),
@@ -67,7 +78,7 @@ class PipelineGitPushListenerExtraTest {
         coEvery { pubSubService.subscribe("bosca.git.push", PushEvent.serializer()) } returns live
 
         // Constructing the listener starts the init loop on a background dispatcher.
-        PipelineGitPushListener(pubSubService, pipelineGitSyncService)
+        listener()
 
         coVerify(timeout = 5_000) {
             pipelineGitSyncService.onPushEvent(event.repositoryId, "before", "after")
@@ -83,7 +94,7 @@ class PipelineGitPushListenerExtraTest {
             pubSubService.subscribe("bosca.git.push", PushEvent.serializer())
         } throws RuntimeException("subscribe down") andThen parked
 
-        PipelineGitPushListener(pubSubService, pipelineGitSyncService)
+        listener()
 
         // The loop must survive the failure and attempt to subscribe at least twice (initial + retry).
         coVerify(atLeast = 2, timeout = 10_000) {
@@ -96,12 +107,36 @@ class PipelineGitPushListenerExtraTest {
     @Test
     fun `handle still routes directly when the loop sits idle`() = runTest {
         // Keep parity with the sibling test's direct-handle path so this file is self-contained.
-        coEvery { pubSubService.subscribe("bosca.git.push", PushEvent.serializer()) } returns emptyFlow()
-        val listener = PipelineGitPushListener(pubSubService, pipelineGitSyncService)
+        coEvery { pubSubService.subscribe("bosca.git.push", PushEvent.serializer()) } returns flow { awaitCancellation() }
+        val listener = listener()
         val event = pushEvent()
 
         listener.handle(event)
 
         coVerify { pipelineGitSyncService.onPushEvent(event.repositoryId, "before", "after") }
+    }
+
+    @Test
+    fun `host shutdown cancels the active pipeline push subscription`() = runBlocking {
+        val subscribed = CompletableDeferred<Unit>()
+        val stopped = CompletableDeferred<Unit>()
+        coEvery { pubSubService.subscribe("bosca.git.push", PushEvent.serializer()) } returns flow {
+            subscribed.complete(Unit)
+            try {
+                awaitCancellation()
+            } finally {
+                stopped.complete(Unit)
+            }
+        }
+        provides<PubSubService> { pubSubService }
+        provides<PipelineGitSyncService> { pipelineGitSyncService }
+        val application = BoscaApplication(ApplicationConfig.load("{}".byteInputStream()), ownsServices = false)
+        try {
+            PipelinesModule().install(application)
+            withTimeout(5_000) { subscribed.await() }
+        } finally {
+            application.shutdown()
+        }
+        withTimeout(5_000) { stopped.await() }
     }
 }

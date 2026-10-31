@@ -24,8 +24,11 @@ def settings(**overrides):
         "BOSCA_DOMAIN": "example.com",
         "STUDIO_DOMAIN": "studio.example.com",
         "GIT_DOMAIN": "git.example.com",
+        "ATLAS_DOMAIN": "atlas.example.com",
+        "ARTIFACTS_DOMAIN": "artifacts.example.com",
         "CERT_NAME": "bosca",
         **installer.PORTS,
+        **{key: "false" for key in installer.TOPOLOGY_FLAGS},
         **overrides,
     }
 
@@ -133,10 +136,10 @@ class InstallerTest(unittest.TestCase):
             {"STUDIO_DOMAIN": "example.com; include /tmp/evil;"},
             {"GIT_DOMAIN": "badexample.com"},
             {"GIT_DOMAIN": "studio.example.com"},
-            {"GIT_UI_PORT": "8091"},
+            {"ATLAS_UI_PORT": "8094"},
             {"CERT_NAME": "../another-certificate"},
             {"API_PORT": "65536"}, {"API_PORT": "0"}, {"API_PORT": "80"},
-            {"API_PORT": "443"}, {"API_PORT": "8091"}, {"API_PORT": "１２３"},
+            {"API_PORT": "443"}, {"API_PORT": "8094"}, {"API_PORT": "１２３"},
         ]
         for overrides in invalid:
             with self.subTest(overrides=overrides), self.assertRaises(ValueError):
@@ -147,7 +150,7 @@ class InstallerTest(unittest.TestCase):
 
     def test_incomplete_package_does_not_create_installation(self):
         source = self.source_copy()
-        (source / "compose.yaml").unlink()
+        (source / "compose.yaml.template").unlink()
         with self.assertRaisesRegex(ValueError, "Missing or unsupported"):
             installer.install(self.destination, settings(), source)
         self.assertFalse(self.destination.exists())
@@ -163,7 +166,7 @@ class InstallerTest(unittest.TestCase):
     def test_custom_domains_ports_and_nginx_variables(self):
         directory = self.install(
             STUDIO_DOMAIN="ADMIN.EXAMPLE.COM", GIT_DOMAIN="code.example.com", CERT_NAME="custom-cert",
-            API_PORT="18080", GIT_PORT="18091", GIT_UI_PORT="18093", STUDIO_PORT="13000", BML_PORT="19093",
+            API_PORT="18080", ATLAS_PORT="18091", ATLAS_UI_PORT="18093", STUDIO_PORT="13000", BML_PORT="19093",
         )
         nginx = (directory / "config/nginx.conf").read_text()
         bootstrap = (directory / "config/nginx-bootstrap.conf").read_text()
@@ -180,7 +183,7 @@ class InstallerTest(unittest.TestCase):
     def test_rerender_uses_public_env_settings_without_changing_credentials(self):
         directory = self.install()
         env_path = directory / ".env"
-        env_path.write_text(env_path.read_text().replace("git.example.com", "code.example.com").replace("GIT_PORT=8091", "GIT_PORT=18091"))
+        env_path.write_text(env_path.read_text().replace("git.example.com", "code.example.com").replace("ATLAS_PORT=8094", "ATLAS_PORT=18091"))
         before = env_path.read_bytes()
         installer.render_nginx(directory, installer.read_public_settings(directory))
         nginx = (directory / "config/nginx.conf").read_text()
@@ -222,7 +225,7 @@ class InstallerTest(unittest.TestCase):
         self.assertNotIn("JWT_SECRET=", result.stdout + result.stderr)
 
     def test_cli_rejects_settings_that_would_otherwise_be_ignored(self):
-        for arguments in (["--git-port", "18091"], ["--git-ui-domain"], ["--render-nginx", "--cert-name", "bosca"]):
+        for arguments in (["--atlas-port", "18091"], ["--git-ui-domain"], ["--render-nginx", "--cert-name", "bosca"]):
             with self.subTest(arguments=arguments):
                 result = subprocess.run(
                     ["sh", str(ROOT / "install.sh"), "--directory", str(self.destination), *arguments],
@@ -232,11 +235,80 @@ class InstallerTest(unittest.TestCase):
                 self.assertFalse(self.destination.exists())
 
     @unittest.skipUnless(shutil.which("docker"), "Docker CLI is unavailable")
+    def test_all_atlas_topologies_render_valid_compose_and_consistent_ingress(self):
+        import itertools
+        for git, registry, ui, runner in itertools.product((False, True), repeat=4):
+            with self.subTest(git=git, registry=registry, ui=ui, runner=runner):
+                directory = self.root / f"topology-{git}-{registry}-{ui}-{runner}"
+                selected = settings(SEPARATE_GIT=str(git).lower(), SEPARATE_ARTIFACTS=str(registry).lower(),
+                                    SEPARATE_UI=str(ui).lower(), ATLAS_RUNNER_ENABLED=str(runner).lower())
+                installer.install(directory, selected)
+                env = directory / ".env"
+                env.write_text(env.read_text() + "\nATLAS_VERSION=test\nGIT_VERSION=test\nARTIFACTS_VERSION=test\n"
+                               "BML_MESSAGE_ARTIFACTS_URL=https://registry.example.com\nBML_MESSAGE_ARTIFACTS_TOKEN=fixture\n")
+                user_plugin = Path.home() / ".docker/cli-plugins/docker-compose"
+                if user_plugin.is_file():
+                    plugin_dir = directory / ".docker/cli-plugins"
+                    plugin_dir.mkdir()
+                    (plugin_dir / "docker-compose").symlink_to(user_plugin.resolve())
+                process_env = {key: value for key, value in os.environ.items()
+                               if key in ("PATH", "HOME", "DOCKER_CLI_PLUGIN_EXTRA_DIRS")}
+                result = subprocess.run(["sh", str(directory / "compose.sh"), "config", "--format", "json"],
+                                        env=process_env, capture_output=True, text=True)
+                self.assertEqual(0, result.returncode, result.stderr)
+                services = json.loads(result.stdout)["services"]
+                self.assertEqual(git, "git" in services)
+                self.assertEqual(registry, "artifacts" in services)
+                self.assertEqual(ui, "atlas-ui" in services)
+                postgres_command = services["postgres"]["command"]
+                connection_limit = int(next(value.split("=", 1)[1] for value in postgres_command
+                                            if value.startswith("max_connections=")))
+                # The main API owns 20 connections; each domain process owns 10.
+                self.assertGreaterEqual(connection_limit, 20 + 10 + 10 * (git + registry) + 10)
+                self.assertEqual(str(not ui).lower(), services["atlas"]["environment"]["ATLAS_UI_ENABLED"])
+                self.assertEqual(str(runner).lower(), services["atlas"]["environment"]["ATLAS_RUNNER_ENABLED"])
+                expected_registry = "http://artifacts:8084" if registry else ""
+                self.assertEqual(expected_registry, services["atlas"]["environment"]["BML_ARTIFACTS_ENDPOINT"])
+                ui_bindings = [p for name, service in services.items() for p in service.get("ports", [])
+                               if p["published"] == "8095"]
+                self.assertEqual(1, len(ui_bindings))
+                if ui:
+                    self.assertEqual(expected_registry, services["atlas-ui"]["environment"]["BML_ARTIFACTS_ENDPOINT"])
+                    self.assertEqual("http://atlas:8094/graphql", services["atlas-ui"]["environment"]["BML_GRAPHQL_ENDPOINT"])
+                if git:
+                    self.assertEqual([8091], [p["target"] for p in services["git"]["ports"]])
+                nginx = (directory / "config/nginx.conf").read_text()
+                git_host = nginx.split("server_name git.example.com;", 1)[1].split("\nserver {", 1)[0]
+                registry_host = nginx.split("server_name artifacts.example.com;", 1)[1]
+                self.assertIn(f"127.0.0.1:{8091 if git else 8094}", git_host)
+                self.assertIn(f"127.0.0.1:{8084 if registry else 8094}", registry_host)
+                self.assertEqual(not registry, "/_artifacts$request_uri" in registry_host)
+
+    def test_render_can_switch_topology_without_replacing_credentials_or_storage(self):
+        directory = self.install()
+        env = directory / ".env"
+        sentinel = directory / "data/storage/preserved.bin"
+        sentinel.write_bytes(b"existing-repositories-and-packages")
+        original = env.read_text()
+        updated = original.replace("SEPARATE_GIT=false", "SEPARATE_GIT=true").replace("SEPARATE_UI=false", "SEPARATE_UI=true")
+        env.write_text(updated)
+        installer.render(directory, installer.read_public_settings(directory))
+        self.assertEqual(updated, env.read_text())
+        self.assertEqual(b"existing-repositories-and-packages", sentinel.read_bytes())
+        composed = (directory / "compose.yaml").read_text()
+        self.assertIn("  git:", composed)
+        self.assertIn("  atlas-ui:", composed)
+        env.write_text(original)
+        installer.render(directory, installer.read_public_settings(directory))
+        self.assertNotIn("  git:", (directory / "compose.yaml").read_text())
+        self.assertNotIn("  atlas-ui:", (directory / "compose.yaml").read_text())
+        self.assertEqual(b"existing-repositories-and-packages", sentinel.read_bytes())
+
     def test_compose_resolves_installed_configuration_without_starting_services(self):
-        directory = self.install(GIT_PORT="18091", GIT_DOMAIN="code.example.com", GIT_UI_PORT="18093")
+        directory = self.install(ATLAS_PORT="18091", GIT_DOMAIN="code.example.com", ATLAS_UI_PORT="18093")
         with (directory / ".env").open("a") as output:
             output.write("BML_MESSAGE_ARTIFACTS_URL=https://artifacts.example.com\n"
-                         "BML_MESSAGE_ARTIFACTS_TOKEN=synthetic-test-token\nGIT_VERSION=test-version\n")
+                         "BML_MESSAGE_ARTIFACTS_TOKEN=synthetic-test-token\nATLAS_VERSION=test-version\n")
         # Docker Desktop keeps Compose in the user's config; Linux installs use
         # a system-wide plugin. Expose the local plugin to this isolated fixture.
         user_plugin = Path.home() / ".docker/cli-plugins/docker-compose"
@@ -252,18 +324,18 @@ class InstallerTest(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, result.stderr)
         services = json.loads(result.stdout)["services"]
-        self.assertEqual({"postgres", "nats", "meilisearch", "server", "git", "studio", "bml-message-server"}, set(services))
-        self.assertEqual("https://code.example.com", services["git"]["environment"]["GIT_URL"])
-        self.assertEqual("https://code.example.com/oauth2/google/callback", services["git"]["environment"]["OAUTH2_GOOGLE_REDIRECT"])
+        self.assertEqual({"postgres", "nats", "meilisearch", "server", "atlas", "studio", "bml-message-server"}, set(services))
+        self.assertEqual("https://code.example.com", services["atlas"]["environment"]["GIT_URL"])
+        self.assertEqual("https://atlas.example.com/oauth2/google/callback", services["atlas"]["environment"]["OAUTH2_GOOGLE_REDIRECT"])
         self.assertEqual("https://studio.example.com", services["server"]["environment"]["APP_URL"])
         self.assertEqual("wss://studio.example.com", services["studio"]["environment"]["NUXT_PUBLIC_WS_URL"])
-        self.assertTrue(services["git"]["image"].endswith(":test-version"))
+        self.assertTrue(services["atlas"]["image"].endswith(":test-version"))
         self.assertTrue(services["server"]["image"].startswith("ghcr.io/bosca-io/bosca/bosca-server:"))
         self.assertEqual("https://artifacts.example.com",
                          services["bml-message-server"]["environment"]["BML_MESSAGE_ARTIFACTS_URL"])
-        self.assertEqual("18091", services["git"]["ports"][0]["published"])
-        self.assertEqual("18093", services["git"]["ports"][1]["published"])
-        self.assertEqual(8093, services["git"]["ports"][1]["target"])
+        self.assertEqual("18091", services["atlas"]["ports"][0]["published"])
+        self.assertEqual("18093", services["atlas"]["ports"][1]["published"])
+        self.assertEqual(8095, services["atlas"]["ports"][1]["target"])
         self.assertEqual(2880 * 1024 * 1024, sum(int(service["mem_limit"]) for service in services.values()))
         self.assertEqual('"' + services["server"]["environment"]["NATS_TOKEN"] + '"', services["nats"]["environment"]["NATS_TOKEN"])
         for service in services.values():

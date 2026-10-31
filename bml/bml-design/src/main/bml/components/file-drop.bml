@@ -1,0 +1,35 @@
+<component tag="file-drop">
+  <prop name="ref" type="String" default="" />
+  <prop name="label" type="String" default="Choose files or drop them here" />
+  <prop name="description" type="String" default="" />
+  <prop name="accept" type="String" default="" />
+  <prop name="multiple" type="Boolean" default="false" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <div class="file-drop" data-file-drop :ref="ref.takeIf(String::isNotBlank)" :data-disabled="disabled" {...attrs}>
+    <label class="file-drop-target">
+      <html:input type="file" :aria-label="label" :accept="accept" :multiple="multiple" :disabled="disabled" />
+      <span class="file-drop-icon" aria-hidden="true"><icon name="upload" :size="20" /></span>
+      <span class="file-drop-copy">
+        <strong>{ label }</strong>
+        <if description.isNotBlank()><span>{ description }</span></if>
+      </span>
+    </label>
+  </div>
+  <style scoped>
+    .file-drop { position:relative; border:1px dashed color-mix(in oklch,var(--fg-3) 45%,transparent); border-radius:var(--r-sm); background:color-mix(in oklch,var(--fg-3) 4%,transparent); transition:border-color .15s,background .15s; }
+    .file-drop:not([data-disabled]):hover,.file-drop:focus-within,.file-drop[data-dragging] { border-color:var(--accent); background:color-mix(in oklch,var(--accent) 8%,transparent); }
+    .file-drop:focus-within { outline:var(--focus-width) solid var(--accent); outline-offset:2px; }
+    .file-drop[data-disabled] { opacity:.5; }
+    .file-drop-target { position:relative; display:flex; box-sizing:border-box; min-height:116px; align-items:center; justify-content:center; gap:13px; padding:20px; cursor:pointer; }
+    input { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+    .file-drop[data-disabled] .file-drop-target,.file-drop[data-disabled] input { cursor:not-allowed; }
+    .file-drop-icon { display:grid; place-items:center; width:36px; height:36px; flex:none; color:var(--fg-3); border-radius:var(--r-xs); background:color-mix(in oklch,var(--fg-3) 9%,transparent); }
+    .file-drop-copy { display:flex; min-width:0; flex-direction:column; gap:3px; overflow-wrap:anywhere; }
+    .file-drop-copy strong { color:var(--fg-1); font-size:13px; font-weight:600; }
+    .file-drop-copy > span { font-size:11.5px; color:var(--fg-3); }
+  </style>
+  <script client scoped>
+    import { fileDrop } from "@client/helpers/file-drop";
+    fileDrop(ctx);
+  </script>
+</component>

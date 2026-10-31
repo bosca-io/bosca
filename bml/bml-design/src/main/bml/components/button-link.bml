@@ -1,0 +1,18 @@
+<component tag="button-link">
+  <prop name="href" type="String" required />
+  <prop name="icon" type="String" default="" />
+  <prop name="size" type="String" default="sm" />
+  <prop name="primary" type="Boolean" default="false" />
+  <a :href="href" :class='"button-link size-" + size + if (primary) " primary" else ""' {...attrs}>
+    <if icon.isNotBlank()><span class="link-icon"><icon :name="icon" :size="14" /></span></if><slot />
+  </a>
+  <style scoped>
+    .button-link { box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center; gap:var(--control-gap); height:var(--control-height-sm); padding:0 10px; color:var(--fg-1); background:var(--control-bg,var(--bg-2)); border:1px solid var(--control-border,var(--line-2)); border-radius:var(--control-radius,var(--r-sm)); font:inherit; font-size:12.5px; font-weight:500; line-height:normal; white-space:nowrap; text-decoration:none; }
+    .button-link.size-xs { height:var(--control-height-xs); padding:0 8px; font-size:12px; }
+    .button-link.size-md { height:var(--control-height-md); padding:0 14px; font-size:13px; }
+    .button-link:hover { background:var(--bg-3); text-decoration:none; }
+    .button-link.primary { border-color:color-mix(in srgb,var(--accent) 60%,transparent); font-weight:550; color:var(--fg-0); }
+    .link-icon { display:inline-flex; color:var(--fg-2); }
+    .button-link:focus-visible { outline:var(--focus-width) solid var(--accent); outline-offset:var(--focus-offset); }
+  </style>
+</component>

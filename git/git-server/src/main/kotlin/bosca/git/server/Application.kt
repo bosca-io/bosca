@@ -31,12 +31,13 @@ import bosca.installer.model.PackageInstallations
 import bosca.routes.configureGitCiRoutes
 import bosca.routes.configureGitRoutes
 import bosca.security.routes.SecurityRoutesModule
+import bosca.server.netty.NettyServerEngine
 import bosca.server.BoscaApplication
 
-/** Hosts the Git API and BML UI on separate ports in one process. */
+/** Hosts Git APIs and transports independently of the Atlas UI. */
 fun main(args: Array<String>) {
     DfsBlockCacheInitializer.initialize()
-    startGitServer(args)
+    NettyServerEngine.start("application.yaml", args) { module() }
 }
 
 suspend fun BoscaApplication.module() {

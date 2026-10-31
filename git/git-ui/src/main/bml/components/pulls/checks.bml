@@ -13,7 +13,7 @@
       </if>
     </header>
     <if page.hasFailingStatusChecks>
-      <p class="checks-blocked">Required checks awaiting success: { page.pull.failingStatusChecks.joinToString(", ") }</p>
+      <p class="checks-blocked">Required checks awaiting success: { page.pull.failingStatusChecks.orEmpty().joinToString(", ") }</p>
     </if>
     <if page.checks.isEmpty()>
       <p class="checks-empty">No checks have been reported for this commit.</p>
