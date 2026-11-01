@@ -314,9 +314,10 @@ configuration. See [Swarm deployment](../deployments/bosca-swarm/README.md)
 for retention and rollback details.
 
 `update-images` saves version pins locally for services used by the configured
-topology. Separate Atlas UI, Git, and artifacts images are skipped unless at
-least one site enables the corresponding separate service. An explicit
-`--image` also selects an inactive service, for example before changing topology.
+topology. Standard runner, separate Atlas UI, Git, and artifacts images are
+skipped unless at least one site enables the corresponding standalone service.
+An explicit `--image` also selects an inactive service, for example before
+changing topology.
 It keeps each configured image
 repository, infrastructure images, root website images, and secrets. Repeat
 `--image` to update selected Swarm image keys, for example `--image server
@@ -494,7 +495,10 @@ This is a single-module application built on the Clikt command framework for con
 `bosca swarm` deploys Atlas with the primary `atlas.<domain>` origin and retained
 Git/registry hostnames. Per-site `atlas` settings select separate UI, Git or
 registry services and embedded queue consumers. See the
-[Swarm deployment guide](../deployments/bosca-swarm/README.md).
+[Swarm deployment guide](../deployments/bosca-swarm/README.md). Set a site's
+`runnerServer.enabled` to `false` and keep `atlas.servers.runner` enabled to
+run only Atlas workers. Deployment enables Atlas worker listeners, Git sync,
+and scheduling, and removes the old standard runner after readiness passes.
 `swarm update-images` and Helm image updates recognize `atlas-server` and
 `atlas-ui-server`; profiles pointed at Atlas derive the existing Git and registry
 hostnames. Helm topology and Gateway examples are in the

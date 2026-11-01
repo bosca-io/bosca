@@ -121,6 +121,8 @@ data class SwarmConfig(
     val fumsEnabled: Boolean = true,
     /** Atlas host and capabilities enabled in its combined process. */
     val atlas: SwarmAtlas = SwarmAtlas(),
+    /** Standalone Bosca runner; disable when Atlas owns background execution. */
+    val runnerServer: SwarmStandaloneServer = SwarmStandaloneServer(enabled = true),
     val gitServer: SwarmStandaloneServer = SwarmStandaloneServer(),
     val artifactsServer: SwarmStandaloneServer = SwarmStandaloneServer(),
     val atlasUiServer: SwarmStandaloneServer = SwarmStandaloneServer(),
