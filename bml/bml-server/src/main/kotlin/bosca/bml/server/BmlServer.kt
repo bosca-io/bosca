@@ -241,6 +241,24 @@ class BmlServer(
             },
         )
 
+        /** Computed once per generation; no asset bodies or directories are read during rendering. */
+        val moduleImportMap: String = if (development) "" else BmlClientAssets.importMap(
+            buildSet {
+                packagedAssets.flatMap { it.paths }.forEach { path ->
+                    if (path.endsWith(".js")) when {
+                        path.startsWith("prod/") -> add(BmlClientAssets.URL_PREFIX + path.removePrefix("prod/"))
+                        path.startsWith("libraries/") -> add("/_bml/$path")
+                    }
+                }
+                clientDir?.takeIf { it.isDirectory }?.let { directory ->
+                    directory.walkTopDown().filter { it.isFile && it.extension == "js" }.forEach {
+                        add(BmlClientAssets.URL_PREFIX + it.relativeTo(directory).invariantSeparatorsPath)
+                    }
+                }
+            },
+            assetCacheToken,
+        )
+
         init {
             pages.forEach { ContentType.parse(it.contentType) }
         }
@@ -596,9 +614,13 @@ class BmlServer(
             html = BmlClientAssets.injectInstallationIdentity(html)
         }
         html = BmlClientAssets.injectPageContext(html, page.route, context.requestPath, context.lang)
+        val cacheToken = current.assetCacheToken.takeUnless { current.development }
         val pageJsFile = current.productionPlan?.pageJsFile?.get(page.route)
+        if (current.globalJs != null || pageJsFile != null) {
+            html = BmlClientAssets.injectImportMap(html, current.moduleImportMap)
+        }
         val libraryAssets = (page as? BmlBundledPage)?.assets
-        html = BmlStyleAssets.injectLibraryStyles(html, libraryAssets?.stylesByRoute?.get(page.route).orEmpty().map { current.contentAssets?.url(it) ?: it }, null)
+        html = BmlStyleAssets.injectLibraryStyles(html, libraryAssets?.stylesByRoute?.get(page.route).orEmpty().map { current.contentAssets?.url(it) ?: it }, cacheToken)
         // CSS: in production, at most two links — the normalized global stylesheet and the page's
         // merged stylesheet. In dev, the global plus one chunk per rendered component,
         // so an edit invalidates one small file.
@@ -607,7 +629,7 @@ class BmlServer(
                 BmlStyleAssets.cssLinksProduction(
                     current.servedGlobalCss != null,
                     plan.pageCssUrl(page.route),
-                    null,
+                    cacheToken,
                     current.contentAssets?.urls.orEmpty(),
                 )
             } ?: run {
@@ -622,12 +644,12 @@ class BmlServer(
         }
         // Scripts (before </body>): global app.js, then the page's JS, then dev-reload.
         if (current.globalJs != null) {
-            html = BmlClientAssets.injectUrl(html, current.contentAssets?.url(BmlStyleAssets.GLOBAL_JS_URL) ?: BmlStyleAssets.GLOBAL_JS_URL)
+            html = BmlClientAssets.injectUrl(html, current.contentAssets?.url(BmlStyleAssets.GLOBAL_JS_URL) ?: BmlStyleAssets.GLOBAL_JS_URL, cacheToken)
         }
         if (current.productionPlan != null) {
             // The entry imports this page's components and content-hashed shared modules.
             pageJsFile?.let {
-                html = BmlClientAssets.inject(html, current.contentAssets?.entries?.get(it) ?: it)
+                html = BmlClientAssets.inject(html, current.contentAssets?.entries?.get(it) ?: it, cacheToken)
             }
         } else {
             // Dev: the page's own module plus one module per closure component, so an edit
@@ -1579,13 +1601,14 @@ class BmlServer(
         call.attributes[CACHE_CONTROL_SET_ATTRIBUTE] = true
     }
 
-    /** Emitted content-hashed modules are immutable; logical module URLs revalidate. */
+    /** Deployment-versioned assets and emitted content-hashed modules are immutable. */
     private fun assetCacheControl(
         current: RuntimeState,
         call: bosca.server.ServerCall,
     ): String {
         val hashedModule = Regex("-[A-Z0-9]{8}\\.js$").containsMatchIn(call.request.path)
-        return if (!current.development && hashedModule) PRODUCTION_ASSET_CACHE_CONTROL else "no-cache"
+        val versioned = call.request.queryParameters["_ts"] == current.assetCacheToken
+        return if (!current.development && (versioned || hashedModule)) PRODUCTION_ASSET_CACHE_CONTROL else "no-cache"
     }
 
     /**

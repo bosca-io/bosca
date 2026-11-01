@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -32,7 +32,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class BmlChunkCacheBrowserTest {
     @Test
-    fun `content addressed modules remain cached across deployments and changed graphs load new bytes`() {
+    fun `every module uses the shared deployment token with a retained browser cache`() {
         val chrome = File(checkNotNull(System.getProperty("bml.test.browser")))
         check(chrome.isFile && chrome.canExecute()) { "Missing browser: $chrome" }
         for (packaged in listOf(false, true)) {
@@ -50,7 +50,7 @@ class BmlChunkCacheBrowserTest {
 
     private fun verifyDeployments(browser: BmlChunkTestBrowser, directory: File, packaged: Boolean) {
         val port = ServerSocket(0).use { it.localPort }
-        var previousResult: String? = null
+        var previousToken: String? = null
         for ((deployment, version) in listOf("first-deploy", "same-assets", "changed-assets").withIndex()) {
             val entry = if (deployment == 2) "index.page-CHANGED1.js" else "index.page-ORIGINAL.js"
             val lazy = if (deployment == 2) "lazy-CHANGED1.js" else "lazy-IJKLMNOP.js"
@@ -117,25 +117,19 @@ class BmlChunkCacheBrowserTest {
                 val html = HttpClient.newHttpClient().use { client ->
                     client.send(HttpRequest.newBuilder(URI("http://localhost:$port/")).GET().build(), HttpResponse.BodyHandlers.ofString()).body()
                 }
-                assertFalse("importmap" in html, html)
-                assertFalse("_ts=" in html, html)
+                val token = checkNotNull(Regex("_ts=([0-9a-f]+)").find(html)?.groupValues?.get(1)) { html }
+                if (previousToken != null) assertNotEquals(previousToken, token, "A new deployment versions unchanged chunks")
                 val result = browser.result("http://localhost:$port/?visit=$version")
                 val urls = Json.parseToJsonElement(result).jsonArray.map { URI(it.jsonPrimitive.content) }
                 assertEquals(expectedPaths, urls.map { it.path }.toSet())
-                urls.forEach { assertEquals(null, it.rawQuery, it.toString()) }
-                when (deployment) {
-                    0 -> assertEquals(expectedPaths, requests.map { it.first }.toSet())
-                    1 -> {
-                        assertEquals(previousResult, result)
-                        assertTrue(requests.isEmpty(), "Unchanged modules survive a deployment: $requests")
-                    }
-                    2 -> assertEquals(setOf("/_bml/js/$entry", "/_bml/js/chunks/$lazy"), requests.map { it.first }.toSet())
-                }
+                urls.forEach { assertEquals("_ts=$token", it.rawQuery, it.toString()) }
+                assertEquals(expectedPaths, requests.map { it.first }.toSet(), "Every module is downloaded for the new deployment")
+                requests.forEach { assertEquals(token, it.second, it.first) }
                 requests.clear()
                 val cached = browser.result("http://localhost:$port/?visit=$version-cached")
                 assertEquals(result, cached, "Cached navigation executes the same complete module graph")
                 assertTrue(requests.isEmpty(), "The retained browser cache reuses modules within a deployment: $requests")
-                previousResult = result
+                previousToken = token
             } finally {
                 engine.stopWithoutHalting()
             }

@@ -1,6 +1,8 @@
 package bosca.bml.server
 
 import bosca.bml.render.HtmlWriter
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Wires a page's bundled client JS into its SSR HTML. The compiler plugin emits
@@ -12,6 +14,22 @@ object BmlClientAssets {
 
     /** URL prefix the bundles are served under (namespaced like `/_bml/` to avoid page-route collisions). */
     const val URL_PREFIX = "/_bml/js/"
+
+    /** Maps static, nested, and dynamic module imports to this deployment's asset URLs. */
+    fun importMap(moduleUrls: Collection<String>, cacheToken: String): String {
+        if (moduleUrls.isEmpty()) return ""
+        val imports = moduleUrls.distinct().sorted().associateWith { JsonPrimitive(BmlAssetUrls.versioned(it, cacheToken)) }
+        val json = JsonObject(mapOf("imports" to JsonObject(imports))).toString().replace("<", "\\u003c")
+        return """<script type="importmap">$json</script>"""
+    }
+
+    /** Places the deployment import map before authored and generated module scripts. */
+    fun injectImportMap(html: String, importMap: String): String {
+        if (importMap.isEmpty()) return html
+        val head = Regex("<head(?:\\s[^>]*)?>", RegexOption.IGNORE_CASE).find(html)
+        return if (head == null) "$importMap$html"
+        else html.substring(0, head.range.last + 1) + importMap + html.substring(head.range.last + 1)
+    }
 
     /** The `<script>` tag that loads a page's client bundle. `type="module"` defers automatically. */
     fun scriptTag(module: String): String = scriptTag(module, null)

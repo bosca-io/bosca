@@ -123,7 +123,7 @@ class BmlPackagedAssetsTest {
                 )
 
                 val html = get("/").body()
-                assertTrue("importmap" !in html && "_ts=" !in html, html)
+                assertTrue("importmap" in html && "_ts=" in html, html)
                 for ((path, expected) in listOf(
                     "/_bml/js/index.page.js" to "no-cache",
                     "/_bml/js/chunks/chunk-ABCDEFGH.js" to "public, max-age=31536000, immutable",

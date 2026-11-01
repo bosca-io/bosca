@@ -28,7 +28,7 @@ class BmlProductionClientOnlyPageTest {
             HttpResponse.BodyHandlers.ofString(),
         )
         assertEquals(200, page.statusCode())
-        assertFalse("type=\"importmap\"" in page.body(), page.body())
+        assertTrue("type=\"importmap\"" in page.body(), page.body())
         assertTrue("/_bml/js/index.page-ABCDEFGH.js" in page.body(), page.body())
         assertTrue("/_bml/js/Page.js" !in page.body(), page.body())
 

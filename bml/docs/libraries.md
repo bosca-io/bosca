@@ -119,16 +119,16 @@ this adds no public helper imports or component props. `bmlMetrics` includes the
 module closure in its first-load figures.
 
 Production page entries and shared chunks use content-hashed filenames. The server selects each
-page's entry from the packaged build metadata and emits a direct module script; pages do not carry
-an import map. Static and lazy imports reference the emitted filenames directly. Unchanged files
-retain their URLs across builds; a changed dependency also changes the filenames of the bundles
-that reference it.
+page's entry from the packaged build metadata. The entry, shared chunks, nested imports and lazy
+imports use the same `_ts` deployment token as the page's styles and global script. An import map
+versions module references before any module executes. A new deployment changes that token even
+when a module's bytes are unchanged; cached navigation within a deployment reuses the module graph.
 
 Library styles, fonts and other bundled resources, plus the host's global styles and scripts, use
 content-addressed URLs. Hashed assets are cached immutably; plain asset URLs revalidate.
 Packaged response bytes are digest-verified and cached within the active application generation.
 Unknown paths remain unavailable. The build identity continues to invalidate rendered shared HTML
-when server code changes; it is independent of browser asset URLs.
+when server code changes and supplies the shared browser asset deployment token.
 
 The library and application CSS bundlers resolve local `url()` dependencies and `@import` sources
 before emitting CSS. Bundled local assets use same-origin paths beginning with `/`; unresolved
