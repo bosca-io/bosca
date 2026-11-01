@@ -56,6 +56,8 @@ jobs:
         run: python3 helm/tests/test_release_versions.py
       - name: Test Git gateway routing
         run: python3 helm/tests/test_git_routes.py
+      - name: Test Atlas gateway routing
+        run: python3 helm/tests/test_atlas_routes.py
       - name: Package charts
         run: bash helm/scripts/release.sh package --version "${RELEASE_REF#refs/tags/}" --output .helm-release-packages
         env:

@@ -17,6 +17,10 @@ LIBRARY_ASSETS = [
     f"/_bml/libraries/{'a' * 64}/{asset}"
     for asset in ("design.css", "modules/navigation.js", "fonts/geist-latin.woff2")
 ]
+CONTENT_ASSETS = [
+    f"/_bml/content/{name}-{'a' * 64}.{extension}"
+    for name, extension in (("design", "css"), ("app", "js"), ("geist-latin", "woff2"))
+] + ["/_bml/global/logo-ABCDEFGH.svg", "/_bml/js/chunks/chunk-ABCDEFGH.js"]
 
 
 class GitGatewayRoutesTest(unittest.TestCase):
@@ -94,7 +98,7 @@ class GitGatewayRoutesTest(unittest.TestCase):
             paths.extend(f"/_bml/{endpoint}{suffix}" for suffix in ("", "/", "/nested/asset.js"))
         for endpoint in ("fonts", "subscriptions"):
             paths.extend(f"/_git/{endpoint}{suffix}" for suffix in ("", "/", "/nested/asset"))
-        paths.extend(LIBRARY_ASSETS)
+        paths.extend(LIBRARY_ASSETS + CONTENT_ASSETS)
         for path in paths:
             with self.subTest(path=path):
                 self.assertEqual("redirect", self.port_for(path))
@@ -112,7 +116,7 @@ class GitGatewayRoutesTest(unittest.TestCase):
             match = re.search(expression, config)
             self.assertIsNotNone(match, file)
             self.assertIn(upstream, config[match.end():], file)
-            for path in LIBRARY_ASSETS:
+            for path in LIBRARY_ASSETS + CONTENT_ASSETS:
                 with self.subTest(proxy=file, path=path):
                     self.assertIsNotNone(re2.fullmatch(match.group(1), path))
             for path in ("/_bml/unknown", "/project.git/info/refs", "/graphql"):
