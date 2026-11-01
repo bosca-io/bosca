@@ -20,7 +20,11 @@ LIBRARY_ASSETS = [
 CONTENT_ASSETS = [
     f"/_bml/content/{name}-{'a' * 64}.{extension}"
     for name, extension in (("design", "css"), ("app", "js"), ("geist-latin", "woff2"))
-] + ["/_bml/global/logo-ABCDEFGH.svg", "/_bml/js/chunks/chunk-ABCDEFGH.js"]
+] + ["/_bml/global/logo-ABCDEFGH.svg", "/_bml/js/chunks/chunk-ABCDEFGH.js"] + [
+    f"/_bml/js/deploy/{'d' * 64}/{module}"
+    for module in ("index.page-ABCDEFGH.js", "chunks/chunk-ABCDEFGH.js", "chunks/lazy-ABCDEFGH.js",
+                   f"libraries/{'a' * 64}/chunks/chunk-ABCDEFGH.js")
+]
 
 
 class GitGatewayRoutesTest(unittest.TestCase):
