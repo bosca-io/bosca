@@ -28,8 +28,8 @@ class BmlProductionClientOnlyPageTest {
             HttpResponse.BodyHandlers.ofString(),
         )
         assertEquals(200, page.statusCode())
-        assertTrue("type=\"importmap\"" in page.body(), page.body())
-        assertTrue("/_bml/js/index.page-ABCDEFGH.js" in page.body(), page.body())
+        assertFalse("type=\"importmap\"" in page.body(), page.body())
+        assertTrue(Regex("/_bml/js/deploy/[a-f0-9]+/index.page-ABCDEFGH[.]js").containsMatchIn(page.body()), page.body())
         assertTrue("/_bml/js/Page.js" !in page.body(), page.body())
 
         val bundle = client.send(

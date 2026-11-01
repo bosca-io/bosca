@@ -30,13 +30,13 @@ import kotlin.test.assertTrue
 class BmlProductionCacheBustingTest {
 
     @Test
-    fun `page using only the global script versions its content addressed asset and module imports`() {
+    fun `page using only the global script versions its content addressed asset without an import map`() {
         val page = client.send(
             HttpRequest.newBuilder(URI.create("http://localhost:$port/plain")).GET().build(),
             HttpResponse.BodyHandlers.ofString(),
         )
         assertEquals(200, page.statusCode())
-        assertTrue("type=\"importmap\"" in page.body(), page.body())
+        assertFalse("type=\"importmap\"" in page.body(), page.body())
         assertTrue(Regex("src=\"/_bml/content/app-[a-f0-9]{64}\\.js\\?_ts=[a-f0-9]+\"").containsMatchIn(page.body()), page.body())
         assertFalse("src=\"/_bml/js/index.page.js" in page.body(), page.body())
     }
@@ -162,12 +162,15 @@ class BmlProductionCacheBustingTest {
     @Test
     fun `production page links and module imports share the deployment token`() {
         val html = client.send(HttpRequest.newBuilder(URI("http://localhost:$port/")).GET().build(), HttpResponse.BodyHandlers.ofString()).body()
-        assertTrue("importmap" in html, html)
+        assertFalse("importmap" in html, html)
         val token = checkNotNull(Regex("_ts=([a-f0-9]+)").find(html)).groupValues[1]
         val urls = Regex("(?:href|src)=\"(/_bml/[^\"]+)\"").findAll(html).map { it.groupValues[1] }.toList()
         assertEquals(4, urls.size, html)
         for (url in urls) {
-            assertEquals("_ts=$token", URI(url).rawQuery, url)
+            if (url.startsWith("/_bml/js/deploy/")) {
+                assertTrue(url.startsWith("/_bml/js/deploy/$token/"), url)
+                assertEquals(null, URI(url).rawQuery, url)
+            } else assertEquals("_ts=$token", URI(url).rawQuery, url)
             val response = client.send(HttpRequest.newBuilder(URI("http://localhost:$port$url")).GET().build(), HttpResponse.BodyHandlers.ofString())
             assertEquals(200, response.statusCode(), url)
             assertEquals("public, max-age=31536000, immutable", response.headers().firstValue("Cache-Control").orElseThrow(), url)

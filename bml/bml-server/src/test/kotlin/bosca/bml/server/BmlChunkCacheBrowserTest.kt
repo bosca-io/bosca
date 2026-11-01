@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
@@ -58,7 +59,7 @@ class BmlChunkCacheBrowserTest {
                 "prod/$entry" to """
                     import { urls } from './chunks/shared-ABCDEFGH.js';
                     const lazy = await import('./chunks/$lazy');
-                    const library = await import('/_bml/libraries/key/modules/widget-ABCDEFGH.js');
+                    const library = await import('./libraries/key/modules/widget-ABCDEFGH.js');
                     document.getElementById('result').textContent = JSON.stringify([import.meta.url, ...urls, lazy.url, ...library.urls]);
                     document.getElementById('result').dataset.complete = 'true';
                 """.trimIndent(),
@@ -89,9 +90,7 @@ class BmlChunkCacheBrowserTest {
                 if (path == "app/client-manifest.json") manifest.encodeToByteArray()
                 else resources[path.removePrefix("app/")]?.encodeToByteArray()
             }
-            val expectedPaths = scripts.keys.map { path ->
-                if (path.startsWith("prod/")) BmlClientAssets.URL_PREFIX + path.removePrefix("prod/") else "/_bml/$path"
-            }.toSet()
+            val expectedFiles = scripts.keys.map { it.removePrefix("prod/") }.toSet()
             val requests = ConcurrentLinkedQueue<Pair<String, String?>>()
             val page = object : BmlPageRenderer, BmlBundledPage {
                 override val route = "/"
@@ -105,7 +104,7 @@ class BmlChunkCacheBrowserTest {
             val app = BoscaApplication(ApplicationConfig.load("bosca:\n  server:\n    port: $port\n    drain-timeout-ms: 0\n".byteInputStream()))
             app.install(object : CallMiddleware {
                 override suspend fun beforeCall(call: ServerCall) {
-                    if (call.request.path.endsWith(".js")) requests.add(call.request.path to call.request.queryParameters["_ts"])
+                    if (call.request.path.endsWith(".js")) requests.add(call.request.path to call.request.path.substringAfter("/deploy/", "").substringBefore('/'))
                 }
             })
             server.install(app)
@@ -117,12 +116,14 @@ class BmlChunkCacheBrowserTest {
                 val html = HttpClient.newHttpClient().use { client ->
                     client.send(HttpRequest.newBuilder(URI("http://localhost:$port/")).GET().build(), HttpResponse.BodyHandlers.ofString()).body()
                 }
-                val token = checkNotNull(Regex("_ts=([0-9a-f]+)").find(html)?.groupValues?.get(1)) { html }
+                assertFalse("importmap" in html, html)
+                val token = checkNotNull(Regex("/_bml/js/deploy/([0-9a-f]+)/").find(html)?.groupValues?.get(1)) { html }
+                val expectedPaths = expectedFiles.map { "/_bml/js/deploy/$token/$it" }.toSet()
                 if (previousToken != null) assertNotEquals(previousToken, token, "A new deployment versions unchanged chunks")
                 val result = browser.result("http://localhost:$port/?visit=$version")
                 val urls = Json.parseToJsonElement(result).jsonArray.map { URI(it.jsonPrimitive.content) }
                 assertEquals(expectedPaths, urls.map { it.path }.toSet())
-                urls.forEach { assertEquals("_ts=$token", it.rawQuery, it.toString()) }
+                urls.forEach { assertEquals(null, it.rawQuery, it.toString()) }
                 assertEquals(expectedPaths, requests.map { it.first }.toSet(), "Every module is downloaded for the new deployment")
                 requests.forEach { assertEquals(token, it.second, it.first) }
                 requests.clear()

@@ -120,9 +120,11 @@ module closure in its first-load figures.
 
 Production page entries and shared chunks use content-hashed filenames. The server selects each
 page's entry from the packaged build metadata. The entry, shared chunks, nested imports and lazy
-imports use the same `_ts` deployment token as the page's styles and global script. An import map
-versions module references before any module executes. A new deployment changes that token even
-when a module's bytes are unchanged; cached navigation within a deployment reuses the module graph.
+imports use a shared `/_bml/js/deploy/<identifier>/` URL root. The identifier matches the `_ts`
+deployment token on the page's styles and global script. Bundled BML module references are relative,
+so static, nested and lazy imports remain beneath that root without an import map. A new deployment
+changes the identifier even when a module's bytes are unchanged; cached navigation within a
+deployment reuses the module graph.
 
 Library styles, fonts and other bundled resources, plus the host's global styles and scripts, use
 content-addressed URLs. Hashed assets are cached immutably; plain asset URLs revalidate.

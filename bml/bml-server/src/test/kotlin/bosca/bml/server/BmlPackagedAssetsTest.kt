@@ -123,7 +123,13 @@ class BmlPackagedAssetsTest {
                 )
 
                 val html = get("/").body()
-                assertTrue("importmap" in html && "_ts=" in html, html)
+                assertTrue("importmap" !in html && "/_bml/js/deploy/" in html, html)
+                val token = checkNotNull(Regex("/_bml/js/deploy/([a-f0-9]+)/").find(html)).groupValues[1]
+                val deployed = get("/_bml/js/deploy/$token/index.page.js")
+                assertEquals(200, deployed.statusCode())
+                assertEquals("public, max-age=31536000, immutable", deployed.headers().firstValue("Cache-Control").orElseThrow())
+                assertEquals(404, get("/_bml/js/deploy/wrong/index.page.js").statusCode())
+                assertEquals(404, get("/_bml/js/deploy/$token/unknown.js").statusCode())
                 for ((path, expected) in listOf(
                     "/_bml/js/index.page.js" to "no-cache",
                     "/_bml/js/chunks/chunk-ABCDEFGH.js" to "public, max-age=31536000, immutable",
