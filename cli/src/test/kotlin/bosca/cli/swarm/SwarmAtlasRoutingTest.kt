@@ -128,6 +128,10 @@ class SwarmAtlasRoutingTest {
                         "/_bml/content/geist-latin-${"c".repeat(64)}.woff2",
                         "/_bml/global/logo-ABCDEFGH.svg",
                         "/_bml/js/chunks/chunk-ABCDEFGH.js",
+                        "/_bml/js/deploy/${"d".repeat(64)}/index.page-ABCDEFGH.js",
+                        "/_bml/js/deploy/${"d".repeat(64)}/chunks/chunk-ABCDEFGH.js",
+                        "/_bml/js/deploy/${"d".repeat(64)}/chunks/lazy-ABCDEFGH.js",
+                        "/_bml/js/deploy/${"d".repeat(64)}/libraries/${"a".repeat(64)}/chunks/chunk-ABCDEFGH.js",
                         "/_bml/libraries/${"a".repeat(64)}/styles/design.css",
                         "/_bml/libraries/${"a".repeat(64)}/chunks/chunk-ABCDEFGH.js",
                         "/_bml/libraries/${"a".repeat(64)}/fonts/geist-latin.woff2").forEach { request("atlas", it, "ui") }

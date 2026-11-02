@@ -575,7 +575,7 @@ class BmlBinaryRuntimeTest {
                         }
                         scripts.forEach(::download)
                         val check = File(clientRoot, "check.mjs").apply { writeText("""
-                            ${scripts.joinToString("\n") { "await import('./" + it.substringBefore('?').substringAfterLast('/') + "');" }}
+                            ${scripts.joinToString("\n") { "await import(" + JsonPrimitive("./" + it.substringBefore('?').removePrefix("/_bml/js/")) + ");" }}
                             if (globalThis.runtimeStarts !== 1) throw new Error('runtime initialized ' + globalThis.runtimeStarts + ' times');
                             if (globalThis.registered.length !== 2) throw new Error('wrong components ' + globalThis.registered);
                             if (JSON.stringify(globalThis.libraryOrder) !== '["base","wrapper"]') throw new Error('wrong global order ' + globalThis.libraryOrder);

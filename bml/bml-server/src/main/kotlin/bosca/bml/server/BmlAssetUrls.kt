@@ -21,6 +21,14 @@ internal object BmlAssetUrls {
         return if (dot > url.lastIndexOf('/')) "${url.take(dot)}-$hash${url.substring(dot)}" else "$url-$hash"
     }
 
+    /** Module paths share a deployment root so relative static and lazy imports retain its identity. */
+    fun module(url: String, cacheToken: String?): String {
+        if (cacheToken == null) return url
+        val token = URLEncoder.encode(cacheToken, Charsets.UTF_8).replace("+", "%20")
+        val path = url.removePrefix(BmlClientAssets.URL_PREFIX)
+        return "${BmlClientAssets.URL_PREFIX}deploy/$token/$path"
+    }
+
     fun versioned(url: String, cacheToken: String?): String {
         if (cacheToken == null) return url
         val separator = if ('?' in url) '&' else '?'

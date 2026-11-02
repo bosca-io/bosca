@@ -596,9 +596,10 @@ class BmlServer(
             html = BmlClientAssets.injectInstallationIdentity(html)
         }
         html = BmlClientAssets.injectPageContext(html, page.route, context.requestPath, context.lang)
+        val cacheToken = current.assetCacheToken.takeUnless { current.development }
         val pageJsFile = current.productionPlan?.pageJsFile?.get(page.route)
         val libraryAssets = (page as? BmlBundledPage)?.assets
-        html = BmlStyleAssets.injectLibraryStyles(html, libraryAssets?.stylesByRoute?.get(page.route).orEmpty().map { current.contentAssets?.url(it) ?: it }, null)
+        html = BmlStyleAssets.injectLibraryStyles(html, libraryAssets?.stylesByRoute?.get(page.route).orEmpty().map { current.contentAssets?.url(it) ?: it }, cacheToken)
         // CSS: in production, at most two links — the normalized global stylesheet and the page's
         // merged stylesheet. In dev, the global plus one chunk per rendered component,
         // so an edit invalidates one small file.
@@ -607,7 +608,7 @@ class BmlServer(
                 BmlStyleAssets.cssLinksProduction(
                     current.servedGlobalCss != null,
                     plan.pageCssUrl(page.route),
-                    null,
+                    cacheToken,
                     current.contentAssets?.urls.orEmpty(),
                 )
             } ?: run {
@@ -622,12 +623,12 @@ class BmlServer(
         }
         // Scripts (before </body>): global app.js, then the page's JS, then dev-reload.
         if (current.globalJs != null) {
-            html = BmlClientAssets.injectUrl(html, current.contentAssets?.url(BmlStyleAssets.GLOBAL_JS_URL) ?: BmlStyleAssets.GLOBAL_JS_URL)
+            html = BmlClientAssets.injectUrl(html, current.contentAssets?.url(BmlStyleAssets.GLOBAL_JS_URL) ?: BmlStyleAssets.GLOBAL_JS_URL, cacheToken)
         }
         if (current.productionPlan != null) {
             // The entry imports this page's components and content-hashed shared modules.
             pageJsFile?.let {
-                html = BmlClientAssets.inject(html, current.contentAssets?.entries?.get(it) ?: it)
+                html = BmlClientAssets.inject(html, current.contentAssets?.entries?.get(it) ?: it, cacheToken)
             }
         } else {
             // Dev: the page's own module plus one module per closure component, so an edit
@@ -918,10 +919,40 @@ class BmlServer(
             val path = "global/${call.pathParameters["path"].orEmpty()}"
             respondPackagedAsset(current, call, "no-cache", path, bmlAssetContentType(path))
         }
+        router.get("${BmlClientAssets.URL_PREFIX}deploy/{deployment}/{path...}") {
+            val current = state.get()
+            val path = call.pathParameters["path"].orEmpty()
+            if (current.development || call.pathParameters["deployment"] != current.assetCacheToken ||
+                !bosca.bml.library.BmlApplicationAssets.isSafePath(path) || !path.endsWith(".js")
+            ) {
+                call.respond(bosca.server.HttpStatusCode.NotFound)
+            } else if (path.startsWith("libraries/") || current.clientDir == null) {
+                val resource = if (path.startsWith("libraries/")) path else "prod/$path"
+                respondPackagedAsset(current, call, PRODUCTION_ASSET_CACHE_CONTROL, resource, bmlAssetContentType(path))
+            } else {
+                val bytes = current.packagedAssetBytes["deployment/$path"] ?: kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val root = current.clientDir.canonicalFile
+                    val file = root.resolve(path).canonicalFile
+                    if (!file.toPath().startsWith(root.toPath()) || !file.isFile) null
+                    else current.packagedAssetBytes.computeIfAbsent("deployment/$path") { file.readBytes() }
+                }
+                if (bytes == null) {
+                    call.respond(bosca.server.HttpStatusCode.NotFound)
+                } else {
+                    val etag = etagForBody(bytes)
+                    call.response.header(HttpHeaders.CacheControl, PRODUCTION_ASSET_CACHE_CONTROL)
+                    call.response.header(HttpHeaders.ETag, etag)
+                    if (isNotModified(call, SharedCacheValidator(etag))) call.respond(bosca.server.HttpStatusCode.NotModified)
+                    else call.respondBytes(bytes, bmlAssetContentType(path))
+                }
+            }
+        }
         initial.clientDir?.let { dir ->
             router.staticFiles(BmlClientAssets.URL_PREFIX, dir)
             application.installHandler { call, next ->
-                if (call.request.path.startsWith(BmlClientAssets.URL_PREFIX)) {
+                if (call.request.path.startsWith(BmlClientAssets.URL_PREFIX) &&
+                    !call.request.path.startsWith("${BmlClientAssets.URL_PREFIX}deploy/")
+                ) {
                     call.response.header(HttpHeaders.CacheControl, assetCacheControl(state.get(), call))
                 }
                 next()
@@ -1579,13 +1610,14 @@ class BmlServer(
         call.attributes[CACHE_CONTROL_SET_ATTRIBUTE] = true
     }
 
-    /** Emitted content-hashed modules are immutable; logical module URLs revalidate. */
+    /** Deployment-versioned assets and emitted content-hashed modules are immutable. */
     private fun assetCacheControl(
         current: RuntimeState,
         call: bosca.server.ServerCall,
     ): String {
         val hashedModule = Regex("-[A-Z0-9]{8}\\.js$").containsMatchIn(call.request.path)
-        return if (!current.development && hashedModule) PRODUCTION_ASSET_CACHE_CONTROL else "no-cache"
+        val versioned = call.request.queryParameters["_ts"] == current.assetCacheToken
+        return if (!current.development && (versioned || hashedModule)) PRODUCTION_ASSET_CACHE_CONTROL else "no-cache"
     }
 
     /**
