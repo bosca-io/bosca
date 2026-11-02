@@ -107,19 +107,19 @@ class SwarmServicesTest {
     }
 
     @Test
-    fun `stateful services stay on the manager and application services on the workers`() {
+    fun `stateful services stay on the data node and applications use application labels`() {
         val infra = services(infraStack(config))
         listOf("postgres", "pgbouncer", "nats", "dragonfly", "meilisearch", "s3proxy", "trino").forEach {
             assertEquals("node.labels.bosca_data == true", constraint(infra.getValue(it)), it)
         }
         listOf("imageprocessor", "text-embeddings-inference").forEach {
-            assertEquals("node.labels.bosca_data != true", constraint(infra.getValue(it)), it)
+            assertEquals("node.labels.bosca_application == true", constraint(infra.getValue(it)), it)
         }
         assertEquals("node.labels.bosca_data == true", constraint(services(edgeStack(config)).getValue("caddy")))
         val site = services(siteStack(config, site))
         listOf("server", "runner", "collector", "git", "artifacts", "atlas", "studio", "bml-message-server",
             "profiles-web", "notifications-web").forEach {
-            assertEquals("node.labels.bosca_data != true", constraint(site.getValue(it)), it)
+            assertEquals("node.labels.bosca_application == true", constraint(site.getValue(it)), it)
         }
         // The loader and TensorFlow Serving share a node-local volume, so they must land on the same node.
         listOf("recommendation-trainer", "recommendation-model-loader", "tf-serving").forEach {
