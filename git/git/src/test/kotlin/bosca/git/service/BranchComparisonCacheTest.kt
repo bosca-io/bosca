@@ -6,11 +6,15 @@ import io.mockk.spyk
 import kotlinx.coroutines.CancellationException
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription
 import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository
+import org.eclipse.jgit.lib.AnyObjectId
 import org.eclipse.jgit.lib.CommitBuilder
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.PersonIdent
 import org.eclipse.jgit.lib.TreeFormatter
+import java.time.Instant
+import java.time.ZoneOffset
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -23,12 +27,14 @@ class BranchComparisonCacheTest {
     private val repositoryId = UUID.random()
     private val cache = BranchComparisonCache()
     private var sequence = 0
+    private var increasingCommitTimes = false
 
     @AfterTest
     fun close() = repository.close()
 
     private fun commit(vararg parents: ObjectId): ObjectId = repository.newObjectInserter().use { inserter ->
-        val author = PersonIdent("Test", "test@example.com")
+        val timestamp = Instant.ofEpochSecond(1_700_000_000L + if (increasingCommitTimes) sequence else 0)
+        val author = PersonIdent("Test", "test@example.com", timestamp, ZoneOffset.UTC)
         val commit = CommitBuilder().apply {
             setTreeId(inserter.insert(TreeFormatter()))
             setAuthor(author)
@@ -56,17 +62,25 @@ class BranchComparisonCacheTest {
     }
 
     @Test
-    fun `shared history is read once across many heads and reused by concurrent requests`() {
+    fun `shared history is read once across many heads and reused by concurrent requests`() = assertSharedHistoryReads()
+
+    @Test
+    fun `shared history reads remain coalesced with increasing commit times`() {
+        increasingCommitTimes = true
+        assertSharedHistoryReads()
+    }
+
+    private fun assertSharedHistoryReads() {
         var shared = commit()
         repeat(100) { shared = commit(shared) }
         val main = commit(shared)
         val heads = List(41) { commit(shared) }.toSet()
-        val reads = AtomicInteger()
+        val reads = ConcurrentHashMap<ObjectId, AtomicInteger>()
         val observed = spyk(repository)
         every { observed.newObjectReader() } answers {
             spyk(repository.newObjectReader()).also { reader ->
                 every { reader.open(any(), any()) } answers {
-                    reads.incrementAndGet()
+                    reads.computeIfAbsent(firstArg<AnyObjectId>().copy()) { AtomicInteger() }.incrementAndGet()
                     callOriginal()
                 }
             }
@@ -76,9 +90,11 @@ class BranchComparisonCacheTest {
             CompletableFuture.supplyAsync { cache.counts(repositoryId, observed, main, heads) {} }
         }
         requests.forEach { request -> assertTrue(request.join().values.all { it == (1 to 1) }) }
-        assertEquals(143, reads.get(), "Each commit must be read once across all branches and concurrent requests")
+        assertTrue((heads + main).all(reads::containsKey), "Every compared head must be read")
+        assertTrue(reads.values.all { it.get() == 1 }, "Commit objects must not be read repeatedly across branches or requests")
+        val firstReadCounts = reads.mapValues { it.value.get() }
         cache.counts(repositoryId, observed, main, heads.reversed().toSet()) {}
-        assertEquals(143, reads.get(), "Ref order must not invalidate immutable comparison results")
+        assertEquals(firstReadCounts, reads.mapValues { it.value.get() }, "Ref order must not invalidate immutable comparison results")
     }
 
     @Test
