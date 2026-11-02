@@ -102,6 +102,17 @@
     }
   </style>
   <script client scoped>
+    // Opening the form consumes the URL request; refresh and Back return to the catalog.
+    const url = new URL(location.href);
+    if (url.searchParams.has("pipeline")) {
+      url.searchParams.delete("pipeline");
+      url.searchParams.delete("runRef");
+      history.replaceState(history.state, "", url);
+    }
+    ctx.on(window, "pagehide", () => {
+      ctx.root.querySelector<HTMLDialogElement>("dialog")
+        ?.dispatchEvent(new Event("cancel", { cancelable: true }));
+    });
     const captureInputs = (event: Event) => {
       const form =
         event.target instanceof Element
