@@ -36,7 +36,7 @@ spec:
           imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.image }}
           securityContext:
             {{- include "bosca-common.securityContext" . | nindent 12 }}
-          args: ["-config=/app/config/application.yaml"]
+          args: ["-XX:MaxRAMPercentage=75.0", "-config=/app/config/application.yaml"]
           ports:
             - name: http
               containerPort: 8094
@@ -59,8 +59,6 @@ spec:
               value: {{ include "bosca-atlas-server.artifactsEndpoint" . | quote }}
             - name: ATLAS_ARTIFACTS_URL
               value: {{ .Values.appConfig.artifactsUrl | default (include "bosca-atlas-server.atlasUrl" .) | quote }}
-            - name: JAVA_OPTS
-              value: "-XX:MaxRAMPercentage=75.0"
             - name: HOST_IP
               valueFrom:
                 fieldRef:

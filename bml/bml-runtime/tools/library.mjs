@@ -1,5 +1,6 @@
 import { build, transform } from "esbuild"
 import { parse } from "acorn"
+import { relativeBmlModuleImports } from "./module-urls.mjs"
 import { assetLoaders, validateCssOutputs } from "./css-assets.mjs"
 import { dependencyGraph, dependencyPlugin, installedPackageRoots } from "./dependencies.mjs"
 import { createHash } from "node:crypto"
@@ -275,8 +276,9 @@ export async function bundleLibraryAssets({ manifestPath, inDir, sourceRoot, cli
         } else if (output.path.endsWith(".css")) {
           content = (await transform(output.text, { loader: "css", minify: true, legalComments: "eof" })).code
         }
-        write(output.path, content)
         const path = slash(relative(root, output.path))
+        if (path.endsWith(".js")) content = relativeBmlModuleImports(content, `libraries/${libraryAssetNamespace(library, version)}/${path}`)
+        write(output.path, content)
         const kind = entryKinds.get(path)
         const css = info.cssBundle ? slash(relative(root, resolve(workingDirectory, info.cssBundle))) : null
         if (kind?.module && css) modules[kind.module].styles.push(css)

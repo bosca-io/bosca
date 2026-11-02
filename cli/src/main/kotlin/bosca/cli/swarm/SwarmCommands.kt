@@ -147,11 +147,12 @@ class SwarmDeployCommand : SwarmAction(name = "deploy") {
     override fun help(context: Context) = "Deploy generated stacks to an initialized Swarm over SSH"
     private val output by option("--output", help = "Generated bundle directory")
     private val skipPublicCheck by option("--skip-public-check", help = "Skip public HTTPS readiness checks").flag()
+    private val registryLogin by option("--registry-login", help = "Log in to active image registries using configured credentials before deployment").flag()
     override fun run() {
         val (path, config) = configuration(deploy = true)
         try {
             withDeploymentBundle(config, path, output) { rendered ->
-                deploySwarm(config, rendered, skipPublicCheck)
+                deploySwarm(config, rendered, skipPublicCheck, registryLogin)
             }
         } catch (e: Exception) {
             throw CliktError(e.message ?: "Swarm deployment failed")
@@ -162,6 +163,7 @@ class SwarmDeployCommand : SwarmAction(name = "deploy") {
 class SwarmSetupTokensCommand : SwarmAction(name = "setup-tokens") {
     override fun help(context: Context) = "Create service tokens after the initial deployment and apply them"
     private val skipPublicCheck by option("--skip-public-check", help = "Skip public HTTPS readiness checks").flag()
+    private val registryLogin by option("--registry-login", help = "Log in to active image registries using configured credentials before deployment").flag()
 
     override fun run() = runBlocking {
         val path = sourcePath()
@@ -180,7 +182,7 @@ class SwarmSetupTokensCommand : SwarmAction(name = "setup-tokens") {
             }
             try {
                 withDeploymentBundle(updated, path, null) { rendered ->
-                    deploySwarm(updated, rendered, skipPublicCheck)
+                    deploySwarm(updated, rendered, skipPublicCheck, registryLogin)
                 }
             } catch (e: CancellationException) {
                 throw e

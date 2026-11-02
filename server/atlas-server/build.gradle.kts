@@ -135,6 +135,7 @@ graalvmNative {
             imageName.set("bosca-atlas-server")
             mainClass.set("bosca.atlas.server.ApplicationKt")
             buildArgs.add("-O3")
+            buildArgs.add("-H:+IncludeAllLocales")
             buildArgs.add("-H:+GenerateEmbeddedResourcesFile")
             buildArgs.addAll(providers.gradleProperty("bosca.native.march").map { listOf("-march=$it") }.orElse(emptyList()))
             buildArgs.addAll(listOf("--exclude-config", ".*/.*.jar", "^/META-INF/native-image/org\\.jline/.*"))

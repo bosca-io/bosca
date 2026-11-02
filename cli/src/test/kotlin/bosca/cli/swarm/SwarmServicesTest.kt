@@ -35,6 +35,14 @@ class SwarmServicesTest {
             config.sites.flatMap { services(siteStack(config, it)).entries }.associate { it.key to it.value }
 
     @Test
+    fun `long running services restart after clean exits as well as failures`() {
+        allServices(config).forEach { (name, service) ->
+            val restart = deployOf(service).getValue("restart_policy") as Map<String, Any>
+            assertEquals("any", restart["condition"], name)
+        }
+    }
+
+    @Test
     fun `FUMS is enabled explicitly on the collector only by default`() {
         val stack = services(siteStack(config, site))
         assertEquals("true", environment(stack.getValue("collector"))["FUMS_TRANSFORM_ENABLED"])
@@ -78,6 +86,7 @@ class SwarmServicesTest {
         val runner = services(siteStack(config, site)).getValue("runner")
         assertEquals(config.images.getValue("runner"), runner["image"])
         assertNull(runner["command"])
+        assertEquals("-XX:MaxRAMPercentage=75.0", environment(runner)["JAVA_OPTS"])
         assertNull(runner["configs"])
         assertEquals("true", environment(runner)["ANALYTICS_PROCESSOR_ENABLED"])
         val application = generateSequence(Path.of("").toAbsolutePath()) { it.parent }
@@ -107,19 +116,19 @@ class SwarmServicesTest {
     }
 
     @Test
-    fun `stateful services stay on the manager and application services on the workers`() {
+    fun `stateful services stay on the data node and applications use application labels`() {
         val infra = services(infraStack(config))
         listOf("postgres", "pgbouncer", "nats", "dragonfly", "meilisearch", "s3proxy", "trino").forEach {
             assertEquals("node.labels.bosca_data == true", constraint(infra.getValue(it)), it)
         }
         listOf("imageprocessor", "text-embeddings-inference").forEach {
-            assertEquals("node.labels.bosca_data != true", constraint(infra.getValue(it)), it)
+            assertEquals("node.labels.bosca_application == true", constraint(infra.getValue(it)), it)
         }
         assertEquals("node.labels.bosca_data == true", constraint(services(edgeStack(config)).getValue("caddy")))
         val site = services(siteStack(config, site))
         listOf("server", "runner", "collector", "git", "artifacts", "atlas", "studio", "bml-message-server",
             "profiles-web", "notifications-web").forEach {
-            assertEquals("node.labels.bosca_data != true", constraint(site.getValue(it)), it)
+            assertEquals("node.labels.bosca_application == true", constraint(site.getValue(it)), it)
         }
         // The loader and TensorFlow Serving share a node-local volume, so they must land on the same node.
         listOf("recommendation-trainer", "recommendation-model-loader", "tf-serving").forEach {
@@ -168,7 +177,7 @@ class SwarmServicesTest {
     fun `memory limits follow the production Helm values while CPUs remain uncapped`() {
         val site = services(siteStack(config, site))
         val expected = mapOf(
-            "server" to "768M", "collector" to "512M", "git" to "4G", "atlas" to "4G",
+            "server" to "768M", "runner" to "2G", "collector" to "512M", "git" to "1G", "atlas" to "4G",
             "artifacts" to "2G", "studio" to "1536M", "bml-message-server" to "1G",
             "profiles-web" to "512M", "notifications-web" to "512M",
             "recommendation-trainer" to "4G", "recommendation-model-loader" to "256M",
@@ -177,12 +186,98 @@ class SwarmServicesTest {
         expected.forEach { (name, limit) ->
             assertEquals(mapOf("memory" to limit), limits(site.getValue(name)), name)
         }
-        assertNull(limits(site.getValue("runner")), "production sets no runner limit")
         val infra = services(infraStack(config))
         assertEquals(mapOf("memory" to "6G"), limits(infra.getValue("text-embeddings-inference")))
         assertEquals(mapOf("memory" to "1G"), limits(infra.getValue("imageprocessor")))
         allServices(config).forEach { (name, service) ->
             assertFalse(limits(service)?.containsKey("cpus") == true, name)
+        }
+    }
+
+    @Test
+    fun `rendered Bosca services pass heap sizing through their native or JVM entrypoint`() {
+        val nativeHeapPercentages = mapOf(
+            "server" to 65, "collector" to 75, "atlas" to 75, "atlas-ui" to 75,
+            "git" to 75, "artifacts" to 75, "bml-message-server" to 75,
+            "profiles-web" to 75, "notifications-web" to 75,
+        )
+        val directory = Files.createTempDirectory("swarm-heap-settings-")
+        val destination = directory.resolve("output")
+        try {
+            for (redirects in listOf(null, listOf("https://${site.hosts.studio}"))) {
+                val configuredSite = site.copy(
+                    oauthRedirects = redirects,
+                    atlasUiServer = SwarmStandaloneServer(true),
+                )
+                renderSwarm(config.copy(sites = listOf(configuredSite)), destination)
+                val rendered = Yaml().load<Map<String, Any>>(
+                    Files.readString(destination.resolve("stacks/${site.id}.yml")),
+                )
+                val stack = services(rendered)
+                for ((name, percentage) in nativeHeapPercentages) {
+                    val service = stack.getValue(name)
+                    val arguments = service.getValue("command") as List<String>
+                    val heapOption = if (name == "bml-message-server") "-XX:MaximumHeapSizePercent=$percentage"
+                        else "-XX:MaxRAMPercentage=$percentage.0"
+                    assertEquals(heapOption, arguments.first(), name)
+                    assertNull(environment(service)["JAVA_OPTS"], name)
+                }
+                val runner = stack.getValue("runner")
+                assertEquals("-XX:MaxRAMPercentage=75.0", environment(runner)["JAVA_OPTS"])
+                assertEquals(mapOf("memory" to "2G"), limits(runner))
+                assertEquals(
+                    if (redirects == null) null else listOf("-config=/config/application.yaml"),
+                    runner["command"],
+                )
+            }
+        } finally {
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `server heap policy preserves bundled and mounted application configurations`() {
+        for (redirects in listOf(null, listOf("https://${site.hosts.studio}"))) {
+            val configured = site.copy(oauthRedirects = redirects)
+            val server = services(siteStack(config, configured)).getValue("server")
+            val expected = listOf("-XX:MaxRAMPercentage=65.0") +
+                if (redirects != null) listOf("-config=/config/application.yaml") else emptyList()
+            assertEquals(expected, server["command"])
+        }
+    }
+
+    @Test
+    fun `runner limits survive configuration saves and vary independently by site`() {
+        val directory = Files.createTempDirectory("swarm-runner-memory-")
+        try {
+            val largerSite = site.copy(runnerMemory = "4G")
+            val configured = config.copy(sites = listOf(largerSite, config.sites[1]))
+            configured.validate()
+            val path = directory.resolve("swarm.json")
+            saveConfig(path, configured)
+            val loaded = loadConfig(path)
+            assertEquals(configured, loaded)
+            val destination = directory.resolve("output")
+            renderSwarm(loaded, destination)
+            for ((site, memory) in loaded.sites.zip(listOf("4G", "2G"))) {
+                val rendered = Yaml().load<Map<String, Any>>(
+                    Files.readString(destination.resolve("stacks/${site.id}.yml")),
+                )
+                val runner = services(rendered).getValue("runner")
+                assertEquals(mapOf("memory" to memory), limits(runner), site.id)
+                assertEquals("-XX:MaxRAMPercentage=75.0", environment(runner)["JAVA_OPTS"], site.id)
+            }
+            val legacy = swarmJson.encodeToString(SwarmConfig.serializer(), config)
+                .replace(Regex("\\s*\\\"runnerMemory\\\"\\s*:\\s*\\\"2G\\\",?"), "")
+            assertTrue(swarmJson.decodeFromString(SwarmConfig.serializer(), legacy).sites.all { it.runnerMemory == "2G" })
+            listOf("", "0", "-1G", "2G\n", "invalid").forEach { memory ->
+                val failure = assertFailsWith<IllegalArgumentException> {
+                    config.copy(sites = listOf(site.copy(runnerMemory = memory))).validate()
+                }
+                assertTrue(failure.message.orEmpty().contains("runnerMemory"))
+            }
+        } finally {
+            directory.toFile().deleteRecursively()
         }
     }
 

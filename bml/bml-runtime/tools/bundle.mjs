@@ -1,4 +1,5 @@
 import { build } from "esbuild"
+import { relativeBmlModuleImports } from "./module-urls.mjs"
 import { bundleLibraryAssets } from "./library.mjs"
 import { assetLoaders, publicCssUrls, validateCssOutputs } from "./css-assets.mjs"
 import { dependencyGraph, dependencyPlugin, installedPackageRoots, linkedDependencies } from "./dependencies.mjs"
@@ -157,6 +158,12 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
       } }],
       ...(runtime ? { alias: { "@bosca/bml": resolve(runtime) } } : {}),
     }, inDir)
+    // Application and library modules share one deployment root in the serving URL.
+    for (const path of Object.keys(result.metafile.outputs).filter(path => path.endsWith(".js"))) {
+      const file = resolve(inDir, path)
+      const modulePath = relative(resolve(outdir), file).replaceAll("\\", "/")
+      writeFileSync(file, relativeBmlModuleImports(readFileSync(file, "utf8"), modulePath))
+    }
     // Metrics use the emitted graph, rather than treating a tiny entry as the whole page payload.
     const outputs = result.metafile.outputs
     const imports = {}

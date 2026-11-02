@@ -102,9 +102,14 @@ async function pressKey(key) {
     });
 }
 async function nav(path) {
+  const expected = new URL(path, base);
+  if (expected.searchParams.has("pipeline")) {
+    expected.searchParams.delete("pipeline");
+    expected.searchParams.delete("runRef");
+  }
   await call("Page.navigate", { url: base + path });
   await until(
-    `location.href === ${JSON.stringify(base + path)} && document.readyState==='complete' && document.querySelector('main') && document.querySelector('[data-bml-ref=signout]') && !document.querySelector('[data-bml-ref=signout]').disabled`,
+    `location.href === ${JSON.stringify(expected.href)} && document.readyState==='complete' && document.querySelector('main') && document.querySelector('[data-bml-ref=signout]') && !document.querySelector('[data-bml-ref=signout]').disabled`,
   );
   await ev("document.fonts.ready");
   await new Promise((r) => setTimeout(r, 180));
@@ -144,6 +149,23 @@ for (const width of [1440, 390]) {
   await writeFile(`${process.env.GIT_UI_ARTIFACT_DIR}/pipeline-history-${width}.png`, Buffer.from((await call("Page.captureScreenshot", { format: "png", captureBeyondViewport: false })).data, "base64"));
 }
 await call("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+// The URL opens a form once in both catalogs, while retaining the browsing context.
+for (const path of [
+  "/pipelines?owner=owner&repo=repo&offset=50&pipeline=pipeline&runRef=refs%2Fheads%2Fmain#catalog",
+  "/repositories/repo?tab=pipelines&pipeline=pipeline&ref=main",
+]) {
+  await nav(path);
+  await until('document.querySelector(".pipeline-trigger dialog")?.matches(":modal")');
+  const clean = new URL(path, base);
+  clean.searchParams.delete("pipeline");
+  clean.searchParams.delete("runRef");
+  assert.equal(await ev("location.href"), clean.href, "Opening consumes only the manual-run URL parameters");
+  await ev('document.querySelector(".pipeline-trigger dialog [data-bml-ref=cancel]").click()');
+  await ev("window.pipelineReloadPending = true");
+  await call("Page.reload");
+  await until('!window.pipelineReloadPending && document.querySelector(".pipeline-list") && !document.querySelector("[data-bml-island*=git-pipeline-trigger]")');
+  assert.equal(await ev('document.querySelector(".pipeline-trigger dialog")'), null, "Refresh keeps the dismissed form closed");
+}
 await nav(
   "/pipelines?owner=owner&repo=repo&pipeline=pipeline&ref=refs%2Fheads%2Fmain",
 );
@@ -191,6 +213,17 @@ await ev(`
 await until(
   'location.pathname === "/pipelines/new-run" && document.body.innerText.includes("Run #3")',
 );
+await ev("history.back()");
+await until('location.pathname === "/pipelines" && document.querySelector(".pipeline-list")');
+assert.equal(await ev('new URL(location.href).searchParams.get("pipeline")'), null);
+assert.equal(await ev('document.querySelector(".pipeline-trigger dialog")?.open ?? false'), false, "Back after a successful run keeps the form closed, including cached pages");
+await ev("window.pipelineReloadPending = true");
+await call("Page.reload");
+await until('!window.pipelineReloadPending && document.querySelector(".pipeline-list") && !document.querySelector("[data-bml-island*=git-pipeline-trigger]")');
+assert.equal(await ev('document.querySelector(".pipeline-trigger dialog")'), null, "Refresh after a run keeps the form closed");
+await ev(`document.querySelector('.pipeline-list a[href*="pipeline=pipeline"]').click()`);
+await until('document.querySelector(".pipeline-trigger dialog")?.matches(":modal")');
+assert.equal(await ev('new URL(location.href).searchParams.get("pipeline")'), null, "An explicit Run click opens a fresh form and consumes its URL request");
 await nav("/pipelines/run");
 await until('document.querySelector(".step-row[data-step=step]")');
 assert.equal(await ev('document.querySelector("[data-log-step]")'), null, "Logs stay collapsed until selected");

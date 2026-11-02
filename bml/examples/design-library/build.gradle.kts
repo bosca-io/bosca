@@ -43,6 +43,7 @@ graalvmNative {
         named("main") {
             imageName.set("bml-design-consumer")
             mainClass.set("bosca.design.example.MainKt")
+            if (org.gradle.internal.os.OperatingSystem.current().isLinux) buildArgs.add("--gc=G1")
             buildArgs.addAll(listOf("--exclude-config", ".*/.*.jar", "^/META-INF/native-image/org\\.jline/.*"))
         }
     }

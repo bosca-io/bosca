@@ -54,7 +54,7 @@ internal class GitUiAssetAudit(
             assertEquals(scripts.distinct(), scripts, "$path repeats a script")
             assertEquals(styles.distinct(), styles, "$path repeats a stylesheet")
             assertEquals(1, scripts.count { Regex("""/_bml/content/app-[a-f0-9]{64}\.js""").matches(it.path) }, path)
-            assertEquals(1, scripts.count { Regex("""/_bml/js/[^/]+\.page-[A-Z0-9]{8}\.js""").matches(it.path) }, path)
+            assertEquals(1, scripts.count { Regex("""/_bml/js/deploy/[^/]+/[^/]+\.page-[A-Z0-9]{8}\.js""").matches(it.path) }, path)
             assertEquals(2, scripts.size, "$path declares global authentication and its page entry")
             assertTrue(styles.isNotEmpty(), path)
 
@@ -161,7 +161,7 @@ internal class GitUiAssetAudit(
             else -> error("Unexpected asset $uri")
         }
         // Tree-shaken shared ESM barrels can be empty; page entries, styles and fonts must have bytes.
-        assertTrue(response.body().isNotEmpty() || uri.path.startsWith("/_bml/js/chunks/"), uri.toString())
+        assertTrue(response.body().isNotEmpty() || Regex("""/_bml/js/deploy/[^/]+/chunks/[^/]+\.js""").matches(uri.path), uri.toString())
         response.body() to type
     }.first
 

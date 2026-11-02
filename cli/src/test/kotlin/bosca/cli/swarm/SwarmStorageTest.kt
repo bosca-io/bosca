@@ -136,7 +136,12 @@ class SwarmStorageTest {
         val expected = expectedServices(config)
         val bundle = Files.createTempDirectory("swarm-retention-flow-")
         try {
-            for (failUpdate in listOf(true, false)) {
+            for ((failUpdate, loginRegistries) in listOf(true to false, false to false, false to true)) {
+                val deploymentConfig = config.copy(registryAuth = SwarmRegistryAuth(
+                    username = "operator",
+                    password = if (loginRegistries) "secret" else "",
+                    passwordEnv = "BOSCA_UNUSED_REGISTRY_PASSWORD",
+                ))
                 val calls = mutableListOf<String>()
                 var sitesDeployed = false
                 var retired = false
@@ -167,19 +172,30 @@ class SwarmStorageTest {
                         else -> ""
                     }
                 }
+                fun applyDeployment() {
+                    if (loginRegistries) {
+                        deploySwarm(deploymentConfig, bundle, skipPublicCheck = true, loginRegistries = true)
+                    } else {
+                        deploySwarm(deploymentConfig, bundle, skipPublicCheck = true)
+                    }
+                }
                 if (failUpdate) {
                     assertTrue(assertFailsWith<IllegalStateException> {
-                        deploySwarm(config, bundle, skipPublicCheck = true)
+                        applyDeployment()
                     }.message.orEmpty().contains("rollback_completed"))
                     assertFalse(retired)
                     assertFalse(calls.any { it.contains("history.XXXXXX") || it.contains("docker image rm") || it.contains("docker container rm") })
                 } else {
-                    deploySwarm(config, bundle, skipPublicCheck = true)
+                    applyDeployment()
                     assertTrue(retired)
                     assertTrue(calls.indexOfLast { it.startsWith("sudo -n docker service inspect") } < calls.indexOfFirst { it.contains("docker service rm") },
                         "Service removal must follow the final rollout readiness check")
                     assertTrue(calls.any { it.contains("history.XXXXXX") })
                 }
+                assertEquals(loginRegistries, calls.any { it.contains("docker login") })
+                assertTrue(calls.filter { it.contains("docker stack deploy") }.all {
+                    it.contains("--with-registry-auth") && it.contains("--resolve-image changed")
+                })
                 assertFalse(calls.any { it.contains("--prune") })
             }
         } finally {
