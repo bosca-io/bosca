@@ -42,6 +42,7 @@ graalvmNative {
             imageName.set("bosca-atlas-ui-server")
             mainClass.set("bosca.atlas.ui.server.ApplicationKt")
             buildArgs.add("-O3")
+            buildArgs.add("-H:+IncludeAllLocales")
             buildArgs.addAll(providers.gradleProperty("bosca.native.march").map { listOf("-march=$it") }.orElse(emptyList()))
             buildArgs.addAll(listOf("--exclude-config", ".*/.*.jar", "^/META-INF/native-image/org\\.jline/.*"))
             if (org.gradle.internal.os.OperatingSystem.current().isLinux) buildArgs.add("--gc=G1")

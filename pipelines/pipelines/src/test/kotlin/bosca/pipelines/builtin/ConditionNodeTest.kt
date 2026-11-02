@@ -18,6 +18,7 @@ import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -29,6 +30,21 @@ class ConditionNodeTest {
 
     private fun inputs(value: JsonElement) = NodeInputs(mapOf("in" to PipelineValue.ofJson(value)))
     private fun tier(t: String) = buildJsonObject { put("tier", t) }
+
+    @Test
+    fun `recipient count routes populated empty and absent lists`() = runTest {
+        val node = ConditionNode(id = "cond", name = "Has recipients", expression = "\$count(recipientIds) > 0")
+        for ((payload, port) in listOf(
+            """{"recipientIds":["recipient"]}""" to "true",
+            """{"recipientIds":[]}""" to "false",
+            "{}" to "false",
+        )) {
+            val value = Json.parseToJsonElement(payload)
+            val result = node.executeForTestValue(context, inputs(value))
+            assertEquals(port, result.port)
+            assertEquals(value, result.value)
+        }
+    }
 
     @Test
     fun `a truthy expression routes the value to the true port`() = runTest {
@@ -80,6 +96,7 @@ class ConditionNodeTest {
         val failure = assertFailsWith<IllegalStateException> { node.executeForTestValue(context, inputs(tier("gold"))) }
         val message = failure.message ?: ""
         assertTrue("invalid expression" in message, "message was: $message")
+        assertNotNull(failure.cause, "the original JSONata failure must be retained")
         assertTrue("'cond-id'" in message, "blank name falls back to id; message was: $message")
         assertTrue("this is not >< valid jsonata (" in message, "the expression is echoed; message was: $message")
     }
@@ -90,6 +107,7 @@ class ConditionNodeTest {
         val failure = assertFailsWith<IllegalStateException> { node.executeForTestValue(context, inputs(tier("gold"))) }
         val message = failure.message ?: ""
         assertTrue("invalid expression" in message, "message was: $message")
+        assertNotNull(failure.cause, "the original JSONata failure must be retained")
         assertTrue("'Bad Cond'" in message, "set name is used; message was: $message")
     }
 
