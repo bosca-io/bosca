@@ -571,6 +571,7 @@ internal fun deploymentNotices(config: SwarmConfig): List<String> = buildList {
 internal fun retireReplacedAtlasServices(config: SwarmConfig) {
     for (site in config.sites) {
         val retired = buildList {
+            if (!site.runnerServer.enabled) add("${site.id}_runner")
             if (!site.gitServer.enabled) add("${site.id}_git")
             if (!site.artifactsServer.enabled) add("${site.id}_artifacts")
             if (!site.atlasUiServer.enabled) add("${site.id}_atlas-ui")

@@ -53,6 +53,7 @@ internal suspend fun updateSwarmImages(
     val updated = config.images.toMutableMap()
     val schemes = config.registrySchemes.toMutableMap()
     val optionalServices = mapOf(
+        "runner" to config.sites.any { it.runnerServer.enabled },
         "atlas-ui" to config.sites.any { it.atlasUiServer.enabled },
         "git" to config.sites.any { it.gitServer.enabled },
         "artifacts" to config.sites.any { it.artifactsServer.enabled },

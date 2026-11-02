@@ -339,7 +339,7 @@ internal fun siteEnvironment(config: SwarmConfig, site: SwarmSite): Map<String, 
 /** Uses bundled defaults, the site's initialization passwords and explicit redirect policy. */
 private fun siteApplicationConfigs(site: SwarmSite): Map<String, String> {
     val applications = if (site.oauthRedirects == null) listOf("atlas") else listOf("server", "runner", "atlas")
-    return applications.associateWith { application ->
+    return applications.filter { it != "runner" || site.runnerServer.enabled }.associateWith { application ->
         val yaml = Yaml(DumperOptions().apply { defaultFlowStyle = DumperOptions.FlowStyle.BLOCK })
         val resource = "/swarm/application-$application.yaml"
         val config = checkNotNull(SwarmConfig::class.java.getResourceAsStream(resource)) {
@@ -378,6 +378,7 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
     val root = config.dataRoot
     val env = siteEnvironment(config, site)
     val applicationConfigs = siteApplicationConfigs(site)
+    val atlasOwnsListeners = site.atlas.servers.runner && !site.runnerServer.enabled
     val server = "http://${name}-server:8080"
     val artifacts = if (site.artifactsServer.enabled) "http://${name}-artifacts:8084" else "http://${name}-atlas:8094/_artifacts"
     val studio = "https://${hosts.studio}"
@@ -432,10 +433,6 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
         // Default memory limits follow the production Helm values; the runner has none there either.
         "server" to bosca("server", env + mapOf("GIT_SYNC_LISTENERS" to "false", "SCHEDULER_ENABLED" to "true"),
             8080, "150s", Limits(site.serverMemory)),
-        // The runner binds its port only after migrations and package installs finish.
-        // Its bundled application.yaml enables the FUMS delivery worker.
-        "runner" to bosca("runner", env + mapOf("BOSCA_SERVER_PORT" to "8080", "GIT_SYNC_LISTENERS" to "true", "SCHEDULER_ENABLED" to "false",
-            "ANALYTICS_PROCESSOR_ENABLED" to "true"), 8080, "300s", null),
         "collector" to bosca("collector", env + mapOf("BOSCA_SERVER_PORT" to "8081",
             "FUMS_TRANSFORM_ENABLED" to site.fumsEnabled.toString()), 8081, "120s", Limits("512M")),
         "atlas" to bosca("atlas", env + mapOf(
@@ -445,8 +442,9 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
             "ATLAS_ARTIFACTS_ENABLED" to site.atlas.servers.artifacts.toString(),
             "ATLAS_UI_ENABLED" to site.atlas.servers.ui.toString(),
             "ATLAS_RUNNER_ENABLED" to site.atlas.servers.runner.toString(),
-            "ATLAS_RUNNER_LISTENERS_ENABLED" to "false", "ATLAS_SYNC_LISTENERS_ENABLED" to "false",
-            "ATLAS_SCHEDULER_ENABLED" to "false",
+            "ATLAS_RUNNER_LISTENERS_ENABLED" to atlasOwnsListeners.toString(),
+            "ATLAS_SYNC_LISTENERS_ENABLED" to atlasOwnsListeners.toString(),
+            "ATLAS_SCHEDULER_ENABLED" to atlasOwnsListeners.toString(),
             "GIT_UI_URL" to "https://${hosts.atlas}", "APP_URL" to "https://${hosts.atlas}",
             "APP_ALLOWED_ORIGIN" to "https://${hosts.atlas}", "WEBAUTHN_EXTRA_ORIGIN" to "https://${hosts.atlas}",
             "OAUTH2_ALLOWED_REDIRECT" to "https://${hosts.atlas}",
@@ -500,6 +498,11 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
             "healthcheck" to healthcheck(bashTcpCheck(8501), "60s"),
         )),
     ) + buildMap<String, Map<String, Any>> {
+        // The standalone runner binds its port after migrations and package installs finish.
+        // Its bundled application.yaml enables the FUMS delivery worker.
+        if (site.runnerServer.enabled) put("runner", bosca("runner", env + mapOf(
+            "BOSCA_SERVER_PORT" to "8080", "GIT_SYNC_LISTENERS" to "true", "SCHEDULER_ENABLED" to "false",
+            "ANALYTICS_PROCESSOR_ENABLED" to "true"), 8080, "300s", null))
         if (site.gitServer.enabled) put("git", bosca("git", env + mapOf(
             "GIT_HTTP_PORT" to "8091",
             "GIT_UI_URL" to "https://${hosts.atlas}", "APP_URL" to "https://${hosts.atlas}",

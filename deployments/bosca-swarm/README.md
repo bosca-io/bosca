@@ -97,8 +97,8 @@ images.
 
 ## Services and isolation
 
-Each site's runner uses the application configuration bundled in its image,
-including `fumsQueueRunner` for API.Bible usage reports. Swarm supplies the site's
+Each site's optional standard runner uses the application configuration bundled
+in its image, including `fumsQueueRunner` for API.Bible usage reports. Swarm supplies the site's
 database and queue credentials through the runner's environment.
 
 Each site's `fumsEnabled` setting controls API.Bible usage reporting and defaults
@@ -108,7 +108,7 @@ change. The renderer passes this setting as `FUMS_TRANSFORM_ENABLED` only to tha
 site's collector. The runner's transform remains disabled; delivery jobs use its
 separate `fumsQueueRunner` worker.
 
-One shared PostgreSQL with pgvector provides separate operational and warehouse databases and roles per site. As in the Kubernetes deployment, the Bosca services connect through PgBouncer in transaction mode (up to 1000 client connections, 25 server connections per database and role), so their connection pools cannot exhaust the shared server; PostgreSQL's connection limit is sized from the number of sites. Trino connects to PostgreSQL directly. PgBouncer logs in to PostgreSQL as the connecting role, so each site still reaches only its own databases. Shared NATS has an account per site. Dragonfly uses distinct logical databases and Pub/Sub namespaces. Each site selects NATS or Redis independently for caches, pub/sub, job queues, locks, and counters (see [Backend selection](#backend-selection)). Meilisearch uses per-site index prefixes. S3Proxy uses separate content and warehouse buckets. Trino has per-site catalogs and file access rules. Image processing and the text-embeddings service are shared; embeddings carry no site data. Each site runs its own Bosca server, runner, Atlas, analytics collector, Studio, Profiles, Notifications, BML message server, recommendation trainer, model loader, and TensorFlow Serving. Caddy routes by hostname.
+One shared PostgreSQL with pgvector provides separate operational and warehouse databases and roles per site. As in the Kubernetes deployment, the Bosca services connect through PgBouncer in transaction mode (up to 1000 client connections, 25 server connections per database and role), so their connection pools cannot exhaust the shared server; PostgreSQL's connection limit is sized from the number of sites. Trino connects to PostgreSQL directly. PgBouncer logs in to PostgreSQL as the connecting role, so each site still reaches only its own databases. Shared NATS has an account per site. Dragonfly uses distinct logical databases and Pub/Sub namespaces. Each site selects NATS or Redis independently for caches, pub/sub, job queues, locks, and counters (see [Backend selection](#backend-selection)). Meilisearch uses per-site index prefixes. S3Proxy uses separate content and warehouse buckets. Trino has per-site catalogs and file access rules. Image processing and the text-embeddings service are shared; embeddings carry no site data. Each site runs its own Bosca server, optional standard runner, Atlas, analytics collector, Studio, Profiles, Notifications, BML message server, recommendation trainer, model loader, and TensorFlow Serving. Caddy routes by hostname.
 
 The manager runs the stateful services: PostgreSQL, PgBouncer, NATS, Dragonfly, Meilisearch, S3Proxy, Trino, Caddy and the backups. Application services run on the workers with memory limits but no CPU caps, allowing CPU overprovisioning. The first worker also holds each site's recommendation-model volume, shared by its model loader and TensorFlow Serving. Workers must be x86_64: the embeddings and TensorFlow Serving images are published for amd64 only. Every service rotates its logs (three 10 MB files). Services with a health check restart when it fails, and stateless application services start their replacement before stopping the old task and roll back when it does not become healthy.
 
@@ -182,9 +182,10 @@ recognizes both `atlas` and `atlas-ui`. Existing database/storage, tokens and th
 pipeline key are reused. Add DNS for `atlas.<domain>` and register
 `https://atlas.<domain>/oauth2/google/callback` with the site's Google client.
 The default public origin is `https://atlas.<domain>`; clone URLs retain
-`https://git.<domain>`. The existing platform runner continues consuming jobs.
-Atlas capabilities are configured independently from standalone services. Every
-Atlas capability defaults to enabled. Standalone servers default to disabled:
+`https://git.<domain>`. Atlas capabilities are configured independently from
+standalone services. Every Atlas capability defaults to enabled. The standard
+runner defaults to enabled; standalone Git, artifacts, and UI services default
+to disabled. To use only Atlas workers, configure the site as follows:
 
 ```json
 "atlas": {
@@ -197,6 +198,7 @@ Atlas capability defaults to enabled. Standalone servers default to disabled:
     "runner": true
   }
 },
+"runnerServer": { "enabled": false },
 "gitServer": { "enabled": false },
 "artifactsServer": { "enabled": false },
 "atlasUiServer": { "enabled": false }
@@ -204,9 +206,14 @@ Atlas capability defaults to enabled. Standalone servers default to disabled:
 
 The `atlas.servers` flags enable capabilities inside the Atlas process. Setting
 one to `false` does not start a replacement server. The embedded UI requires the
-Atlas API. Set `atlas.servers.runner` to `false` when only the platform runner
-should consume background jobs; the platform runner continues owning event
-listeners and scheduling in either case.
+Atlas API. Set `runnerServer.enabled` to `false` and keep
+`atlas.servers.runner` enabled to omit the standard runner and enable Atlas
+worker listeners, Git synchronization, and scheduling. Deployment removes an
+existing standard runner after services and ingress pass readiness. It is
+excluded from the expected-service readiness checks. Set `atlas.servers.runner`
+to `false` when only the standard runner should consume background jobs. When
+the standard runner is enabled, it owns worker listeners and Git sync; the
+Bosca API server continues scheduling jobs.
 
 Enable `gitServer`, `artifactsServer`, or `atlasUiServer` explicitly to deploy
 that standalone service. Their image keys are `git`, `artifacts`, and `atlas-ui`.
