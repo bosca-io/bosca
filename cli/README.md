@@ -280,6 +280,10 @@ selected account profile and also accept the standard CI authentication options.
 
 ## Swarm backends
 
+The manager can also run application workloads: list the same SSH target in
+`manager.ssh` and `workers`. Run `bosca swarm bootstrap` after upgrading the CLI
+to set application placement labels, then run `bosca swarm deploy` as usual.
+
 The shared `dragonfly` service runs Dragonfly `v2.0.2`, configured through
 `images.dragonfly`. Existing configs gain this image setting automatically.
 Dragonfly uses fresh storage, so disposable cache and lock data need no import;

@@ -118,7 +118,7 @@ sudo -n ufw --force enable
 
 internal fun bootstrapNodes(config: SwarmConfig) {
     val manager = config.manager.ssh
-    for ((target, address) in listOf(manager to config.manager.advertiseAddress) + config.workers.map { it.ssh to it.advertiseAddress }) {
+    for ((target, address) in (listOf(manager to config.manager.advertiseAddress) + config.workers.map { it.ssh to it.advertiseAddress }).distinctBy { it.first }) {
         println("Configuring firewall on $target")
         script(target, firewallScript(config, address, target == manager))
         println("Checking Docker Engine on $target")
@@ -129,11 +129,14 @@ internal fun bootstrapNodes(config: SwarmConfig) {
         state.startsWith("inactive") -> script(manager, "sudo -n docker swarm init --advertise-addr ${shell(config.manager.advertiseAddress)}")
         state != "active true" -> error("Manager host is already in an incompatible Swarm state: $state")
     }
-    val workerToken = script(manager, "sudo -n docker swarm join-token -q worker", true)
+    val workerToken = if (config.workers.any { it.ssh != manager }) {
+        script(manager, "sudo -n docker swarm join-token -q worker", true)
+    } else ""
     for (worker in config.workers) {
         // The embeddings and TensorFlow Serving images are published for amd64 only.
         val architecture = script(worker.ssh, "uname -m", true)
         require(architecture == "x86_64") { "${worker.ssh} is $architecture; worker nodes must be x86_64 (amd64)" }
+        if (worker.ssh == manager) continue
         val workerState = script(worker.ssh, "sudo -n docker info --format '{{.Swarm.LocalNodeState}}'", true)
         when (workerState) {
             "inactive" -> {
@@ -157,6 +160,10 @@ internal fun bootstrapNodes(config: SwarmConfig) {
     }
     val nodeId = script(manager, "sudo -n docker info --format '{{.Swarm.NodeID}}'", true)
     script(manager, "sudo -n docker node update --label-add bosca_data=true ${shell(nodeId)}")
+    val applicationNodes = config.workers.map {
+        script(it.ssh, "sudo -n docker info --format '{{.Swarm.NodeID}}'", true)
+    }
+    script(manager, applicationNodeLabelScript(applicationNodes))
     // The model loader and TensorFlow Serving share a local volume, so exactly one worker carries the label.
     val modelNode = script(config.workers.first().ssh, "sudo -n docker info --format '{{.Swarm.NodeID}}'", true)
     script(manager, modelNodeLabelScript(modelNode))
@@ -187,6 +194,11 @@ internal fun verifyBootstrappedNodes(config: SwarmConfig) {
         require(nodeId.isNotBlank() && nodeId in managerNodeIds) {
             "${worker.ssh} is already in a different Swarm"
         }
+        val applicationLabel = script(manager,
+            "sudo -n docker node inspect ${shell(nodeId)} --format '{{index .Spec.Labels \"bosca_application\"}}'", true)
+        require(applicationLabel == "true") {
+            "Swarm worker ${worker.ssh} lacks bosca_application=true; run bosca swarm bootstrap first"
+        }
         if (worker.advertiseAddress.isNotEmpty()) {
             val nodeAddress = script(worker.ssh, "sudo -n docker info --format '{{.Swarm.NodeAddr}}'", true)
             require(nodeAddress == worker.advertiseAddress) {
@@ -201,6 +213,20 @@ internal fun verifyBootstrappedNodes(config: SwarmConfig) {
             }
         }
     }
+}
+
+/** Marks configured application nodes active and removes application placement from other nodes. */
+internal fun applicationNodeLabelScript(nodeIds: List<String>): String {
+    require(nodeIds.isNotEmpty() && nodeIds.all { it.matches(Regex("[A-Za-z0-9_-]+")) }) { "Invalid application node IDs" }
+    return """set -euo pipefail
+for node in ${'$'}(sudo -n docker node ls -q --filter node.label=bosca_application=true); do
+  case "${'$'}node" in
+    ${nodeIds.joinToString("|") { shell(it) }}) ;;
+    *) sudo -n docker node update --label-rm bosca_application "${'$'}node" ;;
+  esac
+done
+${nodeIds.joinToString("\n") { "sudo -n docker node update --availability active --label-add bosca_application=true ${shell(it)}" }}
+"""
 }
 
 /** Labels [modelNode] `bosca_ml=true` and removes the label from every other node. */

@@ -314,7 +314,10 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
     require(workers.all { it.advertiseAddress.isEmpty() || it.advertiseAddress.matches(Regex("[A-Za-z0-9_.:-]+")) }) {
         "Invalid worker advertiseAddress"
     }
-    require((workers.map { it.ssh } + manager.ssh).distinct().size == workers.size + 1) { "SSH targets must be distinct" }
+    require(workers.map { it.ssh }.distinct().size == workers.size) { "Worker SSH targets must be distinct" }
+    require(workers.none {
+        it.ssh == manager.ssh && it.advertiseAddress.isNotEmpty() && it.advertiseAddress != manager.advertiseAddress
+    }) { "A manager listed as a worker must use the manager advertiseAddress" }
     require(Path.of(dataRoot).isAbsolute && dataRoot != "/" && !dataRoot.contains(Regex("[\\n\\r:]"))) { "dataRoot must be a safe absolute directory" }
     require(sites.isNotEmpty() && sites.size <= 15) { "Configure between one and 15 sites" }
     val idPattern = Regex("[a-z][a-z0-9]{0,19}")

@@ -42,8 +42,8 @@ private fun stack(
 internal enum class Placement(val constraint: String) {
     /** The manager, which holds every bind-mounted data directory. */
     STATEFUL("node.labels.bosca_data == true"),
-    /** The workers, so application load never competes with PostgreSQL for memory. */
-    APPLICATION("node.labels.bosca_data != true"),
+    /** Hosts selected as workers, including the manager when it is also listed as a worker. */
+    APPLICATION("node.labels.bosca_application == true"),
     /** One worker that keeps the recommendation model volume shared by the loader and TensorFlow Serving. */
     MODELS("node.labels.bosca_ml == true"),
 }
