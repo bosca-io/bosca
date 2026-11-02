@@ -32,7 +32,7 @@ spec:
         - name: {{ .Chart.Name }}
           image: {{ include "bosca-common.boscaImage" (dict "image" (merge (dict "tag" (default .Chart.AppVersion .Values.image.tag)) .Values.image) "global" .Values.global) }}
           imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.image }}
-          args: ["-XX:MaxRAMPercentage=65.0", "-config=/app/config/application.yaml"]
+          args: ["-XX:MaxRAMPercentage={{ .Values.maxRAMPercentage }}", "-config=/app/config/application.yaml"]
           securityContext:
             {{- include "bosca-common.securityContext" . | nindent 12 }}
           ports:

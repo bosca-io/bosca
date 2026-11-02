@@ -1,0 +1,84 @@
+suite: bosca-services heap percentage overrides
+templates:
+  - charts/bosca-server/templates/deployment.yaml
+  - charts/bosca-server/templates/configmap-appconfig.yaml
+  - charts/bosca-atlas-server/templates/deployment.yaml
+  - charts/bosca-atlas-server/templates/configmap-appconfig.yaml
+  - charts/bosca-runner/templates/statefulset.yaml
+  - charts/bosca-runner/templates/configmap-appconfig.yaml
+  - charts/bosca-git-server/templates/deployment.yaml
+  - charts/bosca-git-server/templates/configmap-appconfig.yaml
+  - charts/bosca-artifacts-server/templates/deployment.yaml
+  - charts/bosca-artifacts-server/templates/configmap-appconfig.yaml
+  - charts/bosca-collector/templates/deployment.yaml
+  - charts/bosca-collector/templates/configmap-appconfig.yaml
+  - charts/bosca-kubernetes-controller/templates/deployment.yaml
+  - charts/bosca-kubernetes-controller/templates/configmap-appconfig.yaml
+set:
+  global.domain: example.com
+  bosca-server.enabled: true
+  bosca-atlas-server.enabled: true
+  bosca-runner.enabled: true
+  bosca-git-server.enabled: true
+  bosca-artifacts-server.enabled: true
+  bosca-collector.enabled: true
+  bosca-kubernetes-controller.enabled: true
+tests:
+  - it: forwards bosca-server heap settings to the process
+    template: charts/bosca-server/templates/deployment.yaml
+    set:
+      bosca-server.maxRAMPercentage: 60
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[0]
+          value: "-XX:MaxRAMPercentage=60"
+  - it: forwards bosca-atlas-server heap settings to the process
+    template: charts/bosca-atlas-server/templates/deployment.yaml
+    set:
+      bosca-atlas-server.maxRAMPercentage: 61
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[0]
+          value: "-XX:MaxRAMPercentage=61"
+  - it: forwards bosca-runner heap settings to the process
+    template: charts/bosca-runner/templates/statefulset.yaml
+    set:
+      bosca-runner.maxRAMPercentage: 62
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JAVA_OPTS
+            value: "-XX:MaxRAMPercentage=62"
+  - it: forwards bosca-git-server heap settings to the process
+    template: charts/bosca-git-server/templates/deployment.yaml
+    set:
+      bosca-git-server.maxRAMPercentage: 63
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[0]
+          value: "-XX:MaxRAMPercentage=63"
+  - it: forwards bosca-artifacts-server heap settings to the process
+    template: charts/bosca-artifacts-server/templates/deployment.yaml
+    set:
+      bosca-artifacts-server.maxRAMPercentage: 64
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[0]
+          value: "-XX:MaxRAMPercentage=64"
+  - it: forwards bosca-collector heap settings to the process
+    template: charts/bosca-collector/templates/deployment.yaml
+    set:
+      bosca-collector.maxRAMPercentage: 65
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[0]
+          value: "-XX:MaxRAMPercentage=65"
+  - it: forwards bosca-kubernetes-controller heap settings to the process
+    template: charts/bosca-kubernetes-controller/templates/deployment.yaml
+    set:
+      bosca-kubernetes-controller.maxRAMPercentage: 66
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[0]
+          value: "-XX:MaxRAMPercentage=66"

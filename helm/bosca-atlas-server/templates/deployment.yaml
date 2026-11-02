@@ -36,7 +36,7 @@ spec:
           imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.image }}
           securityContext:
             {{- include "bosca-common.securityContext" . | nindent 12 }}
-          args: ["-XX:MaxRAMPercentage=75.0", "-config=/app/config/application.yaml"]
+          args: ["-XX:MaxRAMPercentage={{ .Values.maxRAMPercentage }}", "-config=/app/config/application.yaml"]
           ports:
             - name: http
               containerPort: 8094

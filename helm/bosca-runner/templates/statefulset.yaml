@@ -56,7 +56,7 @@ spec:
             {{- end }}
           env:
             - name: JAVA_OPTS
-              value: "-XX:MaxRAMPercentage=75.0"
+              value: "-XX:MaxRAMPercentage={{ $.Values.maxRAMPercentage }}"
             - name: HOST_IP
               valueFrom:
                 fieldRef:

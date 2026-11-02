@@ -34,7 +34,7 @@ spec:
         - name: {{ .Chart.Name }}
           image: {{ include "bosca-common.boscaImage" (dict "image" (merge (dict "tag" (default .Chart.AppVersion .Values.image.tag)) .Values.image) "global" .Values.global) }}
           imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.image }}
-          args: ["-config=/app/config/application.yaml"]
+          args: ["-XX:MaxRAMPercentage={{ .Values.maxRAMPercentage }}", "-config=/app/config/application.yaml"]
           ports:
             - name: http
               containerPort: 8080
@@ -48,8 +48,6 @@ spec:
                 name: {{ . }}
             {{- end }}
           env:
-            - name: JAVA_OPTS
-              value: "-XX:MaxRAMPercentage=75.0"
             - name: HOST_IP
               valueFrom:
                 fieldRef:

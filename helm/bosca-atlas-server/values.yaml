@@ -34,6 +34,9 @@ ui:
   port: 8095
   authCookiePrefix: ''
   serviceName: ''
+# Maximum heap as a percentage of the container memory limit.
+maxRAMPercentage: 75
+
 resources:
   requests:
     cpu: 100m
