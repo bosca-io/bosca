@@ -15,8 +15,14 @@ import bosca.sharedqueue.jobs.JobExecutor
 import bosca.sharedqueue.jobs.JobStatus
 import bosca.sharedqueue.jobs.SerializedJob
 import bosca.sharedqueue.jobs.asCoroutineContext
+import bosca.sharedqueue.jobs.serialize
+import io.mockk.every
 import io.mockk.mockk
+import io.nats.client.Connection
+import io.nats.client.JetStream
 import io.nats.client.KeyValue
+import io.nats.client.PublishOptions
+import io.nats.client.PullSubscribeOptions
 import io.nats.client.api.KeyValueConfiguration
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -27,6 +33,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -85,6 +92,301 @@ class NatsJobQueueEndToEndTest {
         val entry = kv.get(jobId.toString()) ?: return null
         val value = entry.valueAsString ?: return null
         return json.decodeFromString(SerializedJob.serializer(), value)
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `recovery does not duplicate a delivery still waiting in the stream`() = runBlocking {
+        val job = InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class)
+        val id = queue.enqueue(job)
+        val management = natsPool.systemConnection().jetStreamManagement()
+
+        queue.checkForExpiredJobs(Long.MAX_VALUE)
+
+        assertEquals(1L, management.getStreamInfo("jobs-e2e-test").streamState.msgCount)
+        val dequeued = assertNotNull(queue.dequeue())
+        assertEquals(id, dequeued.getId())
+        queue.markComplete(dequeued)
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `delaying a delivered job retains its existing stream message`() = runBlocking {
+        val id = queue.enqueue(InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class))
+        val dequeued = assertNotNull(queue.dequeue())
+        val sequence = (dequeued.message as io.nats.client.Message).metaData().streamSequence()
+
+        queue.enqueueLater(dequeued, 100.milliseconds)
+        dequeued.lock?.release()
+
+        val retried = assertNotNull(queue.dequeue())
+        assertEquals(id, retried.getId())
+        assertEquals(sequence, (retried.message as io.nats.client.Message).metaData().streamSequence())
+        queue.markComplete(retried)
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `completed parent execution is not repeated while its children are pending`() = runBlocking {
+        val parent = InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class)
+        parent.addChild(InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class), runOnParentComplete = false)
+        val id = queue.enqueue(parent)
+        val running = assertNotNull(queue.dequeue())
+        val connection = natsPool.systemConnection()
+        connection.jetStream().publish("jobs.e2e-test", id.toString().toByteArray())
+        queue.markComplete(running)
+        val before = assertNotNull(kv.get(id.toString()))
+
+        assertNull(queue.dequeue(100.milliseconds))
+        connection.flush(java.time.Duration.ofSeconds(5))
+
+        assertEquals(0L, connection.jetStreamManagement().getStreamInfo("jobs-e2e-test").streamState.msgCount)
+        assertEquals(before.revision, kv.get(id.toString())?.revision)
+        assertEquals(JobStatus.COMPLETE, readKvEntry(id)?.status)
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `recovered delivery survives dequeue before publication is confirmed`() = runBlocking {
+        val connection = natsPool.systemConnection()
+        val jetStream = connection.jetStream()
+        val publishing = mockk<JetStream>(relaxed = true)
+        lateinit var recovering: NatsJobQueue
+        every { publishing.subscribe(any<String>(), any<PullSubscribeOptions>()) } answers {
+            jetStream.subscribe(firstArg<String>(), secondArg<PullSubscribeOptions>())
+        }
+        every { publishing.publish(any<String>(), any<ByteArray>(), any<PublishOptions>()) } answers {
+            val published = jetStream.publish(firstArg<String>(), secondArg<ByteArray>(), thirdArg<PublishOptions>())
+            runBlocking { recovering.dequeue(50.milliseconds) }
+            published
+        }
+        val pool = poolWith(publishing)
+        try {
+            recovering = NatsJobQueue("e2e-test", pool, json, lockFactory, processExpiredJobs = false)
+            val job = InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class)
+            val unpublished = job.serialize().copy(status = JobStatus.UNINITIALIZED)
+            kv.put(job.id.toString(), json.encodeToString(SerializedJob.serializer(), unpublished))
+
+            recovering.checkForExpiredJobs(Long.MAX_VALUE)
+            connection.flush(java.time.Duration.ofSeconds(5))
+
+            assertEquals(JobStatus.PENDING, readKvEntry(job.id)?.status)
+            assertEquals(1L, connection.jetStreamManagement().getStreamInfo("jobs-e2e-test").streamState.msgCount)
+        } finally {
+            pool.close()
+        }
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `recovery replaces missing deliveries repeatedly within the deduplication window`() = runBlocking {
+        val id = queue.enqueue(InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class))
+        val management = natsPool.systemConnection().jetStreamManagement()
+        repeat(2) {
+            val previous = management.getStreamInfo("jobs-e2e-test").streamState.lastSequence
+            management.deleteMessage("jobs-e2e-test", previous)
+
+            queue.expireAllJobs()
+
+            val replacement = management.getStreamInfo("jobs-e2e-test").streamState.lastSequence
+            assertTrue(replacement > previous)
+            assertEquals(1L, management.getStreamInfo("jobs-e2e-test").streamState.msgCount)
+        }
+        queue.markComplete(assertNotNull(queue.dequeue()))
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `recovery leaves a locked running job unchanged`() = runBlocking {
+        val id = queue.enqueue(InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class))
+        val running = assertNotNull(queue.dequeue())
+        val before = assertNotNull(kv.get(id.toString()))
+
+        queue.expireAllJobs()
+
+        assertEquals(before.revision, kv.get(id.toString())?.revision)
+        assertEquals(JobStatus.RUNNING, readKvEntry(id)?.status)
+        queue.markComplete(running)
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `redelivery of the same running message is retained until its owner completes`() = runBlocking {
+        val id = queue.enqueue(InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class))
+        val running = assertNotNull(queue.dequeue())
+        (running.message as io.nats.client.Message).nak()
+
+        assertNull(queue.dequeue(100.milliseconds))
+
+        val connection = natsPool.systemConnection()
+        connection.flush(java.time.Duration.ofSeconds(5))
+        assertEquals(1L, connection.jetStreamManagement().getStreamInfo("jobs-e2e-test").streamState.msgCount)
+        assertEquals(JobStatus.RUNNING, readKvEntry(id)?.status)
+        queue.markComplete(running)
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `enqueueIfAbsent retains the original definition and delivery`() = runBlocking {
+        val id = UUID.random()
+        val original = InternalJobConstructor(Json.parseToJsonElement("""{"attempt":1}"""), E2ETestJobExecutor::class)
+        original.setPersistentId(id)
+        queue.enqueueIfAbsent(original)
+        val before = assertNotNull(readKvEntry(id))
+        val second = InternalJobConstructor(Json.parseToJsonElement("""{"attempt":2}"""), E2ETestJobExecutor::class)
+        second.setPersistentId(id)
+
+        queue.enqueueIfAbsent(second)
+
+        assertEquals(before, readKvEntry(id))
+        assertEquals(1L, natsPool.systemConnection().jetStreamManagement().getStreamInfo("jobs-e2e-test").streamState.msgCount)
+        queue.markComplete(assertNotNull(queue.dequeue()))
+    }
+
+    private suspend fun poolWith(publishing: JetStream, state: KeyValue = kv): NatsConnectionPool {
+        val real = natsPool.systemConnection()
+        val connection = mockk<Connection>(relaxed = true)
+        every { connection.jetStream() } returns publishing
+        every { connection.jetStreamManagement() } returns real.jetStreamManagement()
+        every { connection.keyValueManagement() } returns real.keyValueManagement()
+        every { connection.keyValue(any<String>()) } answers {
+            if (firstArg<String>() == "job-state-e2e-test") state else real.keyValue(firstArg<String>())
+        }
+        return NatsConnectionPool(connection)
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `consumer progress before publication confirmation is preserved`() = runBlocking {
+        val real = natsPool.systemConnection().jetStream()
+        val publishing = mockk<JetStream>(relaxed = true)
+        lateinit var producing: NatsJobQueue
+        var delivered: bosca.sharedqueue.jobs.Job? = null
+        every { publishing.subscribe(any<String>(), any<PullSubscribeOptions>()) } answers {
+            real.subscribe(firstArg<String>(), secondArg<PullSubscribeOptions>())
+        }
+        every { publishing.publish(any<String>(), any<ByteArray>(), any<PublishOptions>()) } answers {
+            val result = real.publish(firstArg<String>(), secondArg<ByteArray>(), thirdArg<PublishOptions>())
+            delivered = runBlocking { producing.dequeue(100.milliseconds) }
+            result
+        }
+        val pool = poolWith(publishing)
+        try {
+            producing = NatsJobQueue("e2e-test", pool, json, lockFactory, processExpiredJobs = false)
+            val id = producing.enqueue(InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class))
+
+            assertEquals(JobStatus.RUNNING, readKvEntry(id)?.status)
+            producing.markComplete(assertNotNull(delivered))
+        } finally {
+            pool.close()
+        }
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `a newly scheduled job cannot run before its publication is confirmed`() = runBlocking {
+        val real = natsPool.systemConnection().jetStream()
+        val publishing = mockk<JetStream>(relaxed = true)
+        lateinit var producing: NatsJobQueue
+        every { publishing.subscribe(any<String>(), any<PullSubscribeOptions>()) } answers {
+            real.subscribe(firstArg<String>(), secondArg<PullSubscribeOptions>())
+        }
+        every { publishing.publish(any<String>(), any<ByteArray>(), any<PublishOptions>()) } answers {
+            val result = real.publish(firstArg<String>(), secondArg<ByteArray>(), thirdArg<PublishOptions>())
+            assertNull(runBlocking { producing.dequeue(50.milliseconds) })
+            result
+        }
+        val pool = poolWith(publishing)
+        try {
+            producing = NatsJobQueue("e2e-test", pool, json, lockFactory, processExpiredJobs = false)
+            val id = producing.enqueueLater(InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class), 500.milliseconds)
+
+            assertEquals(JobStatus.PENDING, readKvEntry(id)?.status)
+            val delivered = assertNotNull(producing.dequeue())
+            assertEquals(id, delivered.id)
+            producing.markComplete(delivered)
+        } finally {
+            pool.close()
+        }
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `interrupted initial publication is recovered automatically`() = runBlocking {
+        val real = natsPool.systemConnection().jetStream()
+        val publishing = mockk<JetStream>(relaxed = true)
+        every { publishing.subscribe(any<String>(), any<PullSubscribeOptions>()) } answers {
+            real.subscribe(firstArg<String>(), secondArg<PullSubscribeOptions>())
+        }
+        every { publishing.publish(any<String>(), any<ByteArray>(), any<PublishOptions>()) } throws java.io.IOException("publish unavailable")
+        val pool = poolWith(publishing)
+        try {
+            val failing = NatsJobQueue("e2e-test", pool, json, lockFactory, processExpiredJobs = false)
+            val job = InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class)
+            job.setPersistentId(UUID.random())
+
+            assertFailsWith<java.io.IOException> { failing.enqueueIfAbsent(job) }
+            assertEquals(JobStatus.UNINITIALIZED, readKvEntry(job.id)?.status)
+            queue.checkForExpiredJobs(Long.MAX_VALUE)
+
+            assertEquals(JobStatus.PENDING, readKvEntry(job.id)?.status)
+            queue.markComplete(assertNotNull(queue.dequeue()))
+        } finally {
+            pool.close()
+        }
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `published delivery remains executable after confirmation fails`() = runBlocking {
+        val connection = natsPool.systemConnection()
+        val state = mockk<KeyValue>()
+        every { state.keys() } answers { kv.keys() }
+        every { state.get(any<String>()) } answers { kv.get(firstArg<String>()) }
+        every { state.update(any<String>(), any<String>(), any<Long>()) } throws java.io.IOException("confirmation unavailable")
+        val pool = poolWith(connection.jetStream(), state)
+        try {
+            val recovering = NatsJobQueue("e2e-test", pool, json, lockFactory, processExpiredJobs = false)
+            val job = InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class)
+            val unpublished = job.serialize().copy(status = JobStatus.UNINITIALIZED)
+            kv.put(job.id.toString(), json.encodeToString(SerializedJob.serializer(), unpublished))
+
+            recovering.checkForExpiredJobs(Long.MAX_VALUE)
+
+            assertEquals(JobStatus.UNINITIALIZED, readKvEntry(job.id)?.status)
+            assertEquals(1L, connection.jetStreamManagement().getStreamInfo("jobs-e2e-test").streamState.msgCount)
+            val delivered = assertNotNull(queue.dequeue(100.milliseconds))
+            assertEquals(job.id, delivered.id)
+            queue.markComplete(delivered)
+        } finally {
+            pool.close()
+        }
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `confirmation retry does not duplicate an already published message`() = runBlocking {
+        val connection = natsPool.systemConnection()
+        val state = mockk<KeyValue>()
+        every { state.create(any<String>(), any<ByteArray>()) } answers { kv.create(firstArg<String>(), secondArg<ByteArray>()) }
+        every { state.update(any<String>(), any<String>(), any<Long>()) } throws java.io.IOException("confirmation unavailable")
+        val pool = poolWith(connection.jetStream(), state)
+        try {
+            val failing = NatsJobQueue("e2e-test", pool, json, lockFactory, processExpiredJobs = false)
+            val job = InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class)
+            job.setPersistentId(UUID.random())
+            assertFailsWith<java.io.IOException> { failing.enqueueIfAbsent(job) }
+            assertEquals(JobStatus.UNINITIALIZED, readKvEntry(job.id)?.status)
+
+            queue.checkForExpiredJobs(Long.MAX_VALUE)
+            queue.checkForExpiredJobs(Long.MAX_VALUE)
+
+            assertEquals(JobStatus.PENDING, readKvEntry(job.id)?.status)
+            assertEquals(1L, connection.jetStreamManagement().getStreamInfo("jobs-e2e-test").streamState.msgCount)
+            queue.markComplete(assertNotNull(queue.dequeue()))
+        } finally {
+            pool.close()
+        }
     }
 
     @Test

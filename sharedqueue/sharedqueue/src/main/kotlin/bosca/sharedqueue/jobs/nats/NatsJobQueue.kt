@@ -21,6 +21,7 @@ import bosca.sharedqueue.jobs.newJobLock
 import bosca.sharedqueue.jobs.serialize
 import io.nats.client.Connection
 import io.nats.client.JetStream
+import io.nats.client.JetStreamApiException
 import io.nats.client.JetStreamSubscription
 import io.nats.client.KeyValue
 import io.nats.client.Message
@@ -204,7 +205,7 @@ internal class NatsJobQueue(
                 block(job)
             }
             // Transfer ownership only after the dispatcher handoff has completed without cancellation.
-            handedOff = !releaseLock
+            handedOff = !releaseLock && result != null
             return result
         } finally {
             if (!handedOff) withContext(NonCancellable) { lock?.release() }
@@ -220,7 +221,6 @@ internal class NatsJobQueue(
         val lock = job.lock ?: return@withContext false
         if (!lock.isHeld || !lock.renew(lockRenew)) return@withContext false
         (job.message as? Message)?.inProgress()
-        // The stale-job scanner measures liveness from the persisted modification time.
         job.modified = OffsetDateTime.now()
         setJob(job)
         true
@@ -328,10 +328,18 @@ internal class NatsJobQueue(
     }
 
     override suspend fun expireAllJobs() = withContext(JobsDispatcher) {
-        processExpiredJobs(Long.MAX_VALUE)
+        processExpiredJobs(Long.MAX_VALUE, redrivePublished = true)
     }
 
-    private suspend fun processExpiredJobs(time: Long) = withContext(Dispatchers.IO) {
+    private fun SerializedJob.needsPublication(time: Long, redrivePublished: Boolean): Boolean =
+        modified.toEpochSecond() * 1000 <= time && when (status) {
+            JobStatus.UNINITIALIZED -> true
+            JobStatus.PENDING, JobStatus.RUNNING -> redrivePublished
+            else -> false
+        }
+
+    @OptIn(Internal::class)
+    private suspend fun processExpiredJobs(time: Long, redrivePublished: Boolean = false) = withContext(Dispatchers.IO) {
         val k = kv()
         val keys = try {
             k.keys()
@@ -345,49 +353,38 @@ internal class NatsJobQueue(
                 val entry = k.get(key) ?: continue
                 val value = entry.valueAsString ?: continue
                 val serializedJob = json.decodeFromString(SerializedJob.serializer(), value)
-                val ageMs = serializedJob.modified.toEpochSecond() * 1000
-                val previousStatus = serializedJob.status
-                when (previousStatus) {
-                    // Re-queue RUNNING jobs that haven't checked in within 30 minutes,
-                    // indicating the worker is stuck or crashed
-                    JobStatus.RUNNING -> {
-                        if (ageMs + 1800000 > time) continue
-                    }
-                    // Re-queue PENDING jobs that haven't been picked up within 5 minutes,
-                    // indicating their JetStream message was lost or consumed without execution
-                    JobStatus.PENDING -> {
-                        if (ageMs + 300000 > time) continue
-                        // Not stale — intentionally scheduled for later. Its message is already
-                        // queued and will be NAK'd-with-delay until due; re-publishing floods the stream.
-                        val scheduled = runCatching { scheduledKv().get(key) }.getOrNull()
-                        if (scheduled != null &&
-                            scheduled.operation != KeyValueOperation.DELETE &&
-                            scheduled.operation != KeyValueOperation.PURGE &&
+                if (!serializedJob.needsPublication(time, redrivePublished)) continue
+                val lock = try {
+                    newJobLock(distributedLockFactory, serializedJob.id, 60_000, wait = false)
+                } catch (_: LockAcquisitionException) {
+                    continue
+                }
+                try {
+                    // A worker may have advanced or completed this job since the scan read.
+                    val currentEntry = k.get(key) ?: continue
+                    val currentValue = currentEntry.valueAsString ?: continue
+                    val current = json.decodeFromString(SerializedJob.serializer(), currentValue)
+                    if (!current.needsPublication(time, redrivePublished)) continue
+                    if (current.status == JobStatus.UNINITIALIZED) {
+                        publish(current, currentEntry.revision)
+                    } else {
+                        // Explicit redrive preserves intentional scheduling and starts a new
+                        // publication attempt. Ordinary reconciliation never enters this path.
+                        val scheduled = scheduledKv().get(key)
+                        if (scheduled != null && scheduled.operation == KeyValueOperation.PUT &&
                             (scheduled.valueAsString?.toLongOrNull() ?: 0L) > System.currentTimeMillis()
                         ) continue
+                        val unpublished = current.copy(status = JobStatus.UNINITIALIZED, modified = OffsetDateTime.now())
+                        val revision = k.put(key, json.encodeToString(SerializedJob.serializer(), unpublished))
+                        publish(unpublished, revision)
                     }
-
-                    else -> continue
+                    log.info("Recovered publication for job {} (executor: {})", key, current.executor)
+                    count++
+                } finally {
+                    withContext(NonCancellable) { lock.release() }
                 }
-                // Reset the job to PENDING with an updated modified timestamp so subsequent
-                // sweeps won't re-publish until the timeout elapses again
-                val updatedJob = serializedJob.deserialize()
-                updatedJob.setStatus(JobStatus.PENDING, true)
-                updatedJob.modified = OffsetDateTime.now()
-                k.put(key, json.encodeToString(SerializedJob.serializer(), updatedJob.serialize()))
-                // Stable, per-job re-queue id (no nanoTime suffix). Within the stream's
-                // duplicate window, repeated sweeps and the independent server+runner
-                // scanners collapse to a single re-published message instead of stacking
-                // a fresh duplicate every 30s. The "-retry" suffix keeps it in a separate
-                // dedup namespace from enqueue()'s messageId(jobId), so a safety-net
-                // re-publish soon after the original enqueue is never dropped as a collision.
-                val publishOptions = PublishOptions.builder().messageId("$key-retry").build()
-                js().publish(subject, key.toByteArray(), publishOptions)
-                log.info(
-                    "Re-queued stale {} job {} (executor: {}, last modified: {})",
-                    previousStatus, key, serializedJob.executor, serializedJob.modified
-                )
-                count++
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 log.error("Failed to process expired job: $key", e)
             }
@@ -419,10 +416,10 @@ internal class NatsJobQueue(
     private suspend fun enqueueIfAbsent(serializedJob: SerializedJob) = withContext(JobsDispatcher) {
         val jobId = serializedJob.id.toString()
         val state = kv()
-        val encoded = json.encodeToString(SerializedJob.serializer(), serializedJob).toByteArray()
-        val created = try {
+        val unpublished = serializedJob.copy(status = JobStatus.UNINITIALIZED)
+        val encoded = json.encodeToString(SerializedJob.serializer(), unpublished).toByteArray()
+        val revision = try {
             state.create(jobId, encoded)
-            true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -435,18 +432,10 @@ internal class NatsJobQueue(
                 throw e
             }
             if (existing == null) throw e
-            false
-        }
-        if (!created) {
-            log.debug(
-                "Persistent job {} already exists in queue {}; republishing its delivery notification",
-                jobId,
-                queue,
-            )
+            return@withContext
         }
 
-        val publishOptions = PublishOptions.builder().messageId(jobId).build()
-        js().publish(subject, jobId.toByteArray(), publishOptions)
+        publish(unpublished, revision)
         log.debug(
             "Enqueued persistent job if absent: {} : {} -> {}",
             jobId,
@@ -456,47 +445,55 @@ internal class NatsJobQueue(
     }
 
     private suspend fun enqueue(job: Job, serializedJob: SerializedJob) = withContext(JobsDispatcher) {
-        val jobId = job.id.toString()
-        kv().put(jobId, json.encodeToString(SerializedJob.serializer(), serializedJob))
-        val publishOptions = PublishOptions.builder().messageId(jobId).build()
-        js().publish(subject, jobId.toByteArray(), publishOptions)
-        log.debug("Enqueued job: {} : {} : {} -> {}", jobId, job.executor, job.executorName, serializedJob.definition)
+        val unpublished = serializedJob.copy(status = JobStatus.UNINITIALIZED)
+        val revision = kv().put(job.id.toString(), json.encodeToString(SerializedJob.serializer(), unpublished))
+        publish(unpublished, revision)
+        log.debug("Enqueued job: {} : {} : {} -> {}", job.id, job.executor, job.executorName, serializedJob.definition)
     }
 
     override suspend fun enqueueLater(job: Job, timeout: Duration): UUID {
         if (!timeout.isPositive()) {
             return enqueue(job)
         }
-        (job.message as? Message)?.ack()
-        job.message = null
+        val message = job.message as? Message
         job.setStatus(JobStatus.PENDING, true)
         job.queueName = name
         val serializedJob = job.serialize()
-        dbRunAfterCommit { enqueueLater(job, serializedJob, timeout) }
+        dbRunAfterCommit {
+            enqueueLater(job, serializedJob, timeout, message)
+            job.message = null
+        }
         return serializedJob.id
     }
 
-    private suspend fun enqueueLater(job: Job, serializedJob: SerializedJob, timeout: Duration) = withContext(JobsDispatcher) {
-        if (!timeout.isPositive()) {
-            enqueue(job, serializedJob)
-            return@withContext
-        }
+    private suspend fun enqueueLater(job: Job, serializedJob: SerializedJob, timeout: Duration, message: Message?) = withContext(JobsDispatcher) {
         val jobId = job.id.toString()
-        kv().put(jobId, json.encodeToString(SerializedJob.serializer(), serializedJob))
         val scheduledAt = System.currentTimeMillis() + timeout.inWholeMilliseconds
-        scheduledKv().put(jobId, scheduledAt.toString())
-        // The original delivery has just been acknowledged. Reusing enqueue()'s job-id message ID
-        // can make JetStream's duplicate window discard this replacement and strand the delayed
-        // job until the stale-job scanner runs. Each reschedule gets its own deterministic delivery
-        // ID while the durable job ID remains unchanged.
-        val publishOptions = PublishOptions.builder()
-            .messageId("$jobId-scheduled-$scheduledAt")
-            .build()
-        val result = js().publish(subject, jobId.toByteArray(), publishOptions)
-        if (result.isDuplicate) {
-            log.warn("Failed to enqueue job: $jobId, duplicate message")
+        if (message != null) {
+            kv().put(jobId, json.encodeToString(SerializedJob.serializer(), serializedJob))
+            scheduledKv().put(jobId, scheduledAt.toString())
+            message.nakWithDelay(java.time.Duration.ofMillis(timeout.inWholeMilliseconds.coerceAtLeast(1)))
+            log.debug("Delayed job {} for {}", jobId, timeout)
         } else {
-            log.info("Enqueued job later: $jobId -> ${serializedJob.definition} :: $timeout")
+            // The schedule must exist before an unpublished job is visible to recovery.
+            scheduledKv().put(jobId, scheduledAt.toString())
+            val unpublished = serializedJob.copy(status = JobStatus.UNINITIALIZED)
+            val revision = kv().put(jobId, json.encodeToString(SerializedJob.serializer(), unpublished))
+            publish(unpublished, revision)
+            log.info("Enqueued job later: {} :: {}", jobId, timeout)
+        }
+    }
+
+    private suspend fun publish(job: SerializedJob, revision: Long) {
+        val id = job.id.toString()
+        // Reuse the KV revision until publication is confirmed. A later explicit enqueue
+        // gets a new revision and therefore a distinct JetStream deduplication key.
+        js().publish(subject, id.toByteArray(), PublishOptions.builder().messageId("$id-$revision").build())
+        try {
+            kv().update(id, json.encodeToString(SerializedJob.serializer(), job.copy(status = JobStatus.PENDING)), revision)
+        } catch (e: JetStreamApiException) {
+            // A consumer can advance or complete the job before publish() returns.
+            if (e.apiErrorCode != WRONG_LAST_SEQUENCE) throw e
         }
     }
 
@@ -591,18 +588,24 @@ internal class NatsJobQueue(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                log.warn("Failed to read job state for $jobId, acking message", e)
-                msg.ack()
+                log.warn("Failed to read job state for $jobId, retrying message", e)
+                msg.nakWithDelay(java.time.Duration.ofSeconds(5))
                 continue
             }
-            if (entry == null || entry.valueAsString == null || entry.operation == KeyValueOperation.DELETE || entry.operation == KeyValueOperation.PURGE) {
+            val entryValue = entry?.valueAsString
+            if (entryValue == null || entry.operation == KeyValueOperation.DELETE || entry.operation == KeyValueOperation.PURGE) {
                 log.warn("Job $jobId not found in state (possibly cancelled), acking message")
                 msg.ack()
                 continue
             }
 
             try {
-                return internalGetJob(jobId, 120_000, releaseLock = false, wait = false) {
+                val dequeued = internalGetJob(jobId, 120_000, releaseLock = false, wait = false) {
+                    // A completed execution may still retain state while its children run.
+                    if (it?.status == JobStatus.COMPLETE || it?.status == JobStatus.FAILED_AND_COMPLETE) {
+                        msg.ack()
+                        return@internalGetJob null
+                    }
                     it?.message = msg
                     if (it != null) {
                         it.setStatus(JobStatus.RUNNING)
@@ -610,6 +613,7 @@ internal class NatsJobQueue(
                     }
                     it
                 }
+                if (dequeued != null) return dequeued
             } catch (e: CancellationException) {
                 throw e
             } catch (e: LockAcquisitionException) {
@@ -641,6 +645,7 @@ internal class NatsJobQueue(
     }
 
     companion object {
+        private const val WRONG_LAST_SEQUENCE = 10071
         // Keep removal notifications across several 30-second reconciliation passes while
         // bounding terminal metadata to about ten minutes (purge TTL plus limit-marker TTL).
         private const val KEY_VALUE_MARKER_TTL_SECONDS = 5 * 60
