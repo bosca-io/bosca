@@ -346,12 +346,29 @@ internal fun registryAuths(config: SwarmConfig): List<SwarmRegistryAuth> =
     (listOf(config.registryAuth) + config.sites.mapNotNull(SwarmSite::rootRegistryAuth))
         .filter { it.username.isNotBlank() }
 
-private fun registryLogin(config: SwarmConfig) {
-    for (auth in registryAuths(config)) {
+/** Selects credentials only for registries referenced by the stacks being deployed. */
+@Suppress("UNCHECKED_CAST")
+internal fun deploymentRegistryAuths(config: SwarmConfig): List<SwarmRegistryAuth> {
+    val stacks = listOf(infraStack(config), edgeStack(config)) + config.sites.map { siteStack(config, it) }
+    val registries = stacks.flatMap { stack ->
+        (stack.getValue("services") as Map<String, Map<String, Any>>).values.map {
+            swarmImageRepository(it.getValue("image") as String).substringBefore('/')
+        }
+    }.toSet()
+    return registryAuths(config).filter { auth ->
+        val server = auth.server.removePrefix("https://").removePrefix("http://").trimEnd('/')
+        val registry = if (server == "index.docker.io" || server == "index.docker.io/v1") "docker.io" else server
+        registry in registries
+    }
+}
+
+internal fun registryLogin(config: SwarmConfig) {
+    for (auth in deploymentRegistryAuths(config)) {
         val password = registryPassword(auth)
         require(password.isNotBlank()) {
             "Set a registry password for ${auth.server} in the private config or ${auth.passwordEnv} before deployment"
         }
+        println("Logging into image registry ${auth.server} on ${config.manager.ssh}")
         ssh(config.manager.ssh,
             "sudo -n docker login --username ${shell(auth.username)} --password-stdin ${shell(auth.server)}",
             (password + "\n").toByteArray())
@@ -540,10 +557,10 @@ private fun checkPublicSites(config: SwarmConfig) {
     }
 }
 
-internal fun deploySwarm(config: SwarmConfig, bundle: Path, skipPublicCheck: Boolean) {
+internal fun deploySwarm(config: SwarmConfig, bundle: Path, skipPublicCheck: Boolean, loginRegistries: Boolean = false) {
     verifyBootstrappedNodes(config)
     val retention = prepareSwarmStorage(config)
-    registryLogin(config)
+    if (loginRegistries) registryLogin(config)
     uploadBundle(config, bundle)
     script(config.manager.ssh,
         "sudo -n docker network inspect bosca >/dev/null 2>&1 || sudo -n docker network create --driver overlay --attachable bosca")

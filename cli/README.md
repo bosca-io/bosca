@@ -310,6 +310,11 @@ bosca swarm update-images --config ./swarm.local.json
 bosca swarm deploy --config ./swarm.local.json
 ```
 
+`swarm deploy` reuses saved Docker registry credentials. Add `--registry-login`
+for the first deployment of private images or to renew credentials; ordinary
+config updates skip fresh registry login. `swarm setup-tokens` also accepts this
+flag when applying newly created root-image credentials.
+
 `swarm deploy` checks node disk space before pulling, removes omitted services
 after readiness passes, and reclaims retired images and stopped task containers.
 It preserves active and rollback images. Configure `imageRetention.enabled`
