@@ -57,7 +57,13 @@ appConfig:
   realm: ''
   databaseUrl: ''
   databaseMaxConnections: 20
+  natsEnabled: true
   natsHost: nats
+  jobQueueFactory: nats
+  pubsubType: nats
+  counterType: nats
+  # Empty follows pubsubType.
+  liveSessionsType: ""
   cacheType: nats
   distributedLockType: nats
   redisHost: redis

@@ -1,0 +1,50 @@
+suite: Dragonfly snapshot archives
+templates:
+  - templates/redis-backup.yaml
+set:
+  global.domain: example.com
+tests:
+  - it: does not schedule archives by default
+    asserts:
+      - hasDocuments: { count: 0 }
+  - it: does not schedule archives when Redis is disabled
+    set:
+      redis.enabled: false
+      redis.backup.enabled: true
+    asserts:
+      - hasDocuments: { count: 0 }
+  - it: configures hourly archives and prefix-scoped seven-day retention
+    set:
+      redis.backup.enabled: true
+      redis.backup.bucket: deployment-backups
+      redis.backup.endpoint: https://storage.example.com
+      redis.env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef: { name: backup-s3, key: access-key }
+    asserts:
+      - isKind: { of: CronJob }
+      - equal:
+          path: spec.schedule
+          value: "7 * * * *"
+      - equal:
+          path: spec.concurrencyPolicy
+          value: Forbid
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.automountServiceAccountToken
+          value: false
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content: { name: SNAPSHOT_URI, value: 's3://deployment-backups/redis/latest/dump.rdb' }
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content: { name: RETENTION_DAYS, value: '7' }
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content:
+            name: AWS_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef: { name: backup-s3, key: access-key }
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].args[0]
+          pattern: '--prefix "\$ARCHIVE_PREFIX/"'

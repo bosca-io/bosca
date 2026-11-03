@@ -1,0 +1,105 @@
+suite: bosca-collector messaging backends
+templates:
+- templates/configmap-appconfig.yaml
+- templates/deployment.yaml
+set:
+  global.domain: example.com
+release:
+  name: test
+  namespace: test-namespace
+tests:
+- it: renders a Redis connection when jobQueueFactory selects Redis
+  set:
+    appConfig.jobQueueFactory: redis
+  template: templates/configmap-appconfig.yaml
+  asserts:
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'redis:\s*\n\s*host: redis.test-namespace.svc.cluster.local'
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'jobQueue:\s*\n\s*factory: redis'
+- it: renders a Redis connection when pubsubType selects Redis
+  set:
+    appConfig.pubsubType: redis
+  template: templates/configmap-appconfig.yaml
+  asserts:
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'redis:\s*\n\s*host: redis.test-namespace.svc.cluster.local'
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'pubsub:\s*\n\s*type: redis'
+- it: renders a Redis connection when counterType selects Redis
+  set:
+    appConfig.counterType: redis
+  template: templates/configmap-appconfig.yaml
+  asserts:
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'redis:\s*\n\s*host: redis.test-namespace.svc.cluster.local'
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'counter:\s*\n\s*type: redis'
+- it: renders a Redis connection when liveSessionsType selects Redis
+  set:
+    appConfig.liveSessionsType: redis
+  template: templates/configmap-appconfig.yaml
+  asserts:
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'redis:\s*\n\s*host: redis.test-namespace.svc.cluster.local'
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'liveSessions:\s*\n\s*type: redis'
+- it: omits NATS configuration and token when disabled
+  set:
+    appConfig.natsEnabled: false
+  asserts:
+  - template: templates/configmap-appconfig.yaml
+    notMatchRegex:
+      path: data["application.yaml"]
+      pattern: '(?m)^nats(Monitoring)?:'
+  - template: templates/deployment.yaml
+    notContains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: NATS_TOKEN
+      any: true
+- it: follows the pubsub backend for live sessions by default
+  set:
+    appConfig.pubsubType: redis
+  template: templates/configmap-appconfig.yaml
+  asserts:
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'liveSessions:\s*\n\s*type: redis'
+- it: writes directly to Iceberg with independent warehouse credentials
+  set:
+    appConfig.eventRepositoryType: iceberg
+    appConfig.iceberg.s3.bucket: warehouse-backups
+    appConfig.iceberg.s3.region: us-east-1
+    appConfig.iceberg.s3.endpoint: https://storage.example.com
+    secrets.icebergS3.secretName: warehouse-s3
+  asserts:
+  - template: templates/configmap-appconfig.yaml
+    matchRegex:
+      path: data["application.yaml"]
+      pattern: 'eventRepository:\s*\n\s*type: iceberg'
+  - template: templates/configmap-appconfig.yaml
+    matchRegex:
+      path: data["application.yaml"]
+      pattern: 'bucket: "warehouse-backups"'
+  - template: templates/configmap-appconfig.yaml
+    matchRegex:
+      path: data["application.yaml"]
+      pattern: 'accessKeyId: \$ICEBERG_S3_ACCESS_KEY'
+  - template: templates/deployment.yaml
+    contains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: ICEBERG_S3_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: warehouse-s3
+            key: ACCESS_KEY_ID

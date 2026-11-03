@@ -45,9 +45,12 @@ data:
         password: $DATABASE_PASSWORD
         maxConnections: {{ .Values.appConfig.databaseMaxConnections | default 20 }}
 
+    {{- if .Values.appConfig.natsEnabled }}
     nats:
       url: nats://{{ .Values.appConfig.natsHost }}.{{ .Release.Namespace }}.svc.cluster.local:4222
       token: $NATS_TOKEN
+
+    {{- end }}
 
     cache:
       type: {{ .Values.appConfig.cacheType }}
@@ -56,25 +59,28 @@ data:
       fumsEnabled: ${FUMS_TRANSFORM_ENABLED:{{ .Values.appConfig.fumsTransformEnabled }}}
 
     jobQueue:
-      factory: nats
+      factory: {{ .Values.appConfig.jobQueueFactory }}
 
     pubsub:
-      type: nats
+      type: {{ .Values.appConfig.pubsubType }}
+
+    liveSessions:
+      type: {{ .Values.appConfig.liveSessionsType | default .Values.appConfig.pubsubType }}
 
     distributedLock:
       type: {{ .Values.appConfig.distributedLockType }}
 
-    {{- if or (eq .Values.appConfig.cacheType "redis") (eq .Values.appConfig.distributedLockType "redis") }}
+    {{- if has "redis" (list .Values.appConfig.cacheType .Values.appConfig.distributedLockType .Values.appConfig.jobQueueFactory .Values.appConfig.pubsubType .Values.appConfig.counterType .Values.appConfig.liveSessionsType) }}
     redis:
       host: {{ .Values.appConfig.redisHost }}.{{ .Release.Namespace }}.svc.cluster.local
       port: {{ .Values.appConfig.redisPort }}
     {{- end }}
 
     counter:
-      type: nats
+      type: {{ .Values.appConfig.counterType }}
 
     eventRepository:
-      type: nats
+      type: {{ .Values.appConfig.eventRepositoryType }}
 
     analyticsServer:
       appId: analytics-collector
@@ -90,12 +96,17 @@ data:
         username: $ICEBERG_DATABASE_USER
         password: $ICEBERG_DATABASE_PASSWORD
       s3:
-        bucket: $AWS_BUCKET
-        region: $AWS_REGION
-        endpoint: $AWS_ENDPOINT
-        pathStyleAccess: true
+        bucket: {{ .Values.appConfig.iceberg.s3.bucket | quote }}
+        region: {{ .Values.appConfig.iceberg.s3.region | quote }}
+        endpoint: {{ .Values.appConfig.iceberg.s3.endpoint | quote }}
+        pathStyleAccess: {{ .Values.appConfig.iceberg.s3.pathStyleAccess }}
+        {{- if .Values.secrets.icebergS3.secretName }}
+        accessKeyId: $ICEBERG_S3_ACCESS_KEY
+        secretAccessKey: $ICEBERG_S3_SECRET_KEY
+        {{- else }}
         accessKeyId: $AWS_ACCESS_KEY_ID
         secretAccessKey: $AWS_SECRET_ACCESS_KEY
+        {{- end }}
 
     # Must match bosca-server and bosca-runner: whichever process installs the analytics-queries
     # package first seeds the queries with this table.

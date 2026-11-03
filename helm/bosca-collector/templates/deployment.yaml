@@ -72,7 +72,7 @@ spec:
                   name: {{ . }}
                   key: {{ $.Values.secrets.database.passwordKey }}
             {{- end }}
-            {{- with .Values.secrets.nats.secretName }}
+            {{- with (and .Values.appConfig.natsEnabled .Values.secrets.nats.secretName) }}
             - name: NATS_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -109,6 +109,18 @@ spec:
                 secretKeyRef:
                   name: {{ . }}
                   key: {{ $.Values.secrets.iceberg.passwordKey }}
+            {{- end }}
+            {{- with .Values.secrets.icebergS3.secretName }}
+            - name: ICEBERG_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.icebergS3.accessKeyIdKey }}
+            - name: ICEBERG_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.icebergS3.secretAccessKeyKey }}
             {{- end }}
           volumeMounts:
             - name: app-config

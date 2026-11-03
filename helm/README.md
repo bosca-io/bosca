@@ -91,7 +91,7 @@ charts expose `appConfig.fumsTransformEnabled`; the runner defaults to `false`.
 Enable it on the runner only when it handles FUMS event processing instead of the
 collector. `FUMS_TRANSFORM_ENABLED` overrides this setting on those applications.
 
-## Distributed cache and locks
+## Infrastructure backends and Dragonfly backups
 
 The infrastructure chart pins Dragonfly to `v2.0.2`. Set `redis.image` in your
 deployment's infrastructure values to override the full image reference:
@@ -104,24 +104,51 @@ redis:
 The chart passes this image to the Dragonfly operator through `spec.image`.
 Apply it with the existing infrastructure release name, namespace and values file.
 
-Starting with services chart `0.1.3`, server, runner, collector, artifacts server,
-Git server, and Kubernetes controller charts expose `appConfig.cacheType` and
-`appConfig.distributedLockType`, each accepting `nats` or `redis`. In the services
-umbrella, set these under each service's values. For example:
+The server, runner, collector, Atlas, artifacts server, Git server, and Kubernetes
+controller charts expose backend selections under `appConfig`. For example:
 
 ```yaml
 bosca-server:
   appConfig:
+    natsEnabled: false
+    jobQueueFactory: redis
+    pubsubType: redis
+    counterType: redis
+    liveSessionsType: redis
     cacheType: redis
     distributedLockType: redis
     redisHost: redis
     redisPort: 6379
 ```
 
-`redisHost` names a Service in the release namespace. Apply the same backend and
-Redis endpoint settings to every service sharing caches or locks. All six charts
-default to NATS for both backends. These settings do not change job queues,
-pub/sub, or counters.
+`redisHost` names a Service in the release namespace. A Redis connection is rendered
+when any backend selects Redis. Backend defaults remain NATS; an empty
+`liveSessionsType` follows `pubsubType`. `natsEnabled` controls the NATS connection,
+monitoring configuration and token environment variable. Domain implementations
+that directly require NATS still need a NATS connection; these options only select
+the configurable infrastructure backends.
+
+Server and runner charts expose `appConfig.analyticsProcessorEnabled` (defaults
+false and true, respectively). The collector's `appConfig.eventRepositoryType`
+selects `nats` or direct `iceberg` storage. `appConfig.iceberg.s3` configures the
+warehouse bucket separately from content storage, and
+`secrets.icebergS3.secretName` supplies existing warehouse object-storage
+credentials. Without that Secret, the collector retains its content-storage
+credential environment variables.
+
+The infrastructure chart exposes Dragonfly's `redis.snapshot`, `redis.extraArgs`
+and `redis.env`. Native snapshots may use a persistent volume or an S3 URI. For
+S3 RDB snapshots, set `snapshot.dir`, `snapshot.cron`, `--dbfilename=dump` and
+`--df_snapshot_format=false`, plus endpoint flags and credential Secret references
+in `env`. Dragonfly loads its latest native snapshot on startup.
+
+`redis.backup.enabled` adds a CronJob that archives the RDB object named by
+`redis.backup.bucket` and `snapshotKey`. It copies to `archivePrefix` hourly by
+default and deletes archive objects older than `retentionDays` (default seven).
+The job uses `redis.env` for existing credentials and `redis.backup.endpoint` for
+the object-store endpoint. Its retention only covers the archive prefix; the
+latest restore snapshot remains separate. All backup resources are rendered by
+the chart, without a post-renderer.
 
 When changing an existing deployment's lock backend, stop all consumers of the
 shared locks before starting them with the new configuration. NATS and Redis

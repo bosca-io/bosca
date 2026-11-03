@@ -338,6 +338,24 @@ redis:
   enabled: true
   image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
   replicas: 1
+  # Native Dragonfly snapshot configuration: local PVC or s3:// URI.
+  snapshot: {}
+  extraArgs: []
+  env: []
+  # Hourly archival of a single RDB snapshot, with prefix-scoped retention.
+  backup:
+    enabled: false
+    image: public.ecr.aws/aws-cli/aws-cli:2.31.0
+    schedule: "7 * * * *"
+    timeZone: Etc/UTC
+    endpoint: ""
+    bucket: ""
+    snapshotKey: redis/latest/dump.rdb
+    archivePrefix: redis/archive
+    retentionDays: 7
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 256Mi }
   resources:
     requests:
       cpu: 512m

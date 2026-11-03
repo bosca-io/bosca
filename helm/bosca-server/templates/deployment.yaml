@@ -99,7 +99,7 @@ spec:
                   name: {{ . }}
                   key: {{ $.Values.secrets.meilisearch.key }}
             {{- end }}
-            {{- with .Values.secrets.nats.secretName }}
+            {{- with (and .Values.appConfig.natsEnabled .Values.secrets.nats.secretName) }}
             - name: NATS_TOKEN
               valueFrom:
                 secretKeyRef:
