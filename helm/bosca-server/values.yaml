@@ -31,6 +31,9 @@ gateway:
   gatewayNamespace: ""
   hostnames: []
 
+# Maximum heap as a percentage of the container memory limit.
+maxRAMPercentage: 65
+
 resources:
   requests:
     cpu: 250m

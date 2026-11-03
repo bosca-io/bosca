@@ -1,0 +1,54 @@
+suite: bosca-artifacts-server heap sizing
+templates:
+  - templates/deployment.yaml
+  - templates/configmap-appconfig.yaml
+set:
+  global.domain: example.com
+tests:
+  - it: uses the default heap percentage
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["-XX:MaxRAMPercentage=75", "-config=/app/config/application.yaml"]
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JAVA_OPTS
+          any: true
+
+  - it: accepts a custom integer heap percentage
+    template: templates/deployment.yaml
+    set:
+      maxRAMPercentage: 60
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["-XX:MaxRAMPercentage=60", "-config=/app/config/application.yaml"]
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JAVA_OPTS
+          any: true
+
+  - it: accepts a fractional heap percentage alongside custom container memory
+    template: templates/deployment.yaml
+    set:
+      maxRAMPercentage: 62.5
+      resources.requests.memory: 1Gi
+      resources.limits.memory: 3Gi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["-XX:MaxRAMPercentage=62.5", "-config=/app/config/application.yaml"]
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JAVA_OPTS
+          any: true
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 1Gi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 3Gi

@@ -67,7 +67,7 @@ private fun deploy(
     configDigest: String? = null,
 ) = buildMap {
     put("placement", mapOf("constraints" to listOf(placement.constraint)))
-    put("restart_policy", mapOf("condition" to "on-failure"))
+    put("restart_policy", mapOf("condition" to "any"))
     limits?.let { put("resources", mapOf("limits" to mapOf("memory" to it.memory))) }
     if (rolling) put("update_config", mapOf("order" to "start-first", "failure_action" to "rollback", "monitor" to "30s"))
     configDigest?.let { put("labels", mapOf("io.bosca.config-sha256" to it)) }
@@ -419,20 +419,37 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
         "ARTIFACTS_URL" to artifacts, "ARTIFACTS_NAMESPACE" to "model",
         "ARTIFACTS_API_TOKEN" to site.ml.artifactsPushToken, "ARTIFACTS_PULL_API_TOKEN" to site.ml.artifactsPullToken,
     )
-    fun bosca(image: String, environment: Map<String, String>, port: Int, startPeriod: String, limits: Limits?) =
-        service(images.getValue(image), deploy(Placement.APPLICATION, limits, rolling = true), mapOf(
-            "environment" to environment,
-            "healthcheck" to healthcheck(bashHttpCheck(port, "/api/v1/live"), startPeriod),
-        ) + (applicationConfigs[image]?.let {
-            mapOf(
-                "command" to listOf("-config=/config/application.yaml"),
-                "configs" to listOf(mapOf("source" to "$image-application", "target" to "/config/application.yaml", "mode" to 292)),
-            )
-        } ?: emptyMap()))
+    fun bosca(
+        image: String,
+        environment: Map<String, String>,
+        port: Int,
+        startPeriod: String,
+        limits: Limits?,
+        heapPercent: Int = 75,
+        healthPath: String = "/api/v1/live",
+    ): Map<String, Any> {
+        // The message server's Crema class loading requires Serial GC; the other images use G1.
+        val heapOption = if (image == "bml") "-XX:MaximumHeapSizePercent=$heapPercent"
+            else "-XX:MaxRAMPercentage=$heapPercent.0"
+        // The released runner uses a Gradle JVM launcher; native executables take their options as arguments.
+        val jvm = image == "runner"
+        val arguments = buildList {
+            if (!jvm) add(heapOption)
+            if (image in applicationConfigs) add("-config=/config/application.yaml")
+        }
+        return service(images.getValue(image), deploy(Placement.APPLICATION, limits, rolling = true), buildMap {
+            put("environment", if (jvm) environment + ("JAVA_OPTS" to heapOption) else environment)
+            put("healthcheck", healthcheck(bashHttpCheck(port, healthPath), startPeriod))
+            if (arguments.isNotEmpty()) put("command", arguments)
+            if (image in applicationConfigs) {
+                put("configs", listOf(mapOf("source" to "$image-application", "target" to "/config/application.yaml", "mode" to 292)))
+            }
+        })
+    }
     val services = mapOf(
-        // Default memory limits follow the production Helm values; the runner has none there either.
+        // Default memory limits follow the production Helm values.
         "server" to bosca("server", env + mapOf("GIT_SYNC_LISTENERS" to "false", "SCHEDULER_ENABLED" to "true"),
-            8080, "150s", Limits(site.serverMemory)),
+            8080, "150s", Limits(site.serverMemory), heapPercent = 65),
         "collector" to bosca("collector", env + mapOf("BOSCA_SERVER_PORT" to "8081",
             "FUMS_TRANSFORM_ENABLED" to site.fumsEnabled.toString()), 8081, "120s", Limits("512M")),
         "atlas" to bosca("atlas", env + mapOf(
@@ -463,21 +480,17 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
             "environment" to studioEnv,
             "healthcheck" to healthcheck(httpGetCheck("wget", "http://127.0.0.1:3000/health"), "60s", interval = "20s"),
         )),
-        "profiles-web" to service(images.getValue("profiles-web"), deploy(Placement.APPLICATION, Limits("512M"), rolling = true), mapOf(
-            "environment" to (mapOf(
+        "profiles-web" to bosca("profiles-web", mapOf(
                 "BML_GRAPHQL_ENDPOINT" to "$server/graphql",
                 "PROFILES_WEB_PUBLIC_URL" to "https://${hosts.profiles}",
                 "PROFILES_WEB_COOKIE_DOMAIN" to site.profilesWeb.cookieDomain.ifBlank { hosts.root },
             ) + webBrandEnvironment(site.mailFromName, site.profilesWeb.brandName,
-                site.profilesWeb.logoUrl, site.profilesWeb.primaryColor, site.profilesWeb.accentColor)),
-            "healthcheck" to healthcheck(bashHttpCheck(9095, "/login"), "30s"),
-        )),
-        "notifications-web" to service(images.getValue("notifications-web"), deploy(Placement.APPLICATION, Limits("512M"), rolling = true), mapOf(
-            "environment" to (mapOf("BML_GRAPHQL_ENDPOINT" to "$server/graphql") +
+                site.profilesWeb.logoUrl, site.profilesWeb.primaryColor, site.profilesWeb.accentColor),
+            9095, "30s", Limits("512M"), healthPath = "/login"),
+        "notifications-web" to bosca("notifications-web", mapOf("BML_GRAPHQL_ENDPOINT" to "$server/graphql") +
                 webBrandEnvironment(site.mailFromName, site.notificationsWeb.brandName,
-                    site.notificationsWeb.logoUrl, site.notificationsWeb.primaryColor, site.notificationsWeb.accentColor)),
-            "healthcheck" to healthcheck(bashHttpCheck(9094, "/"), "30s"),
-        )),
+                    site.notificationsWeb.logoUrl, site.notificationsWeb.primaryColor, site.notificationsWeb.accentColor),
+            9094, "30s", Limits("512M"), healthPath = "/"),
         "recommendation-trainer" to service(images.getValue("recommendation-trainer"),
             deploy(Placement.MODELS, Limits("4G")), mapOf(
             // Exports are staged in the container filesystem, like the Kubernetes Job's emptyDir.
@@ -502,7 +515,7 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
         // Its bundled application.yaml enables the FUMS delivery worker.
         if (site.runnerServer.enabled) put("runner", bosca("runner", env + mapOf(
             "BOSCA_SERVER_PORT" to "8080", "GIT_SYNC_LISTENERS" to "true", "SCHEDULER_ENABLED" to "false",
-            "ANALYTICS_PROCESSOR_ENABLED" to "true"), 8080, "300s", null))
+            "ANALYTICS_PROCESSOR_ENABLED" to "true"), 8080, "300s", Limits(site.runnerMemory)))
         if (site.gitServer.enabled) put("git", bosca("git", env + mapOf(
             "GIT_HTTP_PORT" to "8091",
             "GIT_UI_URL" to "https://${hosts.atlas}", "APP_URL" to "https://${hosts.atlas}",
@@ -510,7 +523,7 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
             "OAUTH2_ALLOWED_REDIRECT" to "https://${hosts.atlas}",
             "OAUTH2_GOOGLE_REDIRECT" to "https://${hosts.git}/oauth2/google/callback",
             "OAUTH2_GOOGLE_ADMIN_REDIRECT" to "https://${hosts.git}/oauth2/google/callback",
-        ), 8091, "120s", Limits("4G")))
+        ), 8091, "120s", Limits("1G")))
         if (site.artifactsServer.enabled) put("artifacts", bosca("artifacts", env + mapOf("BOSCA_SERVER_PORT" to "8084", "ANALYTICS_APP_ID" to "bosca-artifacts-server"),
             8084, "120s", Limits("2G")))
         if (site.atlasUiServer.enabled) put("atlas-ui", bosca("atlas-ui", mapOf(

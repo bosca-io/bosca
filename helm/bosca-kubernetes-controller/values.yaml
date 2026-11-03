@@ -23,6 +23,9 @@ service:
   type: ClusterIP
   port: 8082
 
+# Maximum heap as a percentage of the container memory limit.
+maxRAMPercentage: 75
+
 resources:
   requests:
     cpu: 100m

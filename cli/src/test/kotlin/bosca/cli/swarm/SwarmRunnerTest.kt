@@ -3,6 +3,7 @@ package bosca.cli.swarm
 import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -16,6 +17,7 @@ class SwarmRunnerTest {
             val defaults = SwarmConfig().withSecrets()
             val config = defaults.copy(sites = defaults.sites.mapIndexed { index, site ->
                 site.copy(runnerServer = SwarmStandaloneServer(index != 0),
+                    runnerMemory = if (index == 0) "3G" else "4G",
                     oauthRedirects = listOf("https://${site.hosts.studio}"))
             })
             val path = directory.resolve("config.json")
@@ -32,6 +34,14 @@ class SwarmRunnerTest {
                 assertEquals(site.runnerServer.enabled, Files.exists(bundle.resolve("config/sites/${site.id}/runner.yaml")))
                 assertEquals(site.runnerServer.enabled, "${site.id}_runner" in expected)
                 assertTrue("${site.id}_atlas" in expected)
+                if (site.runnerServer.enabled) {
+                    val runner = stack.getValue("services").jsonObject.getValue("runner").jsonObject
+                    val memory = runner.getValue("deploy").jsonObject.getValue("resources").jsonObject
+                        .getValue("limits").jsonObject.getValue("memory").jsonPrimitive.content
+                    assertEquals(site.runnerMemory, memory)
+                    assertEquals("-XX:MaxRAMPercentage=75.0",
+                        runner.getValue("environment").jsonObject.getValue("JAVA_OPTS").jsonPrimitive.content)
+                }
             }
             val enabled = loaded.copy(sites = loaded.sites.map { it.copy(runnerServer = SwarmStandaloneServer(true)) })
             renderSwarm(enabled, bundle)

@@ -19,6 +19,46 @@ For an existing deployment, use its current release names, namespaces and values
 files. Chart versions follow the selected Git release tag. Update any version
 constraints that still select the former independent `0.1.x` chart releases.
 
+## Container memory and heap sizing
+
+Set memory requests, memory limits and `maxRAMPercentage` in your deployment's
+values file. The server defaults to 65 percent; Atlas, runner, Git, artifacts,
+collector and Kubernetes controller default to 75 percent. The percentage sets
+maximum heap size relative to the container memory limit; leave room for memory
+used outside the heap.
+
+For the services umbrella chart:
+
+```yaml
+bosca-server:
+  maxRAMPercentage: 65
+  resources:
+    requests:
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+bosca-atlas-server:
+  maxRAMPercentage: 70
+  resources:
+    requests:
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+bosca-runner:
+  maxRAMPercentage: 75
+  workers:
+    default:
+      resources:
+        requests:
+          memory: 2Gi
+        limits:
+          memory: 2Gi
+```
+
+Standalone chart values omit the service-name wrapper. Runner memory is set per
+worker under `workers.<name>.resources`; its `maxRAMPercentage` applies to every
+worker. Percentages accept integers or fractional values such as `62.5`.
+
 ## Design Library site
 
 `bml-design-catalog` serves the interactive Design Library catalog as a GraalVM native executable

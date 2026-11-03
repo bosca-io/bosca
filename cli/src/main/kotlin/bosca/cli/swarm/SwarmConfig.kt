@@ -117,6 +117,8 @@ data class SwarmConfig(
     val notificationsWeb: SwarmNotificationsWeb = SwarmNotificationsWeb(),
     /** Bosca server memory limit in Docker units, for example `768M` or `1536M`. */
     val serverMemory: String = "768M",
+    /** Bosca runner memory limit in Docker units, for example `2G` or `4G`. */
+    val runnerMemory: String = "2G",
     /** Enables API.Bible usage reporting in this site's Analytics collector. */
     val fumsEnabled: Boolean = true,
     /** Atlas host and capabilities enabled in its combined process. */
@@ -351,8 +353,10 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
         require(site.rootEnv.keys.all { it.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) }) {
             "Invalid rootEnv variable name for ${site.id}"
         }
-        require(site.serverMemory.matches(Regex("[1-9][0-9]*[bkmg]?", RegexOption.IGNORE_CASE))) {
-            "serverMemory for ${site.id} must be a positive byte count with an optional B, K, M, or G suffix"
+        mapOf("serverMemory" to site.serverMemory, "runnerMemory" to site.runnerMemory).forEach { (setting, memory) ->
+            require(memory.matches(Regex("[1-9][0-9]*[bkmg]?", RegexOption.IGNORE_CASE))) {
+                "$setting for ${site.id} must be a positive byte count with an optional B, K, M, or G suffix"
+            }
         }
         require(site.mailerType in setOf("sendgrid", "mailgun", "smtp")) {
             "mailerType for ${site.id} must be sendgrid, mailgun, or smtp"
