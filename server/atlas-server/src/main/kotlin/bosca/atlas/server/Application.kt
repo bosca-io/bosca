@@ -39,15 +39,19 @@ fun main(args: Array<String>) {
 }
 
 /** Composes Git and registry services once, with HTTP routes and workers selected independently. */
-suspend fun BoscaApplication.module() {
+suspend fun BoscaApplication.module(configure: BoscaApplication.() -> Unit = {}) {
     val configuration = AtlasConfiguration.from(environment.config)
     install(InitializeModule(providers = atlasProviderRegistrars()))
+    configureAtlasHubSpot()
+    configure()
     install(AnalyticsServerClientModule())
     RegisterJobsConfiguration()
     // Completion callbacks may target a parent on a queue this process does not consume.
     provide<JobQueue>("git")
     provide<JobQueue>(PipelinesJobQueueNames.jobQueue)
     provide<JobQueue>(JobQueueNames.commonJobQueue)
+    provide<JobQueue>(bosca.backup.BackupJobQueueNames.backupJobQueue)
+    provide<JobQueue>(bosca.profile.configuration.JobQueueNames.profileJobQueue)
     val forwarder = provide<JobEnqueueEventForwarder>()
     onShutdown { forwarder.stop() }
     forwarder.start()
@@ -91,10 +95,18 @@ suspend fun BoscaApplication.module() {
 
 internal fun atlasProviderRegistrars() = arrayOf(
     AtlasProviderRegistrar(),
+    CoreAIProviderRegistrar(), AIProviderRegistrar(),
+    CoreChatProviderRegistrar(), ChatProviderRegistrar(),
+    CoreCollaborationProviderRegistrar(), CollaborationProviderRegistrar(),
+    PostgresAdminProviderRegistrar(), NatsAdminProviderRegistrar(), MeilisearchAdminProviderRegistrar(),
     CoreProfileProviderRegistrar(), ProfileProviderRegistrar(),
+    CoreFormsProviderRegistrar(), FormsProviderRegistrar(),
+    CoreConfigurationProviderRegistrar(), ConfigurationProviderRegistrar(),
+    bosca.di.BackupProviderRegistrar(),
     CoreSecurityProviderRegistrar(), SecurityProviderRegistrar(),
     CoreStorageProviderRegistrar(), StorageProviderRegistrar(),
     CoreContentProviderRegistrar(), ContentProviderRegistrar(), SlugProviderRegistrar(),
+    CoreBibleProvidersProviderRegistrar(), BibleProvidersProviderRegistrar(), MuxProviderRegistrar(), HubSpotProviderRegistrar(),
     CoreSearchProviderRegistrar(), SearchProviderRegistrar(),
     CoreSchedulerProviderRegistrar(), SchedulerProviderRegistrar(),
     CorePipelinesProviderRegistrar(), PipelinesProviderRegistrar(),

@@ -413,6 +413,32 @@ class PostgresAdminServiceImplTest {
 
     // endregion
 
+    @OptIn(InternalDI::class)
+    @Test
+    fun `pool statistics do not construct unconfigured optional providers`() = runTest {
+        every { ProviderRegistry.findAll(ConnectionPool::class) } returns listOf(
+            object : ObjectProvider<ConnectionPool> {
+                override val type = ConnectionPool::class
+                override val exists = false
+                override suspend fun get(): ConnectionPool = error("Unconfigured pool must not be constructed")
+            }
+        )
+        assertTrue(service.getConnectionPoolStats().isEmpty())
+    }
+
+    @OptIn(InternalDI::class)
+    @Test
+    fun `configured pool failures remain visible`() = runTest {
+        every { ProviderRegistry.findAll(ConnectionPool::class) } returns listOf(
+            object : ObjectProvider<ConnectionPool> {
+                override val type = ConnectionPool::class
+                override suspend fun get(): ConnectionPool = error("Configured pool unavailable")
+            }
+        )
+        val error = kotlin.test.assertFailsWith<IllegalStateException> { service.getConnectionPoolStats() }
+        assertEquals("Configured pool unavailable", error.message)
+    }
+
     // region getSettings
 
     @Test

@@ -11,6 +11,7 @@ import bosca.profile.profile.service.ProfileService
 import bosca.serialization.UUID
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import java.io.IOException
@@ -59,6 +60,7 @@ class FederationHandshakeTest {
 
     @BeforeTest
     fun setup() {
+        every { inboundListener.exists } returns true
         coEvery { localPeerIdProvider.get() } returns originPeerId
         // No-op listener refresh — federateChannel calls inboundListener.get().refresh()
         val listener = mockk<FederationInboundListener>(relaxed = true)
@@ -284,5 +286,16 @@ class FederationHandshakeTest {
         )
 
         assertEquals(FederationSyncDirection.OUTBOUND, captured.captured)
+    }
+
+    @Test
+    fun `administration mutations work without resolving an absent inbound listener`() = runBlocking {
+        every { inboundListener.exists } returns false
+        coEvery { configurationService.getByKey(any()) } returns null
+        service.federateChannel(localChannelId, peerId, remoteChannelId, FederationSyncDirection.BIDIRECTIONAL)
+        service.unfederateChannel(localChannelId, peerId)
+        service.deactivatePeer(peerId)
+        coVerify(exactly = 0) { inboundListener.get() }
+        coVerify(exactly = 1) { repository.deactivatePeer(peerId) }
     }
 }

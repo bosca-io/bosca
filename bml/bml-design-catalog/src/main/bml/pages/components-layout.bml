@@ -44,12 +44,12 @@
       <profile name="Alex Example" subtitle="@alex" initials="AE" />
     </reference-entry>
     <reference-entry name="profile-menu"
-      :api='"label: String = \"Profile\"\nname: String = \"Profile\"\nsubtitle: String = \"\"\nicon: String = \"users\"\nwidth: Int = 260\nerror: String = \"\""'
-      :contract='"Profile trigger and identity heading composed from the shared popover and profile. Project role=menuitem links or buttons. The application supplies identity, authentication, appearance actions and persistence. Additional attributes and classes target the root."'
+      :api='"label: String = \"Profile\"\nname: String = \"Profile\"\nsubtitle: String = \"Signed in\"\nicon: String = \"users\"\nwidth: Int = 260\naccountActions: Boolean = true\nerror: String = \"\""'
+      :contract='"Profile trigger and identity heading composed from the shared popover and profile. Project role=menuitem links or buttons. The tag loads identity and supplies appearance and sign-out actions using the host Bosca session. Set accountActions=false for supplied identities and custom-only actions. Additional attributes and classes target the root."'
       :keyboard='"Click or Enter opens the native disclosure. Right-click, ContextMenu and Shift+F10 open and focus the first enabled item. Arrow keys and Home/End navigate; Escape restores trigger focus. Native disclosure works without scripts."'
-      :css='"The shared popover supplies spacing, opaque consumer surfaces, the quiet --popover-border and focus styling. data-profile-heading and data-profile-error are public targets for consumer-owned identity or error updates."'
-      :snippet='"<profile-menu label=\"Account\" name=\"Alex Example\" subtitle=\"@alex\"><a role=\"menuitem\" href=\"/shell\"><span class=\"menu-icon\"><icon name=\"users\" /></span>Profile</a><button role=\"menuitem\" icon=\"moon\" disabled>Dark appearance</button></profile-menu>"'>
-      <profile-menu label="Account" name="Alex Example" subtitle="@alex"><a role="menuitem" href="/shell"><span class="menu-icon"><icon name="users" /></span>Profile</a><button role="menuitem" icon="moon" disabled>Dark appearance</button></profile-menu>
+      :css='"The shared popover supplies spacing, opaque consumer surfaces, the quiet --popover-border and focus styling. data-profile-heading and data-profile-error are targets for built-in identity and error updates."'
+      :snippet='"<profile-menu :accountActions=\"false\" label=\"Account\" name=\"Alex Example\" subtitle=\"@alex\"><a role=\"menuitem\" href=\"/shell\"><span class=\"menu-icon\"><icon name=\"users\" /></span>Profile</a><button role=\"menuitem\" icon=\"moon\" disabled>Dark appearance</button></profile-menu>"'>
+      <profile-menu :accountActions="false" label="Account" name="Alex Example" subtitle="@alex"><a role="menuitem" href="/shell"><span class="menu-icon"><icon name="users" /></span>Profile</a><button role="menuitem" icon="moon" disabled>Dark appearance</button></profile-menu>
     </reference-entry>
     <reference-entry name="card"
       :api='"title: String = \"\"\npadded: Boolean = true\ndescription: String = \"\""'
@@ -166,7 +166,7 @@
       <form-actions bordered align="between"><button-link href="/navigation">Cancel</button-link><button type="button" primary>Save example</button></form-actions>
     </reference-entry>
     <reference-entry name="pagination"
-      :api='"page: Long = 1L\npreviousHref: String = \"\"\nnextHref: String = \"\"\nhasPrevious: Boolean = false\nhasNext: Boolean = false\nlabel: String = \"Pages\""'
+      :api='"page: Long = 1L\npreviousHref: String = \"\"\nnextHref: String = \"\"\nhasPrevious: Boolean = false\nhasNext: Boolean = false\nlabel: String = \"Pages\"\nsummary: String = \"\"\nalwaysVisible: Boolean = false"'
       :contract='"A labelled navigation region shows the current page and supplied previous/next links. It renders when a destination or availability flag exists. Default children can supply application-owned action buttons."'
       :keyboard='"Tab and Enter operate native destination links. The application owns page data, offsets and action behavior."'
       :css='"Uses --line and --fg-3; the action links use button-link tokens. Root attributes and classes reach the navigation region."'

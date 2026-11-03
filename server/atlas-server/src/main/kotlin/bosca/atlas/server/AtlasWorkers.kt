@@ -24,6 +24,9 @@ internal suspend fun BoscaApplication.startAtlasWorkers(configuration: AtlasConf
             "git" -> "git"
             "pipelines" -> PipelinesJobQueueNames.jobQueue
             "common" -> JobQueueNames.commonJobQueue
+            "index" -> bosca.search.configuration.JobQueueNames.indexJobQueue
+            "backup" -> bosca.backup.BackupJobQueueNames.backupJobQueue
+            "profile" -> bosca.profile.configuration.JobQueueNames.profileJobQueue
             else -> error("Unknown Atlas runner queue: $name")
         }
         val runner = JobRunner(provide<JobQueue>(providerName), configuration.runnerConcurrency, locks, errors)

@@ -352,6 +352,8 @@ type MeilisearchAdminMutation {
         "The index UID to reset."
         uid: String!
     ): MeilisearchTask!
+    "Remove one named embedder while retaining the other configured providers."
+    removeEmbedder(uid: String!, name: String!): MeilisearchTask!
     "Delete all documents from an index."
     deleteAllDocuments(
         "The index UID to clear."

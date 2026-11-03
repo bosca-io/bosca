@@ -530,6 +530,9 @@ class SecurityServiceImpl(
     override suspend fun getPrincipals(offset: Long, limit: Int, includeDeleted: Boolean) =
         principalRepository.getPrincipals(offset, limit, includeDeleted)
 
+    override suspend fun findPrincipals(query: String, offset: Long, limit: Int, includeDeleted: Boolean) =
+        principalRepository.findPrincipals(query, offset, limit, includeDeleted)
+
     override suspend fun getPrincipalById(id: UUID) = principalIdCache.get(id)
 
     private suspend fun requirePrincipal(id: UUID): Principal =

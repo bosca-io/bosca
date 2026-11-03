@@ -76,6 +76,7 @@ try {
     "dialogs.mjs",
     "file-workspace.mjs",
     "source.mjs",
+    "editor.mjs",
   ];
   const selected = process.env.GIT_UI_BROWSER_TESTS?.split(",") ?? available;
   for (const test of selected) {

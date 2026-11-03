@@ -12,5 +12,6 @@ data class ConfigurationInput(
     @Contextual
     val value: JsonElement,
     val public: Boolean,
-    val permissions: List<PermissionInput>
+    /** Omitted permissions retain an existing entry's ACL; an empty list explicitly clears it. */
+    val permissions: List<PermissionInput>? = null
 )

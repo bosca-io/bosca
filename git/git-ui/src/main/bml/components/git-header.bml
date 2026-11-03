@@ -76,7 +76,7 @@
         </details>
       </nav>
       <div class="shell-footer session-control">
-        <git-profile-menu />
+        <profile-menu />
       </div>
     </if>
   </app-header>

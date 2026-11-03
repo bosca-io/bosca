@@ -80,8 +80,8 @@ type ApiTokensMutation {
     revokeAll: Boolean!
     "Revoke all API tokens for a specific principal. Allowed for the principal themselves (equivalent to revokeAll); revoking another principal's tokens requires admin."
     revokeAllForPrincipal(principalId: UUID!): Boolean!
-    "Update a token's name, description, or scopes"
-    edit(id: Long!, name: String, description: String, scopes: [String!]): ApiToken!
+    "Update a token's name, description, or scopes. Null scopes leave restrictions unchanged; clearScopes explicitly removes restrictions."
+    edit(id: Long!, name: String, description: String, scopes: [String!], clearScopes: Boolean! = false): ApiToken!
     "Permanently delete a revoked token record"
     delete(id: Long!): Boolean!
 }

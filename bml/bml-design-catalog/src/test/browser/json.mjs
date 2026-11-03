@@ -28,7 +28,7 @@ export async function checkJsonEditors({ navigate, evaluate, until: poll, call, 
   };
   await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await navigate('/json');
-  await until(`document.querySelectorAll('[data-json-ready]').length===8&&${form('dark')}.dataset.bmlActionBound==='true'`);
+  await until(`document.querySelectorAll('[data-json-ready]').length===9&&${form('dark')}.dataset.bmlActionBound==='true'`);
   assert.equal(await evaluate(`document.querySelector('nav[aria-label="Design library"] a[aria-current=page]').getAttribute('href')`), '/json');
   assert.ok(await truth(`document.querySelector('[data-json-table] .jse-table-mode')&&document.querySelector('[data-json-empty] textarea').value===''&&document.querySelector('[data-json-malformed] textarea').value==='{ "title": '&&document.querySelector('[data-json-empty]').getAttribute('aria-invalid')==='true'&&document.querySelector('[data-json-malformed]').getAttribute('aria-invalid')==='true'&&document.querySelector('[data-json-readonly-case] textarea').readOnly&&document.querySelector('[data-json-disabled-case] textarea').disabled`));
   assert.ok(await truth(`!window.catalogJsonExecuted&&!document.querySelector('[data-json-strings] script')&&document.querySelector('[data-json-strings] textarea').value.includes('</textarea><script>window.catalogJsonExecuted = true;</script>')`));
@@ -112,15 +112,17 @@ export async function checkJsonEditors({ navigate, evaluate, until: poll, call, 
     })()`);
     for (const group of geometry.groups) assert.ok(Math.abs(group.height-320)<1&&group.gap>=15.5&&group.contained, JSON.stringify(group));
     assert.ok(geometry.overflow<=0);
+    const compact=await evaluate(`(() => {const root=document.querySelector('[data-json-compact]'),surface=root.querySelector('.json-surface').getBoundingClientRect(),engine=root.querySelector('.jse-main').getBoundingClientRect();return {surfaceHeight:surface.height,engineHeight:engine.height,contained:engine.top>=surface.top&&engine.bottom<=surface.bottom+1&&engine.left>=surface.left&&engine.right<=surface.right+1,status:root.hasAttribute('data-status-bar'),main:root.hasAttribute('data-main-menu'),navigation:root.hasAttribute('data-navigation'),format:root.hasAttribute('data-ask-format')};})()`);
+    assert.equal(compact.surfaceHeight,76);assert.equal(compact.engineHeight,76);assert.ok(compact.contained);assert.equal(compact.status,false);assert.equal(compact.main,false);assert.equal(compact.navigation,false);assert.equal(compact.format,false);
     if (width===390) assert.ok(geometry.cards.slice(1).every((card,i)=>card.top-geometry.cards[i].bottom>=23.5), JSON.stringify(geometry.cards));
-    const colors=await evaluate(`(${contrastSamples.toString()})('[data-json-palette] .jse-key, [data-json-palette] .jse-value, [data-json-palette] .jse-menu button:not(:disabled), [data-json-palette] [data-bml-ref=feedback], [data-json-cases] .jse-key, [data-json-cases] .jse-value, [data-json-cases] .jse-message, [data-json-cases] .jse-message button:not(:disabled), [data-json-cases] [data-bml-ref=feedback]')`);
+    const colors=await evaluate(`(${contrastSamples.toString()})('[data-json-palette] .jse-key, [data-json-palette] .jse-value, [data-json-palette] .jse-menu button:not(:disabled), [data-json-palette] [data-bml-ref=feedback], [data-json-cases] .jse-key, [data-json-cases] .jse-value, [data-json-cases] .jse-message, [data-json-cases] .jse-message button:not(:disabled), [data-json-cases] [data-bml-ref=feedback], [data-json-compact] .cm-line span')`);
     assert.ok(colors.text.length>=10);
     for (const sample of colors.text) assert.ok(sample.ratio>=4.5, `${width}: ${JSON.stringify(sample)}`);
     measurements.push({width,...geometry,colors:colors.text});
     await evaluate(`document.querySelectorAll('[data-catalog-json-owner] details').forEach(details=>{details.open=false;});document.activeElement.blur();document.querySelector('.catalog-content').scrollIntoView({block:'start'});window.scrollTo(0,0)`);
     const shot=await call('Page.captureScreenshot',{format:'png'});
     await writeFile(join(artifacts,`catalog-${mode}-json-${width}.png`),Buffer.from(shot.data,'base64'));
-    for (const index of width>700?[0,2,4]:[0,1,2,3,4,5]) {
+    for (const index of width>700?[0,2,4,6]:[0,1,2,3,4,5,6]) {
       await evaluate(`document.querySelectorAll('[data-json-cases] > .ui-card')[${index}].scrollIntoView({block:'start'})`);
       const cases=await call('Page.captureScreenshot',{format:'png'});
       await writeFile(join(artifacts,`catalog-${mode}-json-cases-${width}${index===0?'':'-'+(index+1)}.png`),Buffer.from(cases.data,'base64'));

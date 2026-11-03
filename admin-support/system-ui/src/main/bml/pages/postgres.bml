@@ -1,0 +1,4 @@
+<page route="/system/postgres" requireAuth>
+<script server provides="page">bosca.system.ui.postgresConsole()</script>
+<system-layout title="Postgres" :admin="page.admin"><system-postgres :initial="page" /></system-layout>
+</page>

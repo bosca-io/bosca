@@ -1,0 +1,10 @@
+query SystemIntegrations {
+  smtp: configurations { configuration(key: "smtp") { value } }
+  sendgrid: configurations { configuration(key: "sendgrid") { value } }
+  mailgun: configurations { configuration(key: "mailgun") { value } }
+  push: configurations { configuration(key: "push") { value } }
+  hubspot: configurations { configuration(key: "hubspot") { value } }
+  mux: configurations { configuration(key: "mux") { value } }
+  collaboration { federation { peers { id } } }
+  content { bibleProviders { configurations { enabled hasApiKey } } }
+}

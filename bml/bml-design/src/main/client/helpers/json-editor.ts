@@ -11,7 +11,6 @@ export function mountJsonEditor(ctx: ClientContext) {
   if (!target || !field || !feedback) return;
   let disposed = false;
   let previousValue = ctx.root.dataset.value ?? "{}", previousOptions = "";
-  let previousMode: Mode | undefined;
   let observedForm: HTMLFormElement | null = null;
   const report = () => {
     target.querySelector(".cm-content")?.setAttribute("aria-readonly", String(field.readOnly));
@@ -31,7 +30,17 @@ export function mountJsonEditor(ctx: ClientContext) {
     }
     report();
   };
-  const editor = createJSONEditor({ target, props: { content: { text: field.value }, mode: Mode.tree, onChange: publish, onChangeMode: report } });
+  const configuration = () => ({
+    mode: Object.values(Mode).find(mode => mode === ctx.root.dataset.mode) ?? Mode.tree,
+    ariaLabel: ctx.root.dataset.label ?? "JSON editor",
+    readOnly: ctx.root.hasAttribute("data-readonly") || ctx.root.hasAttribute("data-disabled") || Boolean(field.form?.hasAttribute("data-bml-action-pending")),
+    mainMenuBar: ctx.root.hasAttribute("data-main-menu"), navigationBar: ctx.root.hasAttribute("data-navigation"),
+    statusBar: ctx.root.hasAttribute("data-status-bar"),
+    askToFormat: ctx.root.hasAttribute("data-ask-format"),
+  });
+  const initialOptions = configuration();
+  let previousMode = initialOptions.mode;
+  const editor = createJSONEditor({ target, props: { content: { text: field.value }, ...initialOptions, onChange: publish, onChangeMode: report } });
   attachJsonAccessibility(ctx, target);
   const observer = new MutationObserver(() => sync());
   const sync = () => {
@@ -42,14 +51,19 @@ export function mountJsonEditor(ctx: ClientContext) {
       if (form) observer.observe(form, { attributes: true, attributeFilter: ["data-bml-action-pending"] });
     }
     const disabled = ctx.root.hasAttribute("data-disabled");
-    const readOnly = ctx.root.hasAttribute("data-readonly") || disabled || Boolean(form?.hasAttribute("data-bml-action-pending"));
-    const mode = Object.values(Mode).find(mode => mode === ctx.root.dataset.mode) ?? Mode.tree;
-    const label = ctx.root.dataset.label ?? "JSON editor", name = ctx.root.dataset.name ?? "";
+    const nextOptions = configuration();
+    const readOnly = nextOptions.readOnly, label = nextOptions.ariaLabel, name = ctx.root.dataset.name ?? "";
     field.name = name; field.disabled = disabled; field.readOnly = readOnly;
     field.setAttribute("aria-label", label); target.inert = disabled;
-    if (mode !== previousMode) { editor.validate(); editor.updateProps({ mode }); previousMode = mode; }
-    const options = JSON.stringify([label, readOnly]);
-    if (options !== previousOptions) { editor.updateProps({ ariaLabel: label, readOnly }); previousOptions = options; }
+    const options = JSON.stringify(nextOptions);
+    if (options !== previousOptions) {
+      const { mode, ...otherOptions } = nextOptions;
+      editor.validate();
+      // Only a changed caller mode replaces the user's local view choice.
+      editor.updateProps(mode !== previousMode ? nextOptions : otherOptions);
+      previousMode = mode;
+      previousOptions = options;
+    }
     const value = ctx.root.dataset.value ?? "{}";
     if (value !== previousValue) {
       editor.validate();
@@ -68,9 +82,11 @@ export function mountJsonEditor(ctx: ClientContext) {
   ctx.on<MouseEvent>(target, "click", event => {
     if (event.target instanceof Element && event.target.closest(".jse-menu")) editor.validate();
   }, true);
-  ctx.on<Event>(document, "submit", event => {
+  const flush = (event: Event) => {
     if (event.target === field.form) { editor.validate(); publish(editor.get()); }
-  }, true);
+  };
+  ctx.on<Event>(document, "submit", flush, true);
+  ctx.on<Event>(document, "bml:form-serialize", flush, true);
   ctx.on<Event>(document, "reset", event => {
     if (event.target !== field.form) return;
     queueMicrotask(() => {

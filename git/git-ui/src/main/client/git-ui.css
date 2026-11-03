@@ -930,8 +930,8 @@ a.info-value {
   margin-left: 0;
 }
 
-/* Git retains its code palette and spacing on the shared read-only viewer. */
-.git-document .code-widget[data-bml-source-view] {
+/* Git retains its code palette and spacing on the shared viewers and editors. */
+.git-document [data-bml-source-view] {
   --source-keyword: #c678dd;
   --source-name: #e06c75;
   --source-function: #61afef;
@@ -963,7 +963,7 @@ a.info-value {
 }
 
 /* Git's structured JSON palette belongs to the consuming application. */
-[data-bml-json-editor] {
+:where(.git-document) [data-bml-json-editor] {
   --json-scheme: dark;
   --json-accent: #7c5cff;
   --json-bg: #161a25;
@@ -980,7 +980,6 @@ a.info-value {
 }
 
 /* Git owns appearance, including opaque overlay surfaces and editor palettes. */
-:root[data-theme="light"],
 .git-document[data-theme="light"] {
   --workspace-fullscreen-bg: #fff;
   --bg-0: #f8fafc;
@@ -1022,7 +1021,7 @@ a.info-value {
   --line-2: #738399;
   --control-bg: var(--bg-2);
 }
-.git-document[data-theme="light"] .code-widget[data-bml-source-view] {
+.git-document[data-theme="light"] [data-bml-source-view] {
   --source-keyword: #7e22ce;
   --source-name: #9f1239;
   --source-function: #1d4ed8;

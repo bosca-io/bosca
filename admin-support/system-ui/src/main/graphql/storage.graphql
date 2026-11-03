@@ -1,0 +1,11 @@
+fragment SystemStorageFields on StorageSystem { id name description type configuration models { modelId configuration model { id name } } }
+query SystemStorageSystems { storageSystems { all { ...SystemStorageFields } } }
+query SystemStorageSystem($id: UUID!) { storageSystems { storageSystem(id: $id) { ...SystemStorageFields } } }
+query SystemStorageModels { ai { models { all { id key name } } } }
+mutation SystemAddStorage($input: StorageSystemInput!) { storageSystems { add(storageSystem: $input) { id } } }
+mutation SystemEditStorage($id: UUID!, $input: StorageSystemInput!) { storageSystems { edit(id: $id, storageSystem: $input) { id } } }
+mutation SystemDeleteStorage($id: UUID!) { storageSystems { delete(id: $id) } }
+mutation SystemReindex($storageName: String, $deleteFirst: Boolean!, $metadata: Boolean!, $collections: Boolean!, $profiles: Boolean!) { storageSystems { reindex(storageName: $storageName, deleteFirst: $deleteFirst, metadata: $metadata, collections: $collections, profiles: $profiles) } }
+query SystemPreviewMetadata($id: UUID!) { search { configuration { previewMetadata(id: $id) } } }
+
+query SystemSearchConfiguration { configurations { configuration(key: "search") { id description public value } } }

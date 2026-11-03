@@ -7,3 +7,5 @@ export * from './errors'
 export { type TokenStorage, CookieStorage, LocalStorageStorage, MemoryStorage, createStorage } from './storage'
 // oauth.ts is intentionally not exported — BoscaAuth wraps all of it
 // (signInWithRedirect / handleRedirectResult / getLinkFromUrl).
+
+export type { RegisteredPasskey } from './passkeys'

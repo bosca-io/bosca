@@ -297,6 +297,7 @@ includeComponent("analytics", listOf(
 ))
 
 includeComponent("admin-support", listOf(
+    "system-ui",
     "nats-admin",
     "postgres-admin",
     "meilisearch-admin",

@@ -17,7 +17,7 @@
             <span>Bosca</span><span class="atlas-brand-separator" aria-hidden="true"></span><span>Atlas</span>
           </a>
           <div class="atlas-home-actions">
-            <atlas-profile-menu />
+            <profile-menu />
           </div>
         </header>
         <main class="atlas-home-main">
@@ -26,7 +26,7 @@
             <p>Where would you like to go?</p>
           </div>
           <html:section data-subsystem-recent-block hidden><p class="atlas-category">Recent</p><subsystem-links :items="bosca.atlas.ui.AtlasSubsystems.items" variant="recent" recent /></html:section>
-          <nav aria-label="Atlas systems"><p class="atlas-category">Build &amp; Deliver</p><subsystem-links :items="bosca.atlas.ui.AtlasSubsystems.items" /></nav>
+          <nav aria-label="Atlas systems"><p class="atlas-category">Systems</p><subsystem-links :items="bosca.atlas.ui.AtlasSubsystems.items" /></nav>
         </main>
         </div>
       </div>

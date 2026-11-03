@@ -1,0 +1,8 @@
+<component tag="auth-revoked-session">
+  <prop name="href" type="String" default="/login" />
+  <div :data-href="href" hidden></div>
+  <script client scoped>
+    boscaAuth.clearSession();
+    location.assign(authReturnPath(ctx.root.dataset.href ?? "/login"));
+  </script>
+</component>

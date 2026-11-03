@@ -35,3 +35,8 @@ Atlas backend exposes matching routes through the existing registry handlers. `B
 optionally selects a separate registry upstream using native protocol paths; `ATLAS_ARTIFACTS_URL`
 sets the public origin used in copied native file URLs. GraphQL remains shared.
 See [Atlas server](../atlas-server/README.md) for deployment roles and production-process tests.
+
+System administration pages are imported from `:admin-support:system-ui` and are available
+in both embedded and standalone hosts. Routes cover PostgreSQL, NATS and Meilisearch consoles, groups, scheduled jobs,
+job history and package installation through the shared Atlas API. See
+[System UI](../../admin-support/system-ui/README.md) for the implemented scope and checks.

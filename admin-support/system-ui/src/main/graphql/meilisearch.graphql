@@ -1,0 +1,133 @@
+
+  query SystemGetMeilisearchAdminOverview {
+    meilisearchAdmin {
+      version { pkgVersion commitDate commitSha }
+      health { healthy }
+      stats { numberOfIndexes databaseSize lastUpdate }
+      indexes {
+        uid primaryKey createdAt updatedAt
+        stats { numberOfDocuments isIndexing }
+      }
+      tasks(limit: 20) {
+        uid type status indexUid
+        enqueuedAt startedAt finishedAt duration
+        error { message code }
+      }
+      keys {
+        name uid key actions indexes expiresAt createdAt
+      }
+      nodes {
+        id name description url healthy types indexes
+        version { pkgVersion commitDate commitSha }
+        stats { numberOfIndexes databaseSize lastUpdate }
+        storageSystemIds
+      }
+    }
+  }
+
+
+  query SystemGetStorageSystemsForMeilisearch {
+    storageSystems { all { id name } }
+  }
+
+
+  query SystemGetMeilisearchIndexSettings($uid: String!) {
+    meilisearchAdmin {
+      index(uid: $uid) {
+        settings {
+          rankingRules searchableAttributes filterableAttributes
+          sortableAttributes displayedAttributes stopWords
+          synonyms { word synonyms }
+        }
+      }
+    }
+  }
+
+
+  query SystemGetMeilisearchIndexDocuments($uid: String!, $offset: Int, $limit: Int) {
+    meilisearchAdmin {
+      index(uid: $uid) {
+        stats { numberOfDocuments }
+        documents(offset: $offset, limit: $limit)
+      }
+    }
+  }
+
+
+  query SystemGetMeilisearchEmbedders($uid: String!) {
+    meilisearchAdmin {
+      index(uid: $uid) {
+        settings {
+          embedders {
+            name source model dimensions
+            documentTemplate documentTemplateMaxBytes
+            url request response headers
+          }
+        }
+      }
+    }
+  }
+
+
+  mutation SystemCreateMeilisearchIndex($uid: String!, $primaryKey: String) {
+    meilisearchAdmin { createIndex(uid: $uid, primaryKey: $primaryKey) { uid status } }
+  }
+
+
+  mutation SystemDeleteMeilisearchIndex($uid: String!) {
+    meilisearchAdmin { deleteIndex(uid: $uid) { uid status } }
+  }
+
+
+  mutation SystemUpdateMeilisearchSettings($uid: String!, $settings: MeilisearchSettingsInput!) {
+    meilisearchAdmin { updateSettings(uid: $uid, settings: $settings) { uid status } }
+  }
+
+
+  mutation SystemUpdateMeilisearchEmbedders($uid: String!, $embedders: [MeilisearchEmbedderInput!]!) {
+    meilisearchAdmin { updateEmbedders(uid: $uid, embedders: $embedders) { uid status } }
+  }
+
+
+  mutation SystemResetMeilisearchEmbedders($uid: String!) {
+    meilisearchAdmin { resetEmbedders(uid: $uid) { uid status } }
+  }
+
+  mutation SystemRemoveMeilisearchEmbedder($uid: String!, $name: String!) {
+    meilisearchAdmin { removeEmbedder(uid: $uid, name: $name) { uid status } }
+  }
+
+
+  mutation SystemDeleteAllMeilisearchDocuments($uid: String!) {
+    meilisearchAdmin { deleteAllDocuments(uid: $uid) { uid status } }
+  }
+
+
+  mutation SystemCancelMeilisearchTasks($uids: [Int!]!) {
+    meilisearchAdmin { cancelTasks(uids: $uids) { uid status } }
+  }
+
+
+  mutation SystemAddMeilisearchNode($input: MeilisearchNodeInput!) {
+    meilisearchAdmin { addNode(input: $input) { id name } }
+  }
+
+
+  mutation SystemEditMeilisearchNode($id: UUID!, $input: MeilisearchEditNodeInput!) {
+    meilisearchAdmin { editNode(id: $id, input: $input) { id name } }
+  }
+
+
+  mutation SystemDeleteMeilisearchNode($id: UUID!) {
+    meilisearchAdmin { deleteNode(id: $id) }
+  }
+
+
+  mutation SystemAssignMeilisearchNodeToStorage($nodeId: UUID!, $storageSystemId: UUID!) {
+    meilisearchAdmin { assignNodeToStorageSystem(nodeId: $nodeId, storageSystemId: $storageSystemId) }
+  }
+
+
+  mutation SystemRemoveMeilisearchNodeFromStorage($nodeId: UUID!, $storageSystemId: UUID!) {
+    meilisearchAdmin { removeNodeFromStorageSystem(nodeId: $nodeId, storageSystemId: $storageSystemId) }
+  }

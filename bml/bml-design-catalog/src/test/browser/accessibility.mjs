@@ -28,7 +28,7 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
       await call('Network.clearBrowserCookies');
       await navigate(path);
       await until(`[...document.querySelectorAll('[data-bml-method]')].every(node=>node.dataset.bmlActionBound==='true')`);
-      if(path==='/json'||path==='/components/content')await until(`document.querySelectorAll('[data-json-ready]').length>=${path==='/json'?8:3}`);
+      if(path==='/json'||path==='/components/content')await until(`document.querySelectorAll('[data-json-ready]').length>=${path==='/json'?9:3}`);
       if(path==='/source'||path==='/components/content')await until(`document.querySelectorAll('[data-source-ready]').length>=${path==='/source'?7:1}`);
       if(path==='/source/languages')await until(`document.querySelectorAll('[data-source-ready]').length===4`);
       if(path==='/flows'||path==='/components/visualization')await until(`document.querySelector('[data-flow-ready]')`);

@@ -13,6 +13,12 @@ class StorageSystemModelController(
 ) : GraphQLController<StorageSystemModel> {
 
     @Field
+    fun modelId(storageSystemModel: StorageSystemModel) = storageSystemModel.modelId
+
+    @Field
+    fun configuration(storageSystemModel: StorageSystemModel) = storageSystemModel.configuration
+
+    @Field
     suspend fun model(storageSystemModel: StorageSystemModel): Model? {
         return modelService.get(storageSystemModel.modelId)
     }

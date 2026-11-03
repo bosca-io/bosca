@@ -1,0 +1,17 @@
+<component tag="system-feedback">
+  <prop name="feedback" type="bosca.system.ui.SystemFeedback" required />
+  <prop name="notify" type="Boolean" default="true" />
+  <div class="system-feedback" :data-next-href="feedback.nextHref" :data-session-revoked="feedback.sessionRevoked">
+    <if feedback.sessionRevoked><auth-revoked-session :href="feedback.nextHref" /></if>
+    <if !notify && feedback.failed && feedback.message.isNotBlank()><alert tone="error">{ feedback.message }</alert></if>
+    <if notify><toast :id='"system-feedback-" + feedback.noticeId' :message="feedback.message" :sequence="feedback.noticeSequence" :tone='if (feedback.failed) "error" else "success"' :announceInitial="feedback.failed" :data-system-success="!feedback.failed" :data-system-error="feedback.failed" /></if>
+  </div>
+  <style scoped>
+    .system-feedback { display: contents; }
+  </style>
+  <script client scoped>
+    const navigate = () => { const next = ctx.root.dataset.nextHref; if (next && !ctx.root.hasAttribute("data-session-revoked")) location.assign(next); };
+    ctx.onUpdate(navigate);
+    navigate();
+  </script>
+</component>

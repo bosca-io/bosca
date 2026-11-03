@@ -70,7 +70,10 @@ type Profile {
   created: DateTime!
   slug: String
   isPrimary: Boolean!
+  deletedAt: DateTime
+  principal: Principal
   attributes: [ProfileAttribute!]!
+  thirdparty: ThirdPartyExtension
 }
 
 type ProfileAttribute {
@@ -84,6 +87,7 @@ type ProfileAttribute {
 }
 
 type ProfilesMutation {
+  profile: ProfileMutation!
   edit(id: UUID, profile: ProfileInput!): Profile
 }
 
@@ -139,3 +143,7 @@ type SearchResultFacet {
   "The specific value within the facet field (e.g. 'news', 'tutorial')."
   value: String!
 }
+
+type ProfileMutation { thirdparty: ThirdPartyExtensionMutation }
+type ThirdPartyExtension { context: JSON }
+type ThirdPartyExtensionMutation { sync(profileId: UUID!): Boolean! syncAll: Boolean! }

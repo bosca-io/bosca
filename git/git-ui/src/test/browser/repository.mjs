@@ -468,8 +468,9 @@ await call("Page.navigate", {
   url: `http://localhost:${port}/repositories/repo?file=docs%2Fa.txt&edit=true`,
 });
 await until(
-  'document.querySelector(".cm-editor") && document.querySelector("form.code-widget")',
+  'document.querySelector("[data-bml-code-editor][data-code-ready]") && document.querySelector("form.code-widget")',
 );
+assert.ok(await ev(`document.querySelector('[data-bml-code-editor]').dataset.bmlComponent.endsWith('code-editor')`), 'Git uses the shared code-editor tag');
 await ev(
   'document.querySelector("form.code-widget [name=path]").value="protected.txt";document.querySelector("[name=message]").value="Keep my commit";document.querySelector(".cm-content").focus()',
 );
@@ -481,11 +482,11 @@ await ev(`(() => {
 await until(`!document.querySelector('form.code-widget [data-bml-ref=previewSurface]').hidden &&
   document.querySelector('form.code-widget [data-bml-ref=previewSurface]').textContent.includes('draft edit') &&
   document.querySelector('form.code-widget [data-bml-ref=previewStatus]').hidden`);
-assert.ok(await ev(`document.querySelector('form.code-widget [data-bml-ref=editor]').hidden`),
+assert.ok(await ev(`document.querySelector('form.code-widget [data-bml-ref=codeField]').hidden`),
   "Markdown preview renders the unsaved editor draft");
 await ev(`document.querySelector('form.code-widget [data-bml-ref=preview]').click()`);
 assert.ok(await ev(`document.querySelector('.cm-editor') === window.editorBeforePreview &&
-  !document.querySelector('form.code-widget [data-bml-ref=editor]').hidden &&
+  !document.querySelector('form.code-widget [data-bml-ref=codeField]').hidden &&
   document.querySelector('.cm-content').textContent.includes('draft edit')`),
   "Returning from preview retains the editable view and its draft");
 await ev(`delete window.editorBeforePreview; document.querySelector('form.code-widget [data-bml-ref=wrap]').click()`);

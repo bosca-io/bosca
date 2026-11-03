@@ -21,7 +21,7 @@ class AtlasGraphQLSchemaTest {
         val validator = OperationValidator(SchemaRegistry.registry)
         val root = File(requireNotNull(System.getProperty("workspaceRoot")))
         val operations =
-            listOf("git/git-ui/src/main/graphql", "artifacts/artifacts-ui/src/main/graphql").flatMap { directory ->
+            listOf("git/git-ui/src/main/graphql", "artifacts/artifacts-ui/src/main/graphql", "admin-support/system-ui/src/main/graphql").flatMap { directory ->
                 File(root, directory).listFiles().orEmpty().filter { it.extension == "graphql" }
             }
         assertTrue(operations.isNotEmpty())

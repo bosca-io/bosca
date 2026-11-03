@@ -23,10 +23,60 @@ import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
 import bosca.sharedqueue.jobs.redis.RedisJobQueueFactory
 import bosca.redis.RedisConnectionPool
 import bosca.storage.service.StorageSystemService
+import bosca.search.installer.SearchIndexInstaller
+import bosca.search.installer.SearchTransformInstaller
+import bosca.configuration.service.ConfigurationService
 import kotlinx.serialization.json.Json
 
 @Providers
 class Configuration {
+    @Provider(name = "search-index")
+    fun searchIndexInstaller(
+        storageSystemService: StorageSystemService,
+        json: Json
+    ): PackageInstaller = SearchIndexInstaller(
+        storageSystemService,
+        json
+    )
+
+    @Provider(name = "search-transform")
+    fun searchTransformInstaller(
+        configurationService: ConfigurationService,
+        json: Json
+    ): PackageInstaller = SearchTransformInstaller(
+        configurationService,
+        json
+    )
+
+    @Provider(name = "search-index")
+    fun searchIndexPackage(): PackageInstallation = PackageInstallation(
+        key = "search-index",
+        name = "Search Index",
+        versions = listOf(
+            PackageInstallationVersion(
+                version = "1.0.0",
+                installerNames = listOf("search-index")
+            ),
+            PackageInstallationVersion(
+                version = "1.0.1",
+                installerNames = listOf("search-index")
+            ),
+            PackageInstallationVersion(
+                version = "1.0.4",
+                installerNames = listOf("search-transform")
+            ),
+            PackageInstallationVersion(
+                version = "1.0.5",
+                installerNames = listOf("search-index")
+            ),
+            PackageInstallationVersion(
+                version = "1.0.6",
+                installerNames = listOf("search-index")
+            )
+        )
+    )
+
+
     @Provider(name = "default-artifact-sync-pipelines")
     fun artifactSyncInstaller(pipelines: bosca.pipelines.service.PipelineService): PackageInstaller =
         bosca.artifacts.installer.DefaultArtifactSyncPipelinesInstaller(pipelines)

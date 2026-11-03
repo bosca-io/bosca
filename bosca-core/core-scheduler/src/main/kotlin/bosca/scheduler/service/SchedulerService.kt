@@ -47,7 +47,8 @@ interface SchedulerService : Service {
 
     /**
      * Creates a new scheduled job from the given input and associates it with the creating principal.
-     * The job's next run time is calculated from its cron expression.
+     * The job's next run time is calculated from its cron expression. Null or blank cron input
+     * creates a manually triggered job with no automatic next run.
      *
      * @param input the job definition including name, cron expression, and parameters
      * @param createdBy the unique identifier of the principal creating this job
@@ -57,7 +58,7 @@ interface SchedulerService : Service {
 
     /**
      * Updates an existing scheduled job's configuration. Recalculates the next run time
-     * if the cron expression has changed.
+     * if the cron expression has changed. Clearing it removes automatic scheduling.
      *
      * @param id the unique identifier of the scheduled job to update
      * @param input the updated job definition

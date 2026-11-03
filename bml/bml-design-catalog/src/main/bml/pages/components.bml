@@ -88,6 +88,7 @@
             <li><a href="/components/content#ref-tree-item" data-export-link="tree-item"><code>tree-item</code></a></li>
             <li><a href="/components/content#ref-comment-editor" data-export-link="comment-editor"><code>comment-editor</code></a></li>
             <li><a href="/components/content#ref-json-editor" data-export-link="json-editor"><code>json-editor</code></a></li>
+            <li><a href="/components/content#ref-code-editor" data-export-link="code-editor"><code>code-editor</code></a></li>
             <li><a href="/components/content#ref-source-view" data-export-link="source-view"><code>source-view</code></a></li>
             <li><a href="/components/content#ref-document-editor" data-export-link="document-editor"><code>document-editor</code></a></li>
           </ul>

@@ -32,12 +32,17 @@ class AtlasGraphQLService(introspectionEnabled: Boolean) :
         DispatchersRegistry.register(
             builder,
             SecurityDispatchersRegistrar(),
+            bosca.graphql.dispatcher.BackupDispatchersRegistrar(),
             IdentityDispatchersRegistrar(),
+            bosca.graphql.dispatcher.ConfigurationDispatchersRegistrar(),
             PipelinesDispatchersRegistrar(),
             SchedulerDispatchersRegistrar(),
             GitDispatchersRegistrar(),
             GitCiDispatchersRegistrar(),
             ArtifactsAdminDispatchersRegistrar(),
+            bosca.graphql.dispatcher.PostgresAdminDispatchersRegistrar(),
+            bosca.graphql.dispatcher.NatsAdminDispatchersRegistrar(),
+            bosca.graphql.dispatcher.MeilisearchAdminDispatchersRegistrar(),
             AtlasDispatchersRegistrar(),
         )
     }
@@ -46,7 +51,11 @@ class AtlasGraphQLService(introspectionEnabled: Boolean) :
 internal fun atlasSchemaRegistrars() =
     arrayOf(
         AtlasSchemaRegistrar(),
+        bosca.postgres.admin.graphql.PostgresAdminSchemaRegistrar(),
+        bosca.nats.admin.graphql.NatsAdminSchemaRegistrar(),
+        bosca.meilisearch.admin.graphql.MeilisearchAdminSchemaRegistrar(),
         SecuritySchemaRegistrar(),
+        bosca.backup.configuration.BackupSchemaRegistrar(),
         GitSchemaRegistrar(),
         PipelinesSchemaRegistrar(),
         SchedulerSchemaRegistrar(),

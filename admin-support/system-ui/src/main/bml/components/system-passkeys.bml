@@ -1,0 +1,18 @@
+<component tag="system-passkeys">
+  <prop name="initial" type="bosca.system.ui.SystemPasskeysModel" required />
+  <script server provides="model">bosca.system.ui.SystemPasskeysModel(initial.admin, initial.passkeys, initial.feedback)</script>
+  <island name="system-passkeys" :key='"passkeys"'><page-shell fill><page-heading title="Passkeys" :subtitle='model.passkeys.size.toString() + if (model.passkeys.size == 1) " registered passkey" else " registered passkeys"' :trail="bosca.system.ui.systemSecurityTrail()"><dialog title="Register passkey" triggerLabel="Register passkey" primary><auth-passkey-form /></dialog></page-heading>
+    <div class="system-content" data-bml-scroll="system-content"><system-feedback :feedback="model.feedback" /><card title="Registered passkeys">
+      <if model.passkeys.isEmpty()><empty-state message="No passkeys registered. Add a passkey using your device's biometrics or security key." /><else><div role="list"><for passkey in model.passkeys><article role="listitem" class="passkey-entry" data-passkey-entry>
+        <div class="passkey-details"><strong>{ passkey.name }</strong><div class="passkey-dates">Created <time :value="passkey.createdAt" format="MMM d, yyyy HH:mm 'UTC'" inheritTypography /> · Last used <if passkey.lastUsedAt != null><time :value="passkey.lastUsedAt.orEmpty()" format="MMM d, yyyy HH:mm 'UTC'" inheritTypography /><else>Never</if></div><div class="system-actions"><for transport in passkey.transports><badge>{ bosca.system.ui.systemPasskeyTransport(transport) }</badge></for></div></div>
+        <confirm-dialog title="Remove passkey?" description="You will no longer be able to sign in with this passkey. Removing a credential signs this account out on all devices. This cannot be undone." triggerLabel="Remove passkey"><form @submit="model.delete(passkey.credentialId, form.confirmed, ctx)" class="modal-form"><form-body padded class="modal-fields"><checkbox name="confirmed" label="Remove this passkey" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Remove passkey</button></form-actions></form></confirm-dialog>
+      </article></for></div></if>
+    </card></div>
+  </page-shell></island>
+  <style scoped>
+    .passkey-entry { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+    .passkey-entry:last-child { border-bottom: 0; }
+    .passkey-details { display: grid; gap: 8px; min-width: 0; flex: 1; overflow-wrap: anywhere; }
+    .passkey-dates { font-size: 12px; color: var(--fg-3); }
+  </style>
+</component>

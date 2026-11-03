@@ -1,0 +1,25 @@
+<component tag="system-configurations">
+  <prop name="initial" type="bosca.system.ui.SystemConfigurationsModel" required />
+  <script server provides="model">bosca.system.ui.SystemConfigurationsModel(initial.admin, initial.entries, initial.search, initial.editing, initial.editingKey, initial.draft, initial.feedback)</script>
+  <island name="system-configurations" :key='"configurations"'>
+    <page-shell fill><page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" title="Configuration" subtitle="Global key-value configuration store"><if model.admin><button primary @click="model.newEntry()">New entry</button></if></page-heading>
+      <div class="system-content" data-bml-scroll="system-content"><system-feedback :feedback="model.feedback" />
+          <form class="system-filter" @submit="model.filter(form.search)"><field label="Filter configurations"><input name="search" :value="model.search" placeholder="Search key or description" /></field><button type="submit">Filter</button></form>
+          <if model.editing><card :title='if (model.editingKey == null) "New configuration" else "Edit configuration"'>
+            <form @submit="model.save(form.key, form.description, form.value, form.public, ctx)"><form-body>
+              <field label="Key"><input name="key" :value="model.draft.key" :readonly="model.editingKey != null" required /></field>
+              <field label="Description"><input name="description" :value="model.draft.description" /></field>
+              <field label="Value"><json-editor name="value" mode="text" label="Configuration value" :text="model.draft.value" /></field>
+              <checkbox name="public" label="Public (accessible without authentication)" :checked="model.draft.public" />
+            </form-body><form-actions><button @click="model.cancel()">Cancel</button><button type="submit" primary>Save configuration</button></form-actions></form>
+          </card></if>
+          <card title="Configuration entries" :padded="false"><if model.filtered.isEmpty()><empty-state :message='if (model.search.isBlank()) "No configurations yet." else "No matching configurations."' /><else>
+            <table-scroll label="Configurations"><table><thead><tr><th>Key</th><th>Description</th><th>Value</th><th>Visibility</th><th>Actions</th></tr></thead><tbody><for entry in model.filtered><tr>
+              <td><code data-resource-name>{ entry.key }</code></td><td>{ entry.description }</td><td><pre class="system-console-value">{ entry.value?.toString()?.take(160) ?: "null" }</pre></td><td><badge :tone='if (entry.public) "success" else "neutral"'>{ if (entry.public) "Public" else "Private" }</badge></td>
+              <td><div class="system-actions"><icon-button icon="edit" :label='"Edit " + entry.key' size="xs" class="ghost" data-configuration-edit @click="model.edit(entry.key, ctx)" /><confirm-dialog title="Delete configuration?" :description='"Delete " + entry.key + "? This cannot be undone."' triggerLabel="Delete configuration"><form @submit="model.delete(entry.key, form.confirmed, ctx)" class="modal-form"><form-body padded class="modal-fields"><checkbox name="confirmed" label="Permanently delete this configuration" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Delete configuration</button></form-actions></form></confirm-dialog></div></td>
+            </tr></for></tbody></table></table-scroll>
+          </if></card>
+      </div>
+    </page-shell>
+  </island>
+</component>

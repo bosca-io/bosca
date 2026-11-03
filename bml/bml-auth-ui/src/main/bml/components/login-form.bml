@@ -101,6 +101,8 @@
         notice,
         "Your session may have expired, or you may not have access to that page. Sign in to continue.",
       );
+    if (boscaAuthFlow.params.has("passkeyRemoved"))
+      show(notice, "Passkey removed. Sign in again to continue.");
     void boscaAuthFlow.ready.then((failure) => {
       if (!mounted || boscaAuthFlow.redirecting) return;
       if (failure)

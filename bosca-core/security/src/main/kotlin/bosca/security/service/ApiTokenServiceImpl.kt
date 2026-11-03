@@ -354,7 +354,8 @@ class ApiTokenServiceImpl(
         name: String?,
         description: String?,
         scopes: List<String>?,
-        requestingPrincipalId: UUID
+        requestingPrincipalId: UUID,
+        clearScopes: Boolean
     ): PrincipalCredential {
         if (name != null) {
             require(name.isNotBlank()) { "token name must not be blank" }
@@ -363,6 +364,7 @@ class ApiTokenServiceImpl(
         if (description != null) {
             require(description.length <= MAX_TOKEN_DESCRIPTION_LENGTH) { "token description must not exceed $MAX_TOKEN_DESCRIPTION_LENGTH characters" }
         }
+        require(!clearScopes || scopes.isNullOrEmpty()) { "scopes must be absent or empty when clearing scope restrictions" }
         validateScopes(scopes)
         val credential = getAndAuthorize(credentialId, requestingPrincipalId)
         val attrs = credential.attributes as ApiTokenCredentialAttributes
@@ -379,7 +381,7 @@ class ApiTokenServiceImpl(
         val updated = attrs.copy(
             name = name ?: attrs.name,
             description = description ?: attrs.description,
-            scopes = scopes ?: attrs.scopes,
+            scopes = if (clearScopes) null else scopes ?: attrs.scopes,
         )
         val result = credentialsRepository.update(credential.withApiTokenAttributes(updated))
         invalidateToken(attrs.identifier)

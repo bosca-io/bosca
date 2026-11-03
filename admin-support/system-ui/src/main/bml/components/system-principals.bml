@@ -1,0 +1,62 @@
+<component tag="system-principals">
+  <prop name="initial" type="bosca.system.ui.SystemPrincipalsModel" required />
+  <script server provides="model">bosca.system.ui.SystemPrincipalsModel(initial.id, initial.admin, initial.offset, initial.includeDeleted, initial.principals, initial.principal, initial.hasNext, initial.feedback, initial.query)</script>
+  <island name="system-principals" :key="model.id">
+    <page-shell fill>
+      <page-heading :title="model.title" :trail='bosca.system.ui.systemSecurityTrail(if (model.id.isBlank()) "" else "Principals", "/system/security/principals")'><if model.id.isNotBlank()><button-link href="/system/security/principals" icon="arrow-left">Principals</button-link></if></page-heading>
+      <div class="system-content" data-bml-scroll="system-content">
+        <system-feedback :feedback="model.feedback" />
+        <if !model.admin><alert>Administrator access is required.</alert><else>
+          <if model.id.isBlank()>
+            <form method="get" action="/system/security/principals" class="principal-filters">
+              <div class="principal-search"><search-input name="q" :value="model.query" label="Search principals" placeholder="Identifier or principal ID…" :autofocus="false" /></div>
+              <checkbox name="includeDeleted" value="true" label="Include deleted" :checked="model.includeDeleted" />
+              <button type="submit" icon="search">Search</button>
+            </form>
+            <card title="Principals" :padded="false">
+              <if model.principals.isEmpty()><empty-state :message='if (model.query.isBlank()) "No principals." else "No principals match this search."' /><else>
+                <table-scroll label="Principals"><table><thead><tr><th>Identifier</th><th>Profiles</th><th>Status</th><th>Groups</th></tr></thead><tbody>
+                  <for principal in model.principals><tr>
+                    <td><a :href='"/system/security/principals/" + bosca.system.ui.systemEncode(principal.id)'>{ principal.credentials.firstOrNull()?.identifier ?: principal.id }</a></td>
+                    <td><div class="system-actions"><for profile in principal.profiles><badge :tone='if (profile.id == principal.primaryProfileId) "info" else "neutral"'>{ profile.name + if (profile.id == principal.primaryProfileId) " · Primary" else "" }</badge></for></div></td>
+                    <td><badge :tone='if (principal.deletedAt != null) "error" else if (principal.verified) "success" else "warning"'>{ if (principal.deletedAt != null) "Deleted" else if (principal.verified) "Verified" else "Unverified" }</badge></td>
+                    <td>{ principal.groups.filter { it.type == bosca.system.ui.graphql.GroupType.SYSTEM }.joinToString(", ") { it.name }.ifBlank { "—" } }</td>
+                  </tr></for>
+                </tbody></table></table-scroll>
+              </if>
+              <pagination alwaysVisible label="Principals pages" :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" />
+            </card>
+          <else>
+            <for principal in listOfNotNull(model.principal)>
+              <div class="system-detail-layout">
+                <div class="system-stack">
+                  <card title="Credentials"><if principal.credentials.isEmpty()><empty-state message="No credentials." /><else><for credential in principal.credentials><div class="system-resource-row"><badge>{ credential.type.name }</badge><span class="credential-identifier">{ credential.identifier }</span><span class="system-muted">{ listOfNotNull(credential.originator?.let { "From: " + it }, credential.lastOriginator?.let { "Last: " + it }).joinToString(" · ") }</span></div></for></if></card>
+                  <card title="Linked profiles"><if principal.profiles.isEmpty()><empty-state message="No linked profiles." /><else><for profile in principal.profiles><div class="system-resource-row"><a :href='"/audience/profiles/" + bosca.system.ui.systemEncode(profile.id)' class="principal-profile-link"><profile :name="profile.name" :subtitle="profile.id" /></a><if profile.id == principal.primaryProfileId><badge tone="info">Primary</badge></if><if profile.deletedAt != null><badge tone="error">Deleted</badge></if><copy :value="profile.id" label="Copy profile ID" /></div></for></if></card>
+                  <card title="Security groups"><if principal.groups.none { it.type == bosca.system.ui.graphql.GroupType.SYSTEM }><empty-state message="No system groups." /><else><for group in principal.groups.filter { it.type == bosca.system.ui.graphql.GroupType.SYSTEM }><div class="system-resource-row"><span>{ group.description.ifBlank { group.name } }</span><badge>{ group.type.name }</badge><copy :value="group.id" label="Copy group ID" /></div></for></if></card>
+                </div>
+                <div class="system-stack">
+                  <card title="Details"><copy-field :value="principal.id" label="Principal ID" /><dl class="system-definition"><dt>Verified</dt><dd>{ if (principal.verified) "Yes" else "No" }</dd><dt>Anonymous</dt><dd>{ if (principal.anonymous) "Yes" else "No" }</dd><if principal.deletedAt != null><dt>Status</dt><dd><badge tone="error">Marked deleted</badge></dd></if><dt>Created</dt><dd><time :value="principal.created" /></dd><dt>Modified</dt><dd><time :value="principal.modified" /></dd><dt>Last login</dt><dd><if principal.lastLogin != null><time :value="principal.lastLogin.orEmpty()" /><else>Never</if></dd></dl></card>
+                  <card title="Account lifecycle">
+                    <if principal.deletedAt == null><p>Marking this principal deleted revokes its sessions and blocks sign-in until restoration.</p><confirm-dialog title="Mark principal deleted?" description="Sessions will be revoked and sign-in blocked. You can restore this account." triggerLabel="Mark deleted" :triggerIconOnly="false"><form @submit='model.change("mark", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><checkbox name="confirmed" label="Mark this principal deleted" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Mark deleted</button></form-actions></form></confirm-dialog><else>
+                      <p>This principal is marked deleted. Restore it to allow sign-in, or permanently delete the account and its linked profiles.</p>
+                      <form @submit='model.change("restore", true, ctx)'><button type="submit">Restore principal</button></form>
+                      <confirm-dialog title="Permanently delete principal?" :description='"This permanently removes " + principal.credentials.size + " credentials, group memberships, and " + principal.profiles.size + " linked profiles."' triggerLabel="Fully delete" :triggerIconOnly="false"><form @submit='model.change("delete", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><checkbox name="confirmed" label="Permanently delete this account and linked profiles" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Permanently delete</button></form-actions></form></confirm-dialog>
+                    </if>
+                  </card>
+                </div>
+              </div>
+            </for>
+          </if>
+        </if>
+      </div>
+    </page-shell>
+  </island>
+  <style scoped>
+    .credential-identifier { min-width:0; overflow-wrap:anywhere; font:12.5px/1.5 var(--font-mono); }
+    .principal-profile-link { min-width: 0; color: inherit; text-decoration: none; }
+    .principal-profile-link:hover { text-decoration: underline; }
+    .principal-filters { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+    .principal-search { flex:1 1 260px; max-width:400px; }
+    @media(max-width:600px) { .principal-search { flex-basis:100%; max-width:none; } }
+  </style>
+</component>

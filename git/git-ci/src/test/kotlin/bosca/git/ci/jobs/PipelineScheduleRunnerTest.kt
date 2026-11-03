@@ -284,7 +284,7 @@ class PipelineScheduleRunnerTest {
         principalConfirmedBy = principalId,
     )
 
-    private fun definition(triggerCron: String = schedule.cronExpression) = PipelineDefinition(
+    private fun definition(triggerCron: String = requireNotNull(schedule.cronExpression)) = PipelineDefinition(
         name = pipeline.name,
         triggers = listOf(
             PipelineTrigger(PipelineTriggerType.PUSH),

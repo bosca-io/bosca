@@ -1,0 +1,23 @@
+query SystemAccess { security { principals { current { id groups { name } } } } }
+query SystemGroups($offset: Long!, $search: String!, $type: GroupType!) { security { groups { find(nameOrDescription: $search, type: $type, limit: 26, offset: $offset) { id name description type } } } }
+mutation SystemAddGroup($name: String!, $description: String!, $type: GroupType!) { security { groups { addGroup(name: $name, description: $description, groupType: $type) { id } } } }
+mutation SystemDeleteGroup($id: UUID!) { security { groups { deleteGroup(id: $id) } } }
+query SystemSchedules($offset: Long!) { scheduler { jobs(limit: 26, offset: $offset) { id name description cronExpression enabled lastRunAt nextRunAt } } }
+mutation SystemEnableSchedule($id: UUID!) { scheduler { enable(id: $id) { id } } }
+mutation SystemDisableSchedule($id: UUID!) { scheduler { disable(id: $id) { id } } }
+mutation SystemTriggerSchedule($id: UUID!) { scheduler { trigger(id: $id) { id } } }
+mutation SystemDeleteSchedule($id: UUID!) { scheduler { delete(id: $id) } }
+query SystemHistory($offset: Long!, $status: ExecutionStatus, $source: JobHistorySource) { scheduler { history(offset: $offset, limit: 25, status: $status, source: $source) { id jobId name status source triggeredAt scheduledFor completedAt errorMessage wasCatchUp delayedUntil parentJobId } historyCount(status: $status, source: $source) } }
+mutation SystemCancelHistory($id: UUID!) { scheduler { cancel(id: $id) { id } } }
+query SystemPackages { packages { all { key name versions { version installers { name version } installed { name version } } } history { id key version created } } }
+mutation SystemInstallPackage($key: String!, $version: String!) { packages { install(key: $key, version: $version) } }
+mutation SystemInstallInstaller($key: String!, $version: String!, $name: String!, $installerVersion: String!) { packages { installInstaller(key: $key, version: $version, installerName: $name, installerVersion: $installerVersion) } }
+query SystemSchedule($id: UUID!) { scheduler { job(id: $id) { id name description jobName jobParameters cronExpression enabled allowConcurrent catchUp maxCatchUp principalState executionPrincipalId principalAssignedBy principalConfirmedBy createdBy lastRunAt nextRunAt } } }
+query SystemDefinitions { scheduler { availableJobDefinitions { id name displayName queueName parameterSchema } } }
+query SystemScheduleHistory($id: UUID!, $offset: Long!, $status: ExecutionStatus, $source: JobHistorySource) { scheduler { job(id: $id) { history(offset: $offset, limit: 25, status: $status, source: $source) { id jobId name status source triggeredAt scheduledFor completedAt errorMessage wasCatchUp delayedUntil parentJobId } historyCount(status: $status, source: $source) } } }
+query SystemCron($expression: String!) { scheduler { validateCronExpression(expression: $expression) { valid error nextRuns } } }
+mutation SystemCreateSchedule($input: ScheduledJobInput!) { scheduler { create(input: $input) { id } } }
+mutation SystemEditSchedule($id: UUID!, $input: ScheduledJobInput!) { scheduler { edit(id: $id, input: $input) { id } } }
+mutation SystemAssignSchedule($id: UUID!, $principalId: UUID!) { scheduler { assignExecutionPrincipal(id: $id, principalId: $principalId) { id } } }
+mutation SystemClearSchedulePrincipal($id: UUID!) { scheduler { clearExecutionPrincipal(id: $id) { id } } }
+mutation SystemConfirmSchedulePrincipal($id: UUID!) { scheduler { confirmExecutionPrincipal(id: $id) { id } } }

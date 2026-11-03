@@ -10,12 +10,12 @@ data class AtlasConfiguration(
     val uiEnabled: Boolean = true,
     val runnerEnabled: Boolean = true,
     val runnerConcurrency: Int = 16,
-    val runnerQueues: List<String> = listOf("git", "pipelines", "common"),
+    val runnerQueues: List<String> = listOf("git", "pipelines", "common", "index", "backup", "profile"),
     val runnerListeners: Boolean = true,
 ) {
     init {
         require(runnerConcurrency > 0) { "Atlas runner concurrency must be positive" }
-        require(runnerQueues.all { it in setOf("git", "pipelines", "common") }) { "Unknown Atlas runner queue" }
+        require(runnerQueues.all { it in setOf("git", "pipelines", "common", "index", "backup", "profile") }) { "Unknown Atlas runner queue" }
         require(runnerQueues.distinct().size == runnerQueues.size) { "Atlas runner queues must be distinct" }
         require(!uiEnabled || apiEnabled) { "Embedded Atlas UI requires the API; use atlas-ui-server for a remote API" }
         require(apiEnabled || gitEnabled || artifactsEnabled || runnerEnabled) { "At least one Atlas backend responsibility must be enabled" }
@@ -35,7 +35,7 @@ data class AtlasConfiguration(
                 runnerConcurrency = config.propertyOrNull("atlas.runner.concurrency")?.getString()?.toInt() ?: 16,
                 runnerQueues = config.propertyOrNull("atlas.runner.queues")?.getList()
                     ?.flatMap { it.split(',') }?.map(String::trim)?.filter(String::isNotEmpty)
-                    ?: listOf("git", "pipelines", "common"),
+                    ?: listOf("git", "pipelines", "common", "index", "backup", "profile"),
                 runnerListeners = enabled("atlas.runner.listeners"),
             )
         }
