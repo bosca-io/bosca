@@ -200,9 +200,32 @@ try {
   base = groupCopyHost;
   await call('Network.setCookie', {name:'git_ui_appearance',value:'dark',url:base,path:'/'});
   await call('Emulation.setDeviceMetricsOverride', {width:1440,height:1000,deviceScaleFactor:1,mobile:false});
-  const principalHost = base;
-  for (const origin of [principalHost, process.env.ATLAS_SYSTEM_STANDALONE_URL]) {
+  const principalHost = base, principalFilterChecks = [];
+  for (const [host, origin] of [principalHost, process.env.ATLAS_SYSTEM_STANDALONE_URL].entries()) {
     assert.ok(origin && ['localhost','127.0.0.1'].includes(new URL(origin).hostname)); base = origin;
+    for (const theme of ['dark','light']) for (const width of [1440,1024,768,390]) {
+      await call('Network.setCookie',{name:'git_ui_appearance',value:theme,url:base,path:'/'});
+      await call('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<768});
+      await go('/system/security/principals');
+      const layout=await evaluate(`(() => {
+        const form=document.querySelector('.principal-filters'), search=form.querySelector('.search-input'), submit=form.querySelector('button[type=submit]'), checkbox=form.querySelector('.checkbox-row');
+        const rect=element=>{const r=element.getBoundingClientRect(),s=getComputedStyle(element);return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,height:r.height,center:r.top+r.height/2,radius:s.borderRadius,background:s.backgroundColor};};
+        return {search:rect(search),submit:rect(submit),checkbox:rect(checkbox),scrollWidth:document.documentElement.scrollWidth};
+      })()`);
+      assert.equal(layout.search.height,32,'Principal search uses the standard control height');
+      assert.equal(layout.search.height,layout.submit.height,'Principal search and button heights match');
+      assert.equal(layout.search.radius,layout.submit.radius,'Principal search and button corners match');
+      assert.equal(layout.search.background,layout.submit.background,'Principal search and button surfaces match');
+      assert.ok(Math.abs(layout.checkbox.center-layout.submit.center)<1,'Include deleted aligns with the Search button');
+      if(width>=768) assert.equal(layout.search.top,layout.submit.top,'Principal filters align on desktop');
+      else assert.ok(layout.checkbox.top>=layout.search.bottom+11,'Principal filters wrap with the standard gap');
+      assert.ok(layout.scrollWidth<=width+1,'Principal filters stay within the viewport');
+      const shot=await call('Page.captureScreenshot',{format:'png'});
+      await writeFile(join(reports,`principal-filters-${host}-${theme}-${width}.png`),Buffer.from(shot.data,'base64'));
+      principalFilterChecks.push({host,theme,width,...layout});
+    }
+    await call('Network.setCookie',{name:'git_ui_appearance',value:'dark',url:base,path:'/'});
+    await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
     await go('/system/security/principals?offset=25');
     await fill('input[name=q]', 'PRINCIPAL-PAGE-');
     await click('input[name=includeDeleted]'); await clickText('Search');
@@ -220,6 +243,7 @@ try {
     await until("document.body.innerText.includes('No principals match this search.')");
     assert.equal(await evaluate("document.querySelectorAll('nav[aria-label=\"Principals pages\"] button:disabled').length"), 2);
   }
+  await writeFile(join(reports,'principal-filter-checks.json'),JSON.stringify(principalFilterChecks,null,2));
   base = principalHost;
   await go('/system/security/personas'); await clickText('New persona');
   await until("document.querySelector('dialog[open] input[name=name]')");

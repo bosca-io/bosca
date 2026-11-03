@@ -9,7 +9,7 @@
         <if !model.admin><alert>Administrator access is required.</alert><else>
           <if model.id.isBlank()>
             <form method="get" action="/system/security/principals" class="principal-filters">
-              <div class="principal-search"><search-input name="q" :value="model.query" label="Search principals" placeholder="Identifier or principal ID…" :autofocus="false" /></div>
+              <div class="principal-search"><search-input name="q" :value="model.query" label="Search principals" placeholder="Identifier or principal ID…" size="md" :autofocus="false" /></div>
               <checkbox name="includeDeleted" value="true" label="Include deleted" :checked="model.includeDeleted" />
               <button type="submit" icon="search">Search</button>
             </form>
