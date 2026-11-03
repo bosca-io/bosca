@@ -62,7 +62,14 @@ appConfig:
   # Fully qualified Trino events table seeded into the analytics queries. Keep it equal to the
   # bosca-server and bosca-runner value.
   experimentationEventsTable: warehouse.bosca.events
+  eventRepositoryType: nats
+  natsEnabled: true
   natsHost: nats
+  jobQueueFactory: nats
+  pubsubType: nats
+  counterType: nats
+  # Empty follows pubsubType.
+  liveSessionsType: ""
   # Distributed cache and lock backends: nats or redis.
   cacheType: nats
   distributedLockType: nats
@@ -76,6 +83,11 @@ appConfig:
     table: events
     warehouseLocation: "s3://warehouse/warehouse"
     databaseUrl: ""
+    s3:
+      bucket: "$AWS_BUCKET"
+      region: "$AWS_REGION"
+      endpoint: "$AWS_ENDPOINT"
+      pathStyleAccess: true
 
 envFromConfigMaps:
   - server-v3-env
@@ -107,6 +119,10 @@ secrets:
     secretAccessKeyKey: ACCESS_SECRET_KEY
     accessKeyId: ""
     secretAccessKey: ""
+  icebergS3:
+    secretName: ""
+    accessKeyIdKey: ACCESS_KEY_ID
+    secretAccessKeyKey: ACCESS_SECRET_KEY
   iceberg:
     create: true
     secretName: pg-creds-bosca-warehouse

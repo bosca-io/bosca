@@ -18,12 +18,18 @@ data:
         user: $DATABASE_USER
         password: $DATABASE_PASSWORD
 
+    {{- if .Values.appConfig.natsEnabled }}
     nats:
       url: nats://{{ .Values.appConfig.natsHost }}.{{ .Release.Namespace }}.svc.cluster.local:4222
       token: $NATS_TOKEN
 
+    {{- end }}
+
     pubsub:
-      type: nats
+      type: {{ .Values.appConfig.pubsubType }}
+
+    liveSessions:
+      type: {{ .Values.appConfig.liveSessionsType | default .Values.appConfig.pubsubType }}
 
     distributedLock:
       type: {{ .Values.appConfig.distributedLockType }}
@@ -32,7 +38,7 @@ data:
       type: {{ .Values.appConfig.cacheType }}
 
     jobQueue:
-      factory: {{ .Values.appConfig.jobQueueFactory | default "nats" }}
+      factory: {{ .Values.appConfig.jobQueueFactory }}
 
     redis:
       host: {{ .Values.appConfig.redisHost | default "redis" }}.{{ .Release.Namespace }}.svc.cluster.local
