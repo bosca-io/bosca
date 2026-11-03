@@ -25,20 +25,36 @@ class AtlasSystemConfigurationIntegrationTest {
                 if (path == "/system/utilities") assertTrue("Administrator access is required" in page(path, origin, reader))
                 else assertTrue("No configurations yet" in page(path, origin, reader))
             }
-            fun invoke(path: String, prefix: String, method: String, args: List<JsonElement>, caller: String = admin, state: JsonObject? = null): JsonObject {
-                val marker = Regex("<script type=\"application/json\" data-bml-state-key=\"($prefix[^\"]*)\"[^>]*>(.*?)</script>", RegexOption.DOT_MATCHES_ALL).find(page(path)) ?: error("Missing $prefix")
-                val response = fixture.request(ui, "/_bml/action", buildJsonObject {
+            fun invoke(path: String, prefix: String, method: String, args: List<JsonElement>, caller: String = admin, state: JsonObject? = null, origin: String = ui): JsonObject {
+                val marker = Regex("<script type=\"application/json\" data-bml-state-key=\"($prefix[^\"]*)\"[^>]*>(.*?)</script>", RegexOption.DOT_MATCHES_ALL).find(page(path, origin)) ?: error("Missing $prefix")
+                val response = fixture.request(origin, "/_bml/action", buildJsonObject {
                     put("page", path); put("path", path); put("stateKey", marker.groupValues[1]); put("state", state?.toString() ?: marker.groupValues[2]); put("method", method); put("args", JsonArray(args))
                 }.toString(), caller)
                 assertEquals(200, response.statusCode(), response.body())
                 return Json.parseToJsonElement(Json.parseToJsonElement(response.body()).at("state").jsonPrimitive.content).jsonObject
             }
-            fun config(method: String, args: List<JsonElement>, caller: String = admin, state: JsonObject? = null) = invoke("/system/config", "system-configurations.model", method, args, caller, state)
+            fun config(method: String, args: List<JsonElement>, caller: String = admin, state: JsonObject? = null, origin: String = ui) = invoke("/system/config", "system-configurations.model", method, args, caller, state, origin)
             fun ok(state: JsonObject) = assertFalse(state.at("feedback", "failed").jsonPrimitive.boolean, "$state\n${fixture.logs()}")
             fun fields(value: String, public: Boolean = false) = listOf(JsonPrimitive("system.fixture"), JsonPrimitive("Configuration fixture"), JsonPrimitive(value), JsonPrimitive(public))
             val createDenied = config("save", listOf(JsonPrimitive("reader.unauthorized"), JsonPrimitive("Unauthorized"), JsonPrimitive("{}"), JsonPrimitive(false)), caller = reader)
             assertTrue(createDenied.at("feedback", "failed").jsonPrimitive.boolean)
-            ok(config("save", fields("{\"nested\":[true,3]}")))
+            val secret = "configuration-value-visible-only-in-editor"
+            ok(config("save", fields("{\"nested\":[true,3],\"secret\":\"$secret\"}")))
+            for (origin in listOf(ui, standalone)) {
+                val list = page("/system/config", origin)
+                assertFalse(secret in list, "The configuration list must not include values in HTML or serialized state.")
+                val filteredList = config("filter", listOf(JsonPrimitive("system.fixture")), origin = origin)
+                ok(filteredList)
+                assertTrue(filteredList.at("entries").jsonArray.all { "value" !in it.jsonObject })
+                val editor = config("edit", listOf(JsonPrimitive("system.fixture")), origin = origin)
+                ok(editor)
+                assertTrue(secret in editor.at("draft", "value").jsonPrimitive.content)
+                assertTrue(editor.at("editing").jsonPrimitive.boolean)
+                val closed = config("cancel", emptyList(), state = editor, origin = origin)
+                ok(closed)
+                assertFalse(closed.at("editing").jsonPrimitive.boolean)
+                assertFalse(secret in closed.toString(), "Dismissal must remove the value from serialized state.")
+            }
             val groupId = fixture.graphql(api, """mutation { security { groups { addGroup(name: "Configuration fixture readers", description: "ACL retention", groupType: PRINCIPAL) { id } } } }""", admin).at("security", "groups", "addGroup", "id").jsonPrimitive.content
             val configurationId = fixture.graphql(api, """{ configurations { configuration(key: "system.fixture") { id } } }""", admin).at("configurations", "configuration", "id").jsonPrimitive.content
             val entry = fixture.graphql(api, """mutation { configurations { setConfiguration(configuration: {key: "system.fixture", description: "With ACL", value: {nested: [true, 3]}, public: false, permissions: [{action: VIEW, entityId: "$configurationId", groupId: "$groupId"}]}) { id } } }""", admin).at("configurations", "setConfiguration")

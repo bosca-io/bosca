@@ -10,6 +10,43 @@ class ConfigurationActionsTest {
     private fun context(handler: suspend (String, JsonObject) -> JsonElement) = RenderContext(gql = object : GraphQLClient {
         override suspend fun execute(query: String, variables: JsonObject?, operationName: String?, token: String?): JsonElement = handler(requireNotNull(operationName), variables ?: JsonObject(emptyMap()))
     })
+    @Test fun `configuration list neither requests nor serializes values`() = runTest {
+        val model = SystemConfigurationsModel(admin = true)
+        val ctx = RenderContext(gql = object : GraphQLClient {
+            override suspend fun execute(query: String, variables: JsonObject?, operationName: String?, token: String?): JsonElement {
+                assertEquals("SystemConfigurations", operationName)
+                assertFalse(Regex("\\bvalue\\b").containsMatchIn(query), query)
+                return Json.parseToJsonElement("""{"configurations":{"all":[{"id":"config-id","key":"app.test","description":"Private setting","public":false,"value":"list-secret-sentinel"}]}}""")
+            }
+        })
+        model.reload(ctx)
+        assertEquals("app.test", model.entries.single().key)
+        assertFalse(Json.encodeToString(SystemConfigurationsModel.serializer(), model).contains("list-secret-sentinel"))
+    }
+    @Test fun `editing loads a value on demand and dismissal clears the draft`() = runTest {
+        val model = SystemConfigurationsModel(admin = true)
+        model.edit("app.test", context { operation, variables ->
+            assertEquals("SystemConfiguration", operation)
+            assertEquals("app.test", variables.getValue("key").jsonPrimitive.content)
+            Json.parseToJsonElement("""{"configurations":{"configuration":{"id":"config-id","key":"app.test","description":"Private setting","public":false,"value":{"secret":"editor-secret-sentinel"}}}}""")
+        })
+        assertTrue(model.editing)
+        assertTrue(model.draft.value.contains("editor-secret-sentinel"))
+        assertEquals(1, model.editorRequest)
+        model.feedback.failed = true
+        model.feedback.message = "Invalid draft"
+        model.cancel()
+        assertFalse(model.editing)
+        assertNull(model.editingKey)
+        assertEquals(SystemConfigurationDraft(), model.draft)
+        assertFalse(model.feedback.failed)
+        assertEquals("", model.feedback.message)
+        assertFalse(Json.encodeToString(SystemConfigurationsModel.serializer(), model).contains("editor-secret-sentinel"))
+        model.newEntry()
+        assertTrue(model.editing)
+        assertEquals(2, model.editorRequest)
+        assertEquals(SystemConfigurationDraft(), model.draft)
+    }
     @Test fun `edit updates JSON without requiring MANAGE or sending an ACL`() = runTest {
         val model = SystemConfigurationsModel(admin = false, editing = true, editingKey = "app.test")
         var saved: JsonObject? = null
@@ -29,6 +66,7 @@ class ConfigurationActionsTest {
         assertEquals(Json.parseToJsonElement("[1,true,null]"), input["value"])
         assertTrue(input["permissions"] == null || input["permissions"] == JsonNull)
         assertFalse(model.editing)
+        assertEquals(SystemConfigurationDraft(), model.draft)
     }
     @Test fun `invalid JSON keeps the form and never changes configuration`() = runTest {
         val model = SystemConfigurationsModel(admin = true)

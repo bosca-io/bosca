@@ -63,7 +63,9 @@ Implemented routes:
   clean rebuild requests for Admin Search Index. Saves retain existing configuration permissions.
 
 - `/system/config`: filter, create/edit JSON through the design-library editor, public visibility,
-  permission retention, delegated group access and confirmed deletion.
+  permission retention, delegated group access and confirmed deletion. Lists request and serialize
+  metadata only; values load when the design-library editor modal opens. Save and dismissal clear
+  the draft and remove its value fields.
 - `/system/utilities`: clear server/CDN caches, expire jobs and release job locks. Job recovery
   operations require confirmation; unconfigured CDN and backend failures remain visible.
 

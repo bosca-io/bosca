@@ -14,6 +14,7 @@ class SystemConfigurationsModel(
     var search: String = "", var editing: Boolean = false, var editingKey: String? = null,
     var draft: SystemConfigurationDraft = SystemConfigurationDraft(),
     val feedback: SystemFeedback = SystemFeedback(),
+    var editorRequest: Int = 0,
 ) {
     val filtered: List<SystemConfigurationsData.Configurations.All> get() = entries.filter {
         it.key.contains(search, ignoreCase = true) || it.description.contains(search, ignoreCase = true)
@@ -22,14 +23,26 @@ class SystemConfigurationsModel(
         entries = ctx.gql.execute(SystemConfigurations, Unit).configurations.all
     }
     fun filter(value: String) { search = value }
-    fun newEntry() { editing = true; editingKey = null; draft = SystemConfigurationDraft() }
-    fun cancel() { editing = false; editingKey = null; draft = SystemConfigurationDraft() }
+    fun newEntry() {
+        cancel()
+        editing = true
+        editorRequest++
+    }
+    fun cancel() {
+        editing = false
+        editingKey = null
+        draft = SystemConfigurationDraft()
+        feedback.failed = false
+        feedback.message = ""
+    }
     suspend fun edit(key: String, ctx: RenderContext) = feedback.perform {
+        cancel()
         val entry = ctx.gql.execute(SystemConfiguration, SystemConfiguration.Variables(key)).configurations.configuration
         requireNotNull(entry) { "Configuration no longer exists." }
         editing = true
         editingKey = entry.key
         draft = SystemConfigurationDraft(entry.key, entry.description, (entry.value ?: kotlinx.serialization.json.JsonNull).toString(), entry.public)
+        editorRequest++
     }
     suspend fun save(key: String, description: String, value: String, public: Boolean, ctx: RenderContext) = feedback.perform {
         draft = SystemConfigurationDraft(key, description, value, public)

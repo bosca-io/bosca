@@ -17,7 +17,7 @@ The existing Vue pages remain in place; this port supplies the BML application i
 | `security/tokens/index.vue` | `/system/security/tokens` | Self/other-account ownership filter and profile search, offset pages, name/description/expiration, scope catalog/custom/artifact rules, one-time raw token/copy, revoke/delete | Implemented; indexed owner search/filtering verified in both hosts; browser creation retains drafts while targets load, selects repository type/path/version/actions, persists a scoped token and clears restrictions; creation/edit/revoke/delete and one-time display verified |
 | `security/tokens/[id].vue` | `/system/security/tokens/{id}` | Details/IDs/dates/IP/status/allowed groups/scopes, owner metadata/scope editing, revoke/delete | Implemented; `AtlasSecurityIntegrationTest` and isolated native-control browser checks at 1920/1024/768/390px |
 | `security/passkeys.vue` | `/system/security/passkeys` | List transports/dates, real WebAuthn registration through same-origin proxy, confirmed deletion | Implemented; `AtlasPasskeyIntegrationTest` verifies both hosts, real browser registration, cancellation, account isolation, deletion/session reset and layouts at four widths |
-| `config/index.vue` | `/system/config` | Search, create/edit structured JSON, public flag, preserve permissions, confirmed delete | Implemented; `AtlasSystemConfigurationIntegrationTest` verifies both hosts, JSON persistence, permission retention, denied replay and delegated group access; browser verification covers JSON editing, invalid-input recovery, filtering and deletion at four widths |
+| `config/index.vue` | `/system/config` | Search, create/edit structured JSON, public flag, preserve permissions, confirmed delete | Metadata-only list with values loaded on demand in a design-library modal; `AtlasSystemConfigurationIntegrationTest` checks both hosts, secret-free list HTML/state, draft clearing, JSON persistence, permission retention, denied replay and delegated access; browser checks cover modal JSON editing, invalid-input recovery, dismissal, filtering and deletion |
 | `storage.vue` | `/system/storage` | List/types/configuration/embedding model selection, create/edit/delete, full or per-system reindex options | Implemented; production-host persistence/authorization/index-worker checks and browser model add/remove/edit/delete, scoped controls and responsive form acceptance |
 | `search/index.vue` | `/system/search` | Configuration read/write, reindex/delete-first, metadata context preview | Implemented; real metadata preview/reindex acceptance, ACL-preserving edits and browser draft/confirmation checks |
 | `backups/index.vue` | `/system/backups` | Offset pages, create/include-files, restore/conflict strategy, confirmed delete | Implemented; both production hosts, dedicated worker, archive contents and all conflict strategies verified by `AtlasBackupsIntegrationTest`; native browser controls and four layouts at four widths verified |
@@ -160,6 +160,16 @@ operations retain their existing administrator checks. The browser check exercis
 editor, malformed input recovery, filtering, deletion and utility confirmation controls, including the
 expanded configuration form at phone/tablet/desktop widths. Native resource patterns include the new
 configuration SDL; the native process suite verifies these operations.
+
+The configuration list operation selects only ID, key, description and visibility. Values are absent
+from its HTML and live state and load only through the selected entry's edit action. Creation and
+editing use the shared modal with padded fields, fixed actions and modal-owned error toasts.
+Save, Cancel, close, Escape and backdrop dismissal remove the editor fields and clear its draft.
+The security browser suite checks these paths in both hosts and themes at four widths, using an
+isolated secret sentinel to detect values left in closed-page HTML or serialized state.
+This follow-up passed all 97 System model tests and both configuration/security production-host
+integration tests, including the 16 configuration modal cases. Native acceptance has not been
+rerun for this follow-up.
 
 ## Storage and search verification
 

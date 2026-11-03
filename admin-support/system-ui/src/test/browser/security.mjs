@@ -363,7 +363,7 @@ try {
   await clickText('Restore principal');
   await until("document.body.innerText.includes('Principal restored.')");
   await go('/system/config'); await clickText('New entry');
-  await until("document.querySelector('[data-bml-json-editor][data-json-ready] .cm-content[contenteditable=true]')");
+  await until("document.querySelector('dialog[open] [data-bml-json-editor][data-json-ready] .cm-content[contenteditable=true]')");
   await fill('input[name=key]', 'browser.configuration');
   await fill('input[name=description]', 'Browser configuration');
   const fillJson = async (value, root = "[data-bml-json-editor]") => {
@@ -376,20 +376,64 @@ try {
     await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, commands: ['selectAll'] });
     await call('Input.insertText', { text: value });
   };
-  await fillJson('{"nested":[true,3],"name":"Created in browser"}');
+  const configurationSecret='browser-configuration-secret-only-in-editor';
+  const configurationState="JSON.parse(document.querySelector('script[data-bml-state-key^=\"system-configurations.model\"]').textContent)";
+  const checkConfigurationList=async () => {
+    assert.equal(await evaluate(`document.documentElement.outerHTML.includes(${JSON.stringify(configurationSecret)})`),false,'Closed configuration pages do not contain the secret in HTML or live state');
+    assert.ok(await evaluate(`${configurationState}.entries.every(entry=>!Object.hasOwn(entry,'value'))`),'List state contains metadata only');
+    assert.deepEqual(await evaluate("[...document.querySelectorAll('thead th')].map(th=>th.textContent.trim())"),['Key','Description','Visibility','Actions'],'Configuration values have no list column');
+    assert.equal(await evaluate("Boolean(document.querySelector('[data-bml-json-editor]'))"),false,'Closed editors have no hidden value fields');
+  };
+  await fillJson(JSON.stringify({nested:[true,3],name:'Created in browser',secret:configurationSecret}));
   await click('input[name=public]'); await clickText('Save configuration');
   await until("document.body.innerText.includes('Configuration saved.') && !document.querySelector('input[name=key]')");
+  await checkConfigurationList();
   assert.equal(await evaluate("(() => {const name=[...document.querySelectorAll('[data-resource-name]')].find(name=>name.textContent==='browser.configuration');return Boolean(name&&!name.closest('td').querySelector('button,a,[role=button]'));})()"),true,'Configuration keys are plain table text');
   await click('[data-configuration-edit][aria-label="Edit browser.configuration"]');
-  await until("document.querySelector('input[name=key][readonly]') && document.querySelector('[data-bml-json-editor][data-json-ready] .cm-content')");
+  await until("document.querySelector('dialog[open] input[name=key][readonly]') && document.querySelector('dialog[open] [data-bml-json-editor][data-json-ready] .cm-content')");
   assert.equal(await evaluate("document.querySelector('input[name=public]').checked"), true);
-  assert.deepEqual(await evaluate("JSON.parse(document.querySelector('textarea[name=value]').value)"), { nested: [true, 3], name: 'Created in browser' });
+  assert.deepEqual(await evaluate("JSON.parse(document.querySelector('textarea[name=value]').value)"), { nested: [true, 3], name: 'Created in browser', secret:configurationSecret });
   await fillJson('{invalid'); await clickText('Save configuration');
   await until("JSON.parse(document.querySelector('script[data-bml-state-key^=\"system-configurations.model\"]').textContent).feedback.failed === true");
+  await until("document.querySelector('dialog[open] [data-configuration-editor-error]:popover-open')");
   assert.equal(await evaluate("document.querySelector('textarea[name=value]').value"), '{invalid', 'invalid JSON remains editable after a rejected save');
-  await fillJson('[false,42]'); await fill('input[name=description]', 'Edited in browser');
+  await click('dialog[open] [data-configuration-editor-error] button[aria-label="Dismiss notification"]');
+  assert.ok(await evaluate("Boolean(document.querySelector('dialog[open] input[name=key]'))"),'Dismissing modal validation feedback keeps the editor open');
+  await fillJson(JSON.stringify([false,42,configurationSecret])); await fill('input[name=description]', 'Edited in browser');
   await clickText('Save configuration');
   await until("document.body.innerText.includes('Edited in browser') && !document.querySelector('input[name=key]')");
+  await checkConfigurationList();
+  const configurationHost=base, configurationModalChecks=[];
+  for(const [host,origin] of [configurationHost,process.env.ATLAS_SYSTEM_STANDALONE_URL].entries()) {
+    base=origin;
+    for(const theme of ['dark','light']) for(const width of [1920,1024,768,390]) {
+      await call('Network.setCookie',{name:'git_ui_appearance',value:theme,url:base,path:'/'});
+      await call('Emulation.setDeviceMetricsOverride',{width,height:width<600?660:1000,deviceScaleFactor:1,mobile:width<768});
+      await go('/system/config');await checkConfigurationList();
+      await click('[data-configuration-edit][aria-label="Edit browser.configuration"]');
+      await until("document.querySelector('dialog[open] [data-bml-json-editor][data-json-ready] .cm-content')");
+      assert.deepEqual(await evaluate("JSON.parse(document.querySelector('dialog[open] textarea[name=value]').value)"),[false,42,configurationSecret],'Edit loads the saved value on demand');
+      const screenshot=await call('Page.captureScreenshot',{format:'png'});
+      await writeFile(join(reports,`configuration-modal-${host}-${theme}-${width}.png`),Buffer.from(screenshot.data,'base64'));
+      const dismiss=width===1920?'cancel':width===1024?'close':width===768?'escape':'backdrop';
+      if(dismiss==='cancel')await clickText('Cancel','dialog[open] button');
+      else if(dismiss==='close')await click('dialog[open] button[aria-label="Close dialog"]');
+      else if(dismiss==='escape')await escape();
+      else {
+        const point=await evaluate("(() => {const r=document.querySelector('dialog[open]').getBoundingClientRect();return {x:r.left-5,y:r.top+5};})()");
+        await call('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',clickCount:1});
+        await call('Input.dispatchMouseEvent',{type:'mouseReleased',...point,button:'left',clickCount:1});
+      }
+      await until(`!document.querySelector('dialog[open]') && ${configurationState}.editing===false && !document.querySelector('[data-bml-json-editor]')`);
+      await checkConfigurationList();
+      configurationModalChecks.push({host,theme,width,dismiss,secretRemoved:true});
+    }
+  }
+  await writeFile(join(reports,'configuration-modal-checks.json'),JSON.stringify(configurationModalChecks,null,2));
+  base=configurationHost;
+  await call('Network.setCookie',{name:'git_ui_appearance',value:'dark',url:base,path:'/'});
+  await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+  await go('/system/config');
   await fill('input[name=search]', 'no-such-config'); await clickText('Filter');
   await until("document.body.innerText.includes('No matching configurations.')");
   await go('/system/utilities'); await clickText('Clear cache');
@@ -544,13 +588,16 @@ try {
       }
       if (name === 'configurations') {
         await click('[data-configuration-edit][aria-label="Edit browser.configuration"]');
-        await until("document.querySelector('[data-bml-json-editor][data-json-ready] .cm-content')");
+        await until("document.querySelector('dialog[open] [data-bml-json-editor][data-json-ready] .cm-content')");
         const editorBounds = await evaluate('({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,title:document.querySelector("h1")?.textContent,editorWidth:document.querySelector("[data-bml-json-editor]").getBoundingClientRect().width})');
         assert.ok(editorBounds.scrollWidth <= editorBounds.width + 2, `Configuration editor at ${width}px overflows: ${JSON.stringify(editorBounds)}`);
         assert.ok(editorBounds.editorWidth <= editorBounds.width, 'The editor stays within the page');
         const screenshot = await call('Page.captureScreenshot', { format: 'png' });
         await writeFile(join(reports, `configuration-editor-${width}.png`), Buffer.from(screenshot.data, 'base64'));
         reportsData.push({ name: 'configuration-editor', width, ...editorBounds });
+        await clickText('Cancel','dialog[open] button');
+        await until(`!document.querySelector('dialog[open]') && ${configurationState}.editing===false`);
+        await checkConfigurationList();
       }
     }
   }
