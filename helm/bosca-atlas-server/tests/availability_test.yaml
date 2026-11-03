@@ -1,0 +1,123 @@
+suite: Atlas retains an available replica
+templates:
+  - templates/deployment.yaml
+  - templates/hpa.yaml
+  - templates/pdb.yaml
+  - templates/configmap-appconfig.yaml
+set:
+  global.domain: example.com
+tests:
+  - it: starts a replacement before stopping the only available server
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.strategy
+          value:
+            type: RollingUpdate
+            rollingUpdate:
+              maxSurge: 1
+              maxUnavailable: 0
+  - it: protects deployments that reuse the previous unsafe rollout values
+    template: templates/deployment.yaml
+    set:
+      strategy.rollingUpdate.maxUnavailable: 1
+      strategy.rollingUpdate.maxSurge: 25%
+    asserts:
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 0
+      - equal:
+          path: spec.strategy.rollingUpdate.maxSurge
+          value: 25%
+  - it: replaces Recreate with a rollout that preserves availability
+    template: templates/deployment.yaml
+    set:
+      strategy.type: Recreate
+      strategy.rollingUpdate: null
+    asserts:
+      - equal:
+          path: spec.strategy.type
+          value: RollingUpdate
+      - equal:
+          path: spec.strategy.rollingUpdate
+          value: {maxSurge: 1, maxUnavailable: 0}
+  - it: permits a replacement when an integer surge of zero was configured
+    template: templates/deployment.yaml
+    set:
+      strategy.rollingUpdate.maxSurge: 0
+    asserts:
+      - equal:
+          path: spec.strategy.rollingUpdate.maxSurge
+          value: 1
+  - it: permits a replacement when a percentage surge of zero was configured
+    template: templates/deployment.yaml
+    set:
+      strategy.rollingUpdate.maxSurge: 0%
+    asserts:
+      - equal:
+          path: spec.strategy.rollingUpdate.maxSurge
+          value: 1
+  - it: retains a static replica when zero was configured
+    template: templates/deployment.yaml
+    set:
+      replicaCount: 0
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+  - it: retains an autoscaled replica when zero bounds were configured
+    template: templates/hpa.yaml
+    set:
+      autoscaling.enabled: true
+      autoscaling.minReplicas: 0
+      autoscaling.maxReplicas: 0
+    asserts:
+      - equal:
+          path: spec.minReplicas
+          value: 1
+      - equal:
+          path: spec.maxReplicas
+          value: 1
+  - it: preserves a higher autoscaling floor
+    template: templates/hpa.yaml
+    set:
+      autoscaling.enabled: true
+      autoscaling.minReplicas: 3
+      autoscaling.maxReplicas: 5
+    asserts:
+      - equal:
+          path: spec.minReplicas
+          value: 3
+      - equal:
+          path: spec.maxReplicas
+          value: 5
+  - it: protects the last replica from voluntary evictions by default
+    template: templates/pdb.yaml
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: 1
+      - notExists:
+          path: spec.maxUnavailable
+  - it: protects deployments that reuse the previous unsafe disruption budget
+    template: templates/pdb.yaml
+    set:
+      podDisruptionBudget.maxUnavailable: 1
+      podDisruptionBudget.minAvailable: 0
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: 1
+      - notExists:
+          path: spec.maxUnavailable
+  - it: preserves a higher disruption budget floor
+    template: templates/pdb.yaml
+    set:
+      podDisruptionBudget.minAvailable: 2
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: 2
