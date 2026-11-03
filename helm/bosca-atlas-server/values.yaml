@@ -1,10 +1,12 @@
 # Atlas may run combined, API-only, registry-only or worker-only. See helm/README.md.
 replicaCount: 1
+# Atlas keeps a ready replica while replacing pods. The chart enforces
+# RollingUpdate and maxUnavailable: 0 even with older strategy overrides.
 strategy:
   type: RollingUpdate
   rollingUpdate:
-    maxSurge: 25%
-    maxUnavailable: 1
+    maxSurge: 1
+    maxUnavailable: 0
 image:
   registry: ghcr.io/bosca-io/bosca
   repository: atlas-server
@@ -50,8 +52,8 @@ autoscaling:
   maxReplicas: 5
   targetCPUUtilizationPercentage: 80
 podDisruptionBudget:
-  enabled: false
-  maxUnavailable: 1
+  enabled: true
+  minAvailable: 1
 appConfig:
   domain: ''
   realm: ''

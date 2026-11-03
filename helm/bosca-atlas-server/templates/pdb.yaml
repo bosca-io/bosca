@@ -6,11 +6,7 @@ metadata:
   labels:
     {{- include "bosca-common.labels" . | nindent 4 }}
 spec:
-  {{- if hasKey .Values.podDisruptionBudget "maxUnavailable" }}
-  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
-  {{- else }}
-  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
-  {{- end }}
+  minAvailable: {{ max 1 (int .Values.podDisruptionBudget.minAvailable) }}
   selector:
     matchLabels:
       {{- include "bosca-common.selectorLabels" . | nindent 6 }}

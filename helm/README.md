@@ -218,6 +218,15 @@ them. A standalone chart defaults to embedded workers; `runner.enabled`,
 `runner.queues`, `runner.concurrency`, `runner.listeners` and `runner.scheduler`
 select that responsibility.
 
+Atlas rollouts always use `RollingUpdate` with `maxUnavailable: 0` and a positive
+`maxSurge`, so a replacement must become ready before the last available pod stops.
+Static replicas and HPA bounds have a floor of one. Its disruption budget is
+enabled by default with `minAvailable: 1`; a larger integer minimum can be selected.
+These protections also apply when older values contain `maxUnavailable: 1` or
+`strategy.type: Recreate`. A single replica can still be interrupted by a process
+or worker failure. Its disruption budget blocks voluntary eviction until another
+replica is available; worker maintenance needs a second replica first.
+
 The shared Gateway adds TLS listeners, certificates and HTTPS redirects for all
 three configured hostname lists. Atlas UI pages/actions/assets use 8095; GraphQL,
 Git smart HTTP/LFS/raw files, webhooks, CI files and registry protocols use 8094.

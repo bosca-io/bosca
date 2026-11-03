@@ -6,13 +6,19 @@ metadata:
     {{- include "bosca-common.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ max 1 (int .Values.replicaCount) }}
   {{- end }}
   revisionHistoryLimit: {{ .Values.revisionHistoryLimit | default 1 }}
-  {{- with .Values.strategy }}
-  strategy:
-    {{- toYaml . | nindent 4 }}
+  {{- $rollingUpdate := (.Values.strategy | default dict).rollingUpdate | default dict }}
+  {{- $maxSurge := $rollingUpdate.maxSurge | default 1 }}
+  {{- if eq (toString $maxSurge) "0%" }}
+  {{- $maxSurge = 1 }}
   {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ $maxSurge }}
+      maxUnavailable: 0
   selector:
     matchLabels:
       {{- include "bosca-common.selectorLabels" . | nindent 6 }}
