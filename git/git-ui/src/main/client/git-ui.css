@@ -931,7 +931,7 @@ a.info-value {
 }
 
 /* Git retains its code palette and spacing on the shared viewers and editors. */
-.git-document [data-bml-source-view] {
+.git-document :is([data-bml-source-view], [data-bml-code-editor]) {
   --source-keyword: #c678dd;
   --source-name: #e06c75;
   --source-function: #61afef;
@@ -947,13 +947,13 @@ a.info-value {
   color: var(--fg-0);
   background: transparent;
 }
-.git-document [data-bml-source-view] > .code-editor {
+.git-document :is([data-bml-source-view], [data-bml-code-editor]) > .code-editor {
   overflow: hidden;
 }
-.git-document [data-bml-source-view] .cm-scroller {
+.git-document :is([data-bml-source-view], [data-bml-code-editor]) .cm-scroller {
   line-height: 1.4;
 }
-.git-document [data-bml-source-view] .source-heading {
+.git-document :is([data-bml-source-view], [data-bml-code-editor]) .source-heading {
   font-weight: bold;
 }
 
@@ -1021,7 +1021,7 @@ a.info-value {
   --line-2: #738399;
   --control-bg: var(--bg-2);
 }
-.git-document[data-theme="light"] [data-bml-source-view] {
+.git-document[data-theme="light"] :is([data-bml-source-view], [data-bml-code-editor]) {
   --source-keyword: #7e22ce;
   --source-name: #9f1239;
   --source-function: #1d4ed8;

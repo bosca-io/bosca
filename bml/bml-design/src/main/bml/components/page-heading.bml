@@ -142,7 +142,7 @@
         const form = button.form;
         if (!form) continue;
         observer.observe(form, { attributes: true, attributeFilter: ["data-bml-action-pending"] });
-        button.setAttribute("aria-busy", String(button.hasAttribute("data-loading") || form.hasAttribute("data-bml-action-pending")));
+        button.setAttribute("aria-busy", String(button.hasAttribute("data-bml-button-loading") || form.hasAttribute("data-bml-action-pending")));
       }
     };
     ctx.onUpdate(sync);

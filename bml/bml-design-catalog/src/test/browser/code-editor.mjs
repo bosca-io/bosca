@@ -14,6 +14,7 @@ export async function checkCodeEditor({ navigate, evaluate, until, call }) {
     await call('Input.insertText', { text });
   };
   await until(`${root}.querySelector('[data-code-ready]')`);
+  assert.ok(await evaluate("[...document.querySelectorAll('[data-bml-code-editor]')].every(editor=>!editor.hasAttribute('data-bml-source-view'))"),'Editable fields retain a separate component identity from read-only viewers');
   const initial = await evaluate(`${field}.value`);
   await fill('profile.name & " draft"');
   assert.equal(await evaluate(`${field}.value`),'profile.name & " draft"');

@@ -12,7 +12,7 @@
   <prop name="disabled" type="Boolean" default="false" />
   <prop name="preserveKey" type="String" default="" />
   <prop name="exitFocus" type="String" default="" />
-  <div :class='"code-input" + (if (bare) " bare-code-input" else "") + (if (fill) " fill-code-input" else "")' data-bml-code-editor data-bml-source-view :data-name="name" :data-value="value"
+  <div :class='"code-input" + (if (bare) " bare-code-input" else "") + (if (fill) " fill-code-input" else "")' data-bml-code-editor :data-name="name" :data-value="value"
        :data-language="language" :data-path="path" :data-line="line" :data-wrapped="wrapped" :data-label="label" :data-readonly="readOnly" :data-disabled="disabled"
        :data-bml-preserve="preserveKey" :data-exit-focus="exitFocus" {...attrs}>
     <textarea ref="value" :name="name" :aria-label="label" :readonly="readOnly" :disabled="disabled" spellcheck="false">{ value }</textarea>

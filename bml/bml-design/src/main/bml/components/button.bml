@@ -12,7 +12,7 @@
     :ref="ref.takeIf(String::isNotBlank)"
     :disabled="disabled || loading"
     :aria-busy="loading.toString()"
-    :data-loading="loading"
+    :data-bml-button-loading="loading"
     {...attrs}
   >
     <span class="button-content">
