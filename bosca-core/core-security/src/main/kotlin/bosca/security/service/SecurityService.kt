@@ -222,6 +222,13 @@ interface SecurityService : Service {
     suspend fun getPrincipals(offset: Long, limit: Int, includeDeleted: Boolean): List<Principal>
 
     /**
+     * Finds principals by a case-insensitive literal substring of their ID or any credential identifier.
+     * Results are ordered by principal ID and paginated after filtering, with each principal returned once.
+     * [includeDeleted] controls whether soft-deleted principals are included.
+     */
+    suspend fun findPrincipals(query: String, offset: Long, limit: Int, includeDeleted: Boolean): List<Principal>
+
+    /**
      * Retrieves a principal by their unique identifier.
      *
      * @param id the unique identifier of the principal

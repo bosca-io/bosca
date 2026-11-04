@@ -16,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class SwitchNodeTest {
@@ -80,6 +81,7 @@ class SwitchNodeTest {
         val failure = assertFailsWith<IllegalStateException> { node.executeForTestValue(context, inputs(tier("gold"))) }
         val message = failure.message ?: ""
         assertTrue("invalid expression" in message, "message was: $message")
+        assertNotNull(failure.cause, "the original JSONata failure must be retained")
         // The offending case label and the raw expression are surfaced for debugging.
         assertTrue("bad" in message, "the failing case label is named; message was: $message")
         assertTrue("this is not >< valid jsonata (" in message, "the expression is echoed; message was: $message")
@@ -250,6 +252,7 @@ class SwitchNodeTest {
         val failure = assertFailsWith<IllegalStateException> { node.executeForTestValue(context, inputs(tier("gold"))) }
         val message = failure.message ?: ""
         assertTrue("invalid expression" in message, "message was: $message")
+        assertNotNull(failure.cause, "the original JSONata failure must be retained")
         assertTrue("Named Switch" in message, "the set name is surfaced; message was: $message")
         assertTrue("the-id" !in message, "the name replaces the id; message was: $message")
     }

@@ -22,12 +22,14 @@ class PrincipalsController(
         authentication: AuthenticationContext,
         limit: Int,
         offset: Long,
-        includeDeleted: Boolean = false
+        includeDeleted: Boolean = false,
+        query: String? = null,
     ): List<Principal> {
         if (!groupEvaluator.hasAdminGroup(authentication)) {
             groupEvaluator.throwUnauthorized()
         }
-        return securityService.getPrincipals(offset, limit, includeDeleted)
+        return if (query.isNullOrBlank()) securityService.getPrincipals(offset, limit, includeDeleted)
+        else securityService.findPrincipals(query.trim(), offset, limit, includeDeleted)
     }
 
     @Field

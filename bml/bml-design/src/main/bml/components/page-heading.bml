@@ -133,4 +133,21 @@
       }
     }
   </style>
+  <script client scoped>
+    // Header actions can submit a native form elsewhere in the page.
+    const observer = new MutationObserver(() => sync());
+    const sync = () => {
+      observer.disconnect();
+      for (const button of ctx.root.querySelectorAll<HTMLButtonElement>('button[type="submit"][form]')) {
+        const form = button.form;
+        if (!form) continue;
+        observer.observe(form, { attributes: true, attributeFilter: ["data-bml-action-pending"] });
+        button.setAttribute("aria-busy", String(button.hasAttribute("data-bml-button-loading") || form.hasAttribute("data-bml-action-pending")));
+      }
+    };
+    ctx.onUpdate(sync);
+    ctx.on(document, "bml:update", sync);
+    ctx.onUnmount(() => observer.disconnect());
+    sync();
+  </script>
 </component>

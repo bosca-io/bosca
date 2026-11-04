@@ -1,0 +1,148 @@
+{
+  "postgresAdmin": {
+    "serverVersion": "PostgreSQL fixture",
+    "uptime": "00:10:00",
+    "databaseStats": {
+      "databaseName": "fixture_database",
+      "numBackends": 2,
+      "xactCommit": 12,
+      "xactRollback": 1,
+      "blksRead": 2,
+      "blksHit": 20,
+      "tupReturned": 10,
+      "tupFetched": 10,
+      "tupInserted": 3,
+      "tupUpdated": 1,
+      "tupDeleted": 1,
+      "conflicts": 0,
+      "tempFiles": 0,
+      "tempBytes": 0,
+      "deadlocks": 0,
+      "cacheHitRatio": 90.9,
+      "databaseSize": 16384,
+      "statsReset": null
+    },
+    "activeQueries": [
+      {
+        "pid": 501,
+        "databaseName": "fixture_database",
+        "userName": "fixture_user",
+        "applicationName": "Fixture query",
+        "clientAddr": "127.0.0.1",
+        "state": "active",
+        "query": "select pg_sleep(30)",
+        "queryStart": "2026-11-03T02:00:00Z",
+        "queryDurationSeconds": 3.0,
+        "waitEventType": "Timeout",
+        "waitEvent": "PgSleep",
+        "backendType": "client backend"
+      }
+    ],
+    "connectionPoolStats": [
+      {
+        "poolName": "Fixture pool",
+        "maxConnections": 10,
+        "activeConnections": 2,
+        "createdConnections": 3,
+        "hasAvailableConnections": true
+      }
+    ],
+    "vacuumProgress": [
+      {
+        "pid": 502,
+        "databaseName": "fixture_database",
+        "schemaName": "public",
+        "tableName": "system_ui_console_probe",
+        "phase": "scanning heap",
+        "heapBlksTotal": 100,
+        "heapBlksScanned": 20,
+        "heapBlksVacuumed": 10,
+        "numDeadTuples": 1
+      }
+    ],
+    "locks": [
+      {
+        "pid": 501,
+        "lockType": "relation",
+        "databaseName": "fixture_database",
+        "relationName": "system_ui_console_probe",
+        "mode": "RowExclusiveLock",
+        "granted": false,
+        "query": "select * from system_ui_console_probe for update",
+        "state": "active",
+        "durationSeconds": 3.0
+      }
+    ],
+    "replicationSlots": [
+      {
+        "slotName": "fixture_slot",
+        "slotType": "physical",
+        "active": true,
+        "databaseName": null,
+        "confirmedFlushLsn": "0/1",
+        "retainedWalBytes": 1024
+      }
+    ],
+    "isInRecovery": false,
+    "replicationStatus": [
+      {
+        "pid": 503,
+        "userName": "replication",
+        "applicationName": "Fixture replica",
+        "clientAddr": "127.0.0.2",
+        "state": "streaming",
+        "sentLsn": "0/1",
+        "writeLsn": "0/1",
+        "flushLsn": "0/1",
+        "replayLsn": "0/1",
+        "replayLagSeconds": 0.1,
+        "writeLagSeconds": 0.1,
+        "flushLagSeconds": 0.1,
+        "syncState": "async",
+        "syncPriority": 1
+      }
+    ],
+    "pgBouncerInfo": {
+      "available": true,
+      "version": "fixture-version",
+      "pools": [
+        {
+          "database": "fixture_database",
+          "user": "fixture_user",
+          "clActive": 2,
+          "clWaiting": 1,
+          "svActive": 2,
+          "svIdle": 3,
+          "svUsed": 1,
+          "svLogin": 0,
+          "maxwait": 1,
+          "poolMode": "transaction"
+        }
+      ],
+      "stats": [
+        {
+          "database": "fixture_database",
+          "avgXactCount": 2,
+          "avgQueryCount": 3,
+          "avgXactTime": 100,
+          "avgQueryTime": 50,
+          "avgWaitTime": 10
+        }
+      ],
+      "databases": [
+        {
+          "name": "fixture_database",
+          "host": "localhost",
+          "port": 5432,
+          "database": "fixture_database",
+          "poolSize": 5,
+          "maxConnections": 10,
+          "currentConnections": 2,
+          "poolMode": "transaction",
+          "paused": false,
+          "disabled": false
+        }
+      ]
+    }
+  }
+}

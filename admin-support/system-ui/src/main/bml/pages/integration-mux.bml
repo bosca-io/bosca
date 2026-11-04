@@ -1,0 +1,4 @@
+<page route="/system/integrations/mux" requireAuth>
+  <script server provides="page">bosca.system.ui.systemMux()</script>
+  <system-layout title="Mux" :admin="page.admin"><system-mux :initial="page" /></system-layout>
+</page>

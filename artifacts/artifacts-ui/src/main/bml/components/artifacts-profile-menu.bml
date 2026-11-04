@@ -1,3 +1,0 @@
-<component tag="artifacts-profile-menu">
-  <auth-profile-menu {...attrs} />
-</component>

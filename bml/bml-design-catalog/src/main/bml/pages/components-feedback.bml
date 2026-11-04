@@ -80,7 +80,7 @@
       <tooltip content="This description also opens on focus" placement="bottom"><button size="sm">Hover or focus</button></tooltip>
     </reference-entry>
     <reference-entry name="copy"
-      :api='"value: String (required)\nlabel: String = \"Copy\"\nshowStatus: Boolean = true"'
+      :api='"value: String (required)\nlabel: String = \"Copy\"\nshowStatus: Boolean = true\nsize: String = \"sm\"\nghost: Boolean = false"'
       :contract='"Root div receives additional attributes/classes. Its 30×30px native button copies the value, switches decorative icons and reports status. No child content. Visible status reserves 26ch so feedback does not move neighboring content; showStatus=\"false\" keeps status accessible with no visible message space."'
       :keyboard='"Native button activation copies the string. A live message reports success or manual-copy guidance; copyresult contains copied. showStatus=false retains accessible feedback without visible reserved space."'
       :css='"Palette and typography inherit from the consuming application. Child controls use their own documented tokens; icon strokes inherit currentColor. Forward an application class only through the documented native target; generated scope markers are private."'
@@ -96,7 +96,7 @@
       <copy-field value="io.bosca:bml-design" label="Dependency coordinate" />
     </reference-entry>
     <reference-entry name="toast"
-      :api='"id: String (required)\nmessage: String = \"\"\nsequence: Int = 0\ntone: String = \"info\"\nduration: Int = 4000"'
+      :api='"id: String (required)\nmessage: String = \"\"\nsequence: Int = 0\ntone: String = \"info\"\nduration: Int = 4000\nannounceInitial: Boolean = false"'
       :contract='"Manual-popover root receives additional attributes/classes. id supplies its stable data-bml-preserve key, rather than a native DOM ID. No child content. The caller issues each nonempty notice with a new positive sequence while mounted. Initial rendered state is a baseline; ordinary updates, navigation and same/older sequences do not replay it."'
       :keyboard='"Sequence increases after mounting issue notices, including repeated text. Leaving the page closes the current notice. Hover, focus and document invisibility pause expiry; Escape or the dismiss button closes it. Error is assertive, other tones are polite. A notice never takes focus."'
       :css='"Palette and typography inherit from the consuming application. Component hooks: --accent, --bg-1, --err, --fg-1, --focus-width, --font-sans, --info, --ok, --r-md, --shadow-color, --toast-left, --toast-message-max-height, --toast-shadow, --toast-top, --warn. Forward an application class only through the documented native target; generated scope markers are private."'

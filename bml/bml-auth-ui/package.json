@@ -4,9 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/main/client/auth-ui.ts",
-    "./auth": "./src/main/client/auth.ts",
-    "./profile-menu": "./src/main/client/profile-menu.ts",
-    "./appearance": "./src/main/client/appearance.ts"
+    "./auth": "./src/main/client/auth.ts"
   },
   "dependencies": {
     "@bosca/auth-client-browser": "file:../../web/packages/auth",

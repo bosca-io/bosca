@@ -42,17 +42,19 @@ class SwarmOAuthRedirectsTest {
                 val expected = site.oauthRedirects ?: listOf("https://${site.hosts.studio}", "http://localhost:3000")
                 listOf("server", "runner").forEach { service ->
                     val definition = services.getValue(service).jsonObject
+                    val heapArgs = if (service == "server") listOf("-XX:MaxRAMPercentage=65.0") else emptyList()
                     val environment = definition.getValue("environment").jsonObject
                         .mapValues { it.value.jsonPrimitive.content }
                     assertFalse("OAUTH2_ALLOWED_REDIRECTS" in environment)
                     val template = Path.of("../server/bosca-$service/src/main/resources/application.yaml").toAbsolutePath()
                     val application = if (site.oauthRedirects == null) {
-                        assertFalse("command" in definition)
+                        if (heapArgs.isEmpty()) assertFalse("command" in definition)
+                        else assertEquals(heapArgs, definition.getValue("command").jsonArray.map { it.jsonPrimitive.content })
                         assertFalse("configs" in definition)
                         assertFalse(Files.exists(bundle.resolve("config/sites/${site.id}/$service.yaml")))
                         template
                     } else {
-                        assertEquals(listOf("-config=/config/application.yaml"),
+                        assertEquals(heapArgs + listOf("-config=/config/application.yaml"),
                             definition.getValue("command").jsonArray.map { it.jsonPrimitive.content })
                         val mount = definition.getValue("configs").jsonArray.single().jsonObject
                         assertEquals("/config/application.yaml", mount.getValue("target").jsonPrimitive.content)
@@ -101,7 +103,10 @@ class SwarmOAuthRedirectsTest {
             assertTrue(Files.exists(bundle.resolve("config/sites/site1/atlas.yaml")))
             listOf("server", "runner").forEach { service ->
                 val definition = stack().getValue("services").jsonObject.getValue(service).jsonObject
-                assertFalse("command" in definition)
+                if (service == "server") {
+                    assertEquals(listOf("-XX:MaxRAMPercentage=65.0"),
+                        definition.getValue("command").jsonArray.map { it.jsonPrimitive.content })
+                } else assertFalse("command" in definition)
                 assertFalse("configs" in definition)
                 val environment = definition.getValue("environment").jsonObject.mapValues { it.value.jsonPrimitive.content }
                 assertRedirectConfiguration(Path.of("../server/bosca-$service/src/main/resources/application.yaml").toAbsolutePath(),

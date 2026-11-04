@@ -42,7 +42,8 @@ class AtlasUiRoutesTest {
         assertTrue("href=\"/artifacts/namespaces\"" in signedIn.body())
         assertTrue("Welcome." in signedIn.body())
         assertTrue("aria-label=\"Atlas systems\"" in signedIn.body())
-        assertTrue("Build &amp; Deliver" in signedIn.body())
+        assertTrue("Systems" in signedIn.body())
+        assertTrue("href=\"/system/jobs\"" in signedIn.body())
         assertFalse("data-bml-app-shell" in signedIn.body())
         val light = get("/", "_atlas_test=atlas-session; git_ui_appearance=light")
         assertTrue("data-theme=\"light\"" in light.body())
@@ -53,7 +54,7 @@ class AtlasUiRoutesTest {
         val html = get("/login").body()
         val resources = Regex("(?:src|href)=\"(/_bml/[^\"]+)\"").findAll(html)
             .map { it.groupValues[1].replace("&amp;", "&") }.toList()
-        assertTrue(resources.any { Regex("""/_bml/js/[^/]+\.page-[A-Z0-9]{8}\.js""").matches(it) }, html)
+        assertTrue(resources.any { Regex("""/_bml/js/deploy/[^/]+/[^/]+\.page-[A-Z0-9]{8}\.js""").matches(it) }, html)
         assertTrue(resources.any { it.substringBefore('?').endsWith(".css") }, html)
         resources.forEach { path ->
             val response = get(path)

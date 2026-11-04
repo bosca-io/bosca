@@ -1,0 +1,4 @@
+<page route="/system/integrations/push" requireAuth>
+  <script server provides="page">bosca.system.ui.systemPush()</script>
+  <system-layout title="Push notifications" :admin="page.admin"><system-push :initial="page" /></system-layout>
+</page>

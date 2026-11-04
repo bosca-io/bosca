@@ -41,7 +41,7 @@
             </if>
           </nav>
           <div class="shell-footer">
-            <artifacts-profile-menu />
+            <profile-menu />
           </div>
         </app-header>
         <div class="shell-main">

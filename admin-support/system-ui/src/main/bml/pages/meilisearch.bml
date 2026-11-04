@@ -1,0 +1,4 @@
+<page route="/system/meilisearch" requireAuth>
+<script server provides="page">bosca.system.ui.meilisearchConsole()</script>
+<system-layout title="Meilisearch" :admin="page.admin"><system-meilisearch :initial="page" /></system-layout>
+</page>

@@ -10,8 +10,9 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: {{ include "bosca-common.fullname" . }}
-  minReplicas: {{ .Values.autoscaling.minReplicas }}
-  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  {{- $minReplicas := max 1 (int .Values.autoscaling.minReplicas) }}
+  minReplicas: {{ $minReplicas }}
+  maxReplicas: {{ max $minReplicas (int .Values.autoscaling.maxReplicas) }}
   metrics:
     - type: Resource
       resource:

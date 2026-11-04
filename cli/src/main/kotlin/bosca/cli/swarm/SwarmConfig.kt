@@ -117,10 +117,14 @@ data class SwarmConfig(
     val notificationsWeb: SwarmNotificationsWeb = SwarmNotificationsWeb(),
     /** Bosca server memory limit in Docker units, for example `768M` or `1536M`. */
     val serverMemory: String = "768M",
+    /** Bosca runner memory limit in Docker units, for example `2G` or `4G`. */
+    val runnerMemory: String = "2G",
     /** Enables API.Bible usage reporting in this site's Analytics collector. */
     val fumsEnabled: Boolean = true,
     /** Atlas host and capabilities enabled in its combined process. */
     val atlas: SwarmAtlas = SwarmAtlas(),
+    /** Standalone Bosca runner; disable when Atlas owns background execution. */
+    val runnerServer: SwarmStandaloneServer = SwarmStandaloneServer(enabled = true),
     val gitServer: SwarmStandaloneServer = SwarmStandaloneServer(),
     val artifactsServer: SwarmStandaloneServer = SwarmStandaloneServer(),
     val atlasUiServer: SwarmStandaloneServer = SwarmStandaloneServer(),
@@ -314,7 +318,10 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
     require(workers.all { it.advertiseAddress.isEmpty() || it.advertiseAddress.matches(Regex("[A-Za-z0-9_.:-]+")) }) {
         "Invalid worker advertiseAddress"
     }
-    require((workers.map { it.ssh } + manager.ssh).distinct().size == workers.size + 1) { "SSH targets must be distinct" }
+    require(workers.map { it.ssh }.distinct().size == workers.size) { "Worker SSH targets must be distinct" }
+    require(workers.none {
+        it.ssh == manager.ssh && it.advertiseAddress.isNotEmpty() && it.advertiseAddress != manager.advertiseAddress
+    }) { "A manager listed as a worker must use the manager advertiseAddress" }
     require(Path.of(dataRoot).isAbsolute && dataRoot != "/" && !dataRoot.contains(Regex("[\\n\\r:]"))) { "dataRoot must be a safe absolute directory" }
     require(sites.isNotEmpty() && sites.size <= 15) { "Configure between one and 15 sites" }
     val idPattern = Regex("[a-z][a-z0-9]{0,19}")
@@ -346,8 +353,10 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
         require(site.rootEnv.keys.all { it.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) }) {
             "Invalid rootEnv variable name for ${site.id}"
         }
-        require(site.serverMemory.matches(Regex("[1-9][0-9]*[bkmg]?", RegexOption.IGNORE_CASE))) {
-            "serverMemory for ${site.id} must be a positive byte count with an optional B, K, M, or G suffix"
+        mapOf("serverMemory" to site.serverMemory, "runnerMemory" to site.runnerMemory).forEach { (setting, memory) ->
+            require(memory.matches(Regex("[1-9][0-9]*[bkmg]?", RegexOption.IGNORE_CASE))) {
+                "$setting for ${site.id} must be a positive byte count with an optional B, K, M, or G suffix"
+            }
         }
         require(site.mailerType in setOf("sendgrid", "mailgun", "smtp")) {
             "mailerType for ${site.id} must be sendgrid, mailgun, or smtp"

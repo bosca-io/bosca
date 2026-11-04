@@ -102,9 +102,14 @@ async function pressKey(key) {
     });
 }
 async function nav(path) {
+  const expected = new URL(path, base);
+  if (expected.searchParams.has("pipeline")) {
+    expected.searchParams.delete("pipeline");
+    expected.searchParams.delete("runRef");
+  }
   await call("Page.navigate", { url: base + path });
   await until(
-    `location.href === ${JSON.stringify(base + path)} && document.readyState==='complete' && document.querySelector('main') && document.querySelector('[data-bml-ref=signout]') && !document.querySelector('[data-bml-ref=signout]').disabled`,
+    `location.href === ${JSON.stringify(expected.href)} && document.readyState==='complete' && document.querySelector('main') && document.querySelector('[data-bml-ref=signout]') && !document.querySelector('[data-bml-ref=signout]').disabled`,
   );
   await ev("document.fonts.ready");
   await new Promise((r) => setTimeout(r, 180));

@@ -20,7 +20,7 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
     const finished = nextCompleted && !completed;
     completed = nextCompleted;
     if (finished) {
-      close(false);
+      close();
       return;
     }
     const panel = dialog();
@@ -41,8 +41,7 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
       (active ?? field ?? ctx.ref<HTMLElement>("cancel"))?.focus();
     }
   };
-  const close = (notify = true) => {
-    const wasVisible = visible || dialog()?.open;
+  const close = (dismissed = false) => {
     visible = false;
     dialog()?.close();
     const target =
@@ -52,13 +51,16 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
             ?.querySelector<HTMLElement>(ctx.root.dataset.returnFocus)
         : null) ?? trigger();
     target?.focus();
-    if (notify && wasVisible) ctx.root.dispatchEvent(new CustomEvent("dialogclose", { bubbles: true }));
+    if (dismissed) ctx.root.dispatchEvent(new CustomEvent("dialogdismiss", { bubbles: true }));
   };
   ctx.on<MouseEvent>(ctx.root, "click", (event) => {
     const target = event.target;
     if (!(target instanceof Node)) return;
     if (target instanceof Element && target.closest("[data-bml-design-dialog]") !== ctx.root) return;
     if (trigger()?.contains(target) && !trigger()?.matches(":disabled")) {
+      // A manual opening starts a new attempt after any previously acknowledged completion.
+      completed = false;
+      ctx.root.removeAttribute("data-completed");
       visible = true;
       sync();
     } else if (
@@ -66,7 +68,7 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
       ctx.ref("cancel")?.contains(target) ||
       target instanceof Element && !!target.closest("[data-dialog-close]")
     ) {
-      close();
+      close(true);
     } else if (target === dialog()) {
       const bounds = dialog()?.getBoundingClientRect();
       if (!bounds) return;
@@ -76,7 +78,7 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
         event.clientY < bounds.top ||
         event.clientY > bounds.bottom
       )
-        close();
+        close(true);
     }
   });
   ctx.on<KeyboardEvent>(ctx.root, "keydown", (event) => {
@@ -84,7 +86,7 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
     if (event.key === "Escape" && options.closeOnEscape && panel?.open) {
       event.preventDefault();
       event.stopPropagation();
-      close();
+      close(true);
       return;
     }
     if (event.key !== "Tab" || !panel?.open) return;
@@ -117,7 +119,7 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
     (event) => {
       if (event.target !== dialog()) return;
       event.preventDefault();
-      close();
+      close(true);
     },
     true,
   );

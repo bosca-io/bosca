@@ -32,7 +32,7 @@ async function fixture(html, check) {
       return options;
     },
   });
-  for (const key of ["window", "document", "Document", "DOMParser", "Node", "NodeFilter", "Element", "HTMLElement", "HTMLScriptElement", "HTMLInputElement", "HTMLSelectElement", "HTMLTextAreaElement", "HTMLFormElement", "HTMLButtonElement", "HTMLDialogElement", "HTMLTimeElement", "Event", "CustomEvent", "MutationObserver"]) globalThis[key] = window[key];
+  for (const key of ["window", "document", "Document", "DOMParser", "Node", "NodeFilter", "Element", "HTMLElement", "HTMLDetailsElement", "HTMLScriptElement", "HTMLInputElement", "HTMLSelectElement", "HTMLTextAreaElement", "HTMLFormElement", "HTMLButtonElement", "HTMLDialogElement", "HTMLTimeElement", "Event", "CustomEvent", "MutationObserver"]) globalThis[key] = window[key];
   globalThis.location = { protocol: "http:", assign: href => navigations.push(href) };
   globalThis.auth = { async signOut() {}, destroy() {} };
   document.body.innerHTML = html;

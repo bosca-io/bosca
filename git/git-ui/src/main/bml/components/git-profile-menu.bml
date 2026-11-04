@@ -1,3 +1,0 @@
-<component tag="git-profile-menu">
-  <auth-profile-menu {...attrs} />
-</component>

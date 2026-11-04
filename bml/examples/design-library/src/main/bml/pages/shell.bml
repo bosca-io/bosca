@@ -21,7 +21,7 @@
           </details>
         </nav>
         <div class="shell-footer">
-          <profile-menu label="Account" :name="state.name" subtitle="@alex" data-shell-account>
+          <profile-menu :accountActions="false" label="Account" :name="state.name" subtitle="@alex" data-shell-account>
             <button role="menuitem" :icon='if (state.light) "moon" else "sun"' @click="state.appearance" data-shell-appearance>{ if (state.light) "Dark appearance" else "Light appearance" }</button>
             <button role="menuitem" icon="users" @click="state.select" data-shell-select>Select profile</button>
             <button role="menuitem" icon="edit" disabled>Unavailable</button>
@@ -41,7 +41,7 @@
                   <field label="Display name"><input name="name" :value="state.name" required /></field>
                   <button type="submit" primary>Save name</button>
                 </form>
-                <profile-menu label="Member" name="Independent member" subtitle="@member" data-shell-member>
+                <profile-menu :accountActions="false" label="Member" name="Independent member" subtitle="@member" data-shell-member>
                   <a role="menuitem" href="/workspaces"><span class="menu-icon"><icon name="code" /></span>Workspaces</a>
                   <button role="menuitem" disabled>Unavailable</button>
                 </profile-menu>

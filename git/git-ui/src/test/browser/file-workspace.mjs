@@ -344,8 +344,8 @@ for(const width of [1920,1440,1024,768,390]) {
 await writeFile(`${process.env.GIT_UI_ARTIFACT_DIR}/editor-layout.json`,JSON.stringify(layouts,null,2));
 await ev(`document.querySelector('form.code-widget .cm-content').focus()`);
 await key('Escape');await key('Tab');
-assert.ok(await ev(`document.activeElement===document.querySelector('form.code-widget [name=message]')`),
-  'Escape then Tab leaves the editor and reaches the commit message');
+assert.ok(await ev(`document.activeElement===document.querySelector('form.code-widget [data-bml-ref=wrap]')`),
+  'Escape then Tab leaves the editor and reaches its original wrap control');
 await ev(`document.querySelector('[data-bml-ref=preview]').focus()`);
 await key('Tab');
 assert.ok(await ev(`document.activeElement===document.querySelector('[data-bml-ref=wrap]')`),'Toolbar Tab order reaches the wrap icon');

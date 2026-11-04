@@ -1,0 +1,10 @@
+fragment SystemConfigurationFields on Configuration { id key description public value }
+query SystemConfigurations { configurations { all { id key description public } } }
+query SystemConfiguration($key: String!) { configurations { configuration(key: $key) { ...SystemConfigurationFields } } }
+query SystemIntegrationConfiguration($key: String!) { configurations { configuration(key: $key) { id description public value } } }
+mutation SystemSetConfiguration($input: ConfigurationInput!) { configurations { setConfiguration(configuration: $input) { id } } }
+mutation SystemDeleteConfiguration($key: String!) { configurations { deleteConfiguration(key: $key) } }
+mutation SystemClearCache { clearCache }
+mutation SystemClearCdnCache { clearCdnCache }
+mutation SystemExpireAllJobs { expireAllJobs }
+mutation SystemClearJobLocks { clearJobLocks }

@@ -15,4 +15,3 @@ export const controlsAreDirty = (root: ParentNode) =>
   Array.from(root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
     "input:not([type='hidden']), textarea, select",
   )).some(controlIsDirty)
-

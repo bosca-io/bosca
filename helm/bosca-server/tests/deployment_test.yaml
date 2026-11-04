@@ -56,7 +56,7 @@ tests:
     template: templates/deployment.yaml
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[0]
+          path: spec.template.spec.containers[0].args[1]
           value: "-config=/app/config/application.yaml"
 
   - it: exposes port 8080
@@ -84,14 +84,17 @@ tests:
           content:
             name: docker-registry
 
-  - it: injects JAVA_OPTS
+  - it: passes heap sizing directly to the native executable
     template: templates/deployment.yaml
     asserts:
-      - contains:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["-XX:MaxRAMPercentage=65", "-config=/app/config/application.yaml"]
+      - notContains:
           path: spec.template.spec.containers[0].env
           content:
             name: JAVA_OPTS
-            value: "-XX:MaxRAMPercentage=65.0"
+            value: "-XX:MaxRAMPercentage=65"
 
   - it: injects WELCOME_EMAIL_URL when configured
     template: templates/deployment.yaml

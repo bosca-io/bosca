@@ -1,0 +1,6 @@
+query SystemHubSpotProfiles($query: String!) {
+  search { search(query: {query: $query, filter: ["_type = \"profile\""], storageSystemName: "Admin Search Index", limit: 20, offset: 0}) { documents { profile { id name type } } } }
+}
+query SystemHubSpotContext($id: UUID!) { profiles { profile(id: $id) { id name type thirdparty { context } } } }
+mutation SystemHubSpotSync($profileId: UUID!) { profiles { profile { thirdparty { sync(profileId: $profileId) } } } }
+mutation SystemHubSpotSyncAll { profiles { profile { thirdparty { syncAll } } } }

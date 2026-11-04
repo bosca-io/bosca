@@ -1,10 +1,12 @@
 import type { ClientContext, IslandUpdate } from "@bosca/bml";
 
-/** Announces new sequences after mounting; rendered session state is not a new notification. */
+/** Announces new sequences; callers may explicitly announce an initial page-load failure. */
 export function toast(ctx: ClientContext) {
   const initialSequence = Number(ctx.root.dataset.sequence);
   let sequence = Number.isFinite(initialSequence) ? Math.max(0, initialSequence) : 0;
+  if (ctx.root.hasAttribute("data-announce-initial")) sequence--;
   let visible = false;
+  let visibleTone = ctx.root.dataset.tone ?? "info";
   let disposed = false;
   let hovered = false;
   let focused: HTMLElement | null = null;
@@ -42,7 +44,7 @@ export function toast(ctx: ClientContext) {
     if (hadFocus) {
       const target = returnFocus?.isConnected && !returnFocus.matches(":disabled") && returnFocus.checkVisibility()
         ? returnFocus
-        : [...(ctx.root.closest("[data-bml-island]")?.querySelectorAll<HTMLElement>("button, a[href]") ?? [])]
+        : [...((ctx.root.closest("dialog") ?? ctx.root.closest("[data-bml-island]"))?.querySelectorAll<HTMLElement>("button, input, select, textarea, a[href]") ?? [])]
           .find(element => !ctx.root.contains(element) && !element.matches(":disabled") && element.checkVisibility());
       target?.focus({ preventScroll: true });
     }
@@ -63,12 +65,23 @@ export function toast(ctx: ClientContext) {
       const active = document.activeElement;
       if (active instanceof HTMLElement && active !== document.body && !ctx.root.contains(active)) returnFocus = active;
       remaining = Number(ctx.root.dataset.duration) || 4000;
+      visibleTone = ctx.root.dataset.tone ?? "info";
       message.setAttribute("role", ctx.root.dataset.tone === "error" ? "alert" : "status");
       message.setAttribute("aria-live", ctx.root.dataset.tone === "error" ? "assertive" : "polite");
       message.textContent = text;
       visible = true;
     }
     if (!visible) return;
+    const panel = ctx.root.closest("dialog");
+    if (panel && !panel.open) {
+      if (!text) close();
+      else {
+        pause();
+        if (ctx.root.matches(":popover-open")) ctx.root.hidePopover();
+      }
+      return;
+    }
+    ctx.root.dataset.toastTone = visibleTone;
     // Detaching a preserved root removes its native top-layer state, but does not replay its notice.
     if (!ctx.root.matches(":popover-open")) ctx.root.showPopover();
     position();
@@ -99,6 +112,17 @@ export function toast(ctx: ClientContext) {
     }
   });
   ctx.on(document, "visibilitychange", () => document.hidden ? pause() : resume());
+  ctx.on<Event>(document, "toggle", event => {
+    const panel = ctx.root.closest("dialog");
+    if (!panel || event.target !== panel) return;
+    if (!panel.open) close();
+    else {
+      pause();
+      // A re-rendered modal may enter the top layer after its retained notification.
+      if (ctx.root.matches(":popover-open")) ctx.root.hidePopover();
+      sync();
+    }
+  }, true);
   ctx.on(window, "pagehide", close);
   ctx.on<CustomEvent<IslandUpdate>>(document, "bml:update", event => {
     if (event.detail.target.contains(ctx.root)) sync();

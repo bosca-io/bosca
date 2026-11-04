@@ -23,6 +23,9 @@ service:
   type: ClusterIP
   port: 8082
 
+# Maximum heap as a percentage of the container memory limit.
+maxRAMPercentage: 75
+
 resources:
   requests:
     cpu: 100m
@@ -35,7 +38,12 @@ appConfig:
   domain: ""
   realm: ""
   databaseUrl: ""
+  natsEnabled: true
   natsHost: nats
+  jobQueueFactory: nats
+  pubsubType: nats
+  # Empty follows pubsubType.
+  liveSessionsType: ""
   # Distributed cache and lock backends: nats or redis.
   cacheType: nats
   distributedLockType: nats
@@ -43,7 +51,6 @@ appConfig:
   redisHost: redis
   redisPort: 6380
   analyticsServerUrl: ""
-  jobQueueFactory: nats
 
 # Each entry renders one namespace-scoped JobProfile custom resource.
 # podTemplate is a native Kubernetes PodTemplateSpec, so tolerations, affinity,

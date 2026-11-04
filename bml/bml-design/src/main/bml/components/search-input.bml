@@ -6,8 +6,9 @@
   <prop name="preserveKey" type="String" default="" />
   <prop name="disabled" type="Boolean" default="false" />
   <prop name="autofocus" type="Boolean" default="true" />
+  <prop name="size" type="String" default="lg" />
   <div
-    class="search-input"
+    :class='"search-input size-" + size'
     :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)"
     :data-placeholder="placeholder"
     :data-value="value"
@@ -16,7 +17,7 @@
     :data-disabled="disabled"
   >
     <span class="search-icon">
-      <icon name="search" :size="16" />
+      <icon name="search" :size='if (size == "lg") 16 else 14' />
     </span>
     <html:input
       ref="query"
@@ -38,6 +39,7 @@
           icon="close"
           label="Clear search"
           :disabled="disabled"
+          :size='if (size == "lg") "sm" else "xs"'
         />
       </span>
       <slot />
@@ -61,6 +63,15 @@
       border-color: var(--accent);
       box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 10%, transparent);
     }
+    .search-input.size-md, .search-input.size-sm {
+      height: var(--control-height-md);
+      padding-left: 10px;
+      border-radius: var(--control-radius, var(--r-sm));
+      background: var(--control-bg, var(--bg-2));
+    }
+    .search-input.size-sm { height: var(--control-height-sm); }
+    .size-md > input, .size-sm > input { height: 100%; font-size: 13px; }
+    .size-sm > input { font-size: 12.5px; }
     .search-icon {
       display: flex;
       color: var(--accent);

@@ -1,0 +1,4 @@
+<page route="/system/search" requireAuth>
+  <script server provides="page">bosca.system.ui.systemSearch()</script>
+  <system-layout title="Search" :admin="page.admin"><system-search :initial="page" /></system-layout>
+</page>

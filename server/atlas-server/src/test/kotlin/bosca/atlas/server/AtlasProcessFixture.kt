@@ -17,43 +17,55 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** Production Atlas processes sharing isolated database, queue, search, and object-storage fixtures. */
-internal class AtlasProcessFixture : AutoCloseable {
+internal class AtlasProcessFixture(
+    private val databaseJdbcUrl: String? = null,
+    private val databaseUsername: String? = null,
+    private val databaseSecret: String? = null,
+) : AutoCloseable {
     private val postgres = SharedPostgreSQLContainer().withDatabaseName("atlas_git")
     private val nats = SharedNatsContainer()
     private val search = SharedMeilisearchContainer()
+    fun searchIndex(name: String): String = search.indexUid(name)
     val directory = kotlin.io.path.createTempDirectory("atlas-git-").toFile()
     private val processes = mutableListOf<Process>()
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
     private val workspace = File(requireNotNull(System.getProperty("workspaceRoot")))
 
+    private val jdbcUrl get() = databaseJdbcUrl ?: postgres.jdbcUrl
+    private val username get() = databaseUsername ?: postgres.username
+    private val password get() = databaseSecret ?: postgres.password
+
     init {
-        postgres.start()
+        require(listOf(databaseJdbcUrl, databaseUsername, databaseSecret).let { values -> values.all { it == null } || values.all { it != null } })
+        if (databaseJdbcUrl == null) postgres.start()
         nats.start()
         search.start()
     }
 
-    fun start(name: String, flags: Map<String, String> = emptyMap()): Pair<String, String> {
+    fun start(name: String, flags: Map<String, String> = emptyMap(), mainClass: String = "bosca.atlas.server.ApplicationKt", excludedPackages: Set<String> = emptySet()): Pair<String, String> {
         val apiPort = freePort()
         var uiPort = freePort()
         while (apiPort == uiPort) uiPort = freePort()
         val api = "http://localhost:$apiPort"
         val ui = "http://localhost:$uiPort"
         val template = File(workspace, "server/atlas-server/src/main/resources/atlas-server.yaml").readText()
+            .lineSequence().filterNot { line -> excludedPackages.any { line == "  - \"$it\"" } }.joinToString("\n")
         val storageType = "    type: \"\$STORAGE_TYPE:s3\""
         require(storageType in template)
         val config = File(directory, "$name.yaml")
-        config.writeText(template.replace(storageType,
+        val passkeyOrigins = "    - \"\${WEBAUTHN_EXTRA_ORIGIN:}\""
+        config.writeText(template.replace(passkeyOrigins, "    - \"$ui\"\n    - \"${flags["WEBAUTHN_EXTRA_ORIGIN"].orEmpty()}\"").replace(storageType,
             "    type: fs\n    basePath: ${JsonPrimitive(File(directory, "storage").absolutePath)}")
             .replace("cookie-prefixes: []", "cookie-prefixes:\n    - prefix: _atlas_test\n      domains: [localhost]") +
             "\ninitialization:\n  password:\n    admin: atlas-admin-password\n    sa: atlas-sa-password\n")
         val log = File(directory, "$name.log")
-        val process = ProcessBuilder(command("ATLAS_SERVER_TEST_BINARY", "bosca.atlas.server.ApplicationKt", config))
+        val process = ProcessBuilder(command("ATLAS_SERVER_TEST_BINARY", mainClass, config))
             .directory(directory).apply {
             environment().putAll(mapOf(
                 "ATLAS_HTTP_PORT" to apiPort.toString(), "ATLAS_UI_HTTP_PORT" to uiPort.toString(),
                 "ATLAS_DEVELOPMENT" to "true", "BML_AUTH_COOKIE_PREFIX" to "_atlas_test",
-                "DATABASE_URL" to postgres.jdbcUrl, "DATABASE_USER" to postgres.username,
-                "DATABASE_PASSWORD" to postgres.password, "NATS_HOST" to nats.url.removePrefix("nats://"),
+                "DATABASE_URL" to jdbcUrl, "DATABASE_USER" to username,
+                "DATABASE_PASSWORD" to password, "NATS_HOST" to nats.url.removePrefix("nats://"),
                 "NATS_USERNAME" to nats.username, "NATS_PASSWORD" to nats.password, "NATS_TOKEN" to "",
                 "MEILISEARCH_URL" to search.url, "MEILISEARCH_API_KEY" to search.apiKey,
                 "MEILISEARCH_INDEX_PREFIX" to search.namespace, "APP_URL" to ui, "GIT_URL" to api,
@@ -67,9 +79,17 @@ internal class AtlasProcessFixture : AutoCloseable {
             redirectOutput(log)
         }.start()
         processes += process
-        await("$name ready", log) {
+        var apiObservation = "No response"
+        await("$name ready at $api", log, { apiObservation }) {
             check(process.isAlive) { "Atlas process exited: ${log.readText().takeLast(16_000)}" }
-            runCatching { request(api, "/api/v1/ready").statusCode() == 200 }.getOrDefault(false)
+            try {
+                val response = request(api, "/api/v1/ready")
+                apiObservation = "HTTP ${response.statusCode()}: ${response.body().take(300)}"
+                response.statusCode() == 200
+            } catch (failure: java.io.IOException) {
+                apiObservation = failure.toString()
+                false
+            }
         }
         if (flags["ATLAS_UI_ENABLED"] != "false") {
             var observation = "No response"
@@ -92,6 +112,45 @@ internal class AtlasProcessFixture : AutoCloseable {
         token?.let { builder.header("Authorization", "Bearer $it") }
         if (body != null) builder.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body))
         return http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
+    }
+
+    /** Seeds source content in the disposable database for read-only indexing-preview checks. */
+    fun seedSearchMetadata(): String = databaseConnection().use { connection ->
+        connection.prepareStatement("insert into metadata(name, content_type, attributes) values (?, ?, ?::jsonb) returning id").use { statement ->
+            statement.setString(1, "Search preview fixture")
+            statement.setString(2, "application/octet-stream")
+            statement.setString(3, "{}")
+            statement.executeQuery().use { result -> check(result.next()); result.getString(1) }
+        }
+    }
+
+    fun searchIndexUid(name: String): String = search.namespace + name
+
+    /** A connection to this fixture only, for initial scratch data and owned diagnostic sessions. */
+    fun databaseConnection(): java.sql.Connection = java.sql.DriverManager.getConnection(jdbcUrl, username, password)
+
+    /** Initial disposable organization data for third-party preview and company-sync acceptance. */
+    fun seedHubSpotOrganization(): String = databaseConnection().use { connection ->
+        connection.prepareStatement("""
+            with profile as (insert into profiles(name, type, visibility) values ('HubSpot Company', 'organization', 'public') returning id)
+            insert into organizations(name, attributes, system_attributes, profile_id, visibility, created, modified)
+            select 'HubSpot Company', '{}'::jsonb, '{}'::jsonb, id, 'public', now(), now() from profile returning profile_id
+        """.trimIndent()).use { statement -> statement.executeQuery().use { result -> check(result.next()); result.getString(1) } }
+    }
+
+    /** Seeds a binary source in disposable storage so backup tests can inspect archive contents. */
+    fun seedBackupFile(content: String): File = databaseConnection().use { connection ->
+        connection.prepareStatement("insert into metadata(name, content_type, content_length, uploaded) values (?, 'text/plain', ?, now()) returning id, version").use { statement ->
+            statement.setString(1, "Backup file fixture")
+            statement.setLong(2, content.toByteArray().size.toLong())
+            statement.executeQuery().use { result ->
+                check(result.next())
+                File(directory, "storage/metadata/${result.getString(1)}/${result.getLong(2)}/content").apply {
+                    check(parentFile.mkdirs() || parentFile.isDirectory)
+                    writeText(content)
+                }
+            }
+        }
     }
 
     fun newOrigin(): String = "http://localhost:${freePort()}"
@@ -154,7 +213,7 @@ internal class AtlasProcessFixture : AutoCloseable {
         val launcher = if (binary == null) {
             listOf(File(System.getProperty("java.home"), "bin/java").absolutePath,
                 "--enable-native-access=ALL-UNNAMED", "-cp",
-                requireNotNull(System.getProperty("atlasServerClasspath")), mainClass)
+                requireNotNull(System.getProperty(if (mainClass in setOf("bosca.atlas.server.AtlasBibleFixtureKt", "bosca.atlas.server.AtlasHubSpotFixtureKt")) "atlasTestClasspath" else "atlasServerClasspath")), mainClass)
         } else {
             require(binary.isFile && binary.canExecute()) { "Invalid native fixture executable: $binary" }
             val copied = File(directory, binary.name)

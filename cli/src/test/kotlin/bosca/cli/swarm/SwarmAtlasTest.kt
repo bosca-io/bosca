@@ -25,6 +25,10 @@ class SwarmAtlasTest {
         assertEquals("https://${site.hosts.artifacts}", env["ATLAS_ARTIFACTS_URL"])
         assertEquals("true", env["ATLAS_RUNNER_ENABLED"])
         assertEquals("true", env["ATLAS_UI_ENABLED"])
+        assertEquals(
+            listOf("-XX:MaxRAMPercentage=75.0", "-config=/config/application.yaml"),
+            services.getValue("atlas")["command"],
+        )
         assertEquals(site.secrets.pipeline, env["PIPELINE_SECRET_KEY"])
         val trainer = services.getValue("recommendation-trainer").getValue("environment") as Map<String, String>
         assertEquals("http://${site.id}-atlas:8094/_artifacts", trainer["ARTIFACTS_URL"])
@@ -32,6 +36,12 @@ class SwarmAtlasTest {
         try {
             renderSwarm(config, directory.resolve("bundle"))
             val yaml = Yaml().load<Map<String, Any>>(Files.readString(directory.resolve("bundle/config/sites/${site.id}/atlas.yaml")))
+            val rendered = Yaml().load<Map<String, Any>>(Files.readString(directory.resolve("bundle/stacks/${site.id}.yml")))
+            val renderedServices = rendered.getValue("services") as Map<String, Map<String, Any>>
+            assertEquals(
+                listOf("-XX:MaxRAMPercentage=75.0", "-config=/config/application.yaml"),
+                renderedServices.getValue("atlas")["command"],
+            )
             val passwords = (yaml.getValue("initialization") as Map<String, Any>).getValue("password") as Map<String, String>
             assertEquals("\$INIT_ADMIN_PASSWORD", passwords["admin"])
             assertEquals("\$INIT_SA_PASSWORD", passwords["sa"])

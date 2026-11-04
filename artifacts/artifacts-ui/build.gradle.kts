@@ -1,3 +1,5 @@
+import java.nio.file.Files
+
 plugins {
     id("org.jetbrains.kotlin.jvm")
     alias(libs.plugins.kotlin.plugin.serialization)
@@ -37,8 +39,10 @@ bml {
 
 tasks.named("bmlInstallClientDependencies") {
     val sharedAuthInstall = layout.projectDirectory.dir("node_modules/@bosca/bml-auth-ui").asFile
+    val sdkInstall = layout.projectDirectory.dir("node_modules/@bosca/auth-client-browser").asFile
     doFirst {
         check(sharedAuthInstall.deleteRecursively()) { "Cannot refresh the local authentication client" }
+        check(if (Files.isSymbolicLink(sdkInstall.toPath())) sdkInstall.delete() else sdkInstall.deleteRecursively()) { "Cannot refresh the local authentication SDK" }
     }
     inputs.files(fileTree("../../bml/bml-auth-ui") { include("package.json", "src/main/client/**") })
     inputs.files(fileTree("../../bml/bml-runtime") { include("package.json", "src/**", "tools/**") })

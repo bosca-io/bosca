@@ -130,7 +130,7 @@ internal fun prepareSwarmStorage(config: SwarmConfig): SwarmStorageState {
     val owned = configuredImages(config) + state.services.filter { it.stack in managedStacks(config) }.images() +
         state.history.current + state.history.previous
     val pins = owned + state.services.images()
-    for (target in listOf(config.manager.ssh) + config.workers.map { it.ssh }) {
+    for (target in config.sshTargets) {
         var free = nodeFreeSpace(config, target)
         println("Storage on $target: ${free / gib} GiB available (minimum ${config.imageRetention.minimumFreeGiB} GiB)")
         if (free < config.imageRetention.minimumFreeGiB * gib && config.imageRetention.enabled) {
@@ -187,7 +187,7 @@ sudo -n mv "${'$'}temporary" $path
     val owned = configured + after.filter { it.stack in stacks }.images() + history.current + history.previous +
         before.services.filter { it.stack in stacks }.images() +
         before.history.current + before.history.previous + obsolete.images()
-    for (target in listOf(config.manager.ssh) + config.workers.map { it.ssh }) {
+    for (target in config.sshTargets) {
         cleanupSwarmNode(config, target, protected, owned)
     }
 }

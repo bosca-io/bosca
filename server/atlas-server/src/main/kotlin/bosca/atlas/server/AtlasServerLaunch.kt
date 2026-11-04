@@ -7,7 +7,7 @@ import bosca.server.config.ApplicationConfig
 import bosca.server.netty.NettyServerEngine
 import kotlinx.coroutines.runBlocking
 
-internal fun startAtlasServer(args: Array<String>) {
+internal fun startAtlasServer(args: Array<String>, configure: BoscaApplication.() -> Unit = {}) {
     val configPath = args.firstOrNull { it.startsWith("-config=") }?.substringAfter('=')
     val config = configPath?.let(ApplicationConfig::loadFromFile)
         ?: ApplicationConfig.loadFromClasspath("atlas-server.yaml")
@@ -23,7 +23,7 @@ internal fun startAtlasServer(args: Array<String>) {
     val application = BoscaApplication(config)
     runBlocking {
         try {
-            application.module()
+            application.module(configure)
             val workerThreads = config.propertyOrNull("bosca.server.worker-threads")
                 ?.getString()?.toIntOrNull()?.takeIf { it > 0 }
                 ?: minOf(4, Runtime.getRuntime().availableProcessors().coerceAtLeast(1))

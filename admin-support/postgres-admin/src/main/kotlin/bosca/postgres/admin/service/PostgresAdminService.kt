@@ -101,8 +101,9 @@ interface PostgresAdminService : Service {
     suspend fun getReplicationSlots(): List<PgReplicationSlot>
 
     /**
-     * Retrieves statistics for all application-level database connection pools,
-     * showing capacity and utilization.
+     * Retrieves capacity and utilization for configured application-level database pools.
+     * Optional providers reporting that they do not exist are excluded; resolution failures
+     * from configured providers propagate to the caller.
      */
     suspend fun getConnectionPoolStats(): List<PgConnectionPoolStats>
 

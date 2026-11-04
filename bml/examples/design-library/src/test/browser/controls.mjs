@@ -162,7 +162,7 @@ try {
       inputClass: input.classList.contains('input') && input.classList.contains('display-name'),
       shell: document.querySelector('main').className.trim(),
       shellClasses: document.querySelector('main').outerHTML.match(/<main[^>]+>/)[0].match(/class=/g).length,
-      loading: get('loading').disabled && get('loading').getAttribute('aria-busy') === 'true',
+      loading: get('loading').disabled && get('loading').getAttribute('aria-busy') === 'true' && get('loading').hasAttribute('data-bml-button-loading'),
     };
   })()`);
   assert.deepEqual(controls, { regular: 32, compact: 30, small: 24, input: 32, labeled: true,

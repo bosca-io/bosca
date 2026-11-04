@@ -80,7 +80,7 @@ class DesignLibraryTest {
             val manifest = BmlLibraryArtifacts.decode(jar.getInputStream(jar.getJarEntry(BmlLibraryArtifacts.MANIFEST_PATH)).reader().readText())
             assertEquals("io.bosca:bml-design", manifest.library)
             assertEquals("bosca.design.generated", manifest.generatedPackage)
-            assertEquals(setOf("alert", "app-header", "app-shell", "badge", "bosca-mark", "button", "button-link", "card", "chart", "checkbox", "comment-editor", "confirm-dialog", "copy", "copy-field", "dashboard-grid", "dashboard-item", "dialog", "disclosure-heading",
+            assertEquals(setOf("alert", "app-header", "app-shell", "badge", "bosca-mark", "button", "button-link", "card", "chart", "checkbox", "code-editor", "comment-editor", "confirm-dialog", "copy", "copy-field", "dashboard-grid", "dashboard-item", "dialog", "disclosure-heading",
                 "document-editor", "empty-state", "field", "file-drop", "flow-editor", "form-actions", "form-body", "fullscreen-button", "icon", "icon-button", "icon-link", "input", "json-editor", "loading-state", "page-heading", "page-shell", "pagination", "panel", "popover", "profile", "profile-menu", "progress-bar",
                 "search-input", "select", "section", "section-heading", "segmented-control", "source-view", "spinner", "subsystem-links", "subsystem-switcher", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs", "workspace"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
@@ -97,6 +97,7 @@ class DesignLibraryTest {
                 "dashboard-grid" to ("value" to "List<bosca.design.model.DashboardLayoutItem>"),
                 "document-editor" to ("value" to "kotlinx.serialization.json.JsonObject"),
                 "json-editor" to ("value" to "kotlinx.serialization.json.JsonElement"),
+                "code-editor" to ("value" to "String"),
             )) {
                 assertEquals(expected.second, manifest.components.single { it.tag == tag }.props.single { it.name == expected.first }.declaredType)
             }
@@ -121,7 +122,7 @@ class DesignLibraryTest {
             assertEquals("List<bosca.design.model.NavigationItem>", heading.props.single { it.name == "trail" }.declaredType)
             assertTrue(jar.getJarEntry("bosca/design/model/NavigationItem.class") != null)
             assertTrue(manifest.components.single { it.tag == "app-header" }.clientModule != null)
-            assertTrue(listOf("tooltip", "icon-button", "icon-link", "dialog", "popover", "copy", "copy-field", "toast", "search-input", "segmented-control", "view-tabs", "tabs", "select", "tree", "comment-editor", "source-view", "json-editor", "document-editor", "chart", "flow-editor", "dashboard-grid").all { tag ->
+            assertTrue(listOf("tooltip", "icon-button", "icon-link", "dialog", "popover", "copy", "copy-field", "toast", "search-input", "segmented-control", "view-tabs", "tabs", "select", "tree", "comment-editor", "source-view", "code-editor", "json-editor", "document-editor", "chart", "flow-editor", "dashboard-grid").all { tag ->
                 manifest.components.single { it.tag == tag }.clientModule != null
             })
             assertTrue(manifest.components.single { it.tag == "workspace" }.clientModule != null)

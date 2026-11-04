@@ -1,0 +1,76 @@
+suite: bosca-git-server messaging backends
+templates:
+- templates/configmap-appconfig.yaml
+- templates/deployment.yaml
+set:
+  global.domain: example.com
+release:
+  name: test
+  namespace: test-namespace
+tests:
+- it: renders a Redis connection when jobQueueFactory selects Redis
+  set:
+    appConfig.jobQueueFactory: redis
+  template: templates/configmap-appconfig.yaml
+  asserts:
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'redis:\s*\n\s*host: redis.test-namespace.svc.cluster.local'
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'jobQueue:\s*\n\s*factory: redis'
+- it: renders a Redis connection when pubsubType selects Redis
+  set:
+    appConfig.pubsubType: redis
+  template: templates/configmap-appconfig.yaml
+  asserts:
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'redis:\s*\n\s*host: redis.test-namespace.svc.cluster.local'
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'pubsub:\s*\n\s*type: redis'
+- it: renders a Redis connection when counterType selects Redis
+  set:
+    appConfig.counterType: redis
+  template: templates/configmap-appconfig.yaml
+  asserts:
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'redis:\s*\n\s*host: redis.test-namespace.svc.cluster.local'
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'counter:\s*\n\s*type: redis'
+- it: renders a Redis connection when liveSessionsType selects Redis
+  set:
+    appConfig.liveSessionsType: redis
+  template: templates/configmap-appconfig.yaml
+  asserts:
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'redis:\s*\n\s*host: redis.test-namespace.svc.cluster.local'
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'liveSessions:\s*\n\s*type: redis'
+- it: omits NATS configuration and token when disabled
+  set:
+    appConfig.natsEnabled: false
+  asserts:
+  - template: templates/configmap-appconfig.yaml
+    notMatchRegex:
+      path: data["application.yaml"]
+      pattern: '(?m)^nats(Monitoring)?:'
+  - template: templates/deployment.yaml
+    notContains:
+      path: spec.template.spec.containers[0].env
+      content:
+        name: NATS_TOKEN
+      any: true
+- it: follows the pubsub backend for live sessions by default
+  set:
+    appConfig.pubsubType: redis
+  template: templates/configmap-appconfig.yaml
+  asserts:
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'liveSessions:\s*\n\s*type: redis'

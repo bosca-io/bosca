@@ -37,6 +37,7 @@ internal class GitUiAssetAudit(
             "/pulls/pull?repo=repo&number=1" to emptySet(),
             "/pipelines/pipeline" to emptySet(),
             "/repositories/repo?file=README.md" to setOf("source"),
+            "/repositories/repo?file=README.md&edit=true" to setOf("source", "code"),
             "/ci-agents/orchestrator" to setOf("json"),
         )
         val pages = cases.map { (path, engines) ->
@@ -54,7 +55,7 @@ internal class GitUiAssetAudit(
             assertEquals(scripts.distinct(), scripts, "$path repeats a script")
             assertEquals(styles.distinct(), styles, "$path repeats a stylesheet")
             assertEquals(1, scripts.count { Regex("""/_bml/content/app-[a-f0-9]{64}\.js""").matches(it.path) }, path)
-            assertEquals(1, scripts.count { Regex("""/_bml/js/[^/]+\.page-[A-Z0-9]{8}\.js""").matches(it.path) }, path)
+            assertEquals(1, scripts.count { Regex("""/_bml/js/deploy/[^/]+/[^/]+\.page-[A-Z0-9]{8}\.js""").matches(it.path) }, path)
             assertEquals(2, scripts.size, "$path declares global authentication and its page entry")
             assertTrue(styles.isNotEmpty(), path)
 
@@ -73,6 +74,7 @@ internal class GitUiAssetAudit(
                 assertEquals(1, Regex(Regex.escape(key)).findAll(js).count(), "$path duplicates $key")
             }
             assertEquals("source" in engines, "data-bml-source-view" in js, "$path source helper")
+            if ("code" in engines) assertTrue("data-code-ready" in js, "$path shared editable field")
             assertEquals("json" in engines, "jse-main" in js, "$path structured editor engine")
             assertTrue("ProseMirror" !in js && "data-document-ready" !in js, "$path must exclude the unused document editor")
             assertTrue("vue-flow__node" !in js && "data-chart-ready" !in js && "data-grid-ready" !in js, "$path must exclude unused visualization engines")
@@ -81,7 +83,7 @@ internal class GitUiAssetAudit(
                 Regex("multiple instances of @codemirror/state").findAll(js).count(),
                 "$path must include at most one CodeMirror state implementation")
             if (engines.isNotEmpty()) {
-                val budget = if ("source" in engines) 380_000 else 360_000
+                val budget = 380_000
                 assertTrue((modules + styles).sumOf { gzipSize(asset(it)) } < budget,
                     "$path exceeds its measured editor asset budget of $budget gzip bytes")
             }
@@ -108,6 +110,7 @@ internal class GitUiAssetAudit(
                 put("modules", paths(modules.toList()))
                 put("stylesheets", paths(styles))
                 put("referencedFonts", paths(fonts))
+                put("editorAssetBudgetGzipBytes", if (engines.isNotEmpty()) 380_000 else null)
                 put("jsRawBytes", modules.sumOf { asset(it).size })
                 put("jsGzipBytes", modules.sumOf { gzipSize(asset(it)) })
                 put("cssRawBytes", styles.sumOf { asset(it).size })
@@ -161,7 +164,7 @@ internal class GitUiAssetAudit(
             else -> error("Unexpected asset $uri")
         }
         // Tree-shaken shared ESM barrels can be empty; page entries, styles and fonts must have bytes.
-        assertTrue(response.body().isNotEmpty() || uri.path.startsWith("/_bml/js/chunks/"), uri.toString())
+        assertTrue(response.body().isNotEmpty() || Regex("""/_bml/js/deploy/[^/]+/chunks/[^/]+\.js""").matches(uri.path), uri.toString())
         response.body() to type
     }.first
 

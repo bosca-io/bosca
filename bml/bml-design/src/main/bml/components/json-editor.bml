@@ -5,26 +5,30 @@
   <script server provides="encodedValue">text ?: value.toString()</script>
   <prop name="label" type="String" default="JSON editor" />
   <prop name="mode" type="String" default="tree" />
+  <prop name="mainMenuBar" type="Boolean" default="true" />
+  <prop name="navigationBar" type="Boolean" default="true" />
+  <prop name="statusBar" type="Boolean" default="true" />
+  <prop name="askToFormat" type="Boolean" default="true" />
   <prop name="readOnly" type="Boolean" default="false" />
   <prop name="disabled" type="Boolean" default="false" />
   <prop name="error" type="String" default="" />
   <prop name="preserveKey" type="String" default="" />
   <div class="json-editor" data-bml-json-editor role="group" :aria-label="label"
        :data-bml-preserve="preserveKey" :data-value="encodedValue" :data-mode="mode"
-       :data-label="label" :data-name="name" :data-readonly="readOnly" :data-disabled="disabled" :data-error="error" {...attrs}>
+       :data-label="label" :data-name="name" :data-readonly="readOnly" :data-disabled="disabled" :data-main-menu="mainMenuBar" :data-navigation="navigationBar" :data-status-bar="statusBar" :data-ask-format="askToFormat" :data-error="error" {...attrs}>
     <textarea ref="value" :name="name" :aria-label="label" :readonly="readOnly" :disabled="disabled" spellcheck="false">{ encodedValue }</textarea>
     <div ref="editor" class="json-surface" />
     <p ref="feedback" role="status" aria-live="polite" :hidden="error.isBlank()">{ error }</p>
   </div>
   <style scoped>
     .json-editor { min-width: 0; }
-    .json-surface { min-width: 0; min-height: 240px; height: var(--json-height, 320px); }
+    .json-surface { min-width: 0; min-height: var(--json-min-height, 240px); height: var(--json-height, 320px); }
     .json-surface:empty { display: none; }
     textarea {
       box-sizing: border-box;
       display: block;
       width: 100%;
-      min-height: 240px;
+      min-height: var(--json-min-height, 240px);
       padding: 12px;
       border: 1px solid var(--control-border, var(--line));
       border-radius: var(--r-md);

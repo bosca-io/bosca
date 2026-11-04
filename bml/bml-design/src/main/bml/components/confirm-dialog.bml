@@ -4,6 +4,7 @@
   <prop name="triggerLabel" type="String" default="Remove" />
   <prop name="icon" type="String" default="trash" />
   <prop name="forceOpen" type="Boolean" default="false" />
+  <prop name="completed" type="Boolean" default="false" />
   <prop name="triggerIconOnly" type="Boolean" default="true" />
   <prop name="triggerStyle" type="String" default="button" />
   <dialog
@@ -11,6 +12,7 @@
     :triggerLabel="triggerLabel"
     :icon="icon"
     :forceOpen="forceOpen"
+    :completed="completed"
     :triggerIconOnly="triggerIconOnly"
     :triggerStyle="triggerStyle"
     size="sm"

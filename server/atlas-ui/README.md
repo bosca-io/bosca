@@ -2,7 +2,8 @@
 
 Shared BML authentication and landing routes for Bosca Atlas. The module owns `/`, `/login`,
 `/auth/signup`, `/auth/forgot`, `/auth/reset-password`, `/auth/verify`, and `/auth/link/confirm`,
-using the neutral `bml-auth-ui` library for forms, SDK flows, appearance, and profile-menu actions. The authenticated root route is the post-login home launcher, with Git and artifacts entry points.
+using the neutral `bml-auth-ui` library for forms and SDK flows and the design library's
+`profile-menu` tag for identity, appearance and sign-out. The authenticated root route is the post-login home launcher, with Git, artifacts and System entry points.
 The subsystem header opens Studio-style categorized navigation with search, recent items, and keyboard selection.
 The design library owns the shared switcher and launcher components; `AtlasSubsystems` in this module
 defines Atlas's systems, routes, descriptions, icons, and colors. Home, Git, and artifacts use those
@@ -25,7 +26,6 @@ established flows. Auth requests identify their originator as `atlas-ui`.
 
 - `src/main/bml/pages`: the landing route and public authentication pages.
 - `src/main/bml/components/auth`: Atlas branding around the shared authentication layout.
-- `src/main/bml/components/layout`: shared profile adapter.
 - `src/main/kotlin/bosca/atlas/ui`: host composition through `AtlasUi`.
 - `src/main/graphql`: checked-in schema subset and typed operations when needed.
 - `src/main/client`: Atlas landing styles and the host SDK bootstrap.
@@ -36,7 +36,7 @@ Generated page assets are indexed and packaged by the BML plugin. Native resourc
 includes the Atlas application assets and global CSS/JavaScript.
 
 The compiled Bosca Design Library supplies generic controls and presentation. Domain modules own
-their views and adapters; profile-menu adapters compose the self-initializing `auth-profile-menu` tag.
+their views and adapters. The design library's `<profile-menu />` owns profile loading, appearance and sign-out.
 
 ## Validation
 

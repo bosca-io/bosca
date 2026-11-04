@@ -6,13 +6,19 @@ metadata:
     {{- include "bosca-common.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ max 1 (int .Values.replicaCount) }}
   {{- end }}
   revisionHistoryLimit: {{ .Values.revisionHistoryLimit | default 1 }}
-  {{- with .Values.strategy }}
-  strategy:
-    {{- toYaml . | nindent 4 }}
+  {{- $rollingUpdate := (.Values.strategy | default dict).rollingUpdate | default dict }}
+  {{- $maxSurge := $rollingUpdate.maxSurge | default 1 }}
+  {{- if eq (toString $maxSurge) "0%" }}
+  {{- $maxSurge = 1 }}
   {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ $maxSurge }}
+      maxUnavailable: 0
   selector:
     matchLabels:
       {{- include "bosca-common.selectorLabels" . | nindent 6 }}
@@ -36,7 +42,7 @@ spec:
           imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.image }}
           securityContext:
             {{- include "bosca-common.securityContext" . | nindent 12 }}
-          args: ["-config=/app/config/application.yaml"]
+          args: ["-XX:MaxRAMPercentage={{ .Values.maxRAMPercentage }}", "-config=/app/config/application.yaml"]
           ports:
             - name: http
               containerPort: 8094
@@ -59,8 +65,6 @@ spec:
               value: {{ include "bosca-atlas-server.artifactsEndpoint" . | quote }}
             - name: ATLAS_ARTIFACTS_URL
               value: {{ .Values.appConfig.artifactsUrl | default (include "bosca-atlas-server.atlasUrl" .) | quote }}
-            - name: JAVA_OPTS
-              value: "-XX:MaxRAMPercentage=75.0"
             - name: HOST_IP
               valueFrom:
                 fieldRef:
@@ -92,7 +96,7 @@ spec:
                   name: {{ . }}
                   key: {{ $.Values.secrets.database.passwordKey }}
             {{- end }}
-            {{- with .Values.secrets.nats.secretName }}
+            {{- with (and .Values.appConfig.natsEnabled .Values.secrets.nats.secretName) }}
             - name: NATS_TOKEN
               valueFrom:
                 secretKeyRef:

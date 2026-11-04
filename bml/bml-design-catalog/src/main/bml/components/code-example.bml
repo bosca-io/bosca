@@ -1,0 +1,13 @@
+<component tag="code-example">
+  <script server provides="model">bosca.design.catalog.CatalogCode()</script>
+  <island name="code-example" :key='"editor"'>
+    <div data-code-example>
+      <form @submit="model.save(form.expression)">
+        <code-editor name="expression" language="javascript" label="Mapping expression" :value="model.value" :readOnly="model.readOnly" :disabled="model.disabled" preserveKey="code-example-field" />
+        <form-actions><button type="submit" :disabled="model.readOnly || model.disabled">Save expression</button><button type="reset">Reset expression</button></form-actions>
+      </form>
+      <div class="example-actions"><button @click="model.refresh">Refresh editor</button><button @click="model.replace">Replace expression</button><button @click="model.toggleReadOnly">Toggle read-only</button><button @click="model.toggleDisabled">Toggle disabled</button></div>
+      <p data-code-saved>{ model.saved }</p><p>{ "Refreshes: " + model.refreshes }</p>
+    </div>
+  </island>
+</component>

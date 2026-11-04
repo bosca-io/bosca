@@ -5,6 +5,8 @@ import bosca.security.model.PermissionInput
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -13,6 +15,11 @@ import kotlin.uuid.Uuid
  * configuration entries via the GraphQL mutation layer.
  */
 class ConfigurationInputTest {
+
+    @Test
+    fun `omitted permissions preserve an existing ACL`() {
+        assertNull(ConfigurationInput("key", "Description", JsonPrimitive(true), false).permissions)
+    }
 
     @Test
     fun `ConfigurationInput stores all fields`() {
@@ -30,8 +37,8 @@ class ConfigurationInputTest {
         assertEquals("SMTP server host", input.description)
         assertEquals(JsonPrimitive("mail.example.com"), input.value)
         assertEquals(false, input.public)
-        assertEquals(1, input.permissions.size)
-        assertEquals(PermissionAction.VIEW, input.permissions.first().action)
+        assertEquals(1, assertNotNull(input.permissions).size)
+        assertEquals(PermissionAction.VIEW, assertNotNull(input.permissions).first().action)
     }
 
     @Test
@@ -43,7 +50,7 @@ class ConfigurationInputTest {
             public = true,
             permissions = emptyList()
         )
-        assertTrue(input.permissions.isEmpty())
+        assertTrue(assertNotNull(input.permissions).isEmpty())
         assertTrue(input.public)
     }
 
@@ -61,7 +68,7 @@ class ConfigurationInputTest {
                 PermissionInput(action = PermissionAction.MANAGE, entityId = Uuid.NIL, groupId = group2)
             )
         )
-        assertEquals(2, input.permissions.size)
+        assertEquals(2, assertNotNull(input.permissions).size)
     }
 
     @Test

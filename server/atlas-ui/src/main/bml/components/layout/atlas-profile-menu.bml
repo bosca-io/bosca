@@ -1,3 +1,0 @@
-<component tag="atlas-profile-menu">
-  <auth-profile-menu {...attrs} />
-</component>

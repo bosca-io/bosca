@@ -1,3 +1,5 @@
+import java.nio.file.Files
+
 plugins {
     id("org.jetbrains.kotlin.jvm")
     alias(libs.plugins.kotlin.plugin.serialization)
@@ -20,11 +22,15 @@ bml {
     library {
         exports.set(listOf("auth-layout", "auth-brand", "auth-heading", "auth-providers",
             "auth-login-form", "auth-signup-form", "auth-forgot-form", "auth-reset-form",
-            "auth-verify-form", "auth-link-form", "auth-profile-menu"))
+            "auth-verify-form", "auth-link-form", "auth-passkey-form", "auth-revoked-session"))
     }
 }
 
 tasks.named("bmlInstallClientDependencies") {
+    val sdkInstall = layout.projectDirectory.dir("node_modules/@bosca/auth-client-browser").asFile
+    doFirst {
+        check(if (Files.isSymbolicLink(sdkInstall.toPath())) sdkInstall.delete() else sdkInstall.deleteRecursively()) { "Cannot refresh the local authentication SDK" }
+    }
     inputs.files(fileTree("../../web/packages/auth") { include("package.json", "src/**") })
     inputs.files(fileTree("../bml-runtime") { include("package.json", "src/**", "tools/**") })
 }
@@ -36,9 +42,9 @@ val typecheckClient by tasks.registering(Exec::class) {
 }
 
 val testClient by tasks.registering(Exec::class) {
-    dependsOn("bmlInstallClientDependencies", "bmlPrepareClient")
+    dependsOn("bmlInstallClientDependencies")
     workingDir(projectDir)
-    commandLine(bml.nodeExecutable.get(), "--test", "src/test/client-auth.test.mjs", "src/test/profile-menu.test.mjs")
+    commandLine(bml.nodeExecutable.get(), "--test", "src/test/client-auth.test.mjs")
 }
 
 tasks.named("check") { dependsOn(typecheckClient, testClient) }

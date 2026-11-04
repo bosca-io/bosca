@@ -10,19 +10,8 @@ import bosca.storage.service.StringObjectPath
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.double
-import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.long
-import kotlinx.serialization.json.longOrNull
 import org.slf4j.LoggerFactory
-import java.sql.PreparedStatement
-import java.sql.Types
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import kotlin.io.path.createTempFile
@@ -68,13 +57,12 @@ class RestoreExecutor : AbstractJobExecutor<RestoreJob>(RestoreJob.serializer())
 
                 log.info("Restoring backup created at {} with {} tables", manifest.createdAt, manifest.counts.size)
 
-                // Use a single connection for the entire restore so that
-                // session_replication_role is set and reset on the same connection,
-                // and all inserts are wrapped in a single transaction.
+                // A transaction-local setting restores the pooled connection's role on
+                // both commit and rollback, including after an insertion failure.
                 withConnectionManager {
                     val conn = connection()
                     conn.beginTransaction()
-                    conn.useStatement("SET session_replication_role = 'replica'") {
+                    conn.useStatement("SET LOCAL session_replication_role = 'replica'") {
                         it.execute()
                     }
 
@@ -89,18 +77,8 @@ class RestoreExecutor : AbstractJobExecutor<RestoreJob>(RestoreJob.serializer())
                                 log.info("Restored {} rows into {}", count, table.name)
                             }
                         }
-                        conn.useStatement("SET session_replication_role = 'origin'") {
-                            it.execute()
-                        }
                         conn.commitTransaction()
                     } catch (e: Exception) {
-                        try {
-                            conn.useStatement("SET session_replication_role = 'origin'") {
-                                it.execute()
-                            }
-                        } catch (resetError: Exception) {
-                            log.error("Failed to reset session_replication_role", resetError)
-                        }
                         conn.rollbackTransaction()
                         throw e
                     }
@@ -198,7 +176,6 @@ class RestoreExecutor : AbstractJobExecutor<RestoreJob>(RestoreJob.serializer())
             }
         }
         val columnList = columns.joinToString(", ") { "\"$it\"" }
-        val placeholders = columns.joinToString(", ") { "?" }
 
         val conflictClause = when (conflictStrategy) {
             ConflictStrategy.SKIP -> {
@@ -219,52 +196,20 @@ class RestoreExecutor : AbstractJobExecutor<RestoreJob>(RestoreJob.serializer())
             ConflictStrategy.FAIL -> ""
         }
 
-        val sql = "INSERT INTO ${table.qualifiedName} ($columnList) VALUES ($placeholders)$conflictClause"
+        // PostgreSQL applies the table's actual types to its row_to_json representation:
+        // UUIDs, timestamps, enums, arrays and JSON columns retain their database types.
+        val sql = "INSERT INTO ${table.qualifiedName} ($columnList) SELECT $columnList FROM jsonb_populate_record(NULL::${table.qualifiedName}, ?::jsonb)$conflictClause"
 
         val conn = connection()
         var inserted = 0
         for (row in batch) {
-            try {
-                conn.useStatement(sql) { stmt ->
-                    bindJsonValues(stmt, columns, row)
-                    inserted += stmt.executeUpdate()
-                }
-            } catch (e: Exception) {
-                if (conflictStrategy == ConflictStrategy.FAIL) {
-                    throw e
-                }
-                log.warn("Failed to insert row into {}: {}", table.name, e.message)
+            conn.useStatement(sql) { stmt ->
+                stmt.setString(1, row.toString())
+                inserted += stmt.executeUpdate()
             }
         }
 
         return inserted
-    }
-
-    /**
-     * Binds JSON values to a PreparedStatement by inspecting the JSON element type
-     * and setting the appropriate JDBC parameter type.
-     */
-    private fun bindJsonValues(stmt: PreparedStatement, columns: List<String>, row: JsonObject) {
-        for ((index, column) in columns.withIndex()) {
-            val paramIndex = index + 1
-            val value = row[column]
-
-            when {
-                value == null || value is JsonNull -> stmt.setNull(paramIndex, Types.OTHER)
-                value is JsonPrimitive && value.isString -> stmt.setString(paramIndex, value.content)
-                value is JsonPrimitive && value.booleanOrNull != null -> stmt.setBoolean(paramIndex, value.boolean)
-                value is JsonPrimitive && value.longOrNull != null -> stmt.setLong(paramIndex, value.long)
-                value is JsonPrimitive && value.doubleOrNull != null -> stmt.setDouble(paramIndex, value.double)
-                value is JsonObject || value is JsonArray -> {
-                    // JSONB columns: pass as PGobject-compatible string
-                    val pgObject = org.postgresql.util.PGobject()
-                    pgObject.type = "jsonb"
-                    pgObject.value = value.toString()
-                    stmt.setObject(paramIndex, pgObject)
-                }
-                else -> stmt.setString(paramIndex, value.toString())
-            }
-        }
     }
 
     companion object {

@@ -19,6 +19,46 @@ For an existing deployment, use its current release names, namespaces and values
 files. Chart versions follow the selected Git release tag. Update any version
 constraints that still select the former independent `0.1.x` chart releases.
 
+## Container memory and heap sizing
+
+Set memory requests, memory limits and `maxRAMPercentage` in your deployment's
+values file. The server defaults to 65 percent; Atlas, runner, Git, artifacts,
+collector and Kubernetes controller default to 75 percent. The percentage sets
+maximum heap size relative to the container memory limit; leave room for memory
+used outside the heap.
+
+For the services umbrella chart:
+
+```yaml
+bosca-server:
+  maxRAMPercentage: 65
+  resources:
+    requests:
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+bosca-atlas-server:
+  maxRAMPercentage: 70
+  resources:
+    requests:
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+bosca-runner:
+  maxRAMPercentage: 75
+  workers:
+    default:
+      resources:
+        requests:
+          memory: 2Gi
+        limits:
+          memory: 2Gi
+```
+
+Standalone chart values omit the service-name wrapper. Runner memory is set per
+worker under `workers.<name>.resources`; its `maxRAMPercentage` applies to every
+worker. Percentages accept integers or fractional values such as `62.5`.
+
 ## Design Library site
 
 `bml-design-catalog` serves the interactive Design Library catalog as a GraalVM native executable
@@ -51,7 +91,7 @@ charts expose `appConfig.fumsTransformEnabled`; the runner defaults to `false`.
 Enable it on the runner only when it handles FUMS event processing instead of the
 collector. `FUMS_TRANSFORM_ENABLED` overrides this setting on those applications.
 
-## Distributed cache and locks
+## Infrastructure backends and Dragonfly backups
 
 The infrastructure chart pins Dragonfly to `v2.0.2`. Set `redis.image` in your
 deployment's infrastructure values to override the full image reference:
@@ -64,24 +104,51 @@ redis:
 The chart passes this image to the Dragonfly operator through `spec.image`.
 Apply it with the existing infrastructure release name, namespace and values file.
 
-Starting with services chart `0.1.3`, server, runner, collector, artifacts server,
-Git server, and Kubernetes controller charts expose `appConfig.cacheType` and
-`appConfig.distributedLockType`, each accepting `nats` or `redis`. In the services
-umbrella, set these under each service's values. For example:
+The server, runner, collector, Atlas, artifacts server, Git server, and Kubernetes
+controller charts expose backend selections under `appConfig`. For example:
 
 ```yaml
 bosca-server:
   appConfig:
+    natsEnabled: false
+    jobQueueFactory: redis
+    pubsubType: redis
+    counterType: redis
+    liveSessionsType: redis
     cacheType: redis
     distributedLockType: redis
     redisHost: redis
     redisPort: 6379
 ```
 
-`redisHost` names a Service in the release namespace. Apply the same backend and
-Redis endpoint settings to every service sharing caches or locks. All six charts
-default to NATS for both backends. These settings do not change job queues,
-pub/sub, or counters.
+`redisHost` names a Service in the release namespace. A Redis connection is rendered
+when any backend selects Redis. Backend defaults remain NATS; an empty
+`liveSessionsType` follows `pubsubType`. `natsEnabled` controls the NATS connection,
+monitoring configuration and token environment variable. Domain implementations
+that directly require NATS still need a NATS connection; these options only select
+the configurable infrastructure backends.
+
+Server and runner charts expose `appConfig.analyticsProcessorEnabled` (defaults
+false and true, respectively). The collector's `appConfig.eventRepositoryType`
+selects `nats` or direct `iceberg` storage. `appConfig.iceberg.s3` configures the
+warehouse bucket separately from content storage, and
+`secrets.icebergS3.secretName` supplies existing warehouse object-storage
+credentials. Without that Secret, the collector retains its content-storage
+credential environment variables.
+
+The infrastructure chart exposes Dragonfly's `redis.snapshot`, `redis.extraArgs`
+and `redis.env`. Native snapshots may use a persistent volume or an S3 URI. For
+S3 RDB snapshots, set `snapshot.dir`, `snapshot.cron`, `--dbfilename=dump` and
+`--df_snapshot_format=false`, plus endpoint flags and credential Secret references
+in `env`. Dragonfly loads its latest native snapshot on startup.
+
+`redis.backup.enabled` adds a CronJob that archives the RDB object named by
+`redis.backup.bucket` and `snapshotKey`. It copies to `archivePrefix` hourly by
+default and deletes archive objects older than `retentionDays` (default seven).
+The job uses `redis.env` for existing credentials and `redis.backup.endpoint` for
+the object-store endpoint. Its retention only covers the archive prefix; the
+latest restore snapshot remains separate. All backup resources are rendered by
+the chart, without a post-renderer.
 
 When changing an existing deployment's lock backend, stop all consumers of the
 shared locks before starting them with the new configuration. NATS and Redis
@@ -150,6 +217,15 @@ embedded workers/listeners/scheduler off because the platform runner already own
 them. A standalone chart defaults to embedded workers; `runner.enabled`,
 `runner.queues`, `runner.concurrency`, `runner.listeners` and `runner.scheduler`
 select that responsibility.
+
+Atlas rollouts always use `RollingUpdate` with `maxUnavailable: 0` and a positive
+`maxSurge`, so a replacement must become ready before the last available pod stops.
+Static replicas and HPA bounds have a floor of one. Its disruption budget is
+enabled by default with `minAvailable: 1`; a larger integer minimum can be selected.
+These protections also apply when older values contain `maxUnavailable: 1` or
+`strategy.type: Recreate`. A single replica can still be interrupted by a process
+or worker failure. Its disruption budget blocks voluntary eviction until another
+replica is available; worker maintenance needs a second replica first.
 
 The shared Gateway adds TLS listeners, certificates and HTTPS redirects for all
 three configured hostname lists. Atlas UI pages/actions/assets use 8095; GraphQL,
