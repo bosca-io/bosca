@@ -17,6 +17,7 @@ import io.mockk.slot
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -32,6 +33,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
+import kotlin.test.assertSame
 
 /**
  * Behavioral tests for the federation handshake — both the outbound POST
@@ -297,5 +300,36 @@ class FederationHandshakeTest {
         service.deactivatePeer(peerId)
         coVerify(exactly = 0) { inboundListener.get() }
         coVerify(exactly = 1) { repository.deactivatePeer(peerId) }
+    }
+
+    @Test
+    fun `administration mutations refresh a registered inbound listener`() = runBlocking {
+        val listener = mockk<FederationInboundListener>(relaxed = true)
+        coEvery { inboundListener.get() } returns listener
+        coEvery { configurationService.getByKey(any()) } returns null
+        service.federateChannel(localChannelId, peerId, remoteChannelId, FederationSyncDirection.BIDIRECTIONAL)
+        service.unfederateChannel(localChannelId, peerId)
+        service.deactivatePeer(peerId)
+        coVerify(exactly = 3) { listener.refresh() }
+    }
+
+    @Test
+    fun `registered listener failures and cancellation propagate from administration mutations`() = runBlocking {
+        val listener = mockk<FederationInboundListener>()
+        coEvery { inboundListener.get() } returns listener
+        coEvery { configurationService.getByKey(any()) } returns null
+        val mutations: List<suspend () -> Unit> = listOf(
+            { service.federateChannel(localChannelId, peerId, remoteChannelId, FederationSyncDirection.BIDIRECTIONAL) },
+            { service.unfederateChannel(localChannelId, peerId) },
+            { service.deactivatePeer(peerId) },
+        )
+        for (mutate in mutations) {
+            val failure = IllegalStateException("Listener refresh failed")
+            coEvery { listener.refresh() } throws failure
+            assertSame(failure, assertFailsWith<IllegalStateException> { mutate() })
+            val cancelled = CancellationException("Listener refresh cancelled")
+            coEvery { listener.refresh() } throws cancelled
+            assertSame(cancelled, assertFailsWith<CancellationException> { mutate() })
+        }
     }
 }
