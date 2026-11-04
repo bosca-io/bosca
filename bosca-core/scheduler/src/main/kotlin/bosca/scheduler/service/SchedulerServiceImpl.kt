@@ -70,12 +70,14 @@ class SchedulerServiceImpl(
         }
 
         // Validate cron expression if provided
-        val cronExpr = input.cronExpression?.trim()?.takeIf(String::isNotEmpty)
-        cronExpr?.let { expression ->
-            CronExpression.validate(expression)?.let { error -> throw IllegalArgumentException("Invalid cron expression: $error") }
+        val cronExpr = input.cronExpression
+        val error = CronExpression.validate(cronExpr)
+        if (error != null) {
+            throw IllegalArgumentException("Invalid cron expression: $error")
         }
+        val cron = CronExpression.parse(cronExpr)
         val now = OffsetDateTime.now()
-        val nextRunAt = cronExpr?.let { CronExpression.parse(it).nextExecution(now) }
+        val nextRunAt = cron.nextExecution(now)
 
         val principalState = if (input.requiresPrincipal == true) {
             ScheduledJobPrincipalState.NEEDS_PRINCIPAL
@@ -114,12 +116,14 @@ class SchedulerServiceImpl(
         }
 
         // Validate cron expression if provided
-        val cronExpr = input.cronExpression?.trim()?.takeIf(String::isNotEmpty)
-        cronExpr?.let { expression ->
-            CronExpression.validate(expression)?.let { error -> throw IllegalArgumentException("Invalid cron expression: $error") }
+        val cronExpr = input.cronExpression
+        val error = CronExpression.validate(cronExpr)
+        if (error != null) {
+            throw IllegalArgumentException("Invalid cron expression: $error")
         }
+        val cron = CronExpression.parse(cronExpr)
         val now = OffsetDateTime.now()
-        val nextRunAt = cronExpr?.let { CronExpression.parse(it).nextExecution(now) }
+        val nextRunAt = cron.nextExecution(now)
 
         val currentlyRequiresPrincipal = existing.principalState != ScheduledJobPrincipalState.NOT_REQUIRED
         val requiresPrincipal = input.requiresPrincipal ?: currentlyRequiresPrincipal
@@ -425,7 +429,7 @@ class SchedulerServiceImpl(
     ): JobHistory? = historyRepository.refreshPendingRow(jobId, scheduledFor, delayedUntil)
 
     private fun calculateNextRunTime(job: ScheduledJob): OffsetDateTime? {
-        val cronExpr = job.cronExpression ?: return null
+        val cronExpr = job.cronExpression
         val cron = CronExpression.parse(cronExpr)
         return cron.nextExecution(OffsetDateTime.now())
     }

@@ -29,7 +29,7 @@ class AtlasOperationsIntegrationTest {
         return login(fixture, api, "operations-reader@example.test", "Reader-test-password")
     }
 
-    @Test fun `manual and timed schedules preserve fields history authorization principal state and worker execution`() {
+    @Test fun `schedules require cron and preserve fields history authorization principal state and worker execution`() {
         AtlasProcessFixture().use { fixture ->
             val (api, ui) = fixture.start("operations", mapOf("ATLAS_RUNNER_ENABLED" to "false"))
             val standalone = fixture.startUi(api, fixture.newOrigin())
@@ -41,24 +41,36 @@ class AtlasOperationsIntegrationTest {
                 val path = "/system/scheduler/new"
                 assertEquals(302, fixture.request(origin, path).statusCode())
                 assertTrue("Administrator access is required" in page(fixture, origin, path, reader))
-                val fields = args("API operations $index", "Manual fixture", "purge-job-history", "{\"retentionDays\":41}", "", true, true, true, "3")
+                for (cronField in listOf("", "cronExpression: null", "cronExpression: \"\"", "cronExpression: \"   \"", "cronExpression: \"invalid\"")) {
+                    val rejected = fixture.request(origin, "/graphql", buildJsonObject {
+                        put("query", """mutation { scheduler { create(input: {name: "Invalid schedule", jobName: "purge-job-history", jobParameters: {}, $cronField}) { id } } }""")
+                    }.toString(), admin)
+                    assertTrue("errors" in Json.parseToJsonElement(rejected.body()).jsonObject, "Missing, null, blank and invalid cron must be rejected: ${rejected.body()}")
+                }
+                val fields = args("API operations $index", "Scheduled fixture", "purge-job-history", "{\"retentionDays\":41}", "0 2 * * *", true, true, true, "3")
                 assertTrue(invoke(fixture, origin, path, "system-schedule", "save", fields, admin, reader).at("feedback", "failed").jsonPrimitive.boolean)
                 val created = invoke(fixture, origin, path, "system-schedule", "save", fields, admin); ok(created)
                 val id = created.at("feedback", "nextHref").jsonPrimitive.content.substringAfterLast('/')
                 schedules += id
-                val manual = job(id)
-                assertEquals(JsonNull, manual.at("cronExpression")); assertEquals(JsonNull, manual.at("nextRunAt"))
-                assertTrue(manual.at("enabled").jsonPrimitive.boolean)
-                assertTrue(manual.at("allowConcurrent").jsonPrimitive.boolean)
-                assertEquals(3, manual.at("maxCatchUp").jsonPrimitive.int)
+                val scheduled = job(id)
+                assertEquals("0 2 * * *", scheduled.at("cronExpression").jsonPrimitive.content)
+                assertNotEquals(JsonNull, scheduled.at("nextRunAt"))
+                assertTrue(scheduled.at("enabled").jsonPrimitive.boolean)
+                assertTrue(scheduled.at("allowConcurrent").jsonPrimitive.boolean)
+                assertEquals(3, scheduled.at("maxCatchUp").jsonPrimitive.int)
                 val detail = "/system/scheduler/$id"
+                val clearedFields = fields.toMutableList().apply { this[4] = JsonPrimitive("") }
+                val cleared = invoke(fixture, origin, detail, "system-schedule", "save", clearedFields, admin)
+                assertTrue(cleared.at("feedback", "failed").jsonPrimitive.boolean)
+                assertEquals("0 2 * * *", job(id).at("cronExpression").jsonPrimitive.content)
+                assertEquals(scheduled.at("nextRunAt"), job(id).at("nextRunAt"))
                 val preview = invoke(fixture, origin, detail, "system-schedule", "inspect", args("Unsaved", "Description", "purge-job-history", "{\"retentionDays\":43}", "0 2 * * *", false, true, true, "4", true), admin)
                 ok(preview); assertEquals(5, preview.at("cronCheck", "nextRuns").jsonArray.size)
                 assertEquals("API operations $index", job(id).at("name").jsonPrimitive.content)
                 ok(invoke(fixture, origin, detail, "system-schedule", "save", args("Timed fixture $index", "Timed", "purge-job-history", "{\"retentionDays\":43}", "0 2 * * *", false, true, true, "4"), admin))
                 assertNotEquals(JsonNull, job(id).at("nextRunAt"))
                 ok(invoke(fixture, origin, detail, "system-schedule", "save", fields, admin))
-                assertEquals(JsonNull, job(id).at("nextRunAt"))
+                assertNotEquals(JsonNull, job(id).at("nextRunAt"))
                 assertTrue(invoke(fixture, origin, detail, "system-schedule", "action", args("trigger", true), admin, reader).at("feedback", "failed").jsonPrimitive.boolean)
                 val triggered = invoke(fixture, origin, detail, "system-schedule", "action", args("trigger", true), admin); ok(triggered)
                 val historyId = triggered.at("history").jsonArray.single().at("id").jsonPrimitive.content
@@ -71,7 +83,7 @@ class AtlasOperationsIntegrationTest {
                 ok(secondPage); assertEquals(26, secondPage.at("historyCount").jsonPrimitive.int); assertEquals(1, secondPage.at("history").jsonArray.size)
                 assertTrue(invoke(fixture, origin, detail, "system-schedule", "action", args("delete", true), admin, reader).at("feedback", "failed").jsonPrimitive.boolean)
             }
-            val required = fixture.graphql(api, """mutation { scheduler { create(input: {name: "Principal fixture", jobName: "purge-job-history", jobParameters: {}, requiresPrincipal: true}) { id principalState enabled } } }""", admin).at("scheduler", "create")
+            val required = fixture.graphql(api, """mutation { scheduler { create(input: {name: "Principal fixture", jobName: "purge-job-history", jobParameters: {}, cronExpression: "0 2 * * *", requiresPrincipal: true}) { id principalState enabled } } }""", admin).at("scheduler", "create")
             val requiredId = required.at("id").jsonPrimitive.content
             assertEquals("NEEDS_PRINCIPAL", required.at("principalState").jsonPrimitive.content)
             assertFalse(required.at("enabled").jsonPrimitive.boolean)
@@ -82,7 +94,7 @@ class AtlasOperationsIntegrationTest {
             assertEquals("NEEDS_PRINCIPAL", job(requiredId).at("principalState").jsonPrimitive.content)
             if (System.getProperty("atlas.operations.browser") == "true") browser(fixture, "scheduler", ui, standalone, mapOf("ATLAS_SCHEDULE_FIXTURE_ID" to schedules.first(), "ATLAS_PRINCIPAL_SCHEDULE_ID" to requiredId, "ATLAS_OPERATIONS_ADMIN_ID" to adminId))
             fixture.start("operations-worker", mapOf("ATLAS_API_ENABLED" to "false", "ATLAS_GIT_ENABLED" to "false", "ATLAS_ARTIFACTS_ENABLED" to "false", "ATLAS_UI_ENABLED" to "false", "ATLAS_RUNNER_QUEUES" to "common", "ATLAS_RUNNER_LISTENERS_ENABLED" to "false", "ATLAS_SCHEDULER_ENABLED" to "false"))
-            fixture.await("manual maintenance execution") { schedules.all { id -> job(id).at("history").jsonArray.count { it.at("status").jsonPrimitive.content == "COMPLETED" } >= 26 } }
+            fixture.await("explicitly triggered maintenance execution") { schedules.all { id -> job(id).at("history").jsonArray.count { it.at("status").jsonPrimitive.content == "COMPLETED" } >= 26 } }
             for (id in schedules + requiredId) {
                 ok(invoke(fixture, standalone, "/system/scheduler/$id", "system-schedule", "action", args("delete", true), admin))
                 assertEquals(JsonNull, job(id))

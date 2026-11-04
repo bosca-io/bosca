@@ -59,14 +59,14 @@ class SystemActionsTest {
         val model = SystemPage("scheduler", true)
         model.reload(context { operation, _ ->
             assertEquals("SystemSchedules", operation)
-            Json.parseToJsonElement("""{"scheduler":{"jobs":[{"id":"scheduled","name":"Nightly","description":"Index content","cronExpression":"0 2 * * *","enabled":true,"lastRunAt":"2026-11-02T02:00:00Z","nextRunAt":"2026-11-03T02:00:00Z"},{"id":"manual","name":"Manual","description":null,"cronExpression":null,"enabled":false,"lastRunAt":null,"nextRunAt":null}]}}""")
+            Json.parseToJsonElement("""{"scheduler":{"jobs":[{"id":"scheduled","name":"Nightly","description":"Index content","cronExpression":"0 2 * * *","enabled":true,"lastRunAt":"2026-11-02T02:00:00Z","nextRunAt":"2026-11-03T02:00:00Z"},{"id":"disabled","name":"Paused","description":null,"cronExpression":"0 3 * * *","enabled":false,"lastRunAt":null,"nextRunAt":null}]}}""")
         })
         val scheduled = model.rows.first()
         assertEquals("Index content", scheduled.detail)
         assertEquals("0 2 * * *", scheduled.cron)
         assertEquals("2026-11-02T02:00:00Z", scheduled.lastRun)
         assertEquals("2026-11-03T02:00:00Z", scheduled.nextRun)
-        assertNull(model.rows.last().cron)
+        assertEquals("0 3 * * *", model.rows.last().cron)
         assertNull(model.rows.last().nextRun)
     }
     @Test fun `package summaries use installed installer versions rather than historical attempts`() {

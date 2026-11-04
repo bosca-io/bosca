@@ -30,8 +30,7 @@ class PipelineScheduleServiceImpl(
 
         val retained = mutableMapOf<String, ScheduledJob>()
         for (job in existing) {
-            val cron = job.cronExpression
-            if (cron == null || cron !in desired || retained.putIfAbsent(cron, job) != null) {
+            if (job.cronExpression !in desired || retained.putIfAbsent(job.cronExpression, job) != null) {
                 schedulerService.deleteJob(job.id)
             }
         }

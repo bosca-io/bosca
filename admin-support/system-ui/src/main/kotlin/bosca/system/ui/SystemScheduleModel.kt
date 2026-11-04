@@ -79,13 +79,12 @@ class SystemScheduleModel(
         retain(name, description, jobName, parameters, cron, enabled, concurrent, catchUp, maxCatchUp)
         require(name.isNotBlank() && definitions.any { it.name == jobName }) { "Enter a name and choose a registered job definition." }
         val maximum = if (maxCatchUp.isBlank()) null else maxCatchUp.toIntOrNull()?.also { require(it > 0) { "Maximum catch-up must be positive." } } ?: error("Maximum catch-up must be a whole number.")
-        if (cron.isNotBlank()) {
-            val validation = ctx.gql.execute(SystemCron, SystemCron.Variables(cron.trim())).scheduler.validateCronExpression
-            cronCheck = validation
-            require(validation.valid) { validation.error ?: "Invalid cron expression." }
-        }
+        require(cron.isNotBlank()) { "Enter a cron expression." }
+        val validation = ctx.gql.execute(SystemCron, SystemCron.Variables(cron.trim())).scheduler.validateCronExpression
+        cronCheck = validation
+        require(validation.valid) { validation.error ?: "Invalid cron expression." }
         val input = ScheduledJobInput(name = name.trim(), description = description.trim().takeIf(String::isNotBlank), jobName = jobName,
-            jobParameters = Json.parseToJsonElement(parameters.ifBlank { "{}" }), cronExpression = cron.trim().takeIf(String::isNotBlank),
+            jobParameters = Json.parseToJsonElement(parameters.ifBlank { "{}" }), cronExpression = cron.trim(),
             enabled = enabled, allowConcurrent = concurrent, catchUp = catchUp, maxCatchUp = maximum)
         if (id == "new") {
             val created = ctx.gql.execute(SystemCreateSchedule, SystemCreateSchedule.Variables(input)).scheduler.create

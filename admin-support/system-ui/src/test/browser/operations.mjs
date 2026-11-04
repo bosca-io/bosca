@@ -64,7 +64,10 @@ try {
     await evaluate('document.fonts.ready.then(() => true)');
   };
   const click = async selector => {
-    const rect = await evaluate(`(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) throw new Error('Missing ${selector}'); element.scrollIntoView({block:'center'}); const r = element.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
+    await until("!document.querySelector('[data-bml-action-pending]')");
+    await evaluate(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({block:'center'})`);
+    await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    const rect = await evaluate(`(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) throw new Error('Missing ${selector}'); const r = element.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2, hit=document.elementFromPoint(x,y); if(hit!==element&&!element.contains(hit))throw Error('Click blocked: '+element.outerHTML.slice(0,200)+' by '+hit?.outerHTML.slice(0,200)); return {x,y}; })()`);
     await call('Input.dispatchMouseEvent', { type: 'mousePressed', ...rect, button: 'left', clickCount: 1 });
     await call('Input.dispatchMouseEvent', { type: 'mouseReleased', ...rect, button: 'left', clickCount: 1 });
   };
@@ -154,14 +157,20 @@ try {
     await fillJson('{invalid'); await clickText('Save schedule');
     await until(`${state('schedule')}.feedback.failed`);
     assert.equal(await evaluate("document.querySelector('input[name=maxCatchUp]').value"),'3');
+    await until("document.querySelector('[data-system-error]:popover-open')");
+    await click('[data-system-error]:popover-open button[aria-label="Dismiss notification"]');
     await fillJson('{"retentionDays":47}'); await fill('input[name=cron]','');
     assert.equal(await evaluate("document.querySelector('input[name=cron]').value"),'');
     assert.ok(await evaluate("!document.querySelector('[data-cron-preview]') || document.querySelector('[data-cron-preview]').hidden"),'editing cron hides stale previews without a request');
     await clickText('Save schedule');
+    assert.equal(await evaluate('location.pathname'),'/system/scheduler/new','A blank cron cannot create a scheduled job');
+    assert.ok(await evaluate("document.querySelector('input[name=cron]').required && !document.querySelector('input[name=cron]').checkValidity()"),'Cron is a required native form control');
+    await fill('input[name=cron]','0 2 * * *');
+    await clickText('Save schedule');
     await until(`location.pathname.startsWith('/system/scheduler/') && !location.pathname.endsWith('/new') && document.readyState==='complete' && document.querySelector('[data-schedule-editor]') && ${state('schedule')}.id!=='new'`);
     const path=await evaluate('location.pathname');
     assert.equal(await evaluate(`${state('schedule')}.parameters`),'{"retentionDays":47}');
-    assert.equal(await evaluate(`${state('schedule')}.cron`),'');
+    assert.equal(await evaluate(`${state('schedule')}.cron`),'0 2 * * *');
     assert.equal(await evaluate(`${state('schedule')}.maxCatchUp`),'3');
     await capture(host,'detail','[data-schedule-editor]');
     await fill('input[name=name]',`Unsaved while triggering ${host}`); await fillJson('{"retentionDays":49}');

@@ -22,8 +22,7 @@ data class ScheduledJob(
     @ColumnName("job_parameters")
     val jobParameters: JsonElement = JsonObject(emptyMap()),
     @ColumnName("cron_expression")
-    /** Null for a job that is triggered manually or by events. */
-    val cronExpression: String?,
+    val cronExpression: String,
     val enabled: Boolean = true,
     @ColumnName("allow_concurrent")
     val allowConcurrent: Boolean = false,

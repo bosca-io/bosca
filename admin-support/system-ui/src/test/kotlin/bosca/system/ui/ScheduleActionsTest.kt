@@ -45,27 +45,49 @@ class ScheduleActionsTest {
         assertNull(model.cronCheck)
     }
 
-    @Test fun `manual creation omits cron and blank catchup maximum while preserving JSON parameters`() = runTest {
+    @Test fun `creation requires a validated cron and preserves JSON parameters`() = runTest {
         val model = SystemScheduleModel("new", true, definitions = listOf(definition))
-        model.save(" Manual ", " Description ", definition.name, "{\"retentionDays\":41}", " ", true, false, false, "", context { operation, variables ->
-            assertEquals("SystemCreateSchedule", operation)
-            val input = variables.getValue("input").jsonObject
-            assertTrue(input["cronExpression"] == null || input["cronExpression"] == JsonNull)
-            assertTrue(input["maxCatchUp"] == null || input["maxCatchUp"] == JsonNull)
-            assertEquals(41, input.getValue("jobParameters").jsonObject.getValue("retentionDays").jsonPrimitive.int)
-            Json.parseToJsonElement("""{"scheduler":{"create":{"id":"created"}}}""")
+        model.save(" Scheduled ", " Description ", definition.name, "{\"retentionDays\":41}", " 0 2 * * * ", true, false, false, "", context { operation, variables ->
+            when (operation) {
+                "SystemCron" -> {
+                    assertEquals("0 2 * * *", variables.getValue("expression").jsonPrimitive.content)
+                    Json.parseToJsonElement("""{"scheduler":{"validateCronExpression":{"valid":true,"error":null,"nextRuns":[]}}}""")
+                }
+                "SystemCreateSchedule" -> {
+                    val input = variables.getValue("input").jsonObject
+                    assertEquals("0 2 * * *", input.getValue("cronExpression").jsonPrimitive.content)
+                    assertTrue(input["maxCatchUp"] == null || input["maxCatchUp"] == JsonNull)
+                    assertEquals(41, input.getValue("jobParameters").jsonObject.getValue("retentionDays").jsonPrimitive.int)
+                    Json.parseToJsonElement("""{"scheduler":{"create":{"id":"created"}}}""")
+                }
+                else -> error(operation)
+            }
         })
         assertFalse(model.feedback.failed, model.feedback.message)
         assertEquals("/system/scheduler/created", model.feedback.nextHref)
     }
 
+    @Test fun `blank cron cannot create a schedule or clear an existing schedule`() = runTest {
+        for (id in listOf("new", "schedule")) for (cron in listOf("", "   ")) {
+            val model = SystemScheduleModel(id, true, definitions = listOf(definition))
+            model.save("Name", "Draft", definition.name, "{}", cron, true, false, false, "", context { _, _ -> error("Must not query or save") })
+            assertTrue(model.feedback.failed)
+            assertEquals("Enter a cron expression.", model.feedback.message)
+            assertEquals("Draft", model.description)
+            assertEquals(cron, model.cron)
+        }
+    }
+
     @Test fun `invalid catchup JSON and empty cron preview preserve drafts without writes`() = runTest {
         val model = SystemScheduleModel("new", true, definitions = listOf(definition))
         val noQuery = context { _, _ -> error("Must not query") }
-        model.save("Name", "", definition.name, "{}", "", true, false, true, "bad", noQuery)
+        model.save("Name", "", definition.name, "{}", "0 2 * * *", true, false, true, "bad", noQuery)
         assertEquals("bad", model.maxCatchUp)
         assertTrue(model.feedback.failed)
-        model.save("Name", "", definition.name, "{invalid", "", true, false, true, "3", noQuery)
+        model.save("Name", "", definition.name, "{invalid", "0 2 * * *", true, false, true, "3", context { operation, _ ->
+            assertEquals("SystemCron", operation)
+            Json.parseToJsonElement("""{"scheduler":{"validateCronExpression":{"valid":true,"error":null,"nextRuns":[]}}}""")
+        })
         assertTrue(model.feedback.failed)
         assertEquals("{invalid", model.parameters)
         model.inspect("Name", "", definition.name, "{}", "", true, false, false, "", true, noQuery)

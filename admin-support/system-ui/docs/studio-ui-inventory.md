@@ -35,7 +35,7 @@ The existing Vue pages remain in place; this port supplies the BML application i
 | `integrations/bible.vue` | `/system/integrations/bible` | Provider credentials, catalog browsing, text/audio source registration and allowed-use controls | Both production hosts: catalog paging/search, compatible audio targets, text/audio registration, permitted uses, refresh, version checks and confirmed removal/purge; 56 responsive browser measurements |
 | `jobs.vue` | `/system/jobs` | Status/source filters, offset pages, running/pending counts, expandable full execution details and cancellation | Implemented; both hosts verify filters, current-page counts, expandable execution details, offset pages and confirmed cancellation; browser layouts at four widths |
 | `scheduler/index.vue` | `/system/scheduler` | List, edit/create navigation, enable/disable, immediate run and confirmed deletion | Implemented; both production hosts and native browser controls verify enable/disable, navigation, confirmed execution and deletion at four widths |
-| `scheduler/[id].vue` | `/system/scheduler/{id}` | All schedule fields, registered parameter schema assistance, cron validation/preview, execution history, principal state/actions, run/delete | Implemented; manual/timed creation/editing, definition metadata/schema display, cron previews, history paging/filtering, principal assignment/clearing, confirmed execution/deletion and a separate common worker; ten browser views at four widths |
+| `scheduler/[id].vue` | `/system/scheduler/{id}` | All schedule fields, registered parameter schema assistance, cron validation/preview, execution history, principal state/actions, run/delete | Implemented; scheduled creation/editing with required cron, definition metadata/schema display, cron previews, history paging/filtering, principal assignment/clearing, confirmed execution/deletion and a separate common worker; ten browser views at four widths |
 | `packages/index.vue` | `/system/packages` | Package/version/installer status and execution, history, summary counts | Implemented; real root/Bible installer and package execution, authoritative summaries/history, confirmation and replay rejection in both hosts; 32 responsive browser measurements |
 | `postgres.vue` | `/system/postgres` | Overview/tables/indexes/queries/settings tabs, all diagnostic fields, table detail, query detail, filters, maintenance controls | Implemented; all seven tabs, schema/bloat/I/O/settings filters, table/index/full-query details, maintenance confirmations and automatic refresh verified in both hosts; 144 responsive browser measurements |
 | `nats.vue` | `/system/nats` | Overview/streams/KV/connections/routes, filtered consumers/messages/KV detail, JSON/text values, mutations/confirmations | Implemented; all five tabs, stream/consumer/message/KV details, filters, JSON/text values, writes and confirmed maintenance verified in both hosts; 168 responsive browser measurements |
@@ -293,17 +293,23 @@ page rendering passes; the upstream-intercepted provider transport checks remain
 ## Scheduler, job history and package verification
 
 `AtlasOperationsIntegrationTest` verifies both production UI hosts and the owning services.
-Manual schedules persist a null cron and no automatic next run; timed edits populate the next run,
-and clearing cron returns a job to manual operation. All execution flags, catch-up limits and JSON
-parameters persist. The check rejects non-administrator live-state replay, verifies principal
+Every scheduled job requires a valid cron expression. Missing, null, blank and invalid cron inputs
+are rejected; an attempted blank edit retains the saved schedule and its next run. All execution
+flags, catch-up limits and JSON parameters persist. The check rejects non-administrator live-state replay, verifies principal
 assignment/clearing, creates enough real executions for offset paging and filtered counts, and
 checks the existing history-cancellation action and confirmed deletion. A separate `common` worker completes the queued
 maintenance jobs. No scheduler/queue services are mocked.
 
-The existing SDL and database already permit manual schedules. Core scheduler input/model/service
-and runner handling now preserve that nullable contract, including enablement and catch-up paths.
-Git cron synchronization removes an entry whose cron was cleared and retains its declared pipeline
-schedules. Owning scheduler and Git CI tests pass.
+The core scheduler retains its required-cron input/model/service contract. The GraphQL input and
+output and the BML editor require the same field. Immediate triggering operates on an existing
+schedule; it does not turn the scheduled job into a job without a schedule. The port no longer
+changes the runner or Git cron synchronization to support null cron values.
+
+The required-cron correction passed 51 core scheduler model tests, 82 scheduler tests, 17 focused
+Git CI tests and 98 System UI tests. Atlas schema and package acceptance passed; the scheduler
+acceptance browser initially lost field focus after validation feedback. After synchronizing and
+hit-testing browser clicks, its isolated rerun passed, including all 80 browser measurements and
+real worker execution. Native-host acceptance has not been rerun for this correction.
 
 The job-definition API currently returns null parameter schemas. The port displays any returned
 schema through the shared JSON editor, with model and compiled-render checks for supplied and
@@ -311,7 +317,7 @@ absent schemas; it does not claim the current catalog supplies schemas. Definiti
 preview preserve the full editor draft.
 
 `-Patlas.operations.browser=true` exercises native design controls for cron validation/preview, JSON
-validation recovery, manual job creation, repeated confirmed execution, cancellation, scheduling
+validation recovery, rejection of blank cron, scheduled job creation, repeated confirmed execution, cancellation, scheduling
 flags, principal assignment/clearing, global job details/filtering/pages and confirmed deletion.
 Eighty measurements cover ten scheduler/job views in both hosts at 1920/1024/768/390px with
 no document overflow, under `build/reports/operations-scheduler-browser`.

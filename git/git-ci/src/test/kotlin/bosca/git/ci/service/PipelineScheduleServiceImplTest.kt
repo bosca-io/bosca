@@ -40,7 +40,7 @@ class PipelineScheduleServiceImplTest {
         coEvery { schedulerService.getJobsByName(PipelineScheduleJob.NAME, 10_000, 0) } returns emptyList()
         val captured = mutableListOf<ScheduledJobInput>()
         coEvery { schedulerService.createJob(capture(captured), UUID.NIL) } answers {
-            scheduledJob(requireNotNull(firstArg<ScheduledJobInput>().cronExpression))
+            scheduledJob(firstArg<ScheduledJobInput>().cronExpression)
         }
 
         val result = service.sync(
@@ -77,9 +77,8 @@ class PipelineScheduleServiceImplTest {
         val duplicate = retained.copy(id = UUID.random())
         val drifted = scheduledJob("0 2 * * *").copy(name = "old name")
         val stale = scheduledJob("0 3 * * *")
-        val manual = retained.copy(id = UUID.random(), cronExpression = null)
         coEvery { schedulerService.getJobsByName(PipelineScheduleJob.NAME, 10_000, 0) } returns
-            listOf(retained, duplicate, drifted, stale, manual)
+            listOf(retained, duplicate, drifted, stale)
         coEvery { schedulerService.updateJob(drifted.id, any()) } answers {
             drifted.copy(name = secondArg<ScheduledJobInput>().name)
         }
@@ -96,7 +95,6 @@ class PipelineScheduleServiceImplTest {
         assertEquals("Git pipeline schedule: Nightly", result[1].name)
         coVerify { schedulerService.deleteJob(duplicate.id) }
         coVerify { schedulerService.deleteJob(stale.id) }
-        coVerify { schedulerService.deleteJob(manual.id) }
         coVerify(exactly = 1) { schedulerService.updateJob(drifted.id, any()) }
         coVerify(exactly = 0) { schedulerService.createJob(any(), any()) }
     }

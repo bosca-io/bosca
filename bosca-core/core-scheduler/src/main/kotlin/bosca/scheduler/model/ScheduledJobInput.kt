@@ -13,8 +13,7 @@ data class ScheduledJobInput(
     val description: String? = null,
     val jobName: String,
     val jobParameters: JsonElement = JsonObject(emptyMap()),
-    /** Null or blank creates a job that runs only when triggered explicitly. */
-    val cronExpression: String? = null,
+    val cronExpression: String,
     val enabled: Boolean? = true,
     val allowConcurrent: Boolean? = false,
     val catchUp: Boolean? = false,

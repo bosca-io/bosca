@@ -244,9 +244,8 @@ class SchedulerRunner(
     }
 
     private fun calculateNextRunTime(job: ScheduledJob, after: OffsetDateTime): OffsetDateTime? {
-        val expression = job.cronExpression ?: return null
         try {
-            val cron = CronExpression.parse(expression)
+            val cron = CronExpression.parse(job.cronExpression)
             return cron.nextExecution(after)
         } catch (e: Exception) {
             logger.error("Invalid cron expression for job ${job.id}: ${job.cronExpression}", e)
@@ -278,10 +277,9 @@ class SchedulerRunner(
 
     private suspend fun handleCatchUpForJob(job: ScheduledJob) {
         if (job.lastRunAt == null) return // Never ran before
-        val expression = job.cronExpression ?: return
 
         val cron = try {
-            CronExpression.parse(expression)
+            CronExpression.parse(job.cronExpression)
         } catch (e: Exception) {
             logger.warn("Invalid cron expression for job ${job.id}, skipping catch-up", e)
             return

@@ -331,7 +331,8 @@ Scheduler, execution-history and package acceptance:
 ./gradlew :bosca-core:core-scheduler:test :bosca-core:scheduler:test :admin-support:system-ui:check :git:git-ci:test :server:atlas-server:test --tests bosca.atlas.server.AtlasOperationsIntegrationTest --tests bosca.atlas.server.AtlasGraphQLSchemaTest -Patlas.operations.browser=true
 ```
 
-The check verifies manual/timed jobs, persisted parameters/flags, authorization, principal state,
+The check requires a valid cron for every scheduled job and verifies immediate triggering,
+persisted parameters/flags, authorization, principal state,
 filtered/paged execution history and a separate worker completing real maintenance jobs. Package
 checks execute the existing root/Bible installers and verify authoritative status and history.
 Browser acceptance drives both hosts and records 80 scheduler/job and 32 package measurements

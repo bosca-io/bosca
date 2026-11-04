@@ -163,38 +163,25 @@ class SchedulerServiceImplTest {
         assertFailsWith<IllegalArgumentException> {
             service.createJob(input().copy(jobName = "missing"), UUID.random())
         }
-        assertFailsWith<IllegalArgumentException> {
-            service.createJob(input().copy(cronExpression = "invalid"), UUID.random())
+        for (expression in listOf("", "   ", "invalid")) {
+            assertFailsWith<IllegalArgumentException> {
+                service.createJob(input().copy(cronExpression = expression), UUID.random())
+            }
         }
+        coVerify(exactly = 0) { jobRepository.add(any()) }
         Unit
     }
 
     @Test
-    fun `manual schedules store no cron and keep automatic next run empty when enabled`() = runBlocking {
-        val captured = slot<ScheduledJob>()
-        coEvery { jobRepository.add(capture(captured)) } answers { captured.captured }
-        for (expression in listOf(null, "", "   ")) {
-            val created = service.createJob(input().copy(cronExpression = expression), UUID.random())
-            assertNull(created.cronExpression)
-            assertNull(created.nextRunAt)
-            assertTrue(created.enabled)
-            coEvery { jobRepository.getById(created.id) } returns created
-            coEvery { jobRepository.enable(created.id) } returns created
-            service.enableJob(created.id)
-            coVerify { jobRepository.updateRunTimes(created.id, any(), null) }
-        }
-    }
-
-    @Test
-    fun `editing a timed job into a manual job clears cron and next run`() = runBlocking {
+    fun `update rejects blank and invalid cron without changing the schedule`() = runBlocking {
         val existing = scheduledJob()
-        val captured = slot<ScheduledJob>()
         coEvery { jobRepository.getById(existing.id) } returns existing
-        coEvery { jobRepository.update(capture(captured)) } answers { captured.captured }
-        val updated = service.updateJob(existing.id, input().copy(cronExpression = null))
-        assertNotNull(updated)
-        assertNull(updated.cronExpression)
-        assertNull(updated.nextRunAt)
+        for (expression in listOf("", "   ", "invalid")) {
+            assertFailsWith<IllegalArgumentException> {
+                service.updateJob(existing.id, input().copy(cronExpression = expression))
+            }
+        }
+        coVerify(exactly = 0) { jobRepository.update(any()) }
     }
 
     @Test
