@@ -28,28 +28,28 @@
         <span class="document-select-chevron" aria-hidden="true"><icon name="chevron" :size="13" /></span>
       </span>
       <div class="document-command-group" role="group" aria-label="Text formatting">
-        <button size="xs" data-document-command="bold" aria-pressed="false">Bold</button>
-        <button size="xs" data-document-command="italic" aria-pressed="false">Italic</button>
-        <button size="xs" data-document-command="underline" aria-pressed="false">Underline</button>
-        <button size="xs" data-document-command="strike" aria-pressed="false">Strike</button>
-        <button size="xs" data-document-command="code" aria-pressed="false">Code</button>
+        <icon-button size="xs" icon="bold" label="Bold" data-document-command="bold" aria-pressed="false" />
+        <icon-button size="xs" icon="italic" label="Italic" data-document-command="italic" aria-pressed="false" />
+        <icon-button size="xs" icon="underline" label="Underline" data-document-command="underline" aria-pressed="false" />
+        <icon-button size="xs" icon="strikethrough" label="Strike" data-document-command="strike" aria-pressed="false" />
+        <icon-button size="xs" icon="code" label="Code" data-document-command="code" aria-pressed="false" />
       </div>
       <div class="document-command-group" role="group" aria-label="Lists and blocks">
-        <button size="xs" data-document-command="bulletList" aria-pressed="false">Bullets</button>
-        <button size="xs" data-document-command="orderedList" aria-pressed="false">Numbers</button>
-        <button size="xs" data-document-command="taskList" aria-pressed="false">Tasks</button>
-        <button size="xs" data-document-command="blockquote" aria-pressed="false">Quote</button>
-        <button size="xs" data-document-command="codeBlock" aria-pressed="false">Code block</button>
+        <icon-button size="xs" icon="list" label="Bullets" data-document-command="bulletList" aria-pressed="false" />
+        <icon-button size="xs" icon="list-ordered" label="Numbers" data-document-command="orderedList" aria-pressed="false" />
+        <icon-button size="xs" icon="list-check" label="Tasks" data-document-command="taskList" aria-pressed="false" />
+        <icon-button size="xs" icon="quote" label="Quote" data-document-command="blockquote" aria-pressed="false" />
+        <icon-button size="xs" icon="code-block" label="Code block" data-document-command="codeBlock" aria-pressed="false" />
       </div>
       <div class="document-command-group" role="group" aria-label="Insert content">
-        <button size="xs" data-document-command="link" aria-pressed="false">Link</button>
-        <button size="xs" data-document-command="image">Image</button>
-        <button size="xs" data-document-command="table">Table</button>
-        <button size="xs" data-document-command="horizontalRule">Divider</button>
+        <icon-button size="xs" icon="link" label="Link" data-document-command="link" aria-pressed="false" />
+        <icon-button size="xs" icon="image" label="Image" data-document-command="image" />
+        <icon-button size="xs" icon="table" label="Table" data-document-command="table" />
+        <icon-button size="xs" icon="minus" label="Divider" data-document-command="horizontalRule" />
       </div>
       <div class="document-command-group" role="group" aria-label="Additional formatting">
-        <button size="xs" data-document-command="superscript" aria-pressed="false">Superscript</button>
-        <button size="xs" data-document-command="subscript" aria-pressed="false">Subscript</button>
+        <icon-button size="xs" icon="superscript" label="Superscript" data-document-command="superscript" aria-pressed="false" />
+        <icon-button size="xs" icon="subscript" label="Subscript" data-document-command="subscript" aria-pressed="false" />
         <span class="document-select">
           <html:select ref="alignment" aria-label="Text alignment">
             <option value="left">Align left</option><option value="center">Center</option>
@@ -57,18 +57,18 @@
           </html:select>
           <span class="document-select-chevron" aria-hidden="true"><icon name="chevron" :size="13" /></span>
         </span>
-        <button size="xs" data-document-command="undo">Undo</button>
-        <button size="xs" data-document-command="redo">Redo</button>
+        <icon-button size="xs" icon="undo" label="Undo" data-document-command="undo" />
+        <icon-button size="xs" icon="redo" label="Redo" data-document-command="redo" />
       </div>
       <div ref="tableActions" class="document-command-group" role="group" aria-label="Table editing" hidden>
-        <button size="xs" data-document-command="addRowAfter">Add row</button>
-        <button size="xs" data-document-command="addColumnAfter">Add column</button>
-        <button size="xs" data-document-command="deleteRow">Delete row</button>
-        <button size="xs" data-document-command="deleteColumn">Delete column</button>
-        <button size="xs" data-document-command="toggleHeaderRow">Header row</button>
-        <button size="xs" data-document-command="mergeCells">Merge cells</button>
-        <button size="xs" data-document-command="splitCell">Split cell</button>
-        <button size="xs" data-document-command="deleteTable">Delete table</button>
+        <icon-button size="xs" icon="row-add" label="Add row" data-document-command="addRowAfter" />
+        <icon-button size="xs" icon="column-add" label="Add column" data-document-command="addColumnAfter" />
+        <icon-button size="xs" icon="row-delete" label="Delete row" data-document-command="deleteRow" />
+        <icon-button size="xs" icon="column-delete" label="Delete column" data-document-command="deleteColumn" />
+        <icon-button size="xs" icon="table-header" label="Header row" data-document-command="toggleHeaderRow" />
+        <icon-button size="xs" icon="cells-merge" label="Merge cells" data-document-command="mergeCells" />
+        <icon-button size="xs" icon="cells-split" label="Split cell" data-document-command="splitCell" />
+        <icon-button size="xs" icon="table-delete" label="Delete table" data-document-command="deleteTable" />
       </div>
     </div>
     <div ref="insert" class="document-insert" role="group" aria-label="Insert link or image" hidden>
@@ -87,8 +87,8 @@
   </div>
   <style scoped>
     .document-editor { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-    .document-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-    .document-command-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+    .document-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+    .document-command-group { display: flex; flex-wrap: nowrap; align-items: center; gap: 3px; }
     .document-toolbar[hidden], .document-command-group[hidden], .document-insert[hidden], [hidden] { display: none; }
     .document-select { position: relative; display: inline-flex; min-width: 0; max-width: 100%; }
     .document-toolbar select { box-sizing: border-box; width: 100%; max-width: 100%; height: var(--control-height-xs); padding: 0 32px 0 8px; appearance: none; -webkit-appearance: none; border: 1px solid var(--control-border, var(--line-2)); border-radius: var(--r-sm); background: var(--control-bg, var(--bg-2)); color: var(--fg-0); font: 12px/1.5 var(--font-sans); }

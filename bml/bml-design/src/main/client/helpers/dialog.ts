@@ -20,7 +20,7 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
     const finished = nextCompleted && !completed;
     completed = nextCompleted;
     if (finished) {
-      close();
+      close(false);
       return;
     }
     const panel = dialog();
@@ -41,7 +41,8 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
       (active ?? field ?? ctx.ref<HTMLElement>("cancel"))?.focus();
     }
   };
-  const close = () => {
+  const close = (notify = true) => {
+    const wasVisible = visible || dialog()?.open;
     visible = false;
     dialog()?.close();
     const target =
@@ -51,6 +52,7 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
             ?.querySelector<HTMLElement>(ctx.root.dataset.returnFocus)
         : null) ?? trigger();
     target?.focus();
+    if (notify && wasVisible) ctx.root.dispatchEvent(new CustomEvent("dialogclose", { bubbles: true }));
   };
   ctx.on<MouseEvent>(ctx.root, "click", (event) => {
     const target = event.target;

@@ -35,6 +35,7 @@ export function richSelect(ctx: ClientContext) {
   };
   let searchable = ctx.root.hasAttribute("data-searchable");
   let asynchronous = ctx.root.hasAttribute("data-async");
+  const inlineSearch = ctx.root.hasAttribute("data-inline-search");
   let allowCustom = ctx.root.hasAttribute("data-allow-custom");
   let placeholder = ctx.root.dataset.placeholder || "Select…";
   let maxTags = Math.max(1, number("maxTags", 3));
@@ -71,7 +72,7 @@ export function richSelect(ctx: ClientContext) {
   native.setAttribute("aria-hidden", "true");
   control.hidden = false;
   query.hidden = !searchable;
-  query.placeholder = "Search…";
+  query.placeholder = inlineSearch ? placeholder : "Search…";
   const selected = () =>
     [...native.selectedOptions].map((option) => option.value);
   const position = () => {
@@ -198,11 +199,13 @@ export function richSelect(ctx: ClientContext) {
       );
       native.add(element);
     }
+    if (native.multiple && inlineSearch && !element.selected) native.append(element);
     if (native.multiple) element.selected = !element.selected;
     else native.value = option.value;
     notify();
     if (native.multiple) {
-      render(choices);
+      if (inlineSearch) { query.value = ""; filter(); }
+      else render(choices);
       if (searchable) query.focus({ preventScroll: true });
       else trigger.focus({ preventScroll: true });
     } else close(true);
@@ -294,6 +297,7 @@ export function richSelect(ctx: ClientContext) {
   };
   ctx.on(trigger, "click", () => (expanded ? close() : open()));
   ctx.on(query, "input", () => filter());
+  if (inlineSearch) ctx.on(query, "focus", () => { if (!expanded) open(); });
   ctx.on<KeyboardEvent>(popup, "keydown", (event) => {
     if (event.key === "Escape" && expanded) {
       event.preventDefault();
@@ -384,7 +388,7 @@ export function richSelect(ctx: ClientContext) {
   });
   ctx.on<FocusEvent>(popup, "focusout", event => {
     // The focus destination is available before activeElement settles during a native Tab move.
-    if (event.relatedTarget === trigger) {
+    if (event.relatedTarget === trigger || inlineSearch && event.relatedTarget === query) {
       focused = null;
       return;
     }
@@ -392,7 +396,7 @@ export function richSelect(ctx: ClientContext) {
     queueMicrotask(() => {
       if (!expanded || disposed || popup.contains(document.activeElement)) return;
       focused = null;
-      if (document.activeElement !== trigger) close();
+      if (document.activeElement !== trigger && (!inlineSearch || document.activeElement !== query)) close();
     });
   });
   ctx.on(native, "invalid", (event) => {
@@ -455,6 +459,8 @@ export function richSelect(ctx: ClientContext) {
     minQuery = number("minQuery", 0);
     debounce = number("debounce", 250);
     query.hidden = !searchable;
+    query.disabled = native.disabled || ctx.root.hasAttribute("data-loading");
+    query.placeholder = inlineSearch ? placeholder : "Search…";
     renderLabel();
     measure();
     if (expanded && trigger.disabled) close();

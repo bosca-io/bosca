@@ -2,10 +2,10 @@ export type Appearance = "light" | "dark";
 const preference = "git_ui_appearance";
 
 /** Read the same validated preference used by the server's initial document. */
-export function savedAppearance(): Appearance {
+export function savedAppearance(fallback: Appearance = "dark"): Appearance {
   const value = document.cookie.split(";").map(cookie => cookie.trim())
     .find(cookie => cookie.startsWith(`${preference}=`))?.slice(preference.length + 1);
-  return value === "light" ? "light" : "dark";
+  return value === "light" || value === "dark" ? value : fallback;
 }
 
 /** Apply consumer CSS immediately and retain the preference for subsequent server renders. */

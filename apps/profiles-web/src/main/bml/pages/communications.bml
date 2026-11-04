@@ -53,7 +53,7 @@
               <div class="actions full"><button class="primary" type="submit">Save quiet hours</button></div>
             </form>
           </section>
-          <if model.message != null><toast-message :message="model.message" :failed="model.failed" :id="model.messageId"/></if>
+          <toast-message preserveKey="communications-notice" :message="model.message" :failed="model.failed" :id="model.messageId"/>
         </div>
       </island>
     </main>

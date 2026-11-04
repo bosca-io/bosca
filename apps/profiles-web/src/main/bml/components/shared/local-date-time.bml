@@ -2,4 +2,17 @@
   <prop name="value" type="String" required/>
 
   <time :datetime="value" data-local-date-time>{ value }</time>
+  <script client scoped>
+    const time = ctx.root as HTMLTimeElement
+    const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" })
+    const format = () => {
+      const raw = time.dateTime.trim(), date = new Date(raw)
+      time.textContent = raw && !Number.isNaN(date.getTime()) ? formatter.format(date) : raw
+      time.title = raw
+    }
+    const observer = new MutationObserver(format)
+    observer.observe(time, { attributes: true, attributeFilter: ["datetime"] })
+    ctx.onUnmount(() => observer.disconnect())
+    format()
+  </script>
 </component>

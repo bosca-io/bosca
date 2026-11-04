@@ -55,6 +55,9 @@ export function positionedPopover(ctx: ClientContext) {
     if (event.target instanceof Node && !panel.contains(event.target)) close(false);
   });
   ctx.on<MouseEvent>(ctx.root, "click", event => {
+    if (event.target instanceof Element && event.target.closest('[role="menuitem"]') && content.contains(event.target)) {
+      close(true);
+    }
     const cancel = ctx.ref<HTMLElement>("cancel");
     if (event.target instanceof Node && cancel?.contains(event.target)) {
       event.stopPropagation();

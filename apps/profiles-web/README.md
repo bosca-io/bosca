@@ -48,6 +48,7 @@ From the workspace root:
 ```bash
 ./gradlew :profiles-web:run
 ./gradlew :profiles-web:test
+./gradlew :profiles-web:check
 ./gradlew :profiles-web:bmlBundleClient
 ```
 
@@ -58,3 +59,17 @@ The root Gradle build resolves the BML runtime from the local workspace project.
 auth package is linked from `web/packages/auth` for local development. BML version pins in this
 application track available published releases while coordinated protocol changes are developed
 in the workspace.
+
+Interactive tags own their scoped client setup, updates and cleanup. The global `profiles.ts`
+entry initializes authentication only. Dates format within `local-date-time`; profile details
+and attribute forms own dirty state, submission data and dialogs; visibility and action menus
+own disclosure handling. The standalone `sign-out-link` owns clearing the session before navigation.
+
+Keep `toast-message` mounted with a stable, instance-specific `preserveKey` and increment its
+message `id` for each notice. The initial value is a baseline; later increases display notices,
+including repeated text. Each tag disposes its timers and notices on unmount. Active notices
+share a stacking surface created on demand without application initialization or page scans.
+
+`check` runs JVM tests, TypeScript checking and lifecycle regressions against actual compiled tags
+and the BML runtime in an isolated DOM. These tests cover independent instances, fragment updates,
+dialog validation/cancellation and cleanup; they do not use a deployed API.

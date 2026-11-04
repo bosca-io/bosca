@@ -110,7 +110,11 @@
           </if>
         </div>
       </dialog>
-      <if profile.message != null><toast-message :message="profile.message" :failed="profile.failed" :id="profile.messageId"/></if>
+      <toast-message :preserveKey='"profile-attributes-notice-" + profile.id' :message="profile.message" :failed="profile.failed" :id="profile.messageId"/>
     </section>
   </island>
+  <script client scoped>
+    import { profileAttributes } from "@client/helpers/profile-attributes"
+    profileAttributes(ctx)
+  </script>
 </component>

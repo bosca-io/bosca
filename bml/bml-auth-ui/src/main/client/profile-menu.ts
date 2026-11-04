@@ -1,8 +1,8 @@
 import type { ClientContext } from "@bosca/bml";
-import { savedAppearance, setAppearance } from "./appearance";
+import { savedAppearance, setAppearance, type Appearance } from "./appearance";
 
 /** Account actions inside the shared, viewport-fitted popover and its native disclosure. */
-export function mountProfileMenu(ctx: ClientContext) {
+export function mountProfileMenu(ctx: ClientContext, options: { defaultAppearance?: Appearance; showIdentity?: boolean } = {}) {
   const panel = ctx.root.querySelector<HTMLDetailsElement>("details");
   const trigger = panel?.querySelector("summary");
   const appearance = ctx.ref<HTMLButtonElement>("appearance");
@@ -15,7 +15,7 @@ export function mountProfileMenu(ctx: ClientContext) {
   const error = ctx.root.querySelector<HTMLElement>("[data-profile-error]");
   if (!panel || !trigger || !appearance || !label || !lightIcon || !darkIcon || !signout || !name || !slug || !error) return;
   const restoreAppearance = () => {
-    const value = savedAppearance();
+    const value = savedAppearance(options.defaultAppearance);
     setAppearance(value, false);
     label.textContent = value === "dark" ? "Light mode" : "Dark mode";
     lightIcon.hidden = value !== "dark";
@@ -23,7 +23,7 @@ export function mountProfileMenu(ctx: ClientContext) {
     appearance.setAttribute("aria-label", value === "dark" ? "Switch to light mode" : "Switch to dark mode");
   };
   ctx.on(appearance, "click", () => {
-    setAppearance(savedAppearance() === "dark" ? "light" : "dark");
+    setAppearance(savedAppearance(options.defaultAppearance) === "dark" ? "light" : "dark");
     restoreAppearance();
   });
   ctx.on(window, "pageshow", restoreAppearance);
@@ -32,18 +32,23 @@ export function mountProfileMenu(ctx: ClientContext) {
   signout.disabled = false;
   let profileLoaded = false, loadingProfile = false;
   const loadProfile = async () => {
-    if (!panel.open || profileLoaded || loadingProfile) return;
+    if ((!panel.open && !options.showIdentity) || profileLoaded || loadingProfile) return;
     loadingProfile = true;
     error.hidden = true;
     try {
       await boscaAuthFlow.ready;
-      const principal = boscaAuth.currentUser ?? await boscaAuth.initialize(true);
+      const principal = boscaAuth.currentUser && boscaAuth.currentProfile ? boscaAuth.currentUser : await boscaAuth.initialize(true);
       if (!ctx.root.isConnected) return;
       if (!principal) throw new Error("Your profile could not be loaded.");
       const profile = boscaAuth.currentProfile;
       name.textContent = profile?.name || "Profile";
       slug.textContent = profile?.slug ? `@${profile.slug}` : "Signed in";
       trigger.setAttribute("aria-label", profile?.name ? `Profile: ${profile.name}` : "Profile");
+      if (options.showIdentity) {
+        const triggerLabel = trigger.querySelector<HTMLElement>("[data-popover-label]");
+        if (triggerLabel) triggerLabel.textContent = profile?.name || "Profile";
+        trigger.setAttribute("title", profile?.name ? `Profile: ${profile.name}` : "Profile");
+      }
       profileLoaded = true;
     } catch {
       if (ctx.root.isConnected) {

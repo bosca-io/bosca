@@ -1,0 +1,25 @@
+<component tag="auth-profile-menu">
+  <prop name="label" type="String" default="Profile" />
+  <prop name="icon" type="String" default="users" />
+  <prop name="width" type="Int" default="260" />
+  <prop name="defaultAppearance" type="String" default="dark" />
+  <prop name="showIdentity" type="Boolean" default="false" />
+  <div class="auth-profile-menu" :data-default-appearance="defaultAppearance" :data-show-identity="showIdentity" {...attrs}>
+    <profile-menu :label="label" name="Profile" subtitle="Signed in" :icon="icon" :width="width">
+      <button ref="appearance" type="button" role="menuitem" class="profile-action" disabled>
+        <span class="menu-icon" ref="appearanceLightIcon" :hidden='defaultAppearance == "light"'><icon name="sun" /></span>
+        <span class="menu-icon" ref="appearanceDarkIcon" :hidden='defaultAppearance != "light"'><icon name="moon" /></span>
+        <span ref="appearanceLabel">{ if (defaultAppearance == "light") "Dark mode" else "Light mode" }</span>
+      </button>
+      <slot />
+      <button ref="signout" type="button" role="menuitem" class="profile-action danger" icon="log-out" disabled>Sign out</button>
+    </profile-menu>
+  </div>
+  <script client scoped>
+    import { mountProfileMenu } from "@client/profile-menu";
+    mountProfileMenu(ctx, {
+      defaultAppearance: ctx.root.dataset.defaultAppearance === "light" ? "light" : "dark",
+      showIdentity: ctx.root.hasAttribute("data-show-identity"),
+    });
+  </script>
+</component>

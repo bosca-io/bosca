@@ -14,6 +14,7 @@ java {
 dependencies {
     api(project(":bml:bml-server"))
     api(project(":bml:bml-design"))
+    implementation(project(":bml:bml-auth-ui"))
     implementation(project(":server:atlas-ui"))
     implementation(project(":bml:core-bml"))
     implementation(project(":bml:bml-annotations"))

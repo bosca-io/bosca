@@ -14,7 +14,7 @@
         <icon :name="icon" :size="14" />
       </if>
       <if !iconOnly>
-        { label }
+        <span data-popover-label>{ label }</span>
       </if>
     </summary>
     <div ref="content" class="popover-content" role="region" :aria-label="label" data-bml-design-popover-content>

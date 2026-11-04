@@ -34,6 +34,14 @@ The IntelliJ plugin is documented in [bml-ide/README.md](bml-ide/README.md).
 The TypeScript browser runtime lives in `bml-runtime/` and uses npm; install its dependencies
 there before running tasks that bundle BML client code.
 
+Reusable components own their client lifecycle. Declare behavior in the component's scoped client
+script so using its tag initializes that instance automatically. Use lifecycle listeners and
+unmount cleanup for events, timers, observers and external widgets, and handle relevant BML updates.
+Consumers configure props, data and domain actions; they should not call a mount function or install
+a page-wide scanner to make a tag work. Application entries retain application-wide startup, such as
+the shared authentication session. Keep component helper modules beneath the client `helpers/`
+directory rather than registering them as global client entries.
+
 The BML Gradle-plugin suite runs independent TestKit classes in two isolated test JVMs and
 logs completed tests. Fixture builds that edit files between invocations disable filesystem
 watching while retaining configuration-cache and up-to-date checks.

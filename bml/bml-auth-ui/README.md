@@ -12,7 +12,14 @@ pages that do not render authentication components. BML packages the scoped comp
 The hosting application's global client entry calls `initializeAuth(originator)` from
 `@bosca/bml-auth-ui` after BML provides its cookie configuration. Shared controls use the resulting
 `boscaAuth` session and `boscaAuthFlow`; no second SDK instance or direct backend origin is needed.
-Application adapters import `mountProfileMenu` and appearance helpers from the same package.
+Use `<auth-profile-menu />` for the signed-in account menu. The component owns its client
+lifecycle, profile loading, appearance toggle and sign out; consumers need no mount call or action markup.
+`<auth-profile-menu showIdentity defaultAppearance="light" />` loads the current profile for
+the trigger and menu heading, and uses a light default when no appearance is saved. By default,
+identity loads on opening and the appearance fallback is dark. `label`, `icon` and `width` configure
+the shared design-library menu; projected content adds menu items before Sign out.
+`savedAppearance("light")` uses the same fallback for the host's global entry; initial server
+documents read `git_ui_appearance` to apply the saved light/dark choice before client startup.
 
 Run from the workspace root:
 

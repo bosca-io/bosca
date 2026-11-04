@@ -20,7 +20,7 @@ bml {
     library {
         exports.set(listOf("auth-layout", "auth-brand", "auth-heading", "auth-providers",
             "auth-login-form", "auth-signup-form", "auth-forgot-form", "auth-reset-form",
-            "auth-verify-form", "auth-link-form"))
+            "auth-verify-form", "auth-link-form", "auth-profile-menu"))
     }
 }
 
@@ -36,9 +36,9 @@ val typecheckClient by tasks.registering(Exec::class) {
 }
 
 val testClient by tasks.registering(Exec::class) {
-    dependsOn("bmlInstallClientDependencies")
+    dependsOn("bmlInstallClientDependencies", "bmlPrepareClient")
     workingDir(projectDir)
-    commandLine(bml.nodeExecutable.get(), "--test", "src/test/client-auth.test.mjs")
+    commandLine(bml.nodeExecutable.get(), "--test", "src/test/client-auth.test.mjs", "src/test/profile-menu.test.mjs")
 }
 
 tasks.named("check") { dependsOn(typecheckClient, testClient) }

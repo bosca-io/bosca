@@ -36,7 +36,7 @@ Generated page assets are indexed and packaged by the BML plugin. Native resourc
 includes the Atlas application assets and global CSS/JavaScript.
 
 The compiled Bosca Design Library supplies generic controls and presentation. Domain modules own
-their views and adapters; profile-menu adapters call the shared authentication library.
+their views and adapters; profile-menu adapters compose the self-initializing `auth-profile-menu` tag.
 
 ## Validation
 
