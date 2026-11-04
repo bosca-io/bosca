@@ -253,13 +253,18 @@ await viewport(1440);
 await nav('/repositories/repo?file=README.md&edit=true');
 await until(`document.querySelector('form.code-widget .cm-editor')`);
 assert.equal(await ev('document.body.dataset.theme'),'dark');
-await ev(`window.darkEditorClasses=[...document.querySelector('form.code-widget .cm-editor').classList].filter(name=>name!=='cm-focused').sort().join(' ')`);
+await ev(`window.retainedThemeEditor=document.querySelector('form.code-widget .cm-editor')`);
 await click(trigger);
 await until(`document.querySelector('${content}').matches(':popover-open')`);
 await click('[data-bml-ref=appearance]');
-await until(`document.body.dataset.theme==='light'&&[...document.querySelector('form.code-widget .cm-editor').classList].filter(name=>name!=='cm-focused').sort().join(' ')!==window.darkEditorClasses`);
+await until(`document.body.dataset.theme==='light'&&getComputedStyle(document.querySelector('form.code-widget .cm-editor')).backgroundColor==='rgb(255, 255, 255)'`);
 assert.equal(await ev(`getComputedStyle(document.querySelector('form.code-widget .cm-editor')).backgroundColor`),'rgb(255, 255, 255)',
   'The live editable CodeMirror switches to the light palette');
+assert.ok(await ev(`document.querySelector('form.code-widget .cm-editor')===window.retainedThemeEditor`),
+  'Appearance changes retain the shared editor instance');
+assert.equal(await ev(`getComputedStyle(document.querySelector('[data-bml-code-editor]')).getPropertyValue('--source-keyword').trim()`),'#7e22ce',
+  'Editable source uses the same light syntax palette as the viewer');
+await ev('delete window.retainedThemeEditor');
 await nav('/ci-agents/orchestrator');
 await until(`document.querySelectorAll('[data-bml-json-editor] .jse-main').length===2`);
 assert.ok(await ev(`[...document.querySelectorAll('[data-bml-json-editor]')].every(editor=>getComputedStyle(editor).getPropertyValue('--json-scheme').trim()==='light')`),

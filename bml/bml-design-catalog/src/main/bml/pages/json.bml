@@ -30,6 +30,10 @@
         <json-editor name="strings" label="JSON text values" mode="text" :value="bosca.design.catalog.CatalogSamples.textValues" data-json-strings />
         <p class="example-note">Markup in a string remains data, including in the native textarea fallback.</p>
       </div></card>
+      <card title="Compact configuration"><div class="catalog-stack">
+        <json-editor name="compact" label="Compact JSON configuration" mode="text" :value="bosca.design.catalog.CatalogSamples.enabled" :mainMenuBar="false" :navigationBar="false" :statusBar="false" :askToFormat="false" class="catalog-json-compact" data-json-compact />
+        <p class="example-note">Small configuration fields keep the same JSON editor with optional bars hidden.</p>
+      </div></card>
     </div>
     <card title="Use in your application"><div class="catalog-stack">
       <p class="catalog-description">A stable preservation key keeps the engine and local edits through surrounding updates. Changed values replace the draft. Disabled editors are excluded from form data; readonly editors retain their value. Without scripts, the labelled textarea remains the native form field.</p>

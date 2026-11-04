@@ -1,6 +1,7 @@
 package bosca.atlas.ui.server
 
 import bosca.artifacts.ui.ArtifactsUi
+import bosca.system.ui.SystemUi
 import bosca.atlas.ui.AtlasUi
 import bosca.bml.project.CompiledProject
 import bosca.bml.server.BmlServer
@@ -29,18 +30,18 @@ fun BoscaApplication.installAtlasUiServer(graphqlEndpoint: String, authCookiePre
     val gitNavigation = GitUiNavigation(AtlasSubsystems.items, product = "Atlas")
     BmlServer(
         project = CompiledProject("atlas-ui", "0.0.1"),
-        pages = AtlasUi.pages + GitUi.pages(gitNavigation).filterNot { it.route == "/" || it.route == "/login" || it.route.startsWith("/auth/") } + ArtifactsUi.pages,
-        components = (AtlasUi.components + GitUi.components + ArtifactsUi.components).distinctBy { it.tag },
-        componentRenderers = AtlasUi.componentRenderers + GitUi.componentRenderers(gitNavigation) + ArtifactsUi.componentRenderers,
-        islandDispatchers = AtlasUi.islandDispatchers + GitUi.islandDispatchers + ArtifactsUi.islandDispatchers,
-        componentIslandDispatchers = AtlasUi.componentIslandDispatchers + GitUi.componentIslandDispatchers + ArtifactsUi.componentIslandDispatchers,
-        contracts = GitUi.contracts + ArtifactsUi.contracts,
+        pages = AtlasUi.pages + GitUi.pages(gitNavigation).filterNot { it.route == "/" || it.route == "/login" || it.route.startsWith("/auth/") } + ArtifactsUi.pages + SystemUi.pages,
+        components = (AtlasUi.components + GitUi.components + ArtifactsUi.components + SystemUi.components).distinctBy { it.tag },
+        componentRenderers = AtlasUi.componentRenderers + GitUi.componentRenderers(gitNavigation) + ArtifactsUi.componentRenderers + SystemUi.componentRenderers,
+        islandDispatchers = AtlasUi.islandDispatchers + GitUi.islandDispatchers + ArtifactsUi.islandDispatchers + SystemUi.islandDispatchers,
+        componentIslandDispatchers = AtlasUi.componentIslandDispatchers + GitUi.componentIslandDispatchers + ArtifactsUi.componentIslandDispatchers + SystemUi.componentIslandDispatchers,
+        contracts = GitUi.contracts + ArtifactsUi.contracts + SystemUi.contracts,
         graphqlEndpoint = graphqlEndpoint,
         authCookiePrefix = authCookiePrefix,
         signInRoute = "/login",
         notFoundRoute = "/404",
         errorRoute = "/500",
-        globalCss = AtlasUi.css + "\n" + GitUi.css + "\n" + ArtifactsUi.css + "\n" +
+        globalCss = AtlasUi.css + "\n" + GitUi.css + "\n" + ArtifactsUi.css + "\n" + SystemUi.css + "\n" +
             requireNotNull(ArtifactFileProxy::class.java.getResourceAsStream("/atlas-ui-server.css"))
                 .use { it.readAllBytes().decodeToString() },
         globalJs = AtlasUi.javascript,

@@ -1,6 +1,10 @@
 packages:
   - "security-initial"
+  - "root-collection-installer"
+  - "bible"
+  - "hubspot"
   - "git-search-index"
+  - "search-index"
   - "github"
   - "default-artifact-sync-pipelines"
 
@@ -139,8 +143,11 @@ atlas:
   runner:
     enabled: "${ATLAS_RUNNER_ENABLED:true}"
     concurrency: "${ATLAS_RUNNER_CONCURRENCY:16}"
-    queues: "${ATLAS_RUNNER_QUEUES:git,pipelines,common}"
+    queues: "${ATLAS_RUNNER_QUEUES:git,pipelines,common,index,backup,profile}"
     listeners: "${ATLAS_RUNNER_LISTENERS_ENABLED:true}"
 
 scheduler:
   enabled: "${ATLAS_SCHEDULER_ENABLED:true}"
+
+natsMonitoring:
+  monitoringUrl: "$NATS_MONITORING_URL:http://localhost:8222"

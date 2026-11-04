@@ -132,12 +132,13 @@ interface ApiTokenService : Service {
      * @param name the new name, or `null` to keep the current name
      * @param description the new description, or `null` to keep the current description
      * @param scopes the new scopes list, or `null` to keep the current scopes
+     * @param clearScopes whether to explicitly remove all scope restrictions; scopes must then be absent or empty
      * @param requestingPrincipalId the principal performing the update
      * @return the updated credential
      * @throws SecurityException if the requesting principal is not authorized
      * @throws IllegalArgumentException if any scope values are unrecognized
      */
-    suspend fun editToken(credentialId: Long, name: String?, description: String?, scopes: List<String>?, requestingPrincipalId: UUID): PrincipalCredential
+    suspend fun editToken(credentialId: Long, name: String?, description: String?, scopes: List<String>?, requestingPrincipalId: UUID, clearScopes: Boolean): PrincipalCredential
 
     /**
      * Permanently deletes a revoked API token credential.

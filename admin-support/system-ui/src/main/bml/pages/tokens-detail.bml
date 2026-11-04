@@ -1,0 +1,4 @@
+<page route="/system/security/tokens/{id}" requireAuth>
+  <script server provides="page">bosca.system.ui.systemTokens()</script>
+  <system-layout title="API tokens" :admin="page.admin"><system-tokens :initial="page" /></system-layout>
+</page>

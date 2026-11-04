@@ -138,8 +138,9 @@ Use `workspace` and `fullscreen-button` from the unaliased library import. `page
 provides the bounded page column; `workspace-content`, `workspace-fixed` and `workspace-scroll`
 are public projected-content classes. `source-view fill` uses the available height instead of
 snippet or file-card caps. Git's file pages now consume these primitives and no longer ship a
-local expansion helper or full-screen geometry. File actions, editable CodeMirror, Markdown
-rendering, drafts and commits remain Git-owned. Put the workspace outside a changing action
+local expansion helper or full-screen geometry. Editable files use `code-editor bare fill`; the tag owns CodeMirror, syntax, keyboard handling,
+wrapping and native form values. File actions, Markdown rendering, dirty navigation and commits
+remain Git-owned. Put the workspace outside a changing action
 island when its expansion should survive updates to the form. See the library README for a
 complete authoring example and CSS tokens.
 
@@ -147,8 +148,10 @@ complete authoring example and CSS tokens.
 
 Compose `app-shell`, the existing `app-header`, `shell-navigation` and `shell-main` instead of
 copying Git shell styles. Use `profile` for identity display and `profile-menu` for projected account
-actions. Git retains its auth SDK, identity loading, route links and appearance cookie. Generic
-context-menu activation and all profile presentation belong to the library. Palette values and
+actions. The profile-menu tag owns lazy identity loading, appearance persistence and sign-out
+through the host Bosca browser session, as well as context-menu activation and presentation.
+Replace application profile-menu wrappers and mount calls with `<profile-menu />`. Hosts retain
+SDK initialization and route links. Palette values and
 opaque editor/overlay colors remain consumer CSS; `--shell-background` selects the gradient base.
 
 ## Complex input values

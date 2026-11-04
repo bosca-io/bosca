@@ -4,9 +4,9 @@
   <prop name="icon" type="String" default="folder" />
   <prop name="compact" type="Boolean" default="false" />
   <div class="empty-state" :data-compact="compact" {...attrs}>
-    <span class="empty-icon">
+    <if icon.isNotBlank()><span class="empty-icon">
       <icon :name="icon" :size="24" />
-    </span>
+    </span></if>
     <if title.isNotBlank()>
       <h3>{ title }</h3>
     </if>

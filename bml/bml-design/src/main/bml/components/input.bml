@@ -5,6 +5,17 @@
   <prop name="ref" type="String" default="" />
   <prop name="value" type="String" default="" />
   <prop name="required" type="Boolean" default="false" />
+  <prop name="multiline" type="Boolean" default="false" />
+  <prop name="rows" type="Int" default="4" />
+  <if multiline>
+    <html:textarea
+      :class='"input multiline size-" + size + " " + (if (mono) "mono " else "")'
+      :ref="ref.takeIf(String::isNotBlank)"
+      :required="required"
+      :rows="rows"
+      {...attrs}
+    >{ value }</html:textarea>
+  <else>
   <html:input
     :class='"input size-" + size + " " + (if (mono) "mono " else "")'
     :type="type"
@@ -13,6 +24,7 @@
     :required="required"
     {...attrs}
   />
+  </if>
   <style scoped>
     .input.mono {
       font-family: var(--font-mono);
@@ -38,6 +50,13 @@
     }
     .input::placeholder {
       color: var(--fg-3);
+    }
+    .input.multiline {
+      height: auto;
+      min-height: var(--control-height-md);
+      padding: 8px 12px;
+      resize: vertical;
+      line-height: 1.5;
     }
     .input:disabled {
       opacity: 0.5;

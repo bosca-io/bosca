@@ -220,6 +220,9 @@ class MeilisearchAdminServiceImpl(
         return convertTaskInfo(taskInfo)
     }
 
+    override suspend fun removeEmbedder(uid: String, name: String): MeilisearchTask =
+        convertTaskInfo(client.removeEmbedder(uid, name))
+
     // ── Documents ──
 
     override suspend fun deleteAllDocuments(uid: String): MeilisearchTask {

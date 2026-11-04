@@ -1,0 +1,15 @@
+<component tag="system-hubspot">
+  <prop name="initial" type="bosca.system.ui.SystemHubSpotModel" required />
+  <div class="system-page-host" data-hubspot-page>
+    <page-shell fill><page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" title="HubSpot" subtitle="Sync Bosca profiles to HubSpot contacts and companies"><button form="system-hubspot-settings" type="submit" primary icon="check" :disabled="!initial.loaded">Save HubSpot settings</button></page-heading>
+      <div class="system-content" data-bml-scroll="system-content">
+        <system-hubspot-settings :initial="initial" />
+        <system-hubspot-preview :admin="initial.admin" />
+      </div>
+    </page-shell>
+  </div>
+  <script client scoped>
+    import { mountHubSpotPreview } from "@client/hubspot-preview";
+    mountHubSpotPreview(ctx);
+  </script>
+</component>

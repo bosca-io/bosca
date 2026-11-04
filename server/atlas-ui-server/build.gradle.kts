@@ -15,6 +15,7 @@ dependencies {
     api(project(":server:atlas-ui"))
     implementation(project(":git:git-ui"))
     implementation(project(":artifacts:artifacts-ui"))
+    implementation(project(":admin-support:system-ui"))
     implementation(project(":git:git-ui-server"))
     implementation(project(":bosca-core:core-graalvm"))
     runtimeOnly(libs.logback.classic)

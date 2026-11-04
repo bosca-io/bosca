@@ -30,6 +30,14 @@ export async function checkReferences({ navigate, evaluate, until: poll, key, ca
   }
 
   await navigate('/components/controls');
+  assert.ok(await evaluate(`(() => {const field=document.querySelector('input[name="reference-compact-search"]'),root=field.closest('.search-input');return root.getBoundingClientRect().height===parseFloat(getComputedStyle(root).getPropertyValue('--control-height-md'))&&getComputedStyle(field).fontSize==='13px';})()`), 'Compact search matches the shared control height');
+  const multiline = await evaluate(`(() => {
+    const field=document.querySelector('textarea[name="reference-multiline"]');
+    const four=field.getBoundingClientRect().height;
+    field.rows=2;const two=field.getBoundingClientRect().height;field.rows=4;
+    return {four,two,lineHeight:parseFloat(getComputedStyle(field).lineHeight)};
+  })()`);
+  assert.ok(Math.abs(multiline.four-multiline.two-2*multiline.lineHeight)<1, 'Multiline rows control the native field height');
   await evaluate(`document.querySelector('[data-export=button]').scrollIntoView({block:'start'});document.fonts.ready`);
   const desktop = await call('Page.captureScreenshot',{format:'png'});
   await writeFile(join(artifacts,`catalog-${mode}-references-desktop.png`),Buffer.from(desktop.data,'base64'));
@@ -55,12 +63,18 @@ export async function checkReferences({ navigate, evaluate, until: poll, key, ca
   await until(`document.querySelector('[data-catalog-confirm-toast=reference]')?.matches(':popover-open')&&document.querySelector('[data-catalog-confirm-toast=reference] [role=alert]')?.textContent.includes('rejected')`);
   assert.ok(await evaluate(`document.querySelector('[data-catalog-confirm=reference] dialog').open&&document.querySelector('[data-catalog-confirm=reference] input').value==='  Keep my reason  '`));
   assert.ok(await evaluate(`!document.querySelector('[data-catalog-confirm=reference] form [role=alert]')`));
+  const dismissPoint=await evaluate(`(() => {const e=document.querySelector('[data-catalog-confirm-toast=reference] [data-bml-ref=dismiss]'),r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+  await call('Input.dispatchMouseEvent',{type:'mousePressed',...dismissPoint,button:'left',clickCount:1});
+  await call('Input.dispatchMouseEvent',{type:'mouseReleased',...dismissPoint,button:'left',clickCount:1});
+  await until(`!document.querySelector('[data-catalog-confirm-toast=reference]').matches(':popover-open')`);
   await evaluate(`document.querySelector('[data-catalog-confirm=reference] form').requestSubmit()`);
   await until(`document.querySelector('[data-catalog-confirm-toast=reference]').dataset.sequence==='2'`);
   await evaluate(`document.querySelector('[data-catalog-confirm-toast=reference] [data-bml-ref=dismiss]').focus()`); await key('Enter');
   await until(`!document.querySelector('[data-catalog-confirm-toast=reference]').matches(':popover-open')`);
   assert.ok(await evaluate(`document.querySelector('[data-catalog-confirm=reference] dialog').open`));
+  await evaluate(`window.dialogDismissals=0;document.querySelector('[data-catalog-confirm=reference]').addEventListener('dialogdismiss',()=>window.dialogDismissals++);`);
   await key('Escape');
+  assert.equal(await evaluate('window.dialogDismissals'),1,'Viewer dismissal emits one declarative event');
   await evaluate(`document.querySelector('[data-export=popover] summary').click()`);
   await until(`document.activeElement.name==='option-filter'`);
   await key('Escape');
@@ -104,6 +118,7 @@ export async function checkReferences({ navigate, evaluate, until: poll, key, ca
   await evaluate(`document.querySelector('[data-catalog-json=reference]').requestSubmit()`);
   await until(`${json}.dataset.error==='Enter valid JSON before saving.'`);
   assert.equal(await evaluate(`${json}.querySelector('textarea').value`), '{ broken ');
+  assert.ok(await evaluate(`Boolean(${json}.querySelector('.cm-content'))`),'Rejected submit preserves the locally chosen text view');
   await replaceJson('{"saved":true}');
   await evaluate(`document.querySelector('[data-catalog-json=reference]').requestSubmit()`);
   await until(`document.querySelector('[data-catalog-json-toast=reference]').matches(':popover-open')&&document.querySelector('[data-catalog-json-toast=reference] [role=status]').textContent==='Settings saved.'`);

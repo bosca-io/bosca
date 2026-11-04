@@ -47,6 +47,27 @@
     <else-if name == "reply">
       <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
       <path d="m9 17-5-5 5-5" />
+    <else-if name == "mail">
+      <rect width="20" height="16" x="2" y="4" rx="2" />
+      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+    <else-if name == "bell">
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+    <else-if name == "video">
+      <path d="m16 8 5-3v14l-5-3" />
+      <rect x="2" y="6" width="14" height="12" rx="2" />
+    <else-if name == "database">
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M3 5v14a9 3 0 0 0 18 0V5" />
+      <path d="M3 12a9 3 0 0 0 18 0" />
+    <else-if name == "calendar">
+      <path d="M8 2v4M16 2v4" />
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <path d="M3 10h18" />
+    <else-if name == "globe">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20" />
+    <else-if name == "wrench">
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
     <else-if name == "workflow">
       <rect width="8" height="8" x="3" y="3" rx="2" />
       <path d="M7 11v4a2 2 0 0 0 2 2h4" />

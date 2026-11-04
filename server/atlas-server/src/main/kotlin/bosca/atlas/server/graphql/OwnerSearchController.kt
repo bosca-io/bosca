@@ -11,12 +11,19 @@ import bosca.search.service.SearchService
 import bosca.security.model.PermissionAction
 import bosca.security.service.AuthenticationContext
 
-/** Git's search surface exposes profiles for owner selection, authorized by the Profile domain. */
+/** Profile owner search and the administrative indexing-preview namespace. */
 @TypeController(type = "Search")
 class OwnerSearchController(
     private val searchService: SearchService,
     private val profiles: ProfilePermissionEvaluator,
+    private val groups: bosca.security.service.GroupEvaluator,
 ) : GraphQLController<Search> {
+    @Field
+    fun configuration(authentication: AuthenticationContext): bosca.search.graphql.SearchConfiguration {
+        groups.verifyHasAdminGroup(authentication)
+        return bosca.search.graphql.SearchConfiguration
+    }
+
     @Field
     suspend fun search(authentication: AuthenticationContext?, query: SearchQuery): SearchResult {
         val result = searchService.search(query)

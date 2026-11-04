@@ -11,11 +11,12 @@ export async function checkResources({ navigate, evaluate, until, call, artifact
     document: { root: '[data-bml-document-editor]', ready: 'data-document-ready', js: 'ProseMirror', css: '.tiptap' },
     json: { root: '[data-bml-json-editor]', ready: 'data-json-ready', js: 'jse-main', css: '--jse-' },
     source: { root: '[data-bml-source-view]', ready: 'data-source-ready', js: 'data-source-ready', css: '.source-keyword' },
+    code: { root: '[data-bml-code-editor]', ready: 'data-code-ready', js: 'data-code-ready', css: '.code-input' },
   };
   const pages = {
     '/foundation': [], '/flows': ['flow'], '/charts': ['chart'], '/dashboards': ['chart', 'grid'],
     '/documents': ['document'], '/json': ['json'], '/source': ['source'],
-    '/components/content': ['document', 'json', 'source'],
+    '/components/content': ['document', 'json', 'source', 'code'],
     '/components/visualization': ['chart', 'flow', 'grid', 'source'],
   };
   const reports = [];
@@ -44,12 +45,13 @@ export async function checkResources({ navigate, evaluate, until, call, artifact
       const js = scripts.join('\n'), css = styles.join('\n');
       for (const [name, engine] of Object.entries(engines)) {
         assert.equal(js.includes(engine.js), expected.includes(name), `${mode} ${path}: ${name} JavaScript`);
-        assert.equal(css.includes(engine.css), expected.includes(name), `${mode} ${path}: ${name} CSS`);
+        const expectedCss = expected.includes(name) || name === 'source' && expected.includes('code');
+        assert.equal(css.includes(engine.css), expectedCss, `${mode} ${path}: ${name} CSS`);
       }
-      const codeMirror = expected.includes('source') || expected.includes('json');
+      const codeMirror = expected.includes('source') || expected.includes('code') || expected.includes('json');
       assert.equal(js.includes('cm-editor'), codeMirror, `${mode} ${path}: CodeMirror JavaScript`);
       // The source viewer ships CSS; the JSON engine installs CodeMirror base styles from JS.
-      assert.equal(css.includes('.cm-editor'), expected.includes('source'), `${mode} ${path}: source editor CSS`);
+      assert.equal(css.includes('.cm-editor'), expected.includes('source') || expected.includes('code'), `${mode} ${path}: source editor CSS`);
       reports.push({ path, engines: expected, resources });
     }
     console.log(`Catalog ${mode}: optional engine JS/CSS isolated across ${reports.length} cold pages`);

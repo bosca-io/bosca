@@ -4,6 +4,7 @@
   <prop name="sequence" type="Int" default="0" />
   <prop name="tone" type="String" default="info" />
   <prop name="duration" type="Int" default="4000" />
+  <prop name="announceInitial" type="Boolean" default="false" />
   <div
     class="toast-region"
     popover="manual"
@@ -12,6 +13,7 @@
     :data-sequence="sequence"
     :data-tone="tone"
     :data-duration="duration"
+    :data-announce-initial="announceInitial"
     {...attrs}
   >
     <div class="toast">
@@ -41,9 +43,9 @@
       overflow: visible;
       color: var(--info);
     }
-    .toast-region[data-tone="success"] { color: var(--ok); }
-    .toast-region[data-tone="error"] { color: var(--err); }
-    .toast-region[data-tone="warning"] { color: var(--warn); }
+    .toast-region[data-toast-tone="success"] { color: var(--ok); }
+    .toast-region[data-toast-tone="error"] { color: var(--err); }
+    .toast-region[data-toast-tone="warning"] { color: var(--warn); }
     .toast {
       box-sizing: border-box;
       display: flex;
@@ -67,10 +69,10 @@
       height: 24px;
     }
     [data-tone-icon] { display: none; }
-    .toast-region[data-tone="success"] [data-tone-icon="success"],
-    .toast-region[data-tone="error"] [data-tone-icon="error"],
-    .toast-region[data-tone="warning"] [data-tone-icon="warning"],
-    .toast-region[data-tone="info"] [data-tone-icon="info"] { display: flex; }
+    .toast-region[data-toast-tone="success"] [data-tone-icon="success"],
+    .toast-region[data-toast-tone="error"] [data-tone-icon="error"],
+    .toast-region[data-toast-tone="warning"] [data-tone-icon="warning"],
+    .toast-region[data-toast-tone="info"] [data-tone-icon="info"] { display: flex; }
     .toast-message {
       max-height: min(var(--toast-message-max-height, 240px), calc(100dvh - 54px));
       overflow: auto;

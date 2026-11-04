@@ -1,0 +1,48 @@
+<component tag="system-push">
+  <prop name="initial" type="bosca.system.ui.SystemPushModel" required />
+  <script server provides="model">bosca.system.ui.SystemPushModel(initial.admin, initial.draft, initial.loaded, initial.hasServiceAccount, initial.hasPrivateKey, initial.feedback)</script>
+  <island name="system-push" :key='"push"'>
+    <page-shell fill><page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" title="Push notifications" subtitle="Mobile and web delivery through Firebase and Apple Push Notification service"><button type="submit" form="system-push-settings" primary icon="check" :disabled="!model.loaded">Save push settings</button></page-heading><div class="system-content" data-bml-scroll="system-content">
+      <system-feedback :feedback="model.feedback" />
+      <form id="system-push-settings" class="system-stack" @submit="model.save(form.enabled, form.fcmEnabled, form.serviceAccountJson, form.useDeploymentCredentials, form.apnsEnabled, form.teamId, form.keyId, form.bundleId, form.privateKey, form.clearPrivateKey, form.sandbox, ctx)">
+        <card title="Delivery" description="Control whether configured push providers may deliver notifications"><form-body>
+          <switch name="enabled" label="Enable push delivery" description="Changes apply to new sends." :checked="model.draft.enabled" />
+        </form-body></card>
+        <card title="Firebase Cloud Messaging" description="Android, web, desktop, and FCM-issued iOS tokens"><div class="push-provider push-fcm"><form-body>
+          <switch name="fcmEnabled" label="Configure Firebase Cloud Messaging" description="Without service-account JSON, Firebase uses Application Default Credentials." :checked="model.draft.fcmEnabled" />
+          <div class="provider-fields system-stack">
+            <if model.hasServiceAccount><p>Service-account credentials are stored. Their contents are not displayed.</p></if>
+            <field label="Service account JSON"><json-editor name="serviceAccountJson" label="Service account JSON" mode="text" :text="model.draft.serviceAccountJson" /></field>
+            <p>Enter a replacement JSON object. Leave null to keep the stored credentials.</p>
+            <checkbox name="useDeploymentCredentials" label="Use Application Default Credentials (clear stored service-account JSON)" :checked="model.draft.useDeploymentCredentials" />
+          </div>
+        </form-body></div></card>
+        <card title="Apple Push Notification Service" description="Direct delivery to APNs-issued iOS tokens"><div class="push-provider push-apns" :data-has-private-key="model.hasPrivateKey"><form-body>
+          <switch name="apnsEnabled" label="Configure Apple Push Notification service" description="Direct APNs delivery requires all four credential fields." :checked="model.draft.apnsEnabled" />
+          <div class="provider-fields system-stack">
+            <div class="apns-identifiers"><field label="Team ID"><input name="teamId" :value="model.draft.teamId" placeholder="Apple Developer Team ID" mono /></field><field label="Key ID"><input name="keyId" :value="model.draft.keyId" placeholder="APNs authentication key ID" mono /></field></div>
+            <field label="Bundle ID"><input name="bundleId" :value="model.draft.bundleId" placeholder="com.example.app" mono /></field>
+            <field label="Private key"><input name="privateKey" multiline mono :rows="8" :value="model.draft.privateKey" autocomplete="off" :placeholder='if (model.hasPrivateKey) "Stored private key — leave blank to keep" else "Paste the PEM-encoded contents of the APNs .p8 key"' /></field>
+            <checkbox name="clearPrivateKey" label="Clear stored private key" :checked="model.draft.clearPrivateKey" />
+            <switch name="sandbox" label="Use APNs sandbox" description="Use the sandbox for development builds; disable for production builds." :checked="model.draft.sandbox" />
+            <p class="apns-warning">APNs delivery remains unavailable until Team ID, Key ID, Bundle ID, and Private Key are all set.</p>
+          </div>
+        </form-body></div></card>
+
+      </form>
+    </div></page-shell>
+  </island>
+  <style scoped>
+    .provider-fields { display: none; }
+    .push-fcm:has(input[name="fcmEnabled"]:checked) .provider-fields,
+    .push-apns:has(input[name="apnsEnabled"]:checked) .provider-fields { display: grid; }
+    .apns-identifiers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .apns-warning { display: none; color: var(--warn); }
+    .push-apns:has(input[name="teamId"]:placeholder-shown) .apns-warning,
+    .push-apns:has(input[name="keyId"]:placeholder-shown) .apns-warning,
+    .push-apns:has(input[name="bundleId"]:placeholder-shown) .apns-warning,
+    .push-apns:not([data-has-private-key]):has(textarea[name="privateKey"]:placeholder-shown) .apns-warning,
+    .push-apns:has(input[name="clearPrivateKey"]:checked) .apns-warning { display: block; }
+    @media (max-width: 640px) { .apns-identifiers { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+</component>

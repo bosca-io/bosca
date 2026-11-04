@@ -139,6 +139,9 @@ interface MeilisearchAdminService : Service {
      */
     suspend fun resetEmbedders(uid: String): MeilisearchTask
 
+    /** Removes the named embedder from [uid], retaining other embedders and their credentials. */
+    suspend fun removeEmbedder(uid: String, name: String): MeilisearchTask
+
     /**
      * Deletes all documents from an index. Returns a task tracking the operation.
      *

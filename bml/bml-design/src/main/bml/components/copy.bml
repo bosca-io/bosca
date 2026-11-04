@@ -2,13 +2,15 @@
   <prop name="value" type="String" required />
   <prop name="label" type="String" default="Copy" />
   <prop name="showStatus" type="Boolean" default="true" />
-  <div class="copy-control" :data-copy-value="value" :data-copy-label="label" :data-tooltip-content="label" {...attrs}>
-    <button ref="copy" size="sm" class="icon-only" :aria-label="label" :title="label" :data-copy="value">
+  <prop name="size" type="String" default="sm" />
+  <prop name="ghost" type="Boolean" default="false" />
+  <div class="copy-control" :data-ghost="ghost" :data-copy-value="value" :data-copy-label="label" :data-tooltip-content="label" {...attrs}>
+    <button ref="copy" :size="size" :class='"icon-only" + if (ghost) " ghost" else ""' :aria-label="label" :title="label" :data-copy="value">
       <span ref="idleIcon" class="copy-icon">
-        <icon name="copy" :size="14" />
+        <icon name="copy" :size='if (size == "xs") 12 else 14' />
       </span>
       <span ref="doneIcon" class="copy-icon" hidden>
-        <icon name="check" :size="14" />
+        <icon name="check" :size='if (size == "xs") 12 else 14' />
       </span>
     </button>
     <span ref="message" :class='"copy-message" + if (showStatus) "" else " quiet"' role="status" />
@@ -23,6 +25,9 @@
     }
     .copy-icon {
       display: flex;
+    }
+    .copy-control[data-ghost] .copy-icon {
+      color: var(--fg-3);
     }
     .copy-message {
       width: 26ch;

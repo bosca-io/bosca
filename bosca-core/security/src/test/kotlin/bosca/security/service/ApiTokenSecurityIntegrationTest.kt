@@ -122,7 +122,7 @@ class ApiTokenSecurityIntegrationTest {
                 coEvery { authentication.principal() } returns authenticated
                 assertFailsWith<SecurityException> {
                     request(node) { ApiTokensMutationController(tokens[node], evaluator).edit(
-                        authentication, created.credential.id, "escalated", null, listOf("security:manage"),
+                        authentication, created.credential.id, "escalated", null, listOf("security:manage"), clearScopes = false,
                     ) }
                 }
             }

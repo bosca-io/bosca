@@ -1,0 +1,4 @@
+<page route="/system/nats" requireAuth>
+<script server provides="page">bosca.system.ui.natsConsole()</script>
+<system-layout title="Nats" :admin="page.admin"><system-nats :initial="page" /></system-layout>
+</page>

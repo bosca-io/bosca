@@ -1,0 +1,40 @@
+<component tag="auth-passkey-form">
+  <div class="auth-flow">
+    <form ref="form" class="modal-form">
+      <form-body padded class="modal-fields"><alert ref="error" hidden /><p>Give this passkey a name so you can identify it later.</p><field label="Name"><input ref="name" name="passkeyName" placeholder="e.g. Security key" maxlength="255" autocomplete="off" required /></field></form-body>
+      <form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button ref="submit" type="submit" primary>Register passkey</button></form-actions>
+    </form>
+  </div>
+  <script client scoped>
+    const form = ctx.ref<HTMLFormElement>("form");
+    const name = ctx.ref<HTMLInputElement>("name");
+    const submit = ctx.ref<HTMLButtonElement>("submit");
+    const error = ctx.ref<HTMLElement>("error");
+    const dialog = ctx.root.closest("dialog");
+    let controller: AbortController | null = null;
+    let mounted = true;
+    ctx.onUnmount(() => { mounted = false; controller?.abort(); });
+    if (dialog) ctx.on<Event>(dialog, "close", () => { controller?.abort(); form?.reset(); if (error) error.hidden = true; });
+    if (form) ctx.on<SubmitEvent>(form, "submit", event => {
+      event.preventDefault();
+      if (controller || !name || !submit || !error) return;
+      const current = new AbortController(); controller = current;
+      error.hidden = true; submit.disabled = true; name.disabled = true;
+      submit.textContent = "Registering…"; form.setAttribute("aria-busy", "true");
+      void boscaAuth.registerPasskey(name.value, current.signal).then(() => {
+        if (mounted) location.reload();
+      }).catch(reason => {
+        if (mounted && !current.signal.aborted) {
+          error.textContent = reason instanceof Error ? reason.message : "Passkey registration failed. Please try again.";
+          error.hidden = false;
+        }
+      }).finally(() => {
+        controller = null;
+        if (mounted) {
+          submit.disabled = false; name.disabled = false; submit.textContent = "Register passkey";
+          form.removeAttribute("aria-busy");
+        }
+      });
+    });
+  </script>
+</component>

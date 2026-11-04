@@ -114,6 +114,14 @@ class ConfigurationServiceImpl(
             public = input.public
         )
 
+        val permissionsToSave = input.permissions?.map {
+            ConfigurationPermission(configurationId = toSave.id, action = it.action, groupId = it.groupId)
+        } ?: existing?.let { current ->
+            getPermissions(current).map {
+                ConfigurationPermission(configurationId = toSave.id, action = it.action, groupId = it.groupId)
+            }
+        }.orEmpty()
+
         if (existing != null) {
             repository.deleteConfigurationById(toSave.id)
         }
@@ -124,15 +132,7 @@ class ConfigurationServiceImpl(
         internalSetValue(configurationId, input.value)
 
         permissions.deleteByConfigurationId(configurationId)
-        for (permission in input.permissions) {
-            permissions.add(
-                ConfigurationPermission(
-                    configurationId = configurationId,
-                    action = permission.action,
-                    groupId = permission.groupId
-                )
-            )
-        }
+        for (permission in permissionsToSave) permissions.add(permission)
 
         clearCache(input.key, configurationId)
         saved

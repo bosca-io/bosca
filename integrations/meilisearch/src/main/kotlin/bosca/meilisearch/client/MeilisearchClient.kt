@@ -19,6 +19,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonPrimitive
@@ -312,6 +313,12 @@ class MeilisearchClient(
     /** Resets all embedder settings for an index. */
     suspend fun resetEmbedders(indexUid: String): TaskInfo {
         return json.decodeFromString(delete("/indexes/$indexUid/settings/embedders"))
+    }
+
+    /** Removes one named embedder while retaining the other providers and their credentials. */
+    suspend fun removeEmbedder(indexUid: String, name: String): TaskInfo {
+        val removal = buildJsonObject { put(name, JsonNull) }
+        return json.decodeFromString(TaskInfo.serializer(), patch("/indexes/$indexUid/settings/embedders", removal.toString()))
     }
 
     // ── Tasks ──

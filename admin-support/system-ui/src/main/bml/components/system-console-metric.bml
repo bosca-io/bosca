@@ -1,0 +1,20 @@
+<component tag="system-console-metric">
+  <prop name="label" type="String" required />
+  <prop name="value" type="String" required />
+  <prop name="tone" type="String" default="" />
+  <prop name="detail" type="String" default="" />
+  <prop name="compact" type="Boolean" default="false" />
+  <prop name="valueSize" type="String" default="lg" />
+  <card :padded="false"><dl class="metric" :data-tone="tone"><dt>{ label }</dt><dd :data-size="valueSize" :data-compact="compact">{ value }</dd><if detail.isNotBlank()><dd class="metric-detail">{ detail }</dd></if></dl></card>
+  <style scoped>
+    .metric { margin: 0; padding: 16px; min-width: 0; }
+    dt { color: var(--fg-3); font-size: 11px; line-height: 16px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+    dd { margin: 6px 0 0; color: var(--fg-0); font-size: 28px; line-height: 1.2; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    dd[data-size="sm"] { font-size:25px; }
+    dd[data-compact] { font-size:18px; font-family:var(--font-mono); letter-spacing:0; }
+    .metric[data-tone="success"] > dd { color: var(--ok); }
+    .metric[data-tone="warning"] > dd { color: var(--warn); }
+    .metric[data-tone="error"] > dd { color: var(--err); }
+    dd.metric-detail { margin-top: 4px; color: var(--fg-3); font-size: 12px; line-height: 1.5; font-weight: 400; letter-spacing: normal; }
+  </style>
+</component>

@@ -497,6 +497,24 @@ class ApiTokenServiceImplTest {
     // --- Edit ---
 
     @Test
+    fun `explicit scope clearing differs from omitted scopes and permits clearing description`() = runTest {
+        val credential = createMockCredential(id = 1L, description = "Old description", scopes = listOf("content:view"))
+        val updated = slot<PrincipalCredential>()
+        coEvery { credentialsRepository.getById(1L) } returns credential
+        coEvery { credentialsRepository.update(capture(updated)) } answers { updated.captured }
+
+        service.editToken(1L, null, null, null, principalId, clearScopes = false)
+        assertEquals(listOf("content:view"), (updated.captured.attributes as ApiTokenCredentialAttributes).scopes)
+        service.editToken(1L, null, "", null, principalId, clearScopes = true)
+        val attributes = updated.captured.attributes as ApiTokenCredentialAttributes
+        assertNull(attributes.scopes)
+        assertEquals("", attributes.description)
+        assertFailsWith<IllegalArgumentException> {
+            service.editToken(1L, null, null, listOf("content:view"), principalId, clearScopes = true)
+        }
+    }
+
+    @Test
     fun `editToken updates name and description`() = runTest {
         val credential = createMockCredential(id = 1L, name = "Old Name")
         val updatedSlot = slot<PrincipalCredential>()
@@ -504,7 +522,7 @@ class ApiTokenServiceImplTest {
         coEvery { credentialsRepository.getById(1L) } returns credential
         coEvery { credentialsRepository.update(capture(updatedSlot)) } answers { updatedSlot.captured }
 
-        service.editToken(1L, "New Name", "New Description", null, principalId)
+        service.editToken(1L, "New Name", "New Description", null, principalId, clearScopes = false)
 
         val updatedAttrs = updatedSlot.captured.attributes as ApiTokenCredentialAttributes
         assertEquals("New Name", updatedAttrs.name)
@@ -519,7 +537,7 @@ class ApiTokenServiceImplTest {
         coEvery { credentialsRepository.getById(1L) } returns credential
         coEvery { credentialsRepository.update(capture(updatedSlot)) } answers { updatedSlot.captured }
 
-        service.editToken(1L, null, "New Desc", null, principalId)
+        service.editToken(1L, null, "New Desc", null, principalId, clearScopes = false)
 
         val updatedAttrs = updatedSlot.captured.attributes as ApiTokenCredentialAttributes
         assertEquals("Keep This", updatedAttrs.name)
@@ -534,7 +552,7 @@ class ApiTokenServiceImplTest {
         coEvery { credentialsRepository.getById(1L) } returns credential
         coEvery { credentialsRepository.update(capture(updatedSlot)) } answers { updatedSlot.captured }
 
-        service.editToken(1L, null, null, null, principalId)
+        service.editToken(1L, null, null, null, principalId, clearScopes = false)
 
         val updatedAttrs = updatedSlot.captured.attributes as ApiTokenCredentialAttributes
         assertEquals("Preserved", updatedAttrs.description)
@@ -1057,23 +1075,23 @@ class ApiTokenServiceImplTest {
     @Test
     fun `editToken rejects validation failures revoked tokens and scope escalation`() = runTest {
         assertFailsWith<IllegalArgumentException> {
-            service.editToken(1L, " ", null, null, principalId)
+            service.editToken(1L, " ", null, null, principalId, clearScopes = false)
         }
         assertFailsWith<IllegalArgumentException> {
-            service.editToken(1L, "x".repeat(256), null, null, principalId)
+            service.editToken(1L, "x".repeat(256), null, null, principalId, clearScopes = false)
         }
         assertFailsWith<IllegalArgumentException> {
-            service.editToken(1L, null, "x".repeat(1001), null, principalId)
+            service.editToken(1L, null, "x".repeat(1001), null, principalId, clearScopes = false)
         }
         assertFailsWith<IllegalArgumentException> {
-            service.editToken(1L, null, null, listOf("invalid:scope"), principalId)
+            service.editToken(1L, null, null, listOf("invalid:scope"), principalId, clearScopes = false)
         }
 
         coEvery {
             credentialsRepository.getById(92L)
         } returns createMockCredential(id = 92L, revokedAt = OffsetDateTime.now().toString())
         assertFailsWith<SecurityException> {
-            service.editToken(92L, "name", null, null, principalId)
+            service.editToken(92L, "name", null, null, principalId, clearScopes = false)
         }
 
         coEvery {
@@ -1081,7 +1099,7 @@ class ApiTokenServiceImplTest {
         } returns createMockCredential(id = 93L)
         coEvery { securityService.getPrincipalGroups(principalId) } returns listOf(editorsGroup)
         assertFailsWith<SecurityException> {
-            service.editToken(93L, null, null, listOf("storage:write"), principalId)
+            service.editToken(93L, null, null, listOf("storage:write"), principalId, clearScopes = false)
         }
     }
 
@@ -1103,8 +1121,7 @@ class ApiTokenServiceImplTest {
             null,
             null,
             listOf("storage:write"),
-            principalId,
-        )
+            principalId, clearScopes = false)
         assertEquals(
             listOf("storage:write"),
             (updated.captured.attributes as ApiTokenCredentialAttributes).scopes,

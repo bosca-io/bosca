@@ -260,3 +260,5 @@ code { font-family: var(--font-mono); }
 .shell-example-description { margin: 0 0 24px; color: var(--fg-2); font: 400 14px/1.6 var(--font-sans); }
 
 .reference-app-shell [data-bml-app-shell] { height: 320px; }
+
+.catalog-json-compact { --json-height:76px; --json-min-height:76px; }

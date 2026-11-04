@@ -1,16 +1,27 @@
 <component tag="profile-menu">
   <prop name="label" type="String" default="Profile" />
   <prop name="name" type="String" default="Profile" />
-  <prop name="subtitle" type="String" default="" />
+  <prop name="subtitle" type="String" default="Signed in" />
   <prop name="icon" type="String" default="users" />
   <prop name="width" type="Int" default="260" />
+  <prop name="accountActions" type="Boolean" default="true" />
   <prop name="error" type="String" default="" />
   <div class="profile-menu" data-bml-design-profile-menu {...attrs}>
     <popover :label="label" :icon="icon" :width="width" class="profile-popover">
       <div class="menu-heading" data-profile-heading>
         <profile :name="name" :subtitle="subtitle" :showAvatar="false" />
       </div>
-      <div class="profile-actions" role="menu" :aria-label='label + " actions"'><slot /></div>
+      <div class="profile-actions" role="menu" :aria-label='label + " actions"'>
+        <slot />
+        <if accountActions>
+          <button ref="appearance" type="button" role="menuitem" class="profile-action" disabled>
+            <span class="menu-icon" ref="appearanceLightIcon"><icon name="sun" /></span>
+            <span class="menu-icon" ref="appearanceDarkIcon" hidden><icon name="moon" /></span>
+            <span ref="appearanceLabel">Light mode</span>
+          </button>
+          <button ref="signout" type="button" role="menuitem" class="profile-action danger" icon="log-out" disabled><span>Sign out</span></button>
+        </if>
+      </div>
       <p class="profile-error" data-profile-error role="status" :hidden="error.isBlank()">{ error }</p>
     </popover>
   </div>

@@ -18,7 +18,7 @@ class AtlasConfigurationTest {
               runner:
                 enabled: true
                 concurrency: 3
-                queues: git, pipelines
+                queues: git, pipelines, index, backup
                 listeners: false
         """.trimIndent().byteInputStream())
         val roles = AtlasConfiguration.from(config)
@@ -27,7 +27,7 @@ class AtlasConfigurationTest {
         assertFalse(roles.artifactsEnabled)
         assertFalse(roles.uiEnabled)
         assertFalse(roles.runnerListeners)
-        assertEquals(listOf("git", "pipelines"), roles.runnerQueues)
+        assertEquals(listOf("git", "pipelines", "index", "backup"), roles.runnerQueues)
         assertEquals(3, roles.runnerConcurrency)
     }
 

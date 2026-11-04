@@ -34,6 +34,13 @@ class CatalogApplicationTest {
     private val classpath = System.getProperty("catalog.classpath")
 
     @Test
+    fun `code editor submits native values and retains drafts options and reset`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--code-editor", 60)
+        }
+    }
+
+    @Test
     fun `file drops retain native selection and disabled behavior across palettes`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--file-drop", 60)

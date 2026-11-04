@@ -316,6 +316,20 @@ new preservation roots receive `data-bml-added`; these markers can suppress old 
 animations and highlight only the new batch. `ctx.onUpdate` receives the same `added` and `retained`
 preservation roots.
 
+Use `data-bml-scroll="stable-key"` on a scrolling container whose content must refresh from the
+server. Matching keys on the same element type restore both scroll axes before update callbacks,
+while the container and its children receive the new server markup. The browser clamps offsets
+when the updated content is shorter. Keys must be unique within the updated region; changing the
+key starts at the new content's initial position. Include the selected tab in the key when tab
+navigation should start at the top. `data-bml-preserve` continues to retain the entire DOM subtree;
+scroll-only keys do not preserve old content, listeners or focus.
+
+Use `data-bml-disclosure="stable-key"` on native `details` when its expanded/collapsed state belongs
+to the reader and its contents must still refresh. Matching keys retain `open` while rendering new
+children. Disclosure state is restored before scroll offsets so collapsing a refreshed section
+cannot shorten the scroll range first. Change the key when the underlying resource changes.
+A new key or an explicit `preserve=false` update uses the server's initial `open` state.
+
 Declarative action elements also receive `aria-busy="true"` while their request is in flight;
 buttons are disabled for the same interval.
 
@@ -450,8 +464,13 @@ model method's own parameter types (String / Int / Long / Boolean / Double):
 | Argument | Bound | Example |
 | --- | --- | --- |
 | Kotlin expression | at render time, into the element's `data-bml-args` marker | `@click="list.remove(item.markId, ctx)"` inside a `<for>` |
-| `form.<field>` | at event time, from the bound form's field (checkbox → boolean) | `@submit="wall.share(form.groupId, form.title, ctx)"` |
+| `form.<field>` | at event time, from the bound form's field (checkbox → boolean; multiple select → JSON array text) | `@submit="wall.share(form.groupId, form.title, ctx)"` |
 | `ctx` | server-side — the dispatcher's `RenderContext` (models that reach the data plane want it) | `@click="mark.toggle(ctx)"` |
+
+Before resolving form arguments for a declarative action, the runtime dispatches the bubbling
+`bml:form-serialize` event on the form. Enhanced controls flush drafts synchronously in this event;
+the JSON editor uses document capture, so form-level serializers can then collect its native value.
+This applies to click/change actions as well as native form submissions.
 
 `@submit` binds the form's submit event (prevented; fields are read live), so a form inside the
 island clears on the post-action re-render.

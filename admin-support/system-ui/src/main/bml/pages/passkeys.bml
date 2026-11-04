@@ -1,0 +1,4 @@
+<page route="/system/security/passkeys" requireAuth>
+  <script server provides="page">bosca.system.ui.systemPasskeys()</script>
+  <system-layout title="Passkeys" :admin="page.admin"><system-passkeys :initial="page" /></system-layout>
+</page>

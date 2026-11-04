@@ -1131,6 +1131,30 @@ class BmlServer(
                     bosca.server.HttpStatusCode.fromValue(forwarded.status),
                 )
         }
+        // WebAuthn ceremonies use the API's authenticated REST routes on this same browser origin.
+        for (step in listOf("begin", "complete")) {
+            val path = "/api/v1/security/passkeys/register/$step"
+            router.post(path) {
+                call.response.header(HttpHeaders.CacheControl, "private, no-store")
+                val current = state.get()
+                val factory = current.gqlFactory
+                if (factory == null) {
+                    call.respond(bosca.server.HttpStatusCode.NotFound, "404 Not Found")
+                    return@post
+                }
+                val forwarded = try {
+                    factory.forwardPost(path, call.request.bodyText(), resolveToken(current, call.request), call.request.appOrigin)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log.warn("bml: passkey proxy upstream unreachable: {}", e.toString())
+                    call.respondBytes("""{"error":"upstream_unreachable"}""".toByteArray(), ContentType.Application.Json, bosca.server.HttpStatusCode.BadGateway)
+                    return@post
+                }
+                forwarded.headers.forEach { (name, value) -> call.response.header(name, value) }
+                call.respondBytes(forwarded.body, forwarded.contentType?.let(ContentType::parse) ?: ContentType.Application.Json, bosca.server.HttpStatusCode.fromValue(forwarded.status))
+            }
+        }
         // Same-origin GraphQL BFF proxy (the "BFF" half of the BML server): browser code POSTs GraphQL
         // here instead of the (cross-origin) data plane, and the server forwards the body untouched
         // with the caller's resolved token attached. Upstream status, JSON, and session cookies pass

@@ -163,10 +163,25 @@ class SchedulerServiceImplTest {
         assertFailsWith<IllegalArgumentException> {
             service.createJob(input().copy(jobName = "missing"), UUID.random())
         }
-        assertFailsWith<IllegalArgumentException> {
-            service.createJob(input().copy(cronExpression = "invalid"), UUID.random())
+        for (expression in listOf("", "   ", "invalid")) {
+            assertFailsWith<IllegalArgumentException> {
+                service.createJob(input().copy(cronExpression = expression), UUID.random())
+            }
         }
+        coVerify(exactly = 0) { jobRepository.add(any()) }
         Unit
+    }
+
+    @Test
+    fun `update rejects blank and invalid cron without changing the schedule`() = runBlocking {
+        val existing = scheduledJob()
+        coEvery { jobRepository.getById(existing.id) } returns existing
+        for (expression in listOf("", "   ", "invalid")) {
+            assertFailsWith<IllegalArgumentException> {
+                service.updateJob(existing.id, input().copy(cronExpression = expression))
+            }
+        }
+        coVerify(exactly = 0) { jobRepository.update(any()) }
     }
 
     @Test

@@ -43,6 +43,21 @@ Pages and local components, including nested source directories, can then use:
 </card>
 ```
 
+`<input multiline :rows="8" mono name="privateKey" :value="draft" />` renders the same control
+as a native textarea, including forwarded form attributes and refs. Use `json-editor` for
+structured JSON values. `<code-editor name="expression" language="javascript" :value="draft" />`
+provides a CodeMirror field for code and expressions. The tag owns setup and native form
+synchronization, with `readOnly`, `disabled`, `label`, `preserveKey` and `--code-height` options.
+`path` selects the file grammar when `language` is empty, `line` selects an initial line, and
+`wrapped` controls line wrapping. `bare fill` embeds the same field in a bounded workspace.
+Local application adapters may update the root’s `data-path`, `data-line` and presence-based
+`data-wrapped` attributes; the tag reconciles them while retaining the draft, selection and undo history.
+The textarea emits native bubbling `input` events. Git uses this same tag and owns only its
+Markdown preview, uncommitted-change warning and commit actions. Tab indents; Escape then Tab
+returns to native focus navigation.
+`exitFocus` optionally names a control in the containing form for Escape then Tab; Git supplies
+its wrap control to retain the file editor's existing keyboard destination.
+
 The containing page or component declares the application's state and island as usual. The example
 consumer in [examples/design-library](../examples/design-library/README.md) demonstrates this wiring.
 The [catalog application](../bml-design-catalog/README.md) provides references and rendered examples
@@ -119,9 +134,37 @@ The default page padding remains available to existing consumers.
 `form-body` owns the vertical field spacing (`padded` adds dialog body insets), and `form-actions`
 owns action alignment and optional bordered footers. Keep native `form` elements and declarative
 submit actions in the application. `button-link` supplies the same themed control dimensions for
-native navigation. `pagination` owns page controls and renders only when another page exists;
-applications supply native links or projected server-action buttons. `card` forwards root attributes
+native navigation. `pagination` owns page controls and renders when another page exists; `alwaysVisible` also shows
+the current page and disabled unavailable directions on a single or empty page;
+applications supply native links or projected server-action buttons. Use `summary` to show an item
+range in place of the default page number. `card` forwards root attributes
 and accepts a `description`. `empty-state compact` fits status panels without custom padding rules.
+
+Projected modal forms use the shared scrolling-body and fixed-footer layout:
+
+```html
+<dialog title="Edit settings" triggerLabel="Edit">
+  <form class="modal-form" @submit="settings.save(form.name)">
+    <form-body padded class="modal-fields">
+      <field label="Name"><input name="name" required /></field>
+    </form-body>
+    <form-actions bordered class="modal-footer">
+      <button data-dialog-close>Cancel</button>
+      <button type="submit" primary>Save</button>
+    </form-actions>
+  </form>
+</dialog>
+```
+
+Use `@dialogdismiss="settings.cancel()"` on a programmatic dialog when the application model must
+clear its requested-open state after Escape, backdrop dismissal, the close button or a
+`data-dialog-close` control. The library emits this bubbling event only for viewer dismissal;
+server completion and unmount do not dispatch a second action. Declarative form arguments work
+on the event, including scope editors nested in a native form.
+
+Keep field-level actions inside the body, where they receive its insets and scrolling behavior.
+Use the same footer composition inside `confirm-dialog`; the tag supplies its descriptive copy.
+The library owns these layout classes and modal dismissal/focus behavior.
 
 `progress-bar` renders native determinate progress using the palette's accent, with `value`, `max`,
 and an accessible `label`; callers can update the native progress element's value. Alerts support
@@ -141,7 +184,7 @@ accessible disabled state. Its colors follow the enclosing palette.
 
 | Export | Props and defaults | Native target and children |
 | --- | --- | --- |
-| `button` | `size: String = "md"` (`md`, `sm`, `xs`); `loading: Boolean = false`; `type: String = "button"`; `ref: String = ""`; `primary: Boolean = false`; `icon: String = ""`; `disabled: Boolean = false` | Native button receives additional attributes, merged `class`, and declarative click events. Default children supply its accessible name. Loading disables it and overlays an aria-hidden spinner. |
+| `button` | `size: String = "md"` (`md`, `sm`, `xs`); `loading: Boolean = false`; `type: String = "button"`; `ref: String = ""`; `primary: Boolean = false`; `icon: String = ""`; `disabled: Boolean = false` | Native button receives additional attributes, merged `class`, and declarative click events. Default children supply its accessible name. Loading disables it and overlays an aria-hidden spinner. A native `form` attribute can associate a submit button with a form elsewhere on the page; `page-heading` keeps its projected form buttons in sync with the form's pending spinner state. |
 | `input` | `size: String = "md"` (`md`, `sm`); `mono: Boolean = false`; `type: String = "text"`; `ref: String = ""`; `value: String = ""`; `required: Boolean = false` | Native input receives additional attributes and events, including `name`, `disabled`, `readonly`, `autocomplete`, `aria-*`, and `data-*`. No child content. |
 | `field` | Required `label: String`; `hint: String = ""`; `hideLabel: Boolean = false` | A wrapping native label contains default children. The hidden-label option retains an accessible label. Only named props and children are consumed. |
 | `card` | `title: String = ""`; `padded: Boolean = true`; `description: String = ""` | Native section receives additional attributes, with an optional heading/description and a default child body. |
@@ -153,14 +196,14 @@ accessible disabled state. Its colors follow the enclosing palette.
 | `file-drop` | `ref: String = ""`; `label: String = "Choose files or drop them here"`; `description: String = ""`; `accept: String = ""`; `multiple: Boolean = false`; `disabled: Boolean = false` | Root div receives additional attributes/classes. Labelled native file input supports keyboard selection; bubbling `filesselected` carries local files. No child content. |
 | `alert` | `ref: String = ""`; `hidden: Boolean = false`; `tone: String = "error"` (`error`, `success`, `info`); `compact: Boolean = false` | Native paragraph with `role="alert"`, forwarded attributes/classes and default children. Compact text is 12px with an 18px line. |
 | `badge` | `tone: String = "neutral"` (`neutral`, `purple`, `info`, `success`, `warning`, `error`, `accent`); `color: String = ""` | Native span with forwarded attributes/classes and default children. A supplied CSS color overrides the tone. |
-| `empty-state` | `message: String = ""`; `title: String = ""`; `icon: String = "folder"`; `compact: Boolean = false` | Native div with forwarded attributes/classes, decorative icon, optional title/message and default action children. |
+| `empty-state` | `message: String = ""`; `title: String = ""`; `icon: String = "folder"` (empty hides the icon); `compact: Boolean = false` | Native div with forwarded attributes/classes, decorative icon, optional title/message and default action children. |
 | `loading-state` | `label: String = "Loading…"`; `compact: Boolean = false`; `ref: String = ""` | Native div with `role="status"`, forwarded attributes/classes, decorative spinner and visible label. No child content. |
 | `table-scroll` | `label: String = "Scrollable table"` | Focusable, labelled region with forwarded attributes/classes and default table children. Horizontal overflow stays inside the region; keyboard focus uses the accent color. |
 | `bosca-mark` | No named props | The actual 22×22px Bosca SVG, labelled `Bosca`, with forwarded attributes/classes. `aria-hidden` can mark it decorative. No child content. |
 | `app-header` | Required `brand: String` and `href: String`; `product: String = ""` | Header with a brand link/mark and default navigation children. Extra attributes/classes target the header. A 224px sidebar becomes a wrapping header at 700px. Scoped client code reveals the active item in overflowing navigation on mount, resize and updates within the header. |
 | `app-shell` | No named props | Root div receives attributes/classes and projected app-header/content. Supplies the responsive Git shell layout and ambient gradients. Public shell-* classes style projected regions. |
 | `profile` | Required `name: String`; `subtitle: String = ""`; `avatar: String = ""`; `initials: String = ""`; `showAvatar: Boolean = true` | Identity display with a decorative image, initials or user icon. Text truncates within its available width. Root receives attributes/classes; no children. |
-| `profile-menu` | `label: String = "Profile"`; `name: String = "Profile"`; `subtitle: String = ""`; `icon: String = "users"`; `width: Int = 260`; `error: String = ""` | Root receives attributes/classes. Projects native menu-item links/buttons into the shared popover, with identity heading and optional error. Authentication, actions and persistence belong to the consumer. |
+| `profile-menu` | `label: String = "Profile"`; `name: String = "Profile"`; `subtitle: String = "Signed in"`; `icon: String = "users"`; `width: Int = 260`; `accountActions: Boolean = true`; `error: String = ""` | Root receives attributes/classes. Owns profile loading, appearance and sign-out through the shared auth client, with projected additional menu items. Shell layouts use an accessible icon trigger on small screens. |
 | `workspace` | Required `label: String`; `framed: Boolean = false` | Labelled fill-height section with projected children and forwarded attributes/classes. Add a descendant `fullscreen-button` to expand it. |
 | `fullscreen-button` | `label: String = "Full screen"`; `exitLabel: String = "Exit full screen"` | Native icon button controls its nearest workspace, with forwarded attributes/classes. Enter/exit icons have accessible labels and tooltips; the 30×30px footprint stays fixed. Hidden until enhanced. |
 | `panel` | No named props | Native section with a surface, border, 20px padding and default children. Additional attributes/classes target the section. |
@@ -171,13 +214,13 @@ accessible disabled state. Its colors follow the enclosing palette.
 | `icon-button` | Required `icon: String` and `label: String`; `ref: String = ""`; `type: String = "button"`; `disabled: Boolean = false`; `size: String = "sm"` (`sm`, `xs`) | Native button with a decorative icon, required accessible name and tooltip. Additional attributes/classes and actions reach the button. Default dimensions are 30×30px; `xs` is 24×24px. No child content. |
 | `icon-link` | Required `icon: String`, `label: String` and `href: String` | Native 30×30px anchor with a decorative icon, accessible name and tooltip. Additional attributes/classes target the anchor, including `target`, `rel` and `download`. Supports the `primary` class modifier. No child content. |
 | `tooltip` | Required `content: String`; `placement: String = "top"` (`top`, `bottom`, `left`, `right`); `delay: Int = 200` (milliseconds) | Inline span with default children. The first descendant button/link/tabbable element is its trigger, falling back to the root. Additional attributes/classes target the span. |
-| `dialog` | Required `title: String` and `triggerLabel: String`; `subtitle: String = ""`; `size: String = "md"` (`sm`, `md`, `lg`); `triggerIcon: String = ""`; `icon: String = ""`; `primary: Boolean = false`; `triggerIconOnly: Boolean = false`; `triggerDisabled: Boolean = false`; `showTrigger: Boolean = true`; `triggerStyle: String = "button"` (`button`, `block`, `plain`, `link`, `ghost`); `returnFocus: String = ""`; `forceOpen: Boolean = false`; `openRequest: String = ""`; `completed: Boolean = false` | Wrapper div receives additional attributes/classes and contains a native modal dialog. Default children supply the body/form/footer. `ref="cancel"` or `data-dialog-close` on a projected control closes it. Native panel widths are 400/520/760px, constrained to the viewport. |
-| `confirm-dialog` | Required `title: String` and `description: String`; `triggerLabel: String = "Remove"`; `icon: String = "trash"`; `forceOpen: Boolean = false`; `triggerIconOnly: Boolean = true`; `triggerStyle: String = "button"` | Small dialog with description and default action children. Additional attributes/classes reach the dialog wrapper. The application owns confirmation actions and their outcomes. |
+| `dialog` | Required `title: String` and `triggerLabel: String`; `subtitle: String = ""`; `size: String = "md"` (`sm`, `md`, `lg`, `xl`); `placement: String = "center"` (`center`, `right`); `triggerIcon: String = ""`; `icon: String = ""`; `primary: Boolean = false`; `triggerIconOnly: Boolean = false`; `triggerDisabled: Boolean = false`; `showTrigger: Boolean = true`; `triggerStyle: String = "button"` (`button`, `block`, `plain`, `link`, `ghost`); `returnFocus: String = ""`; `forceOpen: Boolean = false`; `openRequest: String = ""`; `completed: Boolean = false` | Wrapper div receives additional attributes/classes and contains a native modal dialog. Default children supply the body/form/footer. `ref="cancel"` or `data-dialog-close` on a projected control closes it. Centered panel widths are 400/520/760px, constrained to the viewport. `placement="right"` uses the shared modal behavior for a full-height drawer, with md/lg/xl widths of 520/760/900px clamped to the viewport. |
+| `confirm-dialog` | Required `title: String` and `description: String`; `triggerLabel: String = "Remove"`; `icon: String = "trash"`; `forceOpen`, `completed`: `Boolean = false`; `triggerIconOnly: Boolean = true`; `triggerStyle: String = "button"` | Small dialog with description and default action children. Additional attributes/classes reach the dialog wrapper. The application owns confirmation actions and their outcomes; `completed` closes a successful attempt. Opening the trigger starts a fresh attempt. |
 | `popover` | Required `label: String`; `icon: String = ""`; `iconOnly: Boolean = false`; `width: Int = 360` | Native details with a labelled summary and default children in a labelled region. Additional attributes/classes target details. Scripts enhance its content into a viewport-fitted manual popover; without scripts it remains a native disclosure. |
-| `copy` | Required `value: String`; `label: String = "Copy"`; `showStatus: Boolean = true` | Root div receives additional attributes/classes. Its 30×30px native button copies the value, switches decorative icons and reports status. No child content. Visible status reserves 26ch so feedback does not move neighboring content; `showStatus="false"` keeps status accessible with no visible message space. |
+| `copy` | Required `value: String`; `label: String = "Copy"`; `showStatus: Boolean = true`; `size: String = "sm"`; `ghost: Boolean = false` | Root div receives additional attributes/classes. Its native button copies the value, switches decorative icons and reports status. The default is 30×30px; `size="xs" ghost` supplies a muted, borderless 24×24px action. No child content. Visible status reserves 26ch so feedback does not move neighboring content; `showStatus="false"` keeps status accessible with no visible message space. |
 | `copy-field` | Required `value: String` and `label: String`; `copyLabel: String = "Copy value"` | Root div receives additional attributes/classes. A labelled readonly input and compact copy action display a single-line value. No child content. Focus selects the value; denied/unavailable clipboard access selects it and exposes manual-copy guidance. |
-| `toast` | Required `id: String`; `message: String = ""`; `sequence: Int = 0`; `tone: String = "info"` (`info`, `success`, `warning`, `error`); `duration: Int = 4000` (milliseconds) | Manual-popover root receives additional attributes/classes. `id` supplies its stable `data-bml-preserve` key, rather than a native DOM ID. No child content. The caller issues each nonempty notice with a new positive sequence while mounted; initial state, ordinary updates and same/older sequences do not replay it. |
-| `search-input` | `value: String = ""`; `name: String = "q"`; `placeholder: String = "Search…"`; `label: String = "Search"`; `preserveKey: String = ""`; `disabled: Boolean = false`; `autofocus: Boolean = true` | Search wrapper with decorative icon, clear action and default trailing action children. Additional attributes/classes/events target the native search input. The clear action emits one bubbling `input` event and returns focus to the query. |
+| `toast` | Required `id: String`; `message: String = ""`; `sequence: Int = 0`; `tone: String = "info"` (`info`, `success`, `warning`, `error`); `duration: Int = 4000` (milliseconds); `announceInitial: Boolean = false` | Manual-popover root receives additional attributes/classes. `id` supplies its stable `data-bml-preserve` key, rather than a native DOM ID. No child content. The caller issues each nonempty notice with a new positive sequence while mounted; initial state, ordinary updates and same/older sequences do not replay it. |
+| `search-input` | `value: String = ""`; `name: String = "q"`; `placeholder: String = "Search…"`; `label: String = "Search"`; `preserveKey: String = ""`; `disabled: Boolean = false`; `autofocus: Boolean = true`; `size: String = "lg"` | `lg` keeps the 40px search surface; `md` and `sm` match shared control heights. Search wrapper with decorative icon, clear action and default trailing action children. Additional attributes/classes/events target the native search input. The clear action emits one bubbling `input` event and returns focus to the query. |
 | `segmented-control` | Required `label: String`, `name: String`, `options: List<SegmentOption>` and `value: String`; `preserveKey: String = ""` | Radiogroup receives additional attributes/classes/events. Each SegmentOption supplies its stable value, label, decorative icon and disabled state. A hidden native input supplies the selected form value. Emits bubbling `segmentchange` after updating its native value. No child content. |
 | `view-tabs` | Required `label: String`, `tabs: List<ViewTab>` and `selected: String` | Tablist receives additional attributes/classes/events. Each ViewTab supplies a stable value, label and disabled state. Emits bubbling `viewchange` with the selected value as its string detail. The application owns panels, IDs, accessible relationships and visibility. No child content. |
 | `tabs` | Required `label: String` and `items: List<NavigationItem>`; `header: Boolean = false` | Native nav receives additional attributes/classes and default trailing action children. Destinations remain native anchors with `aria-current="page"` on the current item. The scoped helper fits links around the current destination and a `More` overflow disclosure. |
@@ -186,7 +229,8 @@ accessible disabled state. Its colors follow the enclosing palette.
 | `tree-item` | Required `path: String` and `label: String`; `href: String = ""`; `directory`, `expanded`, `selected`, `wrap`: `Boolean = false`; `depth: Int = 0` | Flat ARIA tree item. Additional attributes/classes target its native directory button or native file anchor; declarative actions bind to the item row. Paths identify hierarchy, depth controls indentation/ARIA level, and selected file links use `aria-current="page"`. No child content. |
 | `time` | Required `value: String`; `relative`, `ago`, `inheritTypography`: `Boolean = false`; `format: String = ""` | Native time receives additional attributes/classes, its original value as datetime/title and an English server-rendered label. No child content. Use `html:time` for a native timestamp after importing this component. |
 | `comment-editor` | Required `id: String` and `label: String`; `value`, `error`, `hint`, `describedBy`: `String = ""`; `submitDisabled: Boolean = false`; `submitLabel: String = "comment"`; `placeholder: String = "Write a comment…"`; `name: String = "body"` | Native required textarea receives additional attributes/classes, its ID and preservation key. Default children supply action controls. The caller owns its surrounding form, submission and error outcomes. |
-| `json-editor` | Required `name: String`; `value: JsonElement = JsonObject(emptyMap())`; `text: String? = null`; `label: String = "JSON editor"`; `mode: String = "tree"` (`tree`, `text`, `table`); `readOnly: Boolean = false`; `disabled: Boolean = false`; `error: String = ""`; `preserveKey: String = ""` | Structured editor with a native textarea form value and escaped no-script fallback. Additional attributes/classes target its labelled group. Syntax and caller feedback appear in a live status. No child content. |
+| `code-editor` | Required `name: String`; `value: String = ""`; `language`, `path`: `String = ""`; `line: Int = 0`; `wrapped: Boolean = true`; `bare`, `fill`: `Boolean = false`; `label: String = "Code editor"`; `readOnly`, `disabled`: `Boolean = false`; `preserveKey: String = ""` | CodeMirror field with native form text, undo/redo, search, reset and tag-owned setup/cleanup. Additional attributes target the root. `--code-height` controls its surface height. |
+| `json-editor` | Required `name: String`; `value: JsonElement = JsonObject(emptyMap())`; `text: String? = null`; `label: String = "JSON editor"`; `mode: String = "tree"` (`tree`, `text`, `table`); `mainMenuBar`, `navigationBar`, `statusBar`, `askToFormat`: `Boolean = true`; `readOnly: Boolean = false`; `disabled: Boolean = false`; `error: String = ""`; `preserveKey: String = ""` | Structured editor with a native textarea form value and escaped no-script fallback. Additional attributes/classes target its labelled group. Syntax and caller feedback appear in a live status. No child content. |
 | `flow-editor` | Required `id`, `label`: `String`; `name: String = "graph"`; `value: FlowGraph = FlowGraph()`; `readOnly`, `disabled`: `Boolean = false`; `error`, `preserveKey`: `String = ""` | VueFlow canvas with native JSON form value, named ports, selection/connection/change events, view controls and text outline. Additional attributes/classes reach the root; default children follow the outline. |
 | `chart` | Required `id`, `label`: `String`; required `config: ChartConfiguration`; `loading: Boolean = false`; `error`, `preserveKey`: `String = ""` | Kotlin Chart.js configuration, CSS palette defaults, responsive named canvas and server-rendered data table. Additional attributes/classes reach the root; default children follow the table. |
 | `dashboard-grid` | Required `id`, `label`: `String`; `name: String = "layout"`; `value: List<DashboardLayoutItem> = emptyList()`; `lockedIds: Set<String> = emptySet()`; `columns: Int = 12`; `cellHeight: Int = 60`; `stackBelow: Int = 480`; `readOnly`, `disabled`: `Boolean = false`; `error`, `preserveKey`: `String = ""` | Studio-style dashboard geometry, native JSON form value, pointer/keyboard movement and resizing, locked widgets and narrow-container stacking. Direct default children are dashboard items; extra attributes reach the root. |
@@ -302,9 +346,15 @@ keep it mounted while issuing notices, and increment its monotonic sequence for 
 including repeated text. The initial sequence is a baseline: navigation, reload and remount do not
 announce a message retained in server state. A subsequent sequence increase shows a new notice and
 restarts its timeout; unrelated patches retain the active notice and remaining time.
+Use `announceInitial` only for a fresh page-load notification, such as a failed initial request,
+that must be announced on mount.
 Success/info/warning use a polite status region; errors use an assertive alert. Notifications do
 not take focus from the caller or move page content. Dismissal returns focus when the viewer had
 focused the notification, using the remembered target or an available control in the owning island.
+
+Place a modal's error toast inside the projected dialog content so its notification remains in
+the active modal's interactive subtree. The tag waits for that dialog to open, restores its top-layer
+position after a modal re-render, and closes with the owning dialog. Dismissal retains modal focus.
 
 Hover, keyboard focus and document visibility pause expiry. Focus and pointer interest survive a
 preserved root's temporary removal from the native top layer. Escape, the dismiss button or expiry
@@ -589,10 +639,7 @@ own their document, routes, account data and CSS palette. Use the short tags fro
       </div>
     </nav>
     <div class="shell-footer">
-      <profile-menu label="Account" name="Alex Example" subtitle="@alex">
-        <a role="menuitem" href="/account"><span class="menu-icon"><icon name="users" /></span>Profile</a>
-        <button role="menuitem" icon="moon" @click="account.changeAppearance">Dark appearance</button>
-      </profile-menu>
+      <profile-menu />
     </div>
   </app-header>
   <div class="shell-main">
@@ -618,13 +665,18 @@ editor surfaces can use their own palette values inside the shell.
 user icon. `showAvatar="false"` supplies text-only identity. Additional attributes target its root;
 `data-profile-name` and `data-profile-subtitle` mark the text fields for consumer-owned lazy loading.
 
-`profile-menu` composes `profile` and `popover`. Project `role="menuitem"` links or buttons; their
-forms, events, loading states and permissions stay in the application. The menu supports normal
-activation, right-click, ContextMenu, Shift+F10, arrows, Home/End and Escape with focus restoration.
-Without scripts it remains native details. It has no auth client, API dependency, theme store or
-built-in account actions. `data-profile-heading` scopes its identity display; `data-profile-error`
-marks its optional status paragraph. The normal popover preservation contract applies to updates.
-The catalog and independent consumer demonstrate real actions at `/shell`.
+`<profile-menu />` composes `profile` and `popover` and owns profile loading, appearance
+switching and sign-out. It uses the host's initialized `boscaAuth` session and `boscaAuthFlow`;
+consumers do not mount a helper or wrap the tag. Appearance uses the existing
+`git_ui_appearance` cookie and sign-out returns to `/login`. Failed profile loads retry when
+the menu is reopened; failed sign-outs remain retryable.
+
+Projected `role="menuitem"` links or buttons extend the built-in actions. Their forms and domain
+permissions remain application-owned. Use `:accountActions="false"` for a supplied identity and
+custom-only actions, as in the standalone catalog examples. The menu supports normal activation,
+right-click, ContextMenu, Shift+F10, arrows, Home/End and Escape with focus restoration. Without
+scripts it remains native details; account actions stay disabled. The normal popover preservation
+contract applies to updates.
 
 ## Read-only source
 
@@ -823,6 +875,8 @@ maps all 41 original components to their current exports and records caller adju
 | `components/source-view.bml` | `components/ui/source-view.bml` |
 | `client/helpers/source-view.ts` | Read-only setup, wrapping and cleanup from `src/main/client/editor.ts` |
 | `client/helpers/source-language.ts` | Existing language inference from `src/main/client/editor.ts` |
+| `client/helpers/code-editor.ts` | Editable CodeMirror setup extracted from Git, with native fields, reset and configuration owned by the tag |
+| `client/helpers/source-highlight.ts` | Shared syntax classes for source viewers and editable code fields |
 | `client/helpers/source-view.css` | Viewer layout from `git-ui.css`, with CodeMirror colors mapped to consumer variables |
 | `client/helpers/tree.ts` | `src/main/client/tree.ts` |
 | `client/helpers/comment-editor.ts` | `src/main/client/comment-editor.ts` |
@@ -991,7 +1045,9 @@ label. Virtualized rows retain their logical positions, with spacer rows spannin
 grid and excluded from the accessibility table. Property-navigation buttons have accessible names. These semantics follow engine mode changes
 and retained-root label updates; their observer is disconnected with the editor.
 
-The editor viewport defaults to 320px high with a 240px minimum. Set `--json-height` in consumer CSS
+`mainMenuBar`, `navigationBar`, `statusBar` and `askToFormat` default to true; set them to false for compact embedded values.
+The editor viewport defaults to 320px high with a 240px minimum. Set `--json-height` and
+`--json-min-height` in consumer CSS
 to resize it. The component owns its editor frame, toolbar, scrollable body and feedback geometry.
 Ordinary shared design colors style surfaces, text, controls, menus, errors, selection and syntax.
 Optional inherited overrides are `--json-bg`, `--json-fg`, `--json-panel-bg`, `--json-accent`,

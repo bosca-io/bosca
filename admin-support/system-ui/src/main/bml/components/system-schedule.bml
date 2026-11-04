@@ -1,0 +1,71 @@
+<component tag="system-schedule">
+  <prop name="initial" type="bosca.system.ui.SystemScheduleModel" required />
+  <script server provides="model">
+    bosca.system.ui.SystemScheduleModel(initial.id, initial.admin, initial.name, initial.description, initial.jobName, initial.parameters, initial.cron, initial.enabled, initial.concurrent, initial.catchUp, initial.maxCatchUp, initial.principalState, initial.principalId, initial.definitions, initial.feedback, initial.cronCheck, initial.lastRunAt, initial.nextRunAt, initial.createdBy, initial.assignedBy, initial.confirmedBy, initial.history, initial.historyCount, initial.historyOffset, initial.historyStatus, initial.historySource, initial.principalDraftId, initial.clearPrincipalDraft, initial.formRevision, initial.failedAction)
+  </script>
+  <island name="system-schedule" :key="model.id">
+    <page-shell fill><page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" :title='if (model.id == "new") "New scheduled job" else model.name.ifBlank { "Scheduled job" }'><button-link href="/system/scheduler">Scheduler</button-link>
+      <if model.admin && model.id != "new">
+        <confirm-dialog :forceOpen='model.feedback.failed && model.failedAction == "trigger"' title="Trigger scheduled job?" description="Start a new execution with the saved job settings." triggerLabel="Trigger now" icon="play" :triggerIconOnly="false" :completed='!model.feedback.failed && model.feedback.message == "Scheduled job triggered."'><form @submit='model.action("trigger", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><checkbox name="confirmed" label="Run this job now" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" primary>Trigger now</button></form-actions></form></confirm-dialog>
+        <confirm-dialog :forceOpen='model.feedback.failed && model.failedAction == "delete"' title="Delete scheduled job?" description="Delete this schedule and its execution history." triggerLabel="Delete schedule" :triggerIconOnly="false"><form @submit='model.action("delete", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><checkbox name="confirmed" label="Delete this scheduled job" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Delete schedule</button></form-actions></form></confirm-dialog>
+      </if>
+      <if model.admin><button form="system-schedule-settings" type="submit" primary icon="check">Save schedule</button></if>
+    </page-heading><div class="system-content" data-bml-scroll="system-content">
+      <if !model.admin><alert>Administrator access is required.</alert><else>
+        <system-feedback :feedback="model.feedback" />
+        <form id="system-schedule-settings" class="schedule-form" data-schedule-editor :data-bml-preserve='"schedule-editor-" + model.id + "-" + model.formRevision' @submit="model.save(form.name, form.description, form.jobName, form.parameters, form.cron, form.enabled, form.concurrent, form.catchUp, form.maxCatchUp, ctx)">
+          <card title="Job"><form-body><div class="schedule-job-grid"><field label="Name"><input name="name" :value="model.name" required /></field><field label="Job definition"><select name="jobName" label="Job definition" searchable required @change="model.inspect(form.name, form.description, form.jobName, form.parameters, form.cron, form.enabled, form.concurrent, form.catchUp, form.maxCatchUp, false, ctx)"><option value="">Choose a definition</option><for definition in model.definitions><option :value="definition.name" :selected="definition.name == model.jobName">{ definition.displayName.ifBlank { definition.name } }</option></for></select></field></div>
+            <field label="Description"><input name="description" multiline :rows="2" :value="model.description" /></field><if model.selectedDefinition != null><p>{ "Queue: " + model.selectedDefinition?.queueName.orEmpty() }</p></if>
+          </form-body></card>
+          <card title="Schedule"><form-body><div class="schedule-cron-row"><field label="Cron expression" hint="Required. Defines when this job runs."><input name="cron" :value="model.cron" placeholder="0 0 * * *" required /></field><button @click="model.inspect(form.name, form.description, form.jobName, form.parameters, form.cron, form.enabled, form.concurrent, form.catchUp, form.maxCatchUp, true, ctx)">Validate cron</button></div><if model.cronCheck != null><div ref="cronPreview" data-cron-preview :data-cron="model.cron"><alert :tone='if (model.cronCheck?.valid == true) "success" else "error"'>{ if (model.cronCheck?.valid == true) "Valid cron expression" else model.cronCheck?.error ?: "Invalid cron expression" }</alert>
+                <if model.cronCheck?.valid == true><p>Next runs:</p><ul><for run in model.cronCheck?.nextRuns.orEmpty()><li><time :value="run" format="MMM d, yyyy HH:mm:ss 'UTC'" inheritTypography /></li></for></ul></if>
+              </div></if></form-body></card>
+          <card title="Execution"><form-body><switch name="enabled" label="Enabled" :checked="model.enabled" /><switch name="concurrent" label="Allow concurrent runs" :checked="model.concurrent" /><switch name="catchUp" label="Catch up missed runs" :checked="model.catchUp" />
+              <div class="max-catch-up"><field label="Maximum catch-up"><input name="maxCatchUp" type="number" min="1" :value="model.maxCatchUp" placeholder="System default" /></field></div></form-body></card>
+          <card title="Job parameters (JSON)"><form-body><field label="Parameters"><json-editor name="parameters" label="Job parameters" :text="model.parameters" mode="text" /></field>
+              <if model.selectedDefinition?.parameterSchema != null><details data-parameter-schema><disclosure-heading>Parameter schema</disclosure-heading><json-editor name="parameterSchema" label="Parameter schema" :value="model.selectedDefinition?.parameterSchema ?: kotlinx.serialization.json.JsonNull" readOnly /></details></if></form-body></card>
+        </form>
+        <if model.id != "new">
+          <card title="Execution principal"><p>{ model.principalState }</p>
+            <dl class="schedule-facts"><dt>Created by</dt><dd>{ model.createdBy }</dd><dt>Execution principal</dt><dd>{ model.principalId.ifBlank { "—" } }</dd><dt>Assigned by</dt><dd>{ model.assignedBy ?: "—" }</dd><dt>Confirmed by</dt><dd>{ model.confirmedBy ?: "—" }</dd><dt>Last run</dt><dd>{ model.lastRunAt ?: "—" }</dd><dt>Next run</dt><dd>{ model.nextRunAt ?: "—" }</dd></dl>
+            <if model.principalState != "NOT_REQUIRED">
+              <form @submit="model.assign(form.principalId, form.clear, form.confirmed, ctx)"><form-body><field label="Principal ID"><input name="principalId" :value="model.principalDraftId ?: model.principalId" /></field><checkbox name="clear" label="Clear assignment and park the job" :checked="model.clearPrincipalDraft" /><checkbox name="confirmed" label="Confirm execution principal change" required /></form-body><form-actions><button type="submit">Update principal</button></form-actions></form>
+              <if model.principalState == "PENDING_CONFIRMATION"><form @submit='model.action("confirmPrincipal", form.confirmed, ctx)'><form-body><checkbox name="confirmed" label="Confirm this execution principal assignment" required /></form-body><form-actions><button type="submit">Confirm assignment</button></form-actions></form></if>
+            <else><p>This job runs without an execution principal.</p></if>
+          </card>
+          <card title="Execution history">
+            <form class="system-actions" @submit="model.loadHistory(form.status, form.source, 0, ctx)"><field label="Status"><select name="status" label="History status"><option value="">All statuses</option><for status in bosca.system.ui.graphql.ExecutionStatus.entries><option :value="status.name" :selected="status.name == model.historyStatus">{ status.name }</option></for></select></field><field label="Source"><select name="source" label="History source"><option value="">All sources</option><for source in bosca.system.ui.graphql.JobHistorySource.entries><option :value="source.name" :selected="source.name == model.historySource">{ source.name }</option></for></select></field><button type="submit">Refresh history</button></form>
+            <p>{ model.historyCount.toString() + " executions" }</p>
+            <if model.history.isEmpty()><empty-state message="No executions found." /></if>
+            <for execution in model.history><details :data-schedule-history="execution.id" :data-bml-disclosure='"schedule-history-" + execution.id'><disclosure-heading>{ execution.name ?: execution.jobId }<badge>{ execution.status.name }</badge><span>{ execution.source.name }</span></disclosure-heading><dl class="schedule-facts">
+              <dt>History ID</dt><dd>{ execution.id }<copy :value="execution.id" label="Copy history ID" /></dd><dt>Job ID</dt><dd>{ execution.jobId }</dd><dt>Triggered</dt><dd>{ execution.triggeredAt }</dd><dt>Scheduled</dt><dd>{ execution.scheduledFor }</dd><dt>Completed</dt><dd>{ execution.completedAt ?: "—" }</dd><dt>Catch-up</dt><dd>{ if (execution.wasCatchUp) "Yes" else "No" }</dd><dt>Delayed until</dt><dd>{ execution.delayedUntil ?: "—" }</dd><dt>Parent job</dt><dd>{ execution.parentJobId ?: "—" }</dd>
+            </dl><if !execution.errorMessage.isNullOrBlank()><alert tone="error"><pre class="schedule-error">{ execution.errorMessage.orEmpty() }</pre></alert></if>
+              <if execution.status.name in listOf("PENDING", "RUNNING")><confirm-dialog :forceOpen='model.feedback.failed && model.failedAction == "cancel:" + execution.id' title="Cancel execution?" description="Cancel this active execution." triggerLabel="Cancel execution" :triggerIconOnly="false" :completed='!model.feedback.failed && model.feedback.message == "Execution cancelled."'><form @submit="model.cancel(execution.id, form.confirmed, ctx)" class="modal-form"><form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><checkbox name="confirmed" label="Cancel this execution" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Cancel execution</button></form-actions></form></confirm-dialog></if>
+            </details></for>
+            <div class="system-actions"><button :disabled="model.historyOffset == 0L" @click="model.loadHistory(model.historyStatus, model.historySource, model.historyOffset - 25, ctx)">Previous executions</button><span>{ "Page " + (model.historyOffset / 25 + 1) }</span><button :disabled="model.historyOffset + model.history.size >= model.historyCount" @click="model.loadHistory(model.historyStatus, model.historySource, model.historyOffset + 25, ctx)">Next executions</button></div>
+          </card>
+        </if>
+      </if>
+    </div></page-shell>
+  </island>
+  <script client scoped>
+    ctx.on<Event>(ctx.root, "input", event => {
+      if (!(event.target instanceof HTMLInputElement) || event.target.name !== "cron") return;
+      const preview = ctx.ref<HTMLElement>("cronPreview");
+      if (preview) preview.hidden = preview.dataset.cron !== event.target.value;
+    });
+  </script>
+  <style scoped>
+    .schedule-form { display: flex; flex-direction: column; gap: 14px; max-width: 900px; }
+    .schedule-job-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .schedule-cron-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+    @media (max-width: 640px) { .schedule-job-grid, .schedule-cron-row { grid-template-columns: minmax(0, 1fr); } }
+
+    .max-catch-up { display: none; }
+    form:has(input[name="catchUp"]:checked) .max-catch-up { display: block; }
+    .schedule-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; font-size: 12px; margin: 16px 0; }
+    .schedule-facts dt { color: var(--fg-3); }
+    .schedule-facts dd { margin: 0; overflow-wrap: anywhere; }
+    .schedule-error { margin: 0; font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+  </style>
+</component>

@@ -5,10 +5,12 @@ import bosca.search.pipeline.SearchDocumentPipeline
 import bosca.serialization.UUID
 import bosca.storage.model.StorageSystem
 import bosca.storage.model.StorageSystemInput
+import bosca.storage.model.StorageSystemType
 import bosca.storage.service.StorageSystemService
 import io.mockk.*
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -57,4 +59,29 @@ class SearchIndexInstallerTest {
         )
         assertTrue("labels" in administrationConfiguration.filterable)
     }
+    @Test
+    fun `installer retains supplementary vector and unrelated storage configurations`() = runTest {
+        val storage = mockk<StorageSystemService>()
+        val adminId = UUID.random()
+        coEvery { storage.getAll() } returns listOf(
+            StorageSystem(UUID.random(), "Vector", "", StorageSystemType.VECTOR, Json.parseToJsonElement("{\"indexName\":\"administration\"}")),
+            StorageSystem(UUID.random(), "Files", "", StorageSystemType.SUPPLEMENTARY, JsonNull),
+            StorageSystem(UUID.random(), "Unconfigured", "", StorageSystemType.SEARCH, JsonNull),
+            StorageSystem(adminId, "Admin", "", StorageSystemType.SEARCH, Json.parseToJsonElement("{\"indexName\":\"administration\"}")),
+        )
+        val added = mutableListOf<StorageSystemInput>()
+        coEvery { storage.add(capture(added)) } answers {
+            val input = firstArg<StorageSystemInput>()
+            StorageSystem(UUID.random(), input.name, input.description, input.type, input.configuration)
+        }
+        coEvery { storage.edit(adminId, any()) } answers {
+            val input = secondArg<StorageSystemInput>()
+            StorageSystem(adminId, input.name, input.description, input.type, input.configuration)
+        }
+        SearchIndexInstaller(storage, Json).install(mockk(), mockk())
+        assertEquals(2, added.size)
+        coVerify(exactly = 1) { storage.edit(adminId, any()) }
+        coVerify(exactly = 1) { storage.edit(any(), any()) }
+    }
+
 }

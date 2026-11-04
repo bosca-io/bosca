@@ -2,7 +2,7 @@
 
 Bosca Atlas composes Git hosting, CI, artifact services, and background execution. By default one
 process serves the backend on port 8094 and the BML UI on port 8095, and consumes the Git,
-pipelines, and common job queues. Git build agents remain separate: Atlas creates and coordinates
+pipelines, common, index, backup and profile job queues. Git build agents remain separate: Atlas creates and coordinates
 CI jobs, while agents claim jobs, execute build steps, upload artifacts, and report results.
 
 Run from the workspace root with the existing PostgreSQL, NATS or Redis, object storage, and
@@ -31,7 +31,7 @@ Native build tasks are `:server:atlas-server:nativeCompile` and
 | `ATLAS_UI_ENABLED` | `true` | Embedded BML listener |
 | `ATLAS_UI_HTTP_PORT` | `8095` | Embedded or standalone UI listener |
 | `ATLAS_RUNNER_ENABLED` | `true` | Durable job consumers, worker listeners, and scheduling |
-| `ATLAS_RUNNER_QUEUES` | `git,pipelines,common` | Queues consumed by this process |
+| `ATLAS_RUNNER_QUEUES` | `git,pipelines,common,index,backup,profile` | Queues consumed by this process |
 | `ATLAS_RUNNER_CONCURRENCY` | `16` | Consumer concurrency per selected queue |
 | `ATLAS_RUNNER_LISTENERS_ENABLED` | `true` | CI requirement/Kubernetes dispatch listeners and pipeline Git synchronization |
 | `ATLAS_SYNC_LISTENERS_ENABLED` | `true` | Pipeline Git synchronization within the worker listener role |
@@ -40,7 +40,7 @@ Native build tasks are `:server:atlas-server:nativeCompile` and
 Flags select HTTP surfaces and execution loops. Supporting services, schemas, migrations, and job
 enqueuers stay available for cross-domain operations. Disabling workers retains job enqueueing and
 history recording, without starting consumers, expiration recovery, worker listeners, or scheduling.
-All three queue providers are registered so child completion can reach a parent on another queue.
+The supporting queue providers are registered so child completion can reach a parent on another queue.
 Expiration recovery runs only for queues selected by this process.
 
 Atlas imports Git UI and serves one composed `/graphql` schema for Git and artifacts. The UI uses
@@ -114,8 +114,8 @@ normal CI execution/permission checks are preserved.
 Atlas owns its root SDL, namespace accessors, schema/dispatcher registrars, and provider list.
 Git and artifacts retain their existing domain implementations. Git CI owns the registry-backed
 produced/required artifact verifier, so CI requirement gates and producer completion do not require
-WorkOps. The default packages install initial security, the Git search index, GitHub sync
-pipelines, and the shared default artifact sync/publication pipelines. Domain migrations register Git maintenance and CI requirement schedules.
+WorkOps. The default packages install initial security, the Git and platform search indexes, search
+transform settings, GitHub sync pipelines, and the shared default artifact sync/publication pipelines. Domain migrations register Git maintenance and CI requirement schedules.
 
 `:server:atlas-ui-server` uses the same shared Atlas auth/landing and Git application as the
 embedded listener. The API owns process-wide services. UI requests drain before backend shutdown;
@@ -150,7 +150,10 @@ Atlas also supplies the subsystem catalog to the imported Git UI. Shared authent
 
 Native process acceptance uses isolated PostgreSQL, NATS, search and file storage, and copies both
 executables into fresh fixture directories. It exercises the combined host, a separate worker,
-split registry/UI hosts, authentication, CI artifact completion, and the browser workflows:
+split registry/UI hosts, authentication, CI artifact completion, System routes/actions and the
+artifact browser workflows. HubSpot and Bible provider transport tests use JVM fixture entry
+points with intercepted upstream clients and run separately; their System pages are included in
+the native route checks:
 
 ```bash
 ./gradlew --no-configuration-cache --no-parallel \
@@ -161,3 +164,19 @@ split registry/UI hosts, authentication, CI artifact completion, and the browser
 
 `-Ob` selects a quick native validation build; omit it for release optimization. The acceptance task
 always executes and retains process logs/configuration under `build/reports/native-host/`.
+
+System administration pages are imported from `:admin-support:system-ui` and are available
+in both embedded and standalone hosts. Routes cover PostgreSQL, NATS and Meilisearch consoles, groups, scheduled jobs,
+job history, package installation, configuration, storage/search settings, backups and utilities through the
+shared Atlas API. The index worker consumes the existing initializer and reindex jobs.
+Atlas uses the generated AI, Chat and Collaboration module registrars for the model catalog and
+federation services. Its indexing configuration supplies the content search transformations. Metadata
+services use the owning Bible provider and Mux implementations. Configuration providers supply settings,
+and Forms providers support the Profiles form-schema installer. Federation administration is available
+under `/system/integrations/federation`. See
+[System UI](../../admin-support/system-ui/README.md) for the implemented scope and checks.
+
+HubSpot settings and profile-context preview are available under `/system/integrations/hubspot`.
+Atlas installs the existing HubSpot attribute types and sync pipelines. Bulk synchronization uses
+the `profile` worker queue. The optional HubSpot client is selected at process startup; after a
+token change, restart API and profile-worker processes to load the new credential.

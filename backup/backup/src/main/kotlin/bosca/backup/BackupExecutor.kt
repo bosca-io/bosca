@@ -3,7 +3,6 @@ package bosca.backup
 import bosca.content.collection.service.CollectionService
 import bosca.content.metadata.model.MetadataInput
 import bosca.content.metadata.service.MetadataService
-import bosca.db.ConnectionPool
 import bosca.db.connection
 import bosca.db.withConnectionManager
 import bosca.di.provide
@@ -64,10 +63,19 @@ class BackupExecutor : AbstractJobExecutor<BackupJob>(BackupJob.serializer()) {
                     }
 
                     try {
-                        log.info("Exporting backup with {} tables", BackupTables.ordered.size)
+                        var exportedTables = 0
                         for (table in BackupTables.ordered) {
+                            // The catalog spans optional modules. Resolve installed relations within
+                            // the snapshot before exporting; query errors still fail the backup.
+                            val installed = conn.useStatement("SELECT to_regclass(?) IS NOT NULL") { statement ->
+                                statement.setString(1, table.qualifiedName)
+                                statement.executeQuery().use { result -> result.next(); result.getBoolean(1) }
+                            }
+                            if (!installed) continue
                             exportTable(zip, table, manifest)
+                            exportedTables++
                         }
+                        log.info("Exported {} installed tables from the backup catalog", exportedTables)
                     } catch (e: Exception) {
                         throw e
                     } finally {

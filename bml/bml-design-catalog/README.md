@@ -85,7 +85,7 @@ and Gateway routing without a cluster rollout. Native heap flags can be passed t
 | `/themes` | The same form in separate dark and consumer-light palettes, with independent state |
 | `/comments` | Independent dark/light comment drafts, pending/rejected posts, native reset and controlled replacements, readonly/disabled/paused/long/escaped variants |
 | `/overlays` | Independent modal forms, retained drafts, rejected confirmations, popover forms and menus, sizes and trigger variants |
-| `/json` | Independent dark/light JSON drafts, retained engine state, pending/rejected saves, native reset, controlled options and tree/text/table/empty/invalid/readonly/disabled variants |
+| `/json` | Independent dark/light JSON drafts, retained engine state, pending/rejected saves, native reset, controlled options, a compact configuration field, and tree/text/table/empty/invalid/readonly/disabled variants |
 | `/flows` | Independent VueFlow graphs, named-port connections, native forms, retained viewports, read-only, rejection and reset |
 | `/dashboards` | Movable/resizable widgets, locked layouts, keyboard handles, native forms and responsive stacking |
 | `/charts` | Chart.js built-in types, CSS colors, responsive canvases, data tables and local selection toasts |
