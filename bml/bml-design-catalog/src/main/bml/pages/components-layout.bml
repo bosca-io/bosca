@@ -44,7 +44,7 @@
       <profile name="Alex Example" subtitle="@alex" initials="AE" />
     </reference-entry>
     <reference-entry name="profile-menu"
-      :api='"label: String = \"Profile\"\nname: String = \"Profile\"\nsubtitle: String = \"Signed in\"\nicon: String = \"users\"\nwidth: Int = 260\naccountActions: Boolean = true\nerror: String = \"\""'
+      :api='"label: String = \"Profile\"\nname: String = \"Profile\"\nsubtitle: String = \"Signed in\"\nicon: String = \"users\"\nwidth: Int = 260\naccountActions: Boolean = true\nshowIdentity: Boolean = false\ndefaultAppearance: String = \"dark\"\nerror: String = \"\""'
       :contract='"Profile trigger and identity heading composed from the shared popover and profile. Project role=menuitem links or buttons. The tag loads identity and supplies appearance and sign-out actions using the host Bosca session. Set accountActions=false for supplied identities and custom-only actions. Additional attributes and classes target the root."'
       :keyboard='"Click or Enter opens the native disclosure. Right-click, ContextMenu and Shift+F10 open and focus the first enabled item. Arrow keys and Home/End navigate; Escape restores trigger focus. Native disclosure works without scripts."'
       :css='"The shared popover supplies spacing, opaque consumer surfaces, the quiet --popover-border and focus styling. data-profile-heading and data-profile-error are targets for built-in identity and error updates."'
