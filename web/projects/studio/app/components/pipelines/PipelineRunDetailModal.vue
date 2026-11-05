@@ -31,6 +31,12 @@ interface NodeExecution {
   error: string | null
   output: unknown
 }
+interface RollbackFailure {
+  nodeId: string
+  rollbackPipelineId: string
+  error: string
+  failedAt: string
+}
 interface RunDetail {
   id: string
   pipelineId: string
@@ -45,6 +51,7 @@ interface RunDetail {
   completedNodeIds: string[]
   nodes: NodeExecution[]
   steps: RunStep[]
+  rollbackFailures: RollbackFailure[]
 }
 /** One step-oriented progress row: an authored Status milestone or a human wait. */
 interface RunStep {
@@ -79,6 +86,7 @@ const RUN_DETAIL_QUERY = gql`
         awaitingNodes { nodeId type name runId }
         steps { nodeId title kind status depth item channelType }
         nodes { nodeId status startedAt finishedAt durationMs port error output }
+        rollbackFailures { nodeId rollbackPipelineId error failedAt }
       }
     }
   }
@@ -251,6 +259,26 @@ async function cancelRun() {
     toast.error('Failed to cancel the run')
   } finally {
     cancelling.value = false
+  }
+}
+// ── Rollback retry — runs failed rollbacks again under the operator's own authority ──
+const retryingRollbacks = ref(false)
+async function retryRollbacks() {
+  retryingRollbacks.value = true
+  try {
+    const res = await gqlMutation<{ pipelines: { retryRollbacks: RollbackFailure[] } }>(gql`
+      mutation RetryRunRollbacks($runId: UUID!) {
+        pipelines { retryRollbacks(runId: $runId) { nodeId rollbackPipelineId error failedAt } }
+      }
+    `, { runId: props.runId })
+    const remaining = res?.pipelines?.retryRollbacks.length ?? 0
+    if (remaining === 0) toast.success('Rollbacks completed')
+    else toast.error(`${remaining} ${remaining === 1 ? 'rollback' : 'rollbacks'} failed again`)
+    await refresh(true)
+  } catch {
+    toast.error('Failed to retry the rollbacks')
+  } finally {
+    retryingRollbacks.value = false
   }
 }
 const isLive = computed(() => run.value?.status === 'RUNNING' || run.value?.status === 'SUSPENDED')
@@ -487,6 +515,20 @@ function statusColor(status: string): string {
       >
         {{ run.error }}
       </p>
+      <div v-if="run.rollbackFailures.length" class="rollback-failures" role="alert">
+        <div class="rollback-failures-header">
+          <p>Rollback did not finish for {{ run.rollbackFailures.length === 1 ? 'one node' : `${run.rollbackFailures.length} nodes` }}. Changes made by this run may still be in place.</p>
+          <Button
+            size="sm"
+            icon="refresh"
+            :disabled="retryingRollbacks"
+            title="Run the failed rollbacks again using your permissions"
+            @click="retryRollbacks">Retry rollback</Button>
+        </div>
+        <ul>
+          <li v-for="failure in run.rollbackFailures" :key="failure.nodeId"><code>{{ failure.nodeId }}</code> {{ failure.error }}</li>
+        </ul>
+      </div>
       <div v-if="run.error && run.status === 'SUSPENDED'" class="failure-help">
         The latest attempt failed. This run is waiting while its backing work retries.
       </div>
@@ -861,6 +903,10 @@ function statusColor(status: string): string {
 .failure-help { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--fg-2); }
 .failure-help p { flex-basis: 100%; margin: 0; line-height: 1.6; }
 .failure-help a { text-decoration: underline; }
+.rollback-failures { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--fg-2); }
+.rollback-failures-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.rollback-failures p { margin: 0; line-height: 1.6; }
+.rollback-failures ul { margin: 0; padding-left: 16px; }
 
 /* A parked run waiting on a person — the amber card carries the decision controls. */
 .awaiting-card {

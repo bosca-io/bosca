@@ -19,11 +19,15 @@ interface PipelineGitSyncService : Service {
         authorEmail: String,
     ): PipelineSyncResult
 
-    /** Parse the pipelines directory at [commitSha], validate, and upsert the DB rows. */
-    suspend fun pullFromGit(repositoryId: UUID, commitSha: String): PipelineSyncResult
+    /**
+     * Parse the pipelines directory at [commitSha], validate, and upsert the DB rows. Changing what
+     * runs under the pipelines service account requires [pusherPrincipalId] to be an administrator;
+     * an unknown pusher is not one, and a rejected tree upserts nothing.
+     */
+    suspend fun pullFromGit(repositoryId: UUID, commitSha: String, pusherPrincipalId: UUID? = null): PipelineSyncResult
 
     /** Webhook entry — calls [pullFromGit] if any file under the pipelines directory changed. */
-    suspend fun onPushEvent(repositoryId: UUID, beforeSha: String, afterSha: String)
+    suspend fun onPushEvent(repositoryId: UUID, beforeSha: String, afterSha: String, pusherPrincipalId: UUID? = null)
 
     /** Bulk export: link each [PipelineBackfillEntry] to its target path and push it. */
     suspend fun backfill(

@@ -7,12 +7,16 @@ import bosca.scripting.configuration.JobQueueNames
 import bosca.scripting.context.DefaultScriptContext
 import bosca.scripting.context.ToolScriptContext
 import bosca.scripting.context.TriggerContext
-import bosca.scripting.engine.ScriptingSecurityConfiguration
 import bosca.scripting.service.ScriptExecutionService
 import bosca.scripting.service.ScriptService
 import bosca.security.service.ImpersonatedAuthenticationContext
 import bosca.security.service.SecurityService
-import bosca.security.service.impersonate
+import bosca.security.service.ApiTokenService
+import bosca.security.service.AuthenticationContext
+import bosca.security.service.ScopedAuthenticatedPrincipal
+import bosca.security.model.ApiTokenCredentialAttributes
+import bosca.serialization.OffsetDateTime
+import bosca.serialization.UUID
 import bosca.sharedqueue.jobs.AbstractJobExecutor
 import bosca.sharedqueue.jobs.DelayException
 import bosca.sharedqueue.jobs.job
@@ -26,6 +30,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.decodeFromJsonElement
 import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.ExperimentalUuidApi
@@ -51,7 +56,7 @@ class RemoteScriptExecutionJobExecutor(
     private val securityService: SecurityService,
     private val objectStorageService: ObjectStorageService,
     private val json: Json,
-    private val config: ScriptingSecurityConfiguration
+    private val tokens: ApiTokenService,
 ) : AbstractJobExecutor<RemoteScriptExecutionJob>(RemoteScriptExecutionJob.serializer()) {
 
     private val log = LoggerFactory.getLogger(RemoteScriptExecutionJobExecutor::class.java)
@@ -64,11 +69,8 @@ class RemoteScriptExecutionJobExecutor(
         val jobDef = getJobDefinition()
         val script = scriptService.get(jobDef.scriptId)
             ?: error("Script not found: ${jobDef.scriptId}")
-
-        if (!script.enabled) {
-            log.info("Script {} is disabled, skipping remote execution", script.key)
-            return
-        }
+        check(script.version == jobDef.scriptVersion) { "Script changed after execution was requested" }
+        check(script.enabled && script.deletedAt == null) { "Script is disabled or deleted" }
 
         val authentication = resolveAuthentication(jobDef)
         val supervisorJob = SupervisorJob(currentCoroutineContext()[CoroutineJob])
@@ -113,13 +115,36 @@ class RemoteScriptExecutionJobExecutor(
         }
     }
 
-    private suspend fun resolveAuthentication(jobDef: RemoteScriptExecutionJob): ImpersonatedAuthenticationContext {
+    private suspend fun resolveAuthentication(jobDef: RemoteScriptExecutionJob): AuthenticationContext {
         if (jobDef.principalId != null) {
             val principal = securityService.getPrincipalById(jobDef.principalId)
                 ?: error("Principal not found: ${jobDef.principalId}")
-            val groups = securityService.getPrincipalGroups(jobDef.principalId)
-            return ImpersonatedAuthenticationContext(principal, groups)
+            check(principal.deletedAt == null) { "Script caller was deleted" }
+            val ceiling = checkNotNull(jobDef.groupIds) { "Script caller group restrictions are missing" }.toSet()
+            val groups = securityService.getPrincipalGroups(jobDef.principalId).filter { it.id in ceiling }
+            check(groups.map { it.id }.containsAll(ceiling)) { "Script caller group membership changed" }
+            val credentialId = jobDef.credentialId
+            if (credentialId == null) {
+                check(jobDef.scopes == null) { "Scoped script authority requires a credential" }
+                return ImpersonatedAuthenticationContext(principal, groups)
+            }
+            // A session-bound credential is retired with its session; the caller and captured limits above still apply.
+            if (!jobDef.sessionBoundCredential) {
+                val credential = checkNotNull(tokens.getTokenById(credentialId)) { "Script caller credential no longer exists" }
+                check(credential.principal == principal.id) { "Script caller credential belongs to another principal" }
+                val attributes = json.decodeFromJsonElement(ApiTokenCredentialAttributes.serializer(), credential.attributesJson)
+                check(attributes.revokedAt == null && attributes.expiresAt?.let { OffsetDateTime.parse(it).isAfter(OffsetDateTime.now()) } != false) {
+                    "Script caller credential was revoked or expired"
+                }
+                val allowedGroups = attributes.allowedGroups?.map(UUID::parse)?.toSet()
+                check(allowedGroups == null || allowedGroups.containsAll(ceiling)) { "Script caller credential groups changed" }
+                val currentScopes = attributes.scopes
+                check(currentScopes == null || jobDef.scopes?.all { it in currentScopes } == true) { "Script caller credential scopes changed" }
+            }
+            val scoped = ScopedAuthenticatedPrincipal(principal, groups, jobDef.scopes, ceiling, credentialId, jobDef.sessionBoundCredential)
+            return object : AuthenticationContext(null, null) { override fun principal() = scoped }
         }
-        return securityService.impersonate(config.triggerServiceAccount)
+        check(jobDef.credentialId == null && jobDef.scopes == null && jobDef.groupIds == null) { "Script authority requires a caller" }
+        return AuthenticationContext(null, null)
     }
 }

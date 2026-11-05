@@ -7,6 +7,7 @@ import bosca.content.find.FindQueryInput
 import bosca.content.metadata.model.Bible
 import bosca.content.metadata.model.BibleInput
 import bosca.content.metadata.model.DocumentInput
+import bosca.content.metadata.model.Document
 import bosca.content.metadata.model.Guide
 import bosca.content.metadata.model.GuideStep
 import bosca.content.metadata.model.GuideStepModule
@@ -41,6 +42,9 @@ import kotlinx.serialization.json.JsonElement
  * state management.
  */
 interface MetadataService : PermissionService<Metadata, UUID>, TransitioningService<Metadata> {
+
+    /** Soft-deletes a document only if its metadata and draft still match the supplied snapshots. */
+    suspend fun markDocumentDeleted(metadata: Metadata, expectedDocument: Document)
 
     suspend fun removeFromCache(metadata: Metadata)
 
@@ -331,6 +335,17 @@ interface MetadataService : PermissionService<Metadata, UUID>, TransitioningServ
         metadata: Metadata,
         document: DocumentInput,
         collaborationSync: CollaborationSyncMode = CollaborationSyncMode.NONE,
+    )
+
+    /**
+     * Updates the current document through [setDocument] only if its metadata and draft still match
+     * [metadata] and [expectedDocument]. Preserves the ordinary document and collaboration lifecycle.
+     */
+    suspend fun setDocument(
+        metadata: Metadata,
+        document: DocumentInput,
+        expectedDocument: Document,
+        collaborationSync: CollaborationSyncMode,
     )
 
     /**

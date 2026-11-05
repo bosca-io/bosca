@@ -26,6 +26,8 @@ import bosca.security.model.AuthenticatedPrincipal
 import bosca.security.model.Principal
 import bosca.security.service.ApiTokenScopes
 import bosca.security.service.AuthenticationContext
+import bosca.security.service.GroupEvaluator
+import bosca.security.service.ScopedAuthenticatedPrincipal
 import bosca.serialization.UUID
 import io.mockk.coEvery
 import io.mockk.every
@@ -98,6 +100,42 @@ class SubscriptionControllerTest {
     )
 
     // --- aiChatHistory tests ---
+
+    @Test
+    fun `runtime credentials cannot subscribe to another conversation owned by the same principal`() = runTest {
+        val runtime = ScopedAuthenticatedPrincipal(Principal(id = testPrincipalId), emptyList(),
+            listOf("content:view", "ai:delegate"), emptySet(), 42)
+        every { authContext.principal() } returns runtime
+        coEvery { chatHistoryService.getSession(testSessionId) } returns testSession()
+        every { chatHistoryService.subscribeToMessages(testSessionId) } returns flowOf(mockk())
+        every { chatHistoryService.subscribeToStatuses(testSessionId) } returns flowOf(ChatSessionStatus.STREAMING)
+        every { chatHistoryService.subscribeToProcessing(testSessionId) } returns flowOf(true)
+        val protected = SubscriptionController(pubSubService, GroupEvaluator(mockk()), liveSessionStream)
+
+        for (subscription in listOf(protected.aiChatHistory(authContext, testSessionId),
+            protected.aiChatStatus(authContext, testSessionId), protected.aiChatProcessing(authContext, testSessionId))) {
+            assertFailsWith<bosca.security.service.SecurityException> { subscription.toList() }
+        }
+    }
+
+    @Test
+    fun `conversation scope and browser authentication retain chat subscriptions`() = runTest {
+        coEvery { chatHistoryService.getSession(testSessionId) } returns testSession()
+        every { chatHistoryService.subscribeToMessages(testSessionId) } returns flowOf(mockk())
+        every { chatHistoryService.subscribeToStatuses(testSessionId) } returns flowOf(ChatSessionStatus.STREAMING)
+        every { chatHistoryService.subscribeToProcessing(testSessionId) } returns flowOf(true)
+        val protected = SubscriptionController(pubSubService, GroupEvaluator(mockk()), liveSessionStream)
+        val callers = listOf(testPrincipal(),
+            ScopedAuthenticatedPrincipal(Principal(id = testPrincipalId), emptyList(), listOf("ai:execute"), emptySet(), 43),
+            ScopedAuthenticatedPrincipal(Principal(id = testPrincipalId), emptyList(), null, emptySet(), 44))
+
+        for (caller in callers) {
+            every { authContext.principal() } returns caller
+            assertEquals(1, protected.aiChatHistory(authContext, testSessionId).toList().size)
+            assertEquals(listOf(ChatSessionStatus.STREAMING), protected.aiChatStatus(authContext, testSessionId).toList())
+            assertEquals(listOf(true), protected.aiChatProcessing(authContext, testSessionId).toList())
+        }
+    }
 
     @Test
     fun `aiChatHistory with missing session throws`() = runTest {

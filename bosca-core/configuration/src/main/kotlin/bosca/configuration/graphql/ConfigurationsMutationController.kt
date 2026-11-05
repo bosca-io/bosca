@@ -30,7 +30,7 @@ class ConfigurationsMutationController(
         if (current == null) {
             groupEvaluator.verifyHasSaGroup(authentication)
         } else {
-            permissionEvaluator.verifyAllowed(authentication, current, PermissionAction.EDIT)
+            permissionEvaluator.verifyAllowed(authentication, current, PermissionAction.MANAGE)
         }
         return service.setConfiguration(configuration)
     }
@@ -38,7 +38,7 @@ class ConfigurationsMutationController(
     @Field
     suspend fun deleteConfiguration(authentication: AuthenticationContext, key: String): UUID {
         val current = service.getByKey(key) ?: throw NoSuchElementException()
-        permissionEvaluator.verifyAllowed(authentication, current, PermissionAction.DELETE)
+        permissionEvaluator.verifyAllowed(authentication, current, PermissionAction.MANAGE)
         return service.deleteConfiguration(key)
     }
 }

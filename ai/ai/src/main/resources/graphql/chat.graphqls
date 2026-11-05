@@ -1,5 +1,13 @@
 "A chat session representing a conversation between a user and an AI agent, containing the full message history"
 type ChatSession {
+    "Permitted context sources and handoff limitations, without source bodies or connection credentials."
+    harnessContext: KitContextStatus
+    "Effective harness settings and only the choices the caller may select."
+    harnessSettings: KitHarnessSettings
+    "Current harness lifecycle without extending the idle deadline."
+    harnessState: KitHarnessStatus
+    "Pending native harness permission requests; reading does not extend runtime lifetime."
+    harnessApprovals: JSON!
     "Unique identifier for this chat session"
     id: UUID!
     "The unique identifier of the user (principal) who owns this chat session"
@@ -89,6 +97,22 @@ enum ChatSessionStatus {
 
 "Mutation operations for managing chat sessions"
 type ChatSessionsMutation {
+    "Clear additional WorkOps and Git selections, including unavailable sources."
+    clearHarnessSources(sessionId: UUID!): Boolean!
+    "Select a permitted source for the next turn. Does not start or extend a runtime."
+    addHarnessSource(sessionId: UUID!, source: KitContextSelection!): Boolean!
+    "Remove an explicit source selection from subsequent turns."
+    removeHarnessSource(sessionId: UUID!, source: KitContextSelection!): Boolean!
+    "Resume an archived or repaired harness and its queued messages without sending another message."
+    activateHarness(sessionId: UUID!): Boolean!
+    "Archive an idle harness; the next activation resolves current integration credentials."
+    archiveHarness(sessionId: UUID!): Boolean!
+    "Choose an authorized deployment profile for subsequent turns; null restores managed defaults."
+    setHarnessSettings(sessionId: UUID!, choice: KitHarnessChoice): Boolean!
+    "Request cancellation of current and queued work; messages accepted afterward remain queued."
+    cancel(sessionId: UUID!): Boolean!
+    "Answer a pending native harness permission request."
+    decideHarnessPermission(sessionId: UUID!, approvalId: UUID!, optionId: String!): Boolean!
     "Create a new chat session with a specified AI agent"
     create(
         "The chat session definition to create"
@@ -143,6 +167,64 @@ type ChatSessionsMutation {
     ): Boolean!
 }
 
+input KitContextSelection {
+    kind: KitContextSourceKind!
+    id: UUID!
+    ref: String
+    path: String
+}
+
+"Public lifecycle of the conversation's harness."
+type KitHarnessStatus {
+    state: String!
+    cancellationRequested: Boolean!
+    failure: String
+}
+
+"Public effective settings; infrastructure and credentials remain private."
+type KitHarnessSettings {
+    policyVersion: String!
+    effectiveProfile: String!
+    source: String!
+    canOverride: Boolean!
+    choices: [String!]!
+    requestedProfile: String
+    notice: String
+    mcpOptions: [KitMcpOption!]!
+    mcpServers: [String!]!
+    requestedMcpServers: [String!]
+    mcpNotices: [String!]!
+    capabilityVersion: String
+    model: String
+    reasoning: String
+    modelSource: String!
+    reasoningSource: String!
+    requestedModel: String
+    requestedReasoning: String
+    models: [KitModelOption!]!
+    reasoningOptions: [KitModelOption!]!
+}
+
+type KitMcpOption {
+    key: String!
+    name: String!
+    required: Boolean!
+}
+
+type KitModelOption {
+    value: String!
+    name: String!
+}
+
+input KitHarnessChoice {
+    profile: String!
+    policyVersion: String!
+    mcpServers: [String!]
+    model: String
+    reasoning: String
+    capabilityVersion: String
+}
+
 extend type Query {
     "Access query operations for chat sessions belonging to the authenticated user"
     chatSessions: ChatSessions!
@@ -169,4 +251,21 @@ extend type Subscription {
         "The unique identifier of the chat session to monitor"
         sessionId: UUID!
     ): Boolean!
+}
+
+
+type KitContextStatus {
+    selectionCount: Int!
+    sources: [KitContextReference!]!
+    integrations: [String!]!
+    notices: [String!]!
+}
+
+type KitContextReference {
+    kind: String!
+    id: String!
+    title: String!
+    ref: String
+    path: String
+    selected: Boolean!
 }

@@ -45,6 +45,16 @@ class CounterMetricsServiceImplTest {
     }
 
     @Test
+    fun `kit lifecycle measurements use existing minute counter windows`() = runTest {
+        val service = service(nowSeconds = 6000)
+        assertEquals(AnalyticsCounterType.COUNTER, service.counter("kit.runtime.turn.success.milliseconds")?.type)
+        coEvery { counter.get(listOf("kit.runtime.turn.success.milliseconds.99", "kit.runtime.turn.success.milliseconds.100")) } returns
+            mapOf("kit.runtime.turn.success.milliseconds.99" to 120L, "kit.runtime.turn.success.milliseconds.100" to 30L)
+        assertEquals(150L, service.value("kit.runtime.turn.success.milliseconds", 2))
+        assertEquals(listOf(120L, 30L), service.values("kit.runtime.turn.success.milliseconds", 2).map { it.value })
+    }
+
+    @Test
     fun `counter returns null for an unknown family`() = runTest {
         assertNull(service(nowSeconds = 0).counter("widgets.foo"))
     }

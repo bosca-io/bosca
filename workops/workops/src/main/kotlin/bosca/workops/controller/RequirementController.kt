@@ -33,11 +33,20 @@ class RequirementTypeFieldController(
     private val taskPermissionEvaluator: bosca.workops.service.TaskPermissionEvaluator,
     private val profileService: ProfileService,
     private val profilePermissions: ProfilePermissionEvaluator,
+    private val metadataService: bosca.content.metadata.service.MetadataService,
+    private val metadataPermissions: bosca.content.security.MetadataPermissionEvaluator,
+    private val permissions: RequirementPermissionEvaluator,
 ) : GraphQLController<Requirement> {
 
     @Field fun id(r: Requirement) = r.id
     @Field fun key(r: Requirement) = r.key
     @Field fun metadataId(r: Requirement) = r.metadataId
+    @Field
+    suspend fun metadata(authentication: AuthenticationContext?, r: Requirement): bosca.content.metadata.model.Metadata? {
+        if (r.deletedAt != null || !permissions.isAllowed(authentication, r, PermissionAction.VIEW)) return null
+        val item = metadataService.getById(r.metadataId) ?: return null
+        return item.takeIf { !it.deleted && metadataPermissions.isAllowed(authentication, it, PermissionAction.VIEW) }
+    }
     @Field fun parentType(r: Requirement) = r.parentType
     @Field fun parentId(r: Requirement) = r.parentId
     @Field fun assigneeProfileId(r: Requirement) = r.assigneeProfileId

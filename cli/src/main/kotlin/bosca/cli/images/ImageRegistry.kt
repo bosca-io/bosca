@@ -13,6 +13,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.Base64
+import java.security.MessageDigest
 
 /** Reads published tags through the Docker Registry HTTP API, including GHCR token challenges. */
 internal class ImageRegistry(private val username: String = "", private val password: String = "") {
@@ -21,6 +22,69 @@ internal class ImageRegistry(private val username: String = "", private val pass
 
     @Serializable private data class Tags(val tags: List<String>? = null)
     @Serializable private data class Token(val token: String = "", @SerialName("access_token") val accessToken: String = "")
+    @Serializable private data class Platform(val os: String = "", val architecture: String = "")
+    @Serializable private data class Descriptor(val digest: String, val platform: Platform? = null)
+    @Serializable private data class Manifest(val config: Descriptor? = null, val manifests: List<Descriptor> = emptyList())
+    @Serializable private data class ImageConfig(val os: String, val architecture: String, val config: ImageLabels = ImageLabels())
+    @Serializable private data class ImageLabels(@SerialName("Labels") val labels: Map<String, String>? = null)
+
+    /** Resolves a tag or digest to one immutable platform image and its configuration labels. */
+    suspend fun inspect(reference: String, platform: String = "linux/amd64"): ImageInspection = withContext(Dispatchers.IO) {
+        val uri = URI(if (reference.contains("://")) reference else "https://$reference")
+        require(uri.scheme in setOf("http", "https") && uri.host != null && uri.userInfo == null && uri.query == null && uri.fragment == null) { "Invalid image reference" }
+        val path = uri.path.trim('/')
+        val version = if ('@' in path) path.substringAfterLast('@') else path.substringAfterLast('/').substringAfter(':', "latest")
+        val name = if ('@' in path) path.substringBeforeLast('@') else if (':' in path.substringAfterLast('/')) path.substringBeforeLast(':') else path
+        require(name.matches(Regex("[a-z0-9]+(?:[._/-][a-z0-9]+)*")) && version.matches(Regex("[A-Za-z0-9_.:-]+"))) { "Invalid image reference" }
+        val endpoint = URI("${uri.scheme}://${uri.rawAuthority}/v2/$name/")
+        var authorization: String? = null
+        fun read(target: URI, accept: String): HttpResponse<String> {
+            var response = get(target, authorization, accept)
+            if (response.statusCode() == 401) {
+                val challenge = response.headers().firstValue("WWW-Authenticate").orElse("")
+                authorization = if (challenge.startsWith("Basic ", true)) {
+                    require(username.isNotBlank() && password.isNotBlank()) { "Registry requires a username and password" }; basic()
+                } else bearer(challenge, endpoint, name)
+                response = get(target, authorization, accept)
+            }
+            var redirects = 0
+            var current = target
+            while (response.statusCode() in setOf(301, 302, 303, 307, 308)) {
+                require(++redirects <= 5) { "Too many registry redirects" }
+                current = current.resolve(response.headers().firstValue("Location").orElseThrow())
+                require(current.scheme == "https" || (endpoint.scheme == "http" && current.scheme == "http" && current.rawAuthority == endpoint.rawAuthority)) { "Invalid registry redirect" }
+                response = get(current, authorization.takeIf { current.rawAuthority == endpoint.rawAuthority && current.scheme == endpoint.scheme }, accept)
+            }
+            require(response.statusCode() == 200) { "Could not inspect image $name (HTTP ${response.statusCode()})" }
+            return response
+        }
+        fun digest(body: String) = "sha256:" + MessageDigest.getInstance("SHA-256").digest(body.toByteArray(Charsets.UTF_8)).toHexString()
+        val accept = "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"
+        val response = read(endpoint.resolve("manifests/$version"), accept)
+        var body = response.body()
+        var identity = digest(body)
+        if ('@' in path) require(identity == version) { "Image manifest differs from its requested digest" }
+        var manifest = json.decodeFromString(Manifest.serializer(), body)
+        var selectedPlatform: Platform? = null
+        if (manifest.manifests.isNotEmpty()) {
+            val selected = manifest.manifests.singleOrNull { it.platform?.let { p -> "${p.os}/${p.architecture}" } == platform }
+                ?: error("Image has no unique $platform manifest")
+            selectedPlatform = selected.platform
+            require(selected.digest.matches(Regex("sha256:[a-f0-9]{64}"))) { "Invalid image manifest digest" }
+            body = read(endpoint.resolve("manifests/${selected.digest}"), accept).body()
+            identity = digest(body)
+            require(identity == selected.digest) { "Platform image manifest checksum mismatch" }
+            manifest = json.decodeFromString(Manifest.serializer(), body)
+        }
+        val configuration = requireNotNull(manifest.config) { "Image manifest has no configuration" }
+        require(configuration.digest.matches(Regex("sha256:[a-f0-9]{64}"))) { "Invalid image configuration digest" }
+        val config = read(endpoint.resolve("blobs/${configuration.digest}"), "application/json").body()
+        require(digest(config) == configuration.digest) { "Image configuration checksum mismatch" }
+        val installed = json.decodeFromString(ImageConfig.serializer(), config)
+        require(installed.os.isNotBlank() && installed.architecture.isNotBlank() &&
+            (selectedPlatform == null || selectedPlatform == Platform(installed.os, installed.architecture))) { "Image platform differs from its manifest" }
+        ImageInspection("${uri.rawAuthority}/$name@$identity", configuration.digest, installed.config.labels.orEmpty(), installed.os, installed.architecture)
+    }
 
     /** Returns the highest stable numeric release tag actually published for [repository]. */
     suspend fun latest(repository: String): String = withContext(Dispatchers.IO) {
@@ -70,8 +134,8 @@ internal class ImageRegistry(private val username: String = "", private val pass
         latestStableTag(tags) ?: error("No stable release tags published for $name")
     }
 
-    private fun get(uri: URI, authorization: String?): HttpResponse<String> {
-        val request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30)).header("Accept", "application/json")
+    private fun get(uri: URI, authorization: String?, accept: String = "application/json"): HttpResponse<String> {
+        val request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30)).header("Accept", accept)
         if (authorization != null) request.header("Authorization", authorization)
         return client.send(request.GET().build(), HttpResponse.BodyHandlers.ofString())
     }

@@ -6,6 +6,8 @@ import bosca.analytics.configuration.AnalyticsQueryCacheConfiguration
 import bosca.analytics.model.AnalyticsQueryExecutionParameterInput
 import bosca.analytics.model.AnalyticsQueryInput
 import bosca.analytics.model.AnalyticsQueryParameterInput
+import bosca.analytics.model.AnalyticsQueryEvidence
+import bosca.analytics.model.AnalyticsQueryBinding
 import bosca.analytics.model.AnalyticsQueryResponse
 import bosca.analytics.model.QueryParameterType
 import bosca.analytics.repository.QueryCacheEntryRepositoryImpl
@@ -195,11 +197,17 @@ class AnalyticsQueryServiceEndToEndTest {
                 )
             }
             val firstParameters = listOf(AnalyticsQueryExecutionParameterInput("value", JsonPrimitive(1)))
-            val response = AnalyticsQueryResponse(listOf(JsonPrimitive(1)))
+            val evidence = AnalyticsQueryEvidence(created.id, "SELECT ?", listOf(
+                AnalyticsQueryBinding(1, "value", QueryParameterType.INTEGER, JsonPrimitive(1)),
+            ), java.time.OffsetDateTime.parse("2026-10-23T12:00:00Z"), 17)
+            val response = AnalyticsQueryResponse(listOf(JsonPrimitive(1)), evidence = evidence)
 
             withRequest { resultCache.store(created, firstParameters, response, callerAccess = true) }
             val firstEntry = withRequest { cacheEntries.getEntries(created.id).single() }
-            assertEquals(response.records, withRequest { resultCache.get(created, firstParameters) }?.records)
+            val cachedResponse = withRequest { resultCache.get(created, firstParameters) }
+            assertEquals(response.records, cachedResponse?.records)
+            // The cache stores rows only; evidence describes a live execution.
+            assertNull(cachedResponse?.evidence)
 
             withRequest {
                 connection().useStatement(
@@ -214,6 +222,7 @@ class AnalyticsQueryServiceEndToEndTest {
                 }
             }
             val staleResponse = withRequest { resultCache.get(created, firstParameters) }
+            assertNull(staleResponse?.evidence)
             assertNotNull(
                 staleResponse,
                 "the last known good result must remain available until refresh succeeds",

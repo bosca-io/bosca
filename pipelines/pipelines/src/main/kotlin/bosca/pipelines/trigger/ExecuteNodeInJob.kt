@@ -7,7 +7,6 @@ import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.pipelines.PipelineContext
 import bosca.pipelines.configuration.PipelinesJobQueueNames
-import bosca.pipelines.configuration.PipelinesRuntimeConfiguration
 import bosca.pipelines.node.NodeInputs
 import bosca.pipelines.node.NodeResult
 import bosca.pipelines.node.PipelineNodeSerializers
@@ -17,8 +16,6 @@ import bosca.pipelines.service.PipelineRunService
 import bosca.pipelines.service.PipelineService
 import bosca.queue.annotations.IJobDefinition
 import bosca.queue.annotations.JobDefinition
-import bosca.security.service.SecurityService
-import bosca.security.service.impersonate
 import bosca.serialization.UUID
 import bosca.sharedqueue.jobs.AbstractJobExecutor
 import kotlinx.coroutines.CancellationException
@@ -28,6 +25,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.modules.SerializersModule
+import org.slf4j.LoggerFactory
 import kotlin.uuid.ExperimentalUuidApi
 
 /**
@@ -58,9 +56,9 @@ class ExecuteNodeInJobExecutor(
     private val runService: PipelineRunService,
     private val pipelineService: PipelineService,
     private val resultStore: PipelineRunResultStore,
-    private val securityService: SecurityService,
-    private val config: PipelinesRuntimeConfiguration
 ) : AbstractJobExecutor<ExecuteNodeInJob>(ExecuteNodeInJob.serializer()) {
+
+    private val log = LoggerFactory.getLogger(ExecuteNodeInJobExecutor::class.java)
 
     @Volatile
     private var cachedJson: Json? = null
@@ -86,22 +84,24 @@ class ExecuteNodeInJobExecutor(
         val jobDef = getJobDefinition()
         val run = runService.get(jobDef.runId)
             ?: error("Run ${jobDef.runId} not found for suspended node ${jobDef.nodeId}")
+        if (run.status.isTerminal) {
+            // A redelivered backing job for a run that already ended has no resume to feed.
+            log.info("Skipping suspended node {} of run {}: the run is already {}", jobDef.nodeId, jobDef.runId, run.status)
+            return
+        }
         val node = pipelineService.decodeGraph(run.graphSnapshot).nodes.firstOrNull { it.id == jobDef.nodeId }
             ?: error("Node ${jobDef.nodeId} not found in run ${jobDef.runId}")
         val inputs = NodeInputs(jobDef.inputs.mapValues { PipelineValue.ofJson(it.value) })
 
-        // A non-durable context (runId = null) makes the node's own run() route straight to execute():
-        // the work runs HERE, in this durable child job, and never re-suspends. The backing work runs
-        // under the run's originating principal (an on-demand run's caller, captured on the run row) so
-        // the caller's security context traverses the whole run, falling back to the service account for
-        // a triggered/scheduled run — matching how the run's drive and resumes are authenticated.
-        val context = PipelineContext(
-            run.principalId?.let { securityService.impersonate(it) }
-                ?: securityService.impersonate(config.serviceAccount),
-            graphJson(),
-            inputCreated = run.createdAt,
-        )
         val value = try {
+            // A non-durable context (runId = null) makes the node's own run() route straight to execute():
+            // the work runs HERE, in this durable child job, and never re-suspends. The backing work runs
+            // under the run's captured and revalidated authority, matching the run's drive and resumes.
+            val context = PipelineContext(
+                runService.authentication(run),
+                graphJson(),
+                inputCreated = run.createdAt,
+            )
             (node.run(context, inputs) as? NodeResult.Output)?.value
         } catch (e: CancellationException) {
             throw e

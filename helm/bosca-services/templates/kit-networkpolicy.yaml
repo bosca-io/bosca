@@ -1,0 +1,113 @@
+{{- /*
+Kit network isolation. Kit runtime Pods (created by the Kubernetes controller
+from the Kit JobProfile) accept connections only from the Runner and connect
+only to cluster DNS, bosca-server and the Kit egress proxy. The proxy accepts
+connections only from Kit runtimes and connects to cluster DNS, bosca-server,
+the Pods behind the public Bosca routes, and public IPv4 addresses.
+
+These objects take effect only on clusters whose network plugin enforces
+NetworkPolicy.
+*/ -}}
+{{- if include "bosca-services.kitEgressEnabled" . -}}
+{{- $profileLabel := include "bosca-services.kitProfileLabel" . -}}
+{{- $runtimeLabels := dict "app.kubernetes.io/managed-by" "bosca-kubernetes-jobs" "kubernetes.bosca.io/job-profile" $profileLabel -}}
+{{- $runner := index .Subcharts "bosca-runner" -}}
+{{- $server := index .Subcharts "bosca-server" -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bosca-common.fullname" (dict "Chart" (dict "Name" "kit-runtime") "Values" dict "Release" .Release) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bosca-common.labels" (dict "Chart" .Chart "Values" (dict "nameOverride" "kit-runtime") "Release" .Release) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $runtimeLabels | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- with $runner }}
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "bosca-common.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- end }}
+  egress:
+    {{- include "bosca-services.kitDnsEgress" . | nindent 4 }}
+    {{- with $server }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "bosca-common.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- end }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "bosca-services.kitEgressSelectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 3128
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "bosca-common.kitEgressName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bosca-services.kitEgressLabels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "bosca-services.kitEgressSelectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- toYaml $runtimeLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 3128
+  egress:
+    {{- include "bosca-services.kitDnsEgress" . | nindent 4 }}
+    {{- with $server }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "bosca-common.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- end }}
+    {{- range include "bosca-services.kitEgressRoutedPods" . | fromJsonArray }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- toYaml .labels | nindent 14 }}
+      ports:
+        {{- range .ports }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+    {{- end }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 100.64.0.0/10
+              - 127.0.0.0/8
+{{- end }}

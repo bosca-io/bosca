@@ -36,6 +36,13 @@ kotlin {
 
 dependencies {
     implementation(project(":bosca-core:core"))
+    implementation(project(":bosca-core:security"))
+    implementation(project(":bosca-core:core-security"))
+    implementation(project(":ai:core-ai")) {
+        // Use the CLI's pinned logging dependency for native builds.
+        exclude(group = "io.github.oshai", module = "kotlin-logging")
+        exclude(group = "io.github.oshai", module = "kotlin-logging-jvm")
+    }
 
     // BML — .bml project compile
     implementation(project(":bml:bml-compiler"))
@@ -43,6 +50,8 @@ dependencies {
     // Bosca-native typed GraphQL client runtime. Generated operations (see the generateBoscaGraphqlClient
     // task below) compile against BoscaOperation / GraphQLJson / the transports from this module.
     implementation(project(":bosca-graphql:bosca-graphql-client"))
+    implementation(project(":bosca-graphql:bosca-graphql"))
+    testImplementation(project(":bosca-graphql:bosca-graphql-server"))
 
     // Shared KMP auth library (login/refresh/exchange/sign-out via BoscaAuth)
     implementation(project(":bosca-kmp:auth-shared"))
@@ -51,6 +60,9 @@ dependencies {
     // substitutions in 8.x (Target_KLoggerFactory$Companion targets
     // a class in the wrong package)
     implementation(libs.mcp.sdk) {
+        exclude(group = "io.github.oshai", module = "kotlin-logging")
+    }
+    implementation(libs.mcp.client) {
         exclude(group = "io.github.oshai", module = "kotlin-logging")
     }
     implementation(libs.oshai.logging)
@@ -68,6 +80,9 @@ dependencies {
     implementation(libs.ktor.server.auth)
     implementation(libs.ktor.server.netty)
     implementation(libs.ktor.server.sse)
+    implementation(libs.ktor.server.websockets)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.commons.compress)
 
     // CI/CD pipeline YAML parsing
     implementation(libs.snakeyaml)
@@ -86,11 +101,22 @@ dependencies {
 
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
-    testImplementation(project(":bosca-core:security"))
     testImplementation(libs.testcontainers)
     testImplementation(platform(libs.okhttp.bom))
     testImplementation(libs.okhttp.mockwebserver) // WebSocket loopback for the subscription transport test
 }
+
+tasks.test { exclude("**/SwarmRuntimeEngineIntegrationTest.class") }
+tasks.register<Test>("swarmRuntimeTest") {
+    group = "verification"
+    description = "Runs manager/worker Swarm acceptance on isolated Docker daemons"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    include("**/SwarmRuntimeEngineIntegrationTest.class")
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("Docker daemon and cluster state are external") { true }
+}
+kover { currentProject { instrumentation { disabledForTestTasks.add("swarmRuntimeTest") } } }
 
 tasks.test {
     inputs.file("install.sh").withPathSensitivity(PathSensitivity.RELATIVE)

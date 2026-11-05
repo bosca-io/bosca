@@ -5,6 +5,15 @@ import bosca.graphql.annotations.Schemas
 
 @Schemas
 interface SchemaRegistrar {
+    /** Context kinds shared by conversation selection and managed delegation. */
+    @Schema("kit_context.graphqls")
+    val kitContext: String
+
+    @Schema("delegations.graphqls")
+    val delegations: String
+
+    @Schema("memories.graphqls")
+    val memories: String
 
     @Schema("agents.graphqls")
     val agents: String

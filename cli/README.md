@@ -159,12 +159,112 @@ Terminal `render` commands and `bosca analytics sample` use Tamboui widgets
 rendered into an in-memory terminal buffer. The resulting deterministic text
 works the same way in interactive shells, redirected output, and agent sessions.
 
+Saved-query execution includes cache freshness and, with query VIEW access, the
+prepared SQL, actual bound parameters, execution time and duration. Those values
+come from the execution that produced the rows, including on cache hits. Relative
+dates are resolved once for that execution. Execute-only callers retain access to
+rows without receiving the query definition or its default parameter values.
+
+### Warehouse investigations through MCP
+
+`analytics_sql` discovers `catalogs`, `schemas`, `tables`, and table columns with
+`describe`, then runs a single read-only query with `execute`. Discover actual names
+before composing SQL. Lists use offset pagination; list and result limits default
+to 100 and accept 1–1000. SQL execution returns exact executed SQL, column types,
+records, execution time, duration, and whether rows were truncated. These uncached
+results are evidence for that execution; their MCP resource URIs are not saved queries.
+
+The caller must be an administrator or analytics manager. Scoped credentials also
+need `analytics:sql`; permission to execute a saved query does not grant warehouse
+access. The server uses its configured `trino-readonly` connection and Trino's parser
+to reject writes, multiple statements, inline functions, and session overrides.
+The database credential must have read-only access to the catalogs it exposes.
+
+For an inline chart, `execute` accepts `visualizationType` (`NUMBER`, `BAR`, `LINE`,
+`PIE`, or `TABLE`) and column mappings in `configuration` (`x`, `y`, `label`, `value`,
+`columns`). Studio renders those returned rows with the SQL and timing. Use the
+existing `analytics_query`, `analytics_visualization`, and `analytics_dashboard`
+tools to save artifacts when requested. Those actions retain their own permissions.
+User/session/engagement questions should use the standard saved metric queries in
+the MCP server instructions; ad-hoc queries must preserve those definitions.
+
+### Documents through MCP
+
+`content_metadata action=create` accepts `name` and inline `documentContent` in the
+Bosca Content wrapper: `{ "document": { "type": "doc", "content": [...] } }`.
+The title defaults to `name`, and document content defaults the metadata type to
+`bosca/v-document`. An explicit content type is preserved. Supply
+`parentCollectionId`, `languageTag`, `templateId`, and `templateVersion` when needed.
+The existing add mutation saves the metadata and typed document together; creation
+does not mark it ready or publish it. A title without a body creates an empty document.
+
+Use `get_document` to read the saved body and template. `set_content` accepts exactly
+one body format; use `documentContent` for a structured edit or `markdownContent`
+for server-side conversion into the same document model. Body edits preserve the
+template binding and use the existing collaboration reset behavior. Raw text,
+opaque JSON, and file uploads use `set_content` on the saved non-document item.
+
+Successful document operations return the saved content link. If a visibility
+setting fails after creation, the error retains that ID and link; read the saved
+item before retrying its settings. Do not repeat an uncertain creation request.
+
+### Pipelines through MCP
+
+`bosca_pipeline` exposes reusable Bosca pipelines through `list`, `get`, `catalog`,
+`validate`, `save`, `dry_run`, `run`, and `run_status`. Discovery supports search and
+bounded offset pagination. The catalog supplies the registered node keys, input and
+output slots, settings, shapes and value types used by Studio.
+
+Read before editing and pass `expectedVersion`. `pipeline` is a definition patch:
+omitted fields retain their values, and null clears optional fields. Save validates
+through the engine and assigns deterministic editor positions. `preview=true`
+returns that definition without saving it. New pipelines must be inactive.
+Activating triggers, API/public access or a schedule on an existing pipeline
+requires explicit user authorization and `confirmedActivation=true`.
+
+Use `dry_run` with a sample JSON `payload` to inspect outputs and proposed actions.
+Real `run` requires authorization for that exact pipeline and payload plus
+`confirmed=true`. These flags record the caller's assertion; they are not an
+independent approval policy. Runs execute as durable jobs under the caller's
+captured authority. Poll the returned `runId` with `run_status`; RUNNING and
+SUSPENDED are unfinished. Polling includes final output, errors, waits and the
+node timeline. Do not automatically retry an uncertain execution.
+
+Administrator inspection and authoring remain administrator-only. Scoped clients
+must grant `pipelines:view` for inspection/validation and `pipelines:edit` for saves.
+Private execution requires `pipelines:execute` and the existing EXECUTE grant or
+administrator/service-account authority; action nodes also require their own
+domain permissions. Public pipelines retain their existing open execution rule.
+Browser sessions keep their ordinary group checks. Broad security scopes are not
+required for the harness workflow. Pipeline definitions and runs return MCP
+resource links that open their existing Studio views.
+
+### Scripts through MCP
+
+`bosca_script` discovers and reads scripts, validates unsaved Kotlin source,
+creates and edits definitions, enables or disables scripts, deletes them, and
+executes them. Use `dryRun=true` for a create/edit preview. `compile=true` on
+validation or a preview also checks syntax and types without executing the script.
+The worker performs compilation when the API server excludes the Kotlin compiler.
+
+Use `get` before `edit` and pass its `version` as `expectedVersion`. The `script`
+object contains definition fields; omitted edit fields retain their values, while
+explicit null clears optional JSON fields. Pass execution input as a JSON value.
+Execution can have side effects; do not automatically retry an uncertain result.
+
+Discovery and source reads require `scripts:view`, execution requires
+`scripts:execute`, and management requires `scripts:manage`, in addition to the
+corresponding group permissions. Creation and promotion to TOOL require an
+administrator or service-account group. TOOL creation registers an agent tool and
+assigns it to `kit.script` when that Agent exists. EPHEMERAL deletion retains a
+soft-deleted record; other script types use the existing permanent deletion.
+
 ### Kit through MCP
 
 `bosca mcp-server` exposes Kit as a conversational tool:
 
 - `kit_chat` — ask Kit natural-language questions, start or continue sessions,
-  inspect history, and delete sessions. Kit can answer analytics questions and
+  inspect history, request cancellation, and delete sessions. Kit can answer analytics questions and
   return structured visualization data. Generated images are returned as MCP
   image content; pass `downloadDirectory` to save them immediately.
 - `kit_download` — download a Kit-generated asset by its returned `metadataId`
@@ -174,13 +274,30 @@ works the same way in interactive shells, redirected output, and agent sessions.
 Reuse the `sessionId` returned by `kit_chat action=ask` for follow-up questions
 that need the same conversational context.
 
+Harness turns return typed tool resources, images, audio and file diffs as well
+as the conversational answer. `harnessTurns` contains turn and tool provenance;
+content blocks carry the corresponding IDs. `includeImages=false` omits inline
+image blocks. An explicit `downloadDirectory` also saves inline harness images
+using the turn UUID and content index, without overwriting existing files.
+
+An MCP `notifications/cancelled` notification for an active `kit_chat ask` forwards
+cancellation to Bosca after the prompt has been accepted. The cancelled MCP call
+has no response; use `kit_chat action=get` to inspect its durable outcome.
+`kit_chat action=cancel` with a `sessionId` explicitly requests cancellation of
+the conversation's active and queued work. Its acknowledgment confirms receipt
+of the request; a terminal history event confirms the outcome.
+
 ### Kit through ACP
 
 `bosca acp-server` exposes Kit as an ACP v1 agent over standard input and
 output. ACP clients can create a conversation or load an existing one; the ACP
 session ID is the durable Kit chat session UUID. Kit responses are returned as
 text, JSON resources for structured analytics results, and image content for
-generated assets. Client cancellation stops the active Kit turn.
+generated assets. Completed harness plans and tool calls retain their turn-scoped
+IDs, resources and diffs. Cancelled and interrupted outcomes remain distinct
+from successful completion. `session/cancel` requests cancellation in Bosca and
+drains the harness response before returning the prompt's terminal result. A turn
+that finishes before cancellation takes effect retains its completed result.
 
 For example, add Kit as a custom agent in Zed's `settings.json`:
 
@@ -215,6 +332,17 @@ By default the CLI listens on `127.0.0.1:8091`, serves Kit at
 are mapped to durable Kit chat sessions, so follow-up messages retain context.
 Analytics results are returned as structured data artifacts and generated images
 as base64-backed file artifacts that an A2A client can save directly.
+Harness results use one artifact per durable turn, with correlated data and file
+parts for resources, diffs, images and audio. These adapters forward saved content;
+they do not fetch arbitrary resource URIs.
+
+`tasks/cancel` forwards cancellation for the task's conversation. It reports
+`canceled` only after Bosca confirms that outcome. If confirmation takes longer
+than five seconds, the cancellation request remains pending and the RPC reports
+that it could not yet confirm cancellation; poll `tasks/get` for the eventual
+state. Completed and interrupted turns retain their actual terminal state.
+Cancellation before submission prevents the prompt from being sent. A local
+timeout or a disconnected protocol client does not by itself cancel durable work.
 
 Binding beyond loopback requires a separate inbound bearer token and an explicit
 public URL when using a wildcard address:
@@ -241,13 +369,148 @@ also exposes three compact analytics tools intended for Codex and Claude:
 
 The tools accept stable keys where possible, preserve omitted fields during
 updates, and bound query execution results with `returnedRecords` and
-`truncated` metadata. Configure the MCP server using the same saved profile:
+`truncated` metadata. Execution also returns those rows as an embedded JSON
+resource, including cache information. Saved query, visualization, and dashboard
+get/create/update results include Bosca resource links. Content item operations
+similarly return resource links to their saved metadata. The JSON text remains
+available to MCP clients; resource enrichment does not require extra API reads.
+Configure the MCP server using the same saved profile:
 
 ```bash
 BOSCA_PROFILE=work bosca mcp-server
 ```
 
+Managed harness containers run `bosca harness serve`. The CLI owns the warm ACP
+process, runtime protocol, archive/restore, and MCP connection preparation.
+`bosca harness mcp <key>` starts a prepared MCP connection from the generation's
+private settings. See [runtime deployment and checks](../ai/kit/runtime/README.md).
+
+For a managed runtime, supply its scoped API token through `BOSCA_TOKEN` and
+its endpoint through `BOSCA_ENDPOINT`, then run the same command:
+
+```bash
+bosca mcp-server
+```
+
+The existing tools use that token directly. Bosca enforces its scopes and the
+caller's permissions; API tokens do not use the login or refresh flow. The runtime
+owner issues the credential and revokes it on retirement.
+
+### GraphQL through MCP
+
+`bosca_graphql` exposes live schema discovery and query/mutation execution through
+the same authenticated transport as the domain tools. Use the domain tool when
+it covers the task. For other operations, `roots` lists root fields, `search`
+finds type/field names and descriptions with offset pagination, and `type`
+returns the selected type's fields, arguments, wrappers, input defaults, enum
+values and interfaces. Discovery follows the server's existing introspection
+policy: it must be enabled, and production callers need administrator membership.
+A denied discovery request reports the error without substituting a local schema.
+
+`execute` accepts the GraphQL document, an optional JSON object of `variables`,
+and an `operationName` when selecting from multiple named operations. It supports
+queries and mutations; subscriptions require a streaming client. API scope,
+group and entity checks still apply. Mutations and side-effecting queries require
+the user's authorization. This tool adds no independent approval policy, and an
+uncertain operation must be reconciled rather than automatically repeated.
+
+Results include structured data and error messages, including partial data, plus
+an embedded JSON resource. Studio displays that resource in a read-only JSON
+viewer. Rendering does not retrieve the URI or issue another operation. An MCP
+cancellation interrupts the matching GraphQL request, including stalled response
+headers or bodies, and leaves the MCP reader available for subsequent requests.
+Cancellation does not undo an operation the server already performed.
+
+The CLI sends each GraphQL POST body once per HTTP call. Lost responses,
+retryable HTTP responses and redirects that require resending the POST remain
+visible to the caller; inspect an
+uncertain write before taking another action. Configure the final canonical
+GraphQL URL in `BOSCA_ENDPOINT`, or use that URL at login for a saved profile, and
+restart the MCP connection after changing it. The existing managed-login 401
+refresh path can start a fresh request after rejection. Direct API tokens fail
+401 without refreshing or substituting saved credentials.
+
+### Finding collections through MCP
+
+`content_collection action=find` matches collection attributes through the
+existing content API. For example, discover topic candidates with
+`filters: [{"key":"type","value":"Topic"}]`. All filters must match. `offset`
+defaults to zero and `limit` to 20, with a maximum of 100. Results include each
+visible collection's ID, name and public flag. Private results require the
+caller's collection scope and current permissions; public reads retain the
+API's ordinary rules. The lookup uses a typed operation and works with
+introspection disabled. Use the returned collection IDs when asking Kit to
+suggest or apply topics.
+
+### Scripture through MCP
+
+`content_scripture` reads installed translations through the same scoped GraphQL
+transport. `list` returns accessible editions, with offset pagination (20 metadata
+items by default, at most 100). Pass the returned `metadataId` as `id`, plus its
+`version` and `variant`, to select an exact edition. `books` lists books and
+chapters; `references` resolves a human reference without retrieving passage text.
+
+`verses` retrieves the selected passage component trees and source attribution
+through `Bible.aiContext`. Bosca checks content access and the source's
+`AI_CONTEXT` grant. Denial returns an error; the tool does not fall back to a
+display read or another translation. Preserve the returned copyright and citation
+when using the text. An empty result is not a retrieved passage.
+
+### Stored images through MCP
+
+`content_image` supports `generate` (`prompt`), `edit` (`sourceId`, `prompt`) and
+`get` (`id`), plus `attach` (`id` and a target). Generation and editing accept an optional `name` and
+`parentCollectionId`. Both save a new image through Bosca's configured provider;
+editing preserves the source. They leave the result uploaded and unready.
+
+The token needs `content:edit` and the caller needs destination collection EDIT
+access, including `collections:edit` for scoped credentials. Root creation requires
+editor membership. Edits and previews also need source/result content VIEW access.
+A successful result contains the new content ID, a Studio content link and an image
+preview when readable. If the preview fails, the saved ID remains in the result;
+retry `get` instead of generating again. Do not retry an uncertain generate/edit
+mutation automatically. Readiness and publication remain separate content operations.
+
+For `attach`, supply exactly one `targetMetadataId` or `targetCollectionId` and
+optionally `targetLanguageTag` for a collection variant. The caller needs source
+content VIEW and target EDIT access. Omit `attributeKey` to select the sole image
+attribute or receive template choices without writing. Single-image attributes
+replace the current relationship; list attributes keep other images. The template
+supplies target size and default crop ratio; an explicit `crop` uses source pixels
+(`top`, `left`, `width`, `height`). A successful attachment returns a target link.
+Warnings describe any optimization or collaboration work that failed after saving.
+
+### Shared memories through MCP
+
+`bosca_memory` provides `remember`, `get`, `search`, `update` and `forget` actions
+for explicit user-requested preferences, facts and decisions across conversations.
+PERSONAL is the default scope and uses the account's private group. COLLECTION
+requires `collectionId` and follows the collection's permissions; cited source
+content further restricts reads. Supply `sourceMetadataId` for content-derived
+facts, and `expires` for an optional retention deadline.
+
+For `remember`, supply a UUID `requestId` and reuse it with identical input on
+retry. Read the memory before `update` or `forget` and pass its `expectedRevision`.
+Search accepts text, collection IDs, pinned IDs and tags; it returns five memories
+by default, at most twenty. `sourceChanged` marks a remembered fact as uncertain.
+The returned provenance identifies the source to consult before correcting it.
+
+The caller needs content view/edit/delete scopes for the corresponding actions,
+collection view/edit scopes for shared memories, and search access for text
+search. Entity permissions still apply. A managed runtime sets
+`BOSCA_MEMORY_SESSION_ID` so reads are recorded against its conversation and
+invalidate stale native context. Saved memories persist independently of the
+conversation until forgotten or expired; content and chat history follow their
+existing retention rules. Memory references open in Studio's content editor.
+Expiry and source-availability checks apply to memory retrieval. Access to the
+stored document through content APIs follows ordinary metadata permissions,
+including administrator access.
+
 ## Swarm backends
+
+`bosca swarm runtime-controller --config <profiles.json>` manages Kit runtime
+Services on a Swarm manager. See [Kit on Swarm](../ai/kit/runtime/SWARM.md) for
+controller settings, native profiles, Secret delivery and lifecycle validation.
 
 The shared `dragonfly` service runs Dragonfly `v2.0.2`, configured through
 `images.dragonfly`. Existing configs gain this image setting automatically.
@@ -321,6 +584,23 @@ To query a private registry, pass `--registry artifacts.example.com/bosca
 `--registry-password-env` to choose another environment variable. The generated
 Helm values contain no credentials; configure Kubernetes image pull secrets
 separately. Omit `--output` to print the values to standard output.
+
+## Child tasks through MCP
+
+The conversation-bound MCP server exposes `bosca_delegate` for managed Kit child
+tasks. `settings` lists approved profiles and resource budgets. `start` takes an
+`input` object with a stable `requestId` UUID, `brief`, `expectedResult`, `profile`,
+and optional `context`, `artifacts`, `scopes`, `runtimeSeconds` and `deadline`.
+Reuse the same UUID and exact input after an uncertain response. `list` accepts
+`offset` and `limit`; `get`, `wait` and `cancel` take the task `id`.
+
+`wait` polls short reads for about twenty seconds. `QUEUED` and `RUNNING` mean the
+task is unfinished; wait again on its existing ID. A child proposes structured
+output through `submit` with `output: {summary, artifacts: [{metadataId, label}]}`.
+The native terminal receipt confirms its outcome. Partial results remain marked
+as partial on unsuccessful tasks. Cancellation does not undo completed actions.
+The CLI binds every operation to its runtime conversation and scoped credential.
+See [managed child policy and lifecycle](../ai/kit/runtime/README.md#managed-child-tasks).
 
 ## Prerequisites
 

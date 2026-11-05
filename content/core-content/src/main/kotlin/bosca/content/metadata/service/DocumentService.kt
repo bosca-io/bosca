@@ -67,6 +67,9 @@ interface DocumentService : Service {
      */
     suspend fun getDocument(id: UUID, version: Int): Document?
 
+    /** Reads and locks the current document row until the caller's transaction ends. */
+    suspend fun getDocumentForUpdate(id: UUID, version: Int): Document?
+
     /**
      * Registers a batch loader for efficiently fetching documents by metadata cache key.
      *

@@ -169,6 +169,23 @@ class PipelineDurableExecutionEndToEndTest {
         }
     }
 
+    @Serializable
+    @SerialName("e2eAuthority")
+    class AuthorityProbeNode(
+        override val id: String,
+        override val name: String = "",
+        override val description: String = "",
+        override val position: NodePosition = NodePosition(),
+    ) : ActionNode() {
+        override suspend fun execute(context: PipelineContext, inputs: NodeInputs): PipelineValue? {
+            callers.add(context.authentication)
+            return inputs.first
+        }
+        companion object {
+            val callers = java.util.concurrent.CopyOnWriteArrayList<bosca.security.service.AuthenticationContext>()
+        }
+    }
+
     /** A node that parks a durable run; its enqueue is a no-op (no real queue in this test). */
     @Serializable
     @SerialName("e2eSuspend")
@@ -196,7 +213,15 @@ class PipelineDurableExecutionEndToEndTest {
         override val description: String = "",
         override val position: NodePosition = NodePosition(),
     ) : ActionNode() {
-        override suspend fun execute(context: PipelineContext, inputs: NodeInputs): PipelineValue? = error("boom")
+        override suspend fun execute(context: PipelineContext, inputs: NodeInputs): PipelineValue? {
+            beforeFailure?.invoke()
+            error("boom")
+        }
+
+        companion object {
+            /** Runs just before the failure, for tests that change the world between a run's work and its rollback. */
+            var beforeFailure: (suspend () -> Unit)? = null
+        }
     }
 
     /** A pass-through node that records the input it received — used inside a rollback pipeline to prove it ran. */
@@ -248,6 +273,7 @@ class PipelineDurableExecutionEndToEndTest {
         serializersModule = SerializersModule {
             include(baseModule)
             polymorphic(PipelineNode::class) {
+                subclass(AuthorityProbeNode::class, AuthorityProbeNode.serializer())
                 subclass(InputNode::class, InputNode.serializer())
                 subclass(OutputNode::class, OutputNode.serializer())
                 subclass(PassThroughNode::class, PassThroughNode.serializer())
@@ -278,6 +304,8 @@ class PipelineDurableExecutionEndToEndTest {
         coEvery { it.getPrincipalGroups(any<UUID>()) } returns emptyList()
     }
 
+    private val tokens = mockk<bosca.security.service.ApiTokenService>()
+
     private val testPipelineService = TestPipelineService(graphJson)
 
     // Live run-event broadcasting is verified in PipelineRunServiceImplTest; here it's a no-op sink.
@@ -295,18 +323,21 @@ class PipelineDurableExecutionEndToEndTest {
         securityService = securityService,
         config = PipelinesRuntimeConfiguration(),
         pubSub = pubSub,
+        tokens = tokens,
     )
 
     @BeforeTest
     fun setup() {
         ProviderRegistry.clear()
+        AuthorityProbeNode.callers.clear()
         provides<ConnectionPool>(singleton = true) { pool }
         provides<Json>(singleton = true) { json }
         if (!schemaInitialized) {
             withDb {
-                // Cross-schema prerequisites the pipelines migration's V5 references (provided by the
+                // Cross-schema prerequisites the pipelines migrations V5 and V22 reference (provided by the
                 // core/security migration in production) — stubbed here so the full schema applies.
                 connection().useStatement("create table if not exists groups (id uuid primary key)") { it.execute() }
+                connection().useStatement("create table if not exists principal_groups (principal uuid, group_id uuid)") { it.execute() }
                 connection().useStatement(
                     """
                     do ${'$'}${'$'} begin
@@ -335,6 +366,135 @@ class PipelineDurableExecutionEndToEndTest {
 
     @AfterTest
     fun teardown() = ProviderRegistry.clear()
+
+    private fun scopedCaller(): bosca.security.service.AuthenticationContext {
+        val principal = bosca.security.model.Principal(id = UUID.random(), anonymous = false)
+        val group = bosca.security.model.Group(UUID.random(), "pipeline-users", "Pipeline users", bosca.security.model.GroupType.PRINCIPAL)
+        val admin = bosca.security.model.Group(UUID.random(), "administrators", "Administrators", bosca.security.model.GroupType.SYSTEM)
+        val attributes = bosca.security.model.ApiTokenCredentialAttributes(
+            identifier = "test", name = "Test", tokenPrefix = "test", scopes = listOf("jobs:execute"),
+            allowedGroups = listOf(group.id.toString()), createdBy = principal.id.toString(),
+        )
+        coEvery { securityService.getPrincipalById(principal.id) } returns principal
+        coEvery { securityService.getPrincipalGroups(principal.id) } returns listOf(group, admin)
+        coEvery { tokens.getTokenById(42) } returns bosca.security.model.PrincipalCredential(principal.id, attributes).copy(id = 42)
+        val scoped = bosca.security.service.ScopedAuthenticatedPrincipal(principal, listOf(group, admin), attributes.scopes, setOf(group.id), 42)
+        return object : bosca.security.service.AuthenticationContext(null, null) { override fun principal() = scoped }
+    }
+
+    @Test
+    fun `scoped authority survives database checkpoint and resume`() = scopedResume(revoke = false)
+
+    @Test
+    fun `revoked scoped authority fails a reloaded run before its next action`() = scopedResume(revoke = true)
+
+    private fun scopedResume(revoke: Boolean) {
+        provides<JobConfigurationEnqueuer>(name = PipelineManualRunJobExecutor.NAME) { CapturingChildRunEnqueuer() }
+        val authentication = scopedCaller()
+        val (_, pipeline) = persistPipeline(
+            "scoped resume", listOf(InputNode("in", acceptedType = "JSON"), AuthorityProbeNode("before"), SuspendingNode("wait"), AuthorityProbeNode("after"), OutputNode("out")),
+            listOf(PipelineEdge("e1", "in", "before"), PipelineEdge("e2", "before", "wait"), PipelineEdge("e3", "wait", "after"), PipelineEdge("e4", "after", "out")), register = true,
+        )
+        val run = withResult { transaction { service.start(pipeline, PipelineValue.ofJson(JsonObject(emptyMap())), "manual", java.time.OffsetDateTime.now(), authentication) } } ?: error("run missing")
+        val captured = withResult { service.get(run.id) } ?: error("persisted run missing")
+        assertEquals(authentication.principal()?.id, captured.principalId)
+        assertEquals(listOf("jobs:execute"), captured.authority?.scopes)
+        assertEquals(42, captured.authority?.credentialId)
+        withDb { service.process(run.id) }
+        assertEquals(PipelineRunStatus.SUSPENDED, withResult { service.get(run.id) }?.status)
+        if (revoke) coEvery { tokens.getTokenById(42) } returns null
+        withDb { resultStore.put(run.id, "wait", JsonObject(emptyMap())); service.resume(run.id, "wait", true, null) }
+        val completed = withResult { service.get(run.id) } ?: error("run missing")
+        assertEquals(if (revoke) PipelineRunStatus.FAILED else PipelineRunStatus.OK, completed.status)
+        assertEquals(if (revoke) 1 else 2, AuthorityProbeNode.callers.size)
+        for (context in AuthorityProbeNode.callers) {
+            val caller = kotlin.test.assertIs<bosca.security.service.ScopedAuthenticatedPrincipal>(context.principal())
+            assertEquals(listOf("jobs:execute"), caller.scopes?.toList())
+            kotlin.test.assertFalse(caller.hasGroup("administrators"))
+        }
+        if (revoke) assertTrue(completed.error?.contains("credential no longer exists") == true)
+    }
+
+    @Test
+    fun `child iteration and restarted rows retain their parents scoped authority`() {
+        provides<JobConfigurationEnqueuer>(name = PipelineManualRunJobExecutor.NAME) { CapturingChildRunEnqueuer() }
+        provides<JobConfigurationEnqueuer>(name = PipelineChildRunJobExecutor.NAME) { CapturingChildRunEnqueuer() }
+        val authentication = scopedCaller()
+        val (_, parent) = persistPipeline("parent", listOf(InputNode("in", acceptedType = "JSON"), OutputNode("out")), listOf(PipelineEdge("e", "in", "out")), register = true)
+        val (_, body) = persistPipeline("child", listOf(InputNode("in", acceptedType = "JSON"), AuthorityProbeNode("probe"), OutputNode("out")), listOf(PipelineEdge("e1", "in", "probe"), PipelineEdge("e2", "probe", "out")), register = true)
+        val run = withResult { transaction { service.start(parent, PipelineValue.ofJson(JsonObject(emptyMap())), "manual", java.time.OffsetDateTime.now(), authentication) } } ?: error("run missing")
+        withDb {
+            service.runChildPipeline(run.id, "child", body.id, PipelineValue.ofJson(JsonObject(emptyMap())), run.createdAt, null, null)
+            service.startIteration(run.id, "each", body.id, listOf(JsonObject(emptyMap())), false, run.createdAt, null, null, 0)
+        }
+        val children = withResult { service.listChildren(run.id, "child") + service.listChildren(run.id, "each") }
+        assertEquals(2, children.size)
+        val restarted = withResult { service.restart(run.id) } ?: error("restart missing")
+        for (copy in children + restarted) {
+            assertEquals(run.principalId, copy.principalId)
+            assertEquals(run.authority, copy.authority)
+            val caller = withResult { service.authentication(copy).principal() }
+            kotlin.test.assertIs<bosca.security.service.ScopedAuthenticatedPrincipal>(caller)
+            assertEquals(setOf("jobs:execute"), caller.scopes)
+        }
+    }
+
+    @Test
+    fun `rollback retains scoped authority instead of using service account`() {
+        provides<JobConfigurationEnqueuer>(name = PipelineManualRunJobExecutor.NAME) { CapturingChildRunEnqueuer() }
+        val authentication = scopedCaller()
+        val (rollbackId, _) = persistPipeline(
+            "scoped rollback", listOf(InputNode("in", acceptedType = "JSON"), AuthorityProbeNode("probe"), OutputNode("out")),
+            listOf(PipelineEdge("e1", "in", "probe"), PipelineEdge("e2", "probe", "out")), register = true,
+        )
+        val step = PassThroughNode("step").apply { rollbackPipeline = rollbackId }
+        val (_, pipeline) = persistPipeline(
+            "scoped failing run", listOf(InputNode("in", acceptedType = "JSON"), step, FailingNode("fail")),
+            listOf(PipelineEdge("e1", "in", "step"), PipelineEdge("e2", "step", "fail")),
+        )
+        val run = withResult { transaction { service.start(pipeline, PipelineValue.ofJson(JsonObject(emptyMap())), "manual", java.time.OffsetDateTime.now(), authentication) } } ?: error("run missing")
+        withDb { service.process(run.id) }
+        assertEquals(PipelineRunStatus.FAILED, withResult { service.get(run.id) }?.status)
+        val caller = kotlin.test.assertIs<bosca.security.service.ScopedAuthenticatedPrincipal>(AuthorityProbeNode.callers.single().principal())
+        assertEquals(authentication.principal()?.id, caller.id)
+        assertEquals(setOf("jobs:execute"), caller.scopes)
+        kotlin.test.assertFalse(caller.hasGroup("administrators"))
+    }
+
+    @Test
+    fun `rollback that loses its authority keeps a retryable failure`() {
+        provides<JobConfigurationEnqueuer>(name = PipelineManualRunJobExecutor.NAME) { CapturingChildRunEnqueuer() }
+        val authentication = scopedCaller()
+        val (rollbackId, _) = persistPipeline(
+            "retried rollback", listOf(InputNode("in", acceptedType = "JSON"), AuthorityProbeNode("probe"), OutputNode("out")),
+            listOf(PipelineEdge("e1", "in", "probe"), PipelineEdge("e2", "probe", "out")), register = true,
+        )
+        val step = PassThroughNode("step").apply { rollbackPipeline = rollbackId }
+        val (_, pipeline) = persistPipeline(
+            "run losing authority", listOf(InputNode("in", acceptedType = "JSON"), step, FailingNode("fail")),
+            listOf(PipelineEdge("e1", "in", "step"), PipelineEdge("e2", "step", "fail")),
+        )
+        FailingNode.beforeFailure = { coEvery { tokens.getTokenById(42) } returns null }
+        val lostRun = try {
+            kotlin.test.assertNotNull(withResult { transaction { service.start(pipeline, PipelineValue.ofJson(JsonObject(emptyMap())), "manual", java.time.OffsetDateTime.now(), authentication) } })
+                .also { withDb { service.process(it.id) } }
+        } finally {
+            FailingNode.beforeFailure = null
+        }
+        assertEquals(PipelineRunStatus.FAILED, withResult { service.get(lostRun.id) }?.status)
+        val failures = withResult { service.rollbackFailures(lostRun.id) }
+        assertEquals(listOf("step"), failures.map { it.nodeId })
+        assertEquals(rollbackId, failures.single().rollbackPipelineId)
+        kotlin.test.assertContains(kotlin.test.assertNotNull(failures.single().error), "credential no longer exists")
+        kotlin.test.assertNotNull(failures.single().failedAt)
+        kotlin.test.assertTrue(AuthorityProbeNode.callers.isEmpty(), "The rollback did not run")
+
+        val operator = scopedCaller()
+        assertEquals(emptyList(), withResult { service.retryRollbacks(lostRun.id, operator) })
+        assertEquals(1, AuthorityProbeNode.callers.size, "The retry ran the rollback")
+        assertEquals(emptyList(), withResult { service.retryRollbacks(lostRun.id, operator) })
+        assertEquals(1, AuthorityProbeNode.callers.size, "A completed retry never runs again")
+    }
 
     @Test
     fun `scheduled run resumes through successive backing jobs on the real queue`() = scheduledBackingJobs(fail = false)
@@ -385,7 +545,7 @@ class PipelineDurableExecutionEndToEndTest {
             val run = withResult { service.listActive(0, 50).single { it.pipelineId == pipelineId } }
             assertEquals(PipelineRunStatus.SUSPENDED, run.status)
             assertEquals(runJobId, run.runJobId)
-            val backingExecutor = ExecuteNodeInJobExecutor(service, testPipelineService, resultStore, securityService, PipelinesRuntimeConfiguration())
+            val backingExecutor = ExecuteNodeInJobExecutor(service, testPipelineService, resultStore)
             repeat(if (fail) 1 else 2) { index ->
                 withDb {
                     val child = queue.dequeue() ?: error("backing job $index missing")
@@ -586,7 +746,7 @@ class PipelineDurableExecutionEndToEndTest {
         val sweeper = PipelineRunServiceImpl(
             runRepository, runLogRepository, resultStore, nodeExecutionRepository, iterationRepository,
             rollbackRepository, testPipelineService, PipelineExecutorImpl(), securityService,
-            PipelinesRuntimeConfiguration(suspendedRunMaxLifetimeMinutes = -1), pubSub,
+            PipelinesRuntimeConfiguration(suspendedRunMaxLifetimeMinutes = -1), pubSub, tokens,
         )
         val swept = withResult { sweeper.sweepStuckSuspended() }
         assertTrue(swept >= 1)
@@ -629,7 +789,7 @@ class PipelineDurableExecutionEndToEndTest {
         val sweeper = PipelineRunServiceImpl(
             runRepository, runLogRepository, resultStore, nodeExecutionRepository, iterationRepository,
             rollbackRepository, testPipelineService, PipelineExecutorImpl(), securityService,
-            PipelinesRuntimeConfiguration(suspendedRunMaxLifetimeMinutes = -1), pubSub,
+            PipelinesRuntimeConfiguration(suspendedRunMaxLifetimeMinutes = -1), pubSub, tokens,
         )
         withResult { sweeper.sweepStuckSuspended() }
         val after = withResult { runRepository.getById(run.id) } ?: error("run row missing")
@@ -1185,7 +1345,7 @@ class PipelineDurableExecutionEndToEndTest {
         val purger = PipelineRunServiceImpl(
             runRepository, runLogRepository, resultStore, nodeExecutionRepository, iterationRepository,
             rollbackRepository, testPipelineService, PipelineExecutorImpl(), securityService,
-            PipelinesRuntimeConfiguration(runStateRetentionDays = 0, runHistoryRetentionDays = 0), pubSub,
+            PipelinesRuntimeConfiguration(runStateRetentionDays = 0, runHistoryRetentionDays = 0), pubSub, tokens,
         )
         val reaped = withResult { purger.purgeExpiredRuns() }
         assertTrue(reaped >= 2, "reaped the terminal run + its history row, got $reaped")
@@ -1309,6 +1469,8 @@ class PipelineDurableExecutionEndToEndTest {
         private val registry = mutableMapOf<UUID, Pipeline>()
 
         fun register(pipeline: Pipeline) { registry[pipeline.id] = pipeline }
+
+        override suspend fun runsUnattended(id: UUID): Boolean = error("unused")
 
         override suspend fun graphAsJsonElement(pipeline: Pipeline): JsonElement =
             graphJson.encodeToJsonElement(PipelineGraph.serializer(), PipelineGraph(pipeline.nodes, pipeline.edges))

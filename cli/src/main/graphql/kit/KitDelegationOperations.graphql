@@ -1,0 +1,25 @@
+fragment KitDelegationFragment on KitDelegation {
+    id parentSessionId parentTurnId childSessionId profile depth runtimeSeconds deadline status partial failure
+    result { summary artifacts { metadataId label } }
+}
+query KitDelegationSettings($sessionId: UUID!) {
+    ai { delegations { settings(sessionId: $sessionId) { profiles maxDepth maxActive maxChildren maxRuntimeSeconds totalRuntimeSeconds } } }
+}
+query GetKitDelegation($sessionId: UUID!, $id: UUID!) {
+    ai { delegations { get(sessionId: $sessionId, id: $id) { ...KitDelegationFragment } } }
+}
+query ListKitDelegations($sessionId: UUID!, $offset: Long!, $limit: Int!) {
+    ai { delegations { tasks: list(sessionId: $sessionId, offset: $offset, limit: $limit) { ...KitDelegationFragment } } }
+}
+mutation StartKitDelegation($sessionId: UUID!, $input: KitDelegationInput!) {
+    ai { delegations { start(sessionId: $sessionId, input: $input) { ...KitDelegationFragment } } }
+}
+mutation WaitKitDelegation($sessionId: UUID!, $id: UUID!) {
+    ai { delegations { wait(sessionId: $sessionId, id: $id) { ...KitDelegationFragment } } }
+}
+mutation CancelKitDelegation($sessionId: UUID!, $id: UUID!) {
+    ai { delegations { cancel(sessionId: $sessionId, id: $id) { ...KitDelegationFragment } } }
+}
+mutation SubmitKitDelegation($sessionId: UUID!, $output: KitDelegationResultInput!) {
+    ai { delegations { submit(sessionId: $sessionId, output: $output) { ...KitDelegationFragment } } }
+}

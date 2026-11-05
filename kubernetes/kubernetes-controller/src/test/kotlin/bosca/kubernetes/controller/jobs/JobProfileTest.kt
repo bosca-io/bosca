@@ -5,6 +5,7 @@ import bosca.serialization.UUID
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource
+import io.fabric8.kubernetes.api.model.LocalObjectReferenceBuilder
 import io.fabric8.kubernetes.api.model.ObjectMetaBuilder
 import io.fabric8.kubernetes.api.model.PodSpecBuilder
 import io.fabric8.kubernetes.api.model.PodTemplateSpecBuilder
@@ -49,6 +50,7 @@ class JobProfileTest {
         assertEquals("training", pod.tolerations.single().value)
         assertEquals(Quantity("1"), worker.resources.limits["nvidia.com/gpu"])
         assertEquals("Never", pod.restartPolicy)
+        assertEquals(listOf("docker-registry"), pod.imagePullSecrets.map { it.name })
         assertEquals("FallbackToLogsOnError", worker.terminationMessagePolicy)
         assertEquals("42", worker.env.first { it.name == "TRAINING_RUN_ID" }.value)
         assertEquals(dispatchId.toString(), worker.env.first { it.name == DISPATCH_ID_ENV }.value)
@@ -295,6 +297,7 @@ class JobProfileTest {
             .endMetadata()
             .withSpec(
                 PodSpecBuilder()
+                    .withImagePullSecrets(LocalObjectReferenceBuilder().withName("docker-registry").build())
                     .addToNodeSelector("workload", "gpu")
                     .withTolerations(
                         TolerationBuilder()

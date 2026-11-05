@@ -6,6 +6,8 @@ import bosca.ai.agents.service.AgentToolService
 import bosca.ai.agents.service.McpServerRegistrationService
 import bosca.ai.chat.repository.AiMigration
 import bosca.ai.installer.ModelInstaller
+import bosca.ai.installer.MemoryInstaller
+import bosca.trait.service.TraitService
 import bosca.ai.installer.PromptInstaller
 import bosca.ai.models.service.ModelService
 import bosca.ai.prompts.service.PromptService
@@ -30,6 +32,9 @@ class ProviderConfiguration {
     @Provider(name = "prompts-installer")
     fun prompts(service: PromptService, json: Json): PackageInstaller = PromptInstaller(service, json)
 
+    @Provider(name = "memories-installer")
+    fun memories(traits: TraitService): PackageInstaller = MemoryInstaller(traits)
+
     @Provider(singleton = true)
     fun agentProjectContentValidator(
         agentService: AgentService,
@@ -51,7 +56,8 @@ class ProviderConfiguration {
             PackageInstallationVersion(
                 version = "1.0.0",
                 installerNames = listOf("models-installer", "prompts-installer")
-            )
+            ),
+            PackageInstallationVersion(version = "1.1.0", installerNames = listOf("memories-installer"))
         )
     )
 }

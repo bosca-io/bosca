@@ -136,6 +136,20 @@ class PipelineServiceImplGraphTest {
         override suspend fun execute(context: PipelineContext, inputs: NodeInputs): PipelineValue? = inputs.first
     }
 
+    /** A node with a declared pipeline reference, as Run Pipeline and For Each have. */
+    @Serializable
+    @SerialName("svcCallerNode")
+    class CallerNode(
+        override val id: String,
+        @kotlinx.serialization.Contextual
+        val target: UUID? = null,
+        override val name: String = "",
+        override val description: String = "",
+        override val position: NodePosition = NodePosition(),
+    ) : TransformNode() {
+        override suspend fun execute(context: PipelineContext, inputs: NodeInputs): PipelineValue? = inputs.first
+    }
+
     /** An INTEGER-emitting source whose output is incompatible with a UUID slot (for slot violations). */
     @Serializable
     @SerialName("svcIntSource")
@@ -336,6 +350,58 @@ class PipelineServiceImplGraphTest {
     @Test
     fun `descriptorFor returns null for a type with no registered descriptor`() = runTest {
         assertEquals(null, service().descriptorFor(InputNode(id = "in", acceptedType = "JSON")))
+    }
+
+    @Test
+    fun `runsUnattended follows references, bodies and rollbacks from triggered and scheduled pipelines`() = runTest {
+        provides<PipelineNodeSerializers>(overrideExisting = true) {
+            object : PipelineNodeSerializers {
+                override val module = SerializersModule {
+                    polymorphic(PipelineNode::class) {
+                        subclass(InputNode::class, InputNode.serializer())
+                        subclass(CallerNode::class, CallerNode.serializer())
+                    }
+                }
+                override val descriptors = listOf(
+                    NodeDescriptor(
+                        key = "svcCallerNode", label = "Caller", category = NodeCategory.TRANSFORM,
+                        settings = listOf(bosca.pipelines.node.NodeSettingSlot(
+                            name = "target", control = bosca.pipelines.annotation.SettingControl.REFERENCE,
+                            reference = bosca.pipelines.annotation.ReferenceSource.PIPELINE,
+                        )),
+                    ),
+                )
+            }
+        }
+        val graphJson = Json {
+            serializersModule = SerializersModule {
+                contextual(UUID::class, UUIDSerializer())
+                polymorphic(PipelineNode::class) {
+                    subclass(InputNode::class, InputNode.serializer())
+                    subclass(CallerNode::class, CallerNode.serializer())
+                }
+            }
+        }
+        fun stored(id: UUID, vararg nodes: PipelineNode, triggered: Boolean = false, schedule: String? = null) = PipelineRecord(
+            id = id, name = "p", acceptedInputType = "JSON", triggered = triggered, schedule = schedule,
+            graph = graphJson.encodeToJsonElement(bosca.pipelines.model.PipelineGraph.serializer(), bosca.pipelines.model.PipelineGraph(listOf(InputNode(id = "in", acceptedType = "JSON")) + nodes, emptyList())),
+        )
+        val triggeredRoot = UUID.random(); val scheduledRoot = UUID.random()
+        val child = UUID.random(); val grandchild = UUID.random(); val rollback = UUID.random(); val unrelated = UUID.random(); val cycle = UUID.random()
+        val repo = mockk<PipelineRepository>()
+        coEvery { repo.getAll() } returns listOf(
+            stored(triggeredRoot, CallerNode("a", child), triggered = true),
+            stored(scheduledRoot, CallerNode("a", cycle), CallerNode("b", scheduledRoot), schedule = "0 0 * * *"),
+            stored(child, CallerNode("a", grandchild), CallerNode("b", triggeredRoot)),
+            stored(grandchild, CallerNode("a").apply { rollbackPipeline = rollback }),
+            stored(rollback),
+            stored(cycle, CallerNode("a", cycle)),
+            stored(unrelated, CallerNode("a", child)),
+            stored(UUID.random(), CallerNode("a", UUID.random()), triggered = true),
+        )
+        val pipelines = service(repository = repo)
+        for (reached in listOf(triggeredRoot, scheduledRoot, child, grandchild, rollback, cycle)) assertTrue(pipelines.runsUnattended(reached), reached.toString())
+        kotlin.test.assertFalse(pipelines.runsUnattended(unrelated), "Calling an unattended pipeline does not make the caller unattended")
     }
 
     @Test

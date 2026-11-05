@@ -233,8 +233,8 @@ const FEATURES = [
           </div>
           <div class="tool-body">
             <div class="tool-call">
-              <span class="tool-fn">bible_get_verses</span>
-              <span class="tool-arg">"John 3:16"</span>
+              <span class="tool-fn">content_scripture</span>
+              <span class="tool-arg">verses, "John 3:16"</span>
             </div>
             <div class="tool-arrow">
               <Icon

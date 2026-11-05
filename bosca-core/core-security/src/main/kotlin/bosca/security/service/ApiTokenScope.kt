@@ -47,6 +47,7 @@ object ApiTokenScopes {
     // Analytics
     val ANALYTICS_VIEW = ApiTokenScope("analytics:view", "Read analytics data and dashboards")
     val ANALYTICS_EXECUTE = ApiTokenScope("analytics:execute", "Execute analytics queries")
+    val ANALYTICS_SQL = ApiTokenScope("analytics:sql", "Discover and query the read-only analytics warehouse")
     val ANALYTICS_MANAGE = ApiTokenScope("analytics:manage", "Manage analytics configurations and queries")
 
     // Security
@@ -90,6 +91,11 @@ object ApiTokenScopes {
     val SCRIPTS_EXECUTE = ApiTokenScope("scripts:execute", "Execute scripts")
     val SCRIPTS_MANAGE = ApiTokenScope("scripts:manage", "Manage script definitions")
 
+    // Reusable Bosca pipelines
+    val PIPELINES_VIEW = ApiTokenScope("pipelines:view", "Read pipeline definitions, node types, and runs")
+    val PIPELINES_EDIT = ApiTokenScope("pipelines:edit", "Create and update pipeline definitions")
+    val PIPELINES_EXECUTE = ApiTokenScope("pipelines:execute", "Execute and preview pipelines")
+
     // Git
     val GIT_READ = ApiTokenScope("git:read", "Clone and fetch git repositories")
     val GIT_WRITE = ApiTokenScope("git:write", "Push to git repositories")
@@ -110,6 +116,10 @@ object ApiTokenScopes {
     val GATEWAY_READ = ApiTokenScope("gateway:read", "Send read requests (GET, HEAD, OPTIONS) through gateways to upstream services")
     val GATEWAY_WRITE = ApiTokenScope("gateway:write", "Send write requests (POST, PUT, PATCH, DELETE) through gateways to upstream services")
 
+    // AI conversations
+    val AI_EXECUTE = ApiTokenScope("ai:execute", "Read, start, and control AI conversations")
+    val AI_DELEGATE = ApiTokenScope("ai:delegate", "Delegate bounded work from an active managed harness")
+
     // MCP
     val MCP_EXECUTE = ApiTokenScope("mcp:execute", "Manage execute")
 
@@ -121,7 +131,7 @@ object ApiTokenScopes {
         CONTENT_VIEW, CONTENT_EDIT, CONTENT_DELETE, CONTENT_MANAGE,
         COLLECTIONS_VIEW, COLLECTIONS_EDIT, COLLECTIONS_DELETE, COLLECTIONS_MANAGE,
         PROFILES_READ, PROFILES_EDIT, PROFILES_DELETE, PROFILES_MANAGE,
-        ANALYTICS_VIEW, ANALYTICS_EXECUTE, ANALYTICS_MANAGE,
+        ANALYTICS_VIEW, ANALYTICS_EXECUTE, ANALYTICS_MANAGE, ANALYTICS_SQL,
         SECURITY_VIEW, SECURITY_MANAGE,
         JOBS_VIEW, JOBS_EXECUTE,
         STORAGE_READ, STORAGE_WRITE,
@@ -131,11 +141,12 @@ object ApiTokenScopes {
         SEGMENTS_READ, SEGMENTS_EDIT, SEGMENTS_MANAGE,
         MESSAGES_READ, MESSAGES_EDIT,
         SCRIPTS_VIEW, SCRIPTS_EXECUTE, SCRIPTS_MANAGE,
+        PIPELINES_VIEW, PIPELINES_EDIT, PIPELINES_EXECUTE,
         GIT_READ, GIT_WRITE, GIT_MANAGE,
         CI_READ, CI_EDIT, CI_EXECUTE, CI_MANAGE,
         ARTIFACTS_PULL, ARTIFACTS_PUSH, ARTIFACTS_ADMIN,
         GATEWAY_READ, GATEWAY_WRITE,
-        MCP_EXECUTE
+        AI_EXECUTE, AI_DELEGATE, MCP_EXECUTE
     )
 
     private val validNames: Set<String> = all.mapTo(mutableSetOf()) { it.name }

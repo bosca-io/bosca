@@ -62,6 +62,7 @@ class SubscriptionController(
 
     @Field
     fun aiChatHistory(authenticationContext: AuthenticationContext, sessionId: UUID): Flow<ChatHistoryMessage> = flow {
+        groups.verifyHasScope(authenticationContext, ApiTokenScopes.AI_EXECUTE.name)
         withConnectionManager {
             val session = chatHistoryService.getSession(sessionId) ?: throw IllegalArgumentException("Channel not found")
             if (session.principalId != authenticationContext.principal()?.id) throw SecurityException("Access denied")
@@ -71,6 +72,7 @@ class SubscriptionController(
 
     @Field
     fun aiChatStatus(authenticationContext: AuthenticationContext, sessionId: UUID): Flow<ChatSessionStatus> = flow {
+        groups.verifyHasScope(authenticationContext, ApiTokenScopes.AI_EXECUTE.name)
         withConnectionManager {
             val session = chatHistoryService.getSession(sessionId) ?: throw IllegalArgumentException("Channel not found")
             if (session.principalId != authenticationContext.principal()?.id) throw SecurityException("Access denied")
@@ -80,6 +82,7 @@ class SubscriptionController(
 
     @Field
     fun aiChatProcessing(authenticationContext: AuthenticationContext, sessionId: UUID): Flow<Boolean> = flow {
+        groups.verifyHasScope(authenticationContext, ApiTokenScopes.AI_EXECUTE.name)
         withConnectionManager {
             val session = chatHistoryService.getSession(sessionId) ?: throw IllegalArgumentException("Session not found")
             if (session.principalId != authenticationContext.principal()?.id) throw SecurityException("Access denied")

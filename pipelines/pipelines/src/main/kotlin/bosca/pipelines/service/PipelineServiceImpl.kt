@@ -11,6 +11,7 @@ import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.graphql.Batch
 import bosca.pipelines.PipelineContext
+import bosca.pipelines.annotation.ReferenceSource
 import bosca.pipelines.configuration.PipelinesRuntimeConfiguration
 import bosca.pipelines.model.BrokenPipeline
 import bosca.pipelines.model.PIPELINE_TRIGGERS_CHANGED_CHANNEL
@@ -50,6 +51,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.modules.SerializersModule
 import kotlin.uuid.ExperimentalUuidApi
 
@@ -140,6 +142,23 @@ class PipelineServiceImpl(
             log.error("Failed to convert pipeline record to Pipeline object", e)
             null
         }
+    }
+
+    override suspend fun runsUnattended(id: UUID): Boolean {
+        val pipelines = getAll().associateBy { it.id }
+        val pending = ArrayDeque(pipelines.values.filter { it.triggered || !it.schedule.isNullOrBlank() }.map { it.id })
+        val visited = mutableSetOf<UUID>()
+        while (true) {
+            val current = pending.removeFirstOrNull() ?: return false
+            if (current == id) return true
+            if (visited.add(current)) pipelines[current]?.let { pending += referencedPipelines(it) }
+        }
+    }
+
+    private suspend fun referencedPipelines(pipeline: Pipeline): List<UUID> = pipeline.nodes.flatMap { node ->
+        val stored = graphJson().encodeToJsonElement(bosca.pipelines.node.PipelineNode.serializer(), node) as? JsonObject
+        val settings = descriptorFor(node)?.settings.orEmpty().filter { it.reference == ReferenceSource.PIPELINE }
+        settings.mapNotNull { (stored?.get(it.name) as? JsonPrimitive)?.contentOrNull?.let(UUID::parse) } + listOfNotNull(node.rollbackPipeline)
     }
 
     override suspend fun getBroken(): List<BrokenPipeline> = repository.getAll().mapNotNull { record ->

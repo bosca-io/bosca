@@ -61,7 +61,7 @@ class PipelineGitPushListener(
      */
     internal suspend fun handle(event: PushEvent) {
         try {
-            pipelineGitSyncService.onPushEvent(event.repositoryId, event.beforeSha, event.afterSha)
+            pipelineGitSyncService.onPushEvent(event.repositoryId, event.beforeSha, event.afterSha, event.pusherPrincipalId)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {

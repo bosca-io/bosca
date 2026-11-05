@@ -29,6 +29,7 @@ IMAGES=(
   kubernetes-controller bml-message-server notifications-web profiles-web
   bosca-cli bosca-studio bosca-io imageprocessor bosca-gateway
   recommendation-trainer recommendation-model-loader
+  kit-codex-runtime kit-claude-runtime
 )
 
 prompt() {
@@ -157,6 +158,31 @@ case "$IMAGE" in
     stage_native :cli cli bosca cli bosca-cli-native
     docker_build cli cli/Dockerfile --build-arg "ARTIFACT_SHA=$STAGE"
     ;;
+  kit-codex-runtime | kit-claude-runtime)
+    stage_native :cli cli bosca ai/kit/runtime bosca-cli-native
+    # A local, content-addressed copy stage keeps the CLI tied to this checkout and version.
+    cli_sha="$(sha256sum "ai/kit/runtime/artifacts/$STAGE/bosca-cli-native/bosca" | cut -d ' ' -f 1)"
+    cli_stage="bosca-kit-cli-stage:$cli_sha"
+    DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -t "$cli_stage" \
+      --build-arg "ARTIFACT_SHA=$STAGE" -f - ai/kit/runtime <<'DOCKERFILE'
+FROM scratch
+ARG ARTIFACT_SHA
+COPY artifacts/${ARTIFACT_SHA}/bosca-cli-native/bosca /usr/local/bin/bosca
+DOCKERFILE
+    family="${IMAGE#kit-}"
+    family="${family%-runtime}"
+    descriptor="ai/kit/runtime/compatibility.json"
+    if [[ "$family" == claude ]]; then descriptor="ai/kit/runtime/claude/compatibility.json"; fi
+    runtime_versions=$(node --input-type=module - "$descriptor" "$VERSION" <<'JAVASCRIPT'
+import fs from 'node:fs';
+const [file, cli] = process.argv.slice(2), value = JSON.parse(fs.readFileSync(file, 'utf8'));
+process.stdout.write(JSON.stringify({cli, adapter:value.adapter.split('@').at(-1), harness:value.harness.split('@').at(-1), statePolicy:value.statePolicy, transport:value.transportVersion, acp:value.acpVersion, archive:value.archiveFormatVersion}));
+JAVASCRIPT
+)
+    docker_build ai/kit/runtime ai/kit/runtime/Dockerfile --target "$family" --build-arg "BOSCA_CLI_IMAGE=$cli_stage" --build-arg "BOSCA_KIT_VERSIONS=$runtime_versions"
+    KIT_RUNTIME_IMAGE="$TAG" KIT_RUNTIME_FAMILY="$family" KIT_RUNTIME_VERSION="$VERSION" \
+      gradle :ai:kit:runtimeImageTest
+    ;;
   bosca-studio)
     build_web_packages
     (cd web && pnpm --filter @bosca/studio build)
@@ -188,5 +214,38 @@ esac
 
 if [[ "${PUSH:-true}" != false ]]; then
   docker push "$TAG"
+fi
+
+if [[ "$IMAGE" == kit-codex-runtime || "$IMAGE" == kit-claude-runtime ]]; then
+  descriptor="ai/kit/runtime/compatibility.json"
+  if [[ "$family" == claude ]]; then descriptor="ai/kit/runtime/claude/compatibility.json"; fi
+  image_info="$(mktemp)"
+  trap 'rm -f "$image_info"' EXIT
+  docker image inspect "$TAG" > "$image_info"
+  node --input-type=module - "$image_info" "$descriptor" "$TAG" "$VERSION" "$cli_sha" \
+    "ai/kit/runtime/artifacts/$STAGE/compatibility.json" "${PUSH:-true}" <<'JAVASCRIPT'
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const [infoPath, descriptorPath, reference, version, sha256, output, pushed] = process.argv.slice(2);
+const images = JSON.parse(fs.readFileSync(infoPath, 'utf8'));
+assert.equal(images.length, 1, 'Expected one qualified runtime image');
+const image = images[0];
+assert.equal(image.Os, 'linux');
+assert.equal(image.Architecture, 'amd64');
+assert.match(image.Id, /^sha256:[a-f0-9]{64}$/);
+assert.match(sha256, /^[a-f0-9]{64}$/);
+const repository = reference.slice(0, reference.lastIndexOf(':'));
+const digestReference = pushed === 'false' ? null : image.RepoDigests?.find(value =>
+  value.startsWith(repository + '@sha256:') && /^[a-f0-9]{64}$/.test(value.split('@sha256:')[1]));
+assert(pushed === 'false' || digestReference, 'The pushed runtime has no matching registry digest');
+const manifest = {
+  schemaVersion: 1,
+  image: { reference, digestReference, localId: image.Id, os: image.Os, architecture: image.Architecture },
+  cli: { version, sha256 },
+  runtime: JSON.parse(fs.readFileSync(descriptorPath, 'utf8'))
+};
+fs.writeFileSync(output, JSON.stringify(manifest, null, 2) + '\n');
+console.log('Runtime compatibility record: ' + output);
+JAVASCRIPT
 fi
 echo "Built $TAG"

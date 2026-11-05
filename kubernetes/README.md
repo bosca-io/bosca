@@ -93,6 +93,12 @@ Kubernetes Job.
 
 Every dispatch also has a durable Bosca-side execution record. Producers keep
 the returned dispatch ID and call `KubernetesJobDispatchService.getResult`.
+`getExecution` also exposes the worker's observed PodSpec image and kubelet
+image ID. These come from a single running pod owned by the exact Job UID;
+the worker is identified from the dispatch environment in the Job template.
+Absent or ambiguous observations are cleared while the execution is active,
+and the last observation is retained after termination. Producers can use these
+fields to check deployment identity before submitting work.
 It returns null while the workload can still make progress and a
 `KubernetesJobResult` once Kubernetes reports `SUCCEEDED`, `FAILED`, or
 `CANCELLED`. The result includes the profile, idempotency key, terminal
@@ -114,6 +120,34 @@ deletion cannot remove the object before Bosca persists its terminal result.
 Profiles default to a 24-hour active deadline and a 120-second startup-failure
 grace; both are configurable per profile. Requests also have a bounded wait
 to materialization, covering both a missing profile and exhausted capacity.
+
+## Kit runtime cluster check
+
+`runtimeClusterTest` runs the real controller reconciliation and the supplied
+native runtime image against a disposable local Kind cluster. It checks duplicate
+delivery after controller restart, capacity waiting, encrypted workload Secret
+materialization, Service routing from another pod, readiness and control fences,
+image observations, isolation settings, replacement and owner-bound cleanup.
+Queue and execution persistence are fixtures in this test; their PostgreSQL
+contracts and the Runner archive/restore lifecycle have separate integration tests.
+This check makes no provider inference requests.
+
+Set `KIT_RUNTIME_IMAGE` to an already built local Kit image. The image and Kind
+node must have matching architectures. Use the dedicated kubeconfig below;
+the test rejects other contexts and remote API servers.
+
+```bash
+export KIT_KUBERNETES_KUBECONFIG="$(mktemp)"
+kind create cluster --name bosca-kit-runtime-test --kubeconfig "$KIT_KUBERNETES_KUBECONFIG"
+kind load docker-image "$KIT_RUNTIME_IMAGE" --name bosca-kit-runtime-test
+./gradlew :kubernetes:kubernetes-controller:runtimeClusterTest
+kind delete cluster --name bosca-kit-runtime-test --kubeconfig "$KIT_KUBERNETES_KUBECONFIG"
+```
+
+The ordinary `:kubernetes:kubernetes-controller:test` suite excludes this opt-in
+gate. Cluster results are always executed rather than restored from the build
+cache. Passing this local gate does not qualify a deployed Runner's connectivity,
+live provider behavior, or a complete matched API/Runner/controller rollout.
 
 The CRD and profiles are installed by the
 `bosca-kubernetes-controller` Helm chart through its

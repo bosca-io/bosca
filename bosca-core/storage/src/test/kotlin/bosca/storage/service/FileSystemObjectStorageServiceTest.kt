@@ -130,6 +130,20 @@ class FileSystemObjectStorageServiceTest {
     }
 
     @Test
+    fun `delete is idempotent for missing objects and reports filesystem failures`() = runTest {
+        val service = storage()
+        val path = StringObjectPath("archive")
+        val file = temporaryFolder.newFile("archive").apply { writeText("saved state") }
+        service.delete(path)
+        assertTrue(!file.exists())
+        service.delete(path)
+        val directory = temporaryFolder.newFolder("not-an-object")
+        directory.resolve("retained").writeText("must not disappear")
+        assertFailsWith<java.nio.file.DirectoryNotEmptyException> { service.delete(StringObjectPath("not-an-object")) }
+        assertEquals("must not disappear", directory.resolve("retained").readText())
+    }
+
+    @Test
     fun `toFile converts ObjectPath to File`() {
         val path = StringObjectPath("test/file.txt")
         val file = path.toFile("/tmp")

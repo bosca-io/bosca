@@ -23,37 +23,30 @@ dependencies {
     // Platform auth + content: Kit reuses Bosca's AuthenticationContext and
     // PermissionEvaluator model rather than defining its own permissions.
     implementation(project(":bosca-core:core-security"))
+    implementation(project(":bosca-core:core-configuration"))
     implementation(project(":content:core-content"))
-    implementation(project(":social:core-profile"))
-    implementation(project(":analytics:core-analytics"))
     implementation(project(":content:core-localization"))
     implementation(project(":workops:core-workops"))
-    // Scripting: Kit's script sub-agent manages server-side Kotlin scripts
-    // (ScriptService/ScriptExecutionService/Engine, all core contracts).
-    implementation(project(":scripting:core-scripting"))
-    // Pipeline authoring consumes only the engine's public contracts. Save/dry-run/run still pass
-    // through GraphQL so the same authorization and boundary side effects as Studio are preserved.
+    implementation(project(":git:core-git"))
+    // KSP-generated @JobDefinition executors reference core-pipelines (PipelineContext).
     implementation(project(":pipelines:core-pipelines"))
-    // Google GenAI SDK: Kit's image sub-agent calls Gemini directly to generate/edit images. This is a
+    // Google GenAI SDK: KitImageGenerationService calls Gemini directly to generate/edit images. This is a
     // deliberate, provider-specific exception to Kit's otherwise Koog-provider-agnostic design.
     implementation(libs.google.genai)
-    // Object storage: large agent checkpoints (AgentCheckpointData) are written as blobs here,
-    // not into a Postgres column — only the small pointer lives on ChatSession.latestCheckpointId.
+    // Object storage: runtime archives and generated images.
     implementation(project(":bosca-core:core-storage"))
-    // Real domain models Kit reuses (do not duplicate): tiptap document DOM and Bible.
+    // Real domain model Kit reuses (do not duplicate): the tiptap document DOM.
     implementation(project(":bosca-kmp:dom-shared"))
-    implementation(project(":bosca-kmp:bible-dom-shared"))
 
     // Koog — AI agent framework that Kit (V2) is built on. See https://docs.koog.ai.
     implementation(libs.koog.agents)
-    // GOAP planner: Kit plans/sequences its actions over a typed state.
-    implementation(libs.koog.agents.planner)
-    // Persistence (snapshot) feature: save/restore a Kit session (checkpoints of the planner state).
-    implementation(libs.koog.agents.snapshot)
-    // EventHandler feature: react to agent lifecycle (write Kit's final turn to chat history for the UI).
-    implementation(libs.koog.agents.event.handler)
-    // ChatMemory feature: give the conversing sub-agents memory of the conversation across turns.
-    implementation(libs.koog.agents.memory)
+
+    implementation(project(":kubernetes:core-kubernetes"))
+    implementation(project(":sharedqueue:sharedqueue"))
+    implementation(libs.ktor.client.cio)
+    implementation(libs.acp)
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.websockets)
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
@@ -63,12 +56,50 @@ dependencies {
     "ksp"(project(":services-di:service-ksp"))
     "ksp"(project(":services-di:di-ksp"))
 
+    testImplementation(project(":bosca-core:test-support"))
+    testImplementation(project(":bosca-core:storage"))
+    testImplementation(project(":git:git"))
+    testImplementation(project(":ai:ai"))
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.koog.agents.test)
+    testImplementation(libs.ktor.client.cio)
+    testImplementation(libs.ktor.server.cio)
+    testImplementation(libs.ktor.server.websockets)
 }
 
 ksp {
     arg("ProviderRegistrarPrefix", "Kit")
+}
+
+// The lifecycle test runs the same CLI runtime used by the container.
+tasks.test {
+    dependsOn(":cli:installDist")
+    inputs.dir(rootProject.layout.projectDirectory.dir("cli/build/install/bosca"))
+    inputs.files(providers.environmentVariable("KIT_RUNTIME_CLI")).optional()
+    exclude("**/KitRuntimeImageIntegrationTest.class")
+}
+
+// This gate operates on an already built image and must observe its current contents every time.
+tasks.register<Test>("runtimeImageTest") {
+    group = "verification"
+    description = "Checks the built Kit runtime image under its declared isolation and file lifecycle"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    include("**/KitRuntimeImageIntegrationTest.class")
+    for (name in listOf("KIT_RUNTIME_IMAGE", "KIT_RUNTIME_FAMILY", "KIT_RUNTIME_VERSION", "KIT_RUNTIME_LAYOUT")) {
+        environment(name, providers.environmentVariable(name).orElse("").get())
+    }
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("The image and Docker resources are external state") { true }
+}
+
+// Release images are supplied explicitly; ordinary coverage must not require a local image.
+kover {
+    currentProject {
+        instrumentation {
+            disabledForTestTasks.add("runtimeImageTest")
+        }
+    }
 }

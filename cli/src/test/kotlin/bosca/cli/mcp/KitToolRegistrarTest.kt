@@ -37,7 +37,7 @@ class KitToolRegistrarTest {
         val properties = requireNotNull(KitToolRegistrar.chatTool.inputSchema.properties)
         val actions = properties.getValue("action").jsonObject.getValue("enum").jsonArray
             .map { it.jsonPrimitive.content }
-        assertEquals(listOf("ask", "list", "get", "delete"), actions)
+        assertEquals(listOf("ask", "list", "get", "cancel", "delete"), actions)
         assertTrue("sessionId" in properties)
         assertTrue("downloadDirectory" in properties)
         assertTrue("includeImages" in properties)

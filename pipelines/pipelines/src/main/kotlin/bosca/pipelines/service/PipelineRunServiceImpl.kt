@@ -44,7 +44,7 @@ import bosca.pipelines.repository.PipelineRunRepository
 import bosca.pubsub.PubSubService
 import bosca.security.service.AuthenticationContext
 import bosca.security.service.SecurityService
-import bosca.security.service.impersonate
+import bosca.security.service.ApiTokenService
 import bosca.serialization.OffsetDateTime
 import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
@@ -88,7 +88,8 @@ class PipelineRunServiceImpl(
     private val executor: PipelineExecutor,
     private val securityService: SecurityService,
     private val config: PipelinesRuntimeConfiguration,
-    private val pubSub: PubSubService
+    private val pubSub: PubSubService,
+    private val tokens: ApiTokenService,
 ) : PipelineRunService {
 
     @Volatile
@@ -162,6 +163,7 @@ class PipelineRunServiceImpl(
                 // its own run job, through backing work and resumes) executes under their security context;
                 // null for a triggered/scheduled run, which drives under the service account.
                 principalId = authentication?.principal()?.id,
+                authority = captureRunAuthority(authentication, securityService),
             )
         )
         publishRunUpdate(run.id, runStatus = PipelineRunStatus.RUNNING)
@@ -182,7 +184,7 @@ class PipelineRunServiceImpl(
             val comp = RollbackBuffer()
             drive(
                 run, pipeline, input, null, emptyList(), sink, comp,
-                runContext(run.id, inputCreated, sink, comp, run.runJobId, jobOrNull(), run.principalId),
+                inputCreated = inputCreated, runJob = jobOrNull(),
             )
         }
         var current = runRepository.getById(run.id)
@@ -253,6 +255,7 @@ class PipelineRunServiceImpl(
         runJob: bosca.sharedqueue.jobs.Job?,
         runJobId: UUID?,
     ) {
+        val parent = checkNotNull(runRepository.getById(parentRunId)) { "Parent pipeline run not found" }
         val itemValue = PipelineValue.ofJson(item)
         val child = try {
             runRepository.add(
@@ -266,6 +269,8 @@ class PipelineRunServiceImpl(
                     parentRunId = parentRunId,
                     parentNodeId = nodeId,
                     itemIndex = index,
+                    principalId = parent.principalId,
+                    authority = parent.authority,
                 ),
             )
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
@@ -294,6 +299,7 @@ class PipelineRunServiceImpl(
                 "Run Pipeline: input does not match pipeline '${body.name}' input schema — ${violations.joinToString("; ")}"
             }
         }
+        val parent = checkNotNull(runRepository.getById(parentRunId)) { "Parent pipeline run not found" }
         // itemIndex = null marks a single-child (scalar passthrough) parent, vs ForEach's indexed children.
         val child = runRepository.add(
             PipelineRun(
@@ -306,6 +312,8 @@ class PipelineRunServiceImpl(
                 parentRunId = parentRunId,
                 parentNodeId = nodeId,
                 itemIndex = null,
+                principalId = parent.principalId,
+                authority = parent.authority,
             ),
         )
         enqueueChildRun(child.id, runJob, runJobId)
@@ -377,6 +385,9 @@ class PipelineRunServiceImpl(
 
     override suspend fun get(runId: UUID): PipelineRun? = runRepository.getById(runId)
 
+    override suspend fun authentication(run: PipelineRun): AuthenticationContext =
+        resolveRunAuthentication(run, securityService, tokens, graphJson(), config.serviceAccount)
+
     override suspend fun findLatestByInput(pipelineId: UUID, inputType: String, inputMatch: JsonElement): PipelineRun? =
         runRepository.findLatestByInput(pipelineId, inputType, inputMatch)
 
@@ -415,6 +426,7 @@ class PipelineRunServiceImpl(
                 input = input.encode(graphJson()),
                 inputType = input.typeName,
                 principalId = source.principalId,
+                authority = source.authority,
             )
         )
         publishRunUpdate(run.id, runStatus = PipelineRunStatus.RUNNING)
@@ -746,15 +758,14 @@ class PipelineRunServiceImpl(
             nodes = graph.nodes,
             edges = graph.edges,
         )
-        // Drive under the service account, threading the run job so suspendable nodes attach backing jobs.
+        // Revalidate captured authority and thread the run job so suspendable nodes attach backing jobs.
         // Reconstruct the seed through the Event Catalog (native-safe) so a typed-event input — an
         // on-demand run of an event-triggered pipeline — keeps its type; a child run's uncatalogued item
         // type falls back to plain JSON, unchanged from before.
         val sink = NodeExecutionBuffer()
         val comp = RollbackBuffer()
         drive(
-            run, pipeline, reconstructInput(run), null, emptyList(), sink, comp,
-            runContext(run.id, run.createdAt, sink, comp, run.runJobId, jobOrNull(), run.principalId),
+            run, pipeline, reconstructInput(run), null, emptyList(), sink, comp, runJob = jobOrNull(),
         )
     }
 
@@ -842,7 +853,7 @@ class PipelineRunServiceImpl(
         val state = ExecutionState(inMemory, remaining.mapTo(mutableSetOf()) { it.nodeId })
         val sink = NodeExecutionBuffer()
         val comp = RollbackBuffer()
-        drive(running, pipeline, null, state, remaining, sink, comp, runContext(runId, running.createdAt, sink, comp, running.runJobId, runJob, running.principalId))
+        drive(running, pipeline, null, state, remaining, sink, comp, runJob = runJob)
     }
 
     override suspend fun cancel(runId: UUID, reason: String?) {
@@ -918,9 +929,11 @@ class PipelineRunServiceImpl(
         baseAwaits: List<PipelineRunAwait>,
         sink: NodeExecutionBuffer,
         rollback: RollbackBuffer,
-        context: PipelineContext,
+        runJob: bosca.sharedqueue.jobs.Job?,
+        inputCreated: OffsetDateTime = run.createdAt,
     ) {
         try {
+            val context = runContext(run, inputCreated, sink, rollback, runJob)
             val result = executor.execute(pipeline, input, context, state)
             // Flush this drive's per-node events AFTER the concurrent fan-out has returned, so the
             // timeline is written sequentially on the run's connection. The saga log
@@ -1119,55 +1132,59 @@ class PipelineRunServiceImpl(
             reportIterationResult(run, null, error ?: status.name)
             // Saga rollback: undo the side effects of rollback-enabled nodes
             // that completed before this run failed/cancelled, in reverse order.
-            runRollbacks(run.id)
+            runRollbacks(run)
         }
     }
 
     /**
      * Run the saga rollbacks for a terminated run: replay each
      * rollback-enabled node's rollback pipeline in reverse-completion order, feeding it that node's
-     * output. Best-effort and isolated — a rollback that itself fails (or suspends, which a
-     * rollback pipeline must not do) is logged and the rollback continues, so one bad rollback
-     * never masks the original failure or blocks the others. Rollbacks run under the service account.
+     * output. Isolated: a rollback that fails (or suspends, which a rollback pipeline must not do) is
+     * recorded on its entry and the rollback continues, so one bad rollback never masks the original
+     * failure or blocks the others. Rollbacks retain the run's captured authority and revalidate it
+     * before execution, so a run whose authority is gone keeps visible, retryable failures.
      */
-    private suspend fun runRollbacks(runId: UUID) {
-        val records = rollbackRepository.listForRunReversed(runId)
-        if (records.isEmpty()) return
-        val context = PipelineContext(securityService.impersonate(config.serviceAccount), graphJson())
-        for (record in records) {
-            try {
-                val pipeline = pipelineService.get(record.rollbackPipelineId)
-                if (pipeline == null) {
-                    log.warn("Rollback pipeline {} for run {} node {} not found", record.rollbackPipelineId, runId, record.nodeId)
-                    continue
-                }
-                executor.execute(pipeline, PipelineValue.ofJson(record.output ?: JsonNull), context).requireCompleted()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                log.error("Rollback for run {} node {} failed", runId, record.nodeId, e)
-            }
+    private suspend fun runRollbacks(run: PipelineRun) {
+        for (record in rollbackRepository.listForRunReversed(run.id)) {
+            compensate(record) { authentication(run) }
         }
     }
 
+    private suspend fun compensate(record: RollbackRecord, authentication: suspend () -> AuthenticationContext) {
+        try {
+            val pipeline = checkNotNull(pipelineService.get(record.rollbackPipelineId)) { "Rollback pipeline ${record.rollbackPipelineId} not found" }
+            val context = PipelineContext(authentication(), graphJson())
+            executor.execute(pipeline, PipelineValue.ofJson(record.output ?: JsonNull), context).requireCompleted()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.error("Rollback for run {} node {} failed", record.runId, record.nodeId, e)
+            rollbackRepository.markFailed(record.seq, e.message ?: e.toString())
+        }
+    }
+
+    override suspend fun rollbackFailures(runId: UUID): List<RollbackRecord> =
+        rollbackRepository.listFailedReversed(runId)
+
+    override suspend fun retryRollbacks(runId: UUID, authentication: AuthenticationContext): List<RollbackRecord> {
+        for (record in rollbackFailures(runId)) {
+            if (rollbackRepository.claimFailed(record.seq) == 1) compensate(record) { authentication }
+        }
+        return rollbackFailures(runId)
+    }
+
     private suspend fun runContext(
-        runId: UUID,
+        run: PipelineRun,
         inputCreated: OffsetDateTime,
         sink: NodeExecutionSink?,
-        rollbackSink: RollbackSink? = null,
-        runJobId: UUID? = null,
-        runJob: bosca.sharedqueue.jobs.Job? = null,
-        // The run's originating principal — an on-demand run's caller, captured on the run row at start;
-        // null for a triggered/scheduled run. The whole durable run (first pass, backing work, every
-        // resume) is driven under this principal so the caller's security context traverses end to end,
-        // falling back to the pipelines service account when absent.
-        principalId: UUID? = null,
+        rollbackSink: RollbackSink?,
+        runJob: bosca.sharedqueue.jobs.Job?,
     ) = PipelineContext(
-        principalId?.let { securityService.impersonate(it) } ?: securityService.impersonate(config.serviceAccount),
+        authentication(run),
         graphJson(),
         inputCreated = inputCreated,
-        runId = runId,
-        runJobId = runJobId,
+        runId = run.id,
+        runJobId = run.runJobId,
         runJob = runJob,
         nodeSink = sink,
         rollbackSink = rollbackSink,

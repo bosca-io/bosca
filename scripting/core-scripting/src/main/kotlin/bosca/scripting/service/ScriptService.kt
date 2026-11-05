@@ -98,6 +98,9 @@ interface ScriptService : PermissionService<Script, UUID> {
      */
     suspend fun edit(id: UUID, input: ScriptInput): Script
 
+    /** Updates a script only if its current version equals [expectedVersion]. */
+    suspend fun edit(id: UUID, input: ScriptInput, expectedVersion: Int): Script
+
     /**
      * Deletes a script definition. For [ScriptType.EPHEMERAL] scripts, performs a soft
      * delete that hides the script from normal queries while retaining it in the database

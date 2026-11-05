@@ -44,6 +44,7 @@ class ConfigurationTest {
         configuration.helmIndexFetcher()
         configuration.helmRuntime(credentials)
         configuration.kubernetesJobController(
+            mockk(),
             pool,
             mockk<ClusterRepository>(relaxed = true),
             mockk<KubernetesJobExecutionRepository>(relaxed = true),

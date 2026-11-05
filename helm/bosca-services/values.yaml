@@ -76,6 +76,22 @@
 
 global:
   domain: ""
+  # Published charts include runtime image identities and native component versions.
+  # Enable Kit and supply openai-token/token (or select claude with anthropic-token/token).
+  kit:
+    enabled: false
+    harness: codex
+    # providerSecret: {name: my-provider, key: api-key}
+    # profile: {idleSeconds: 900, scopes: ["content:view", "search:read"]}
+    # Runtimes get no direct internet access: NetworkPolicies limit them to Bosca and an
+    # egress proxy (bosca-cli image) that allows only Bosca-approved HTTPS destinations.
+    # Enforcement requires a network plugin that implements NetworkPolicy.
+    egress:
+      enabled: true
+      # replicas: 1
+      # resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: "1", memory: 256Mi}}
+      # image: {tag: ""}            # default: the CLI release of the bundled Kit runtime
+      # imagePullSecrets: []        # default: bosca-kubernetes-controller.imagePullSecrets
   # Registry (and path) for every Bosca image, overriding each chart's image.registry
   # (ghcr.io/bosca-io/bosca). Set it to pull from a mirror.
   imageRegistry: ""

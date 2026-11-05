@@ -515,6 +515,7 @@ internal fun deploySwarm(config: SwarmConfig, bundle: Path, skipPublicCheck: Boo
     uploadBundle(config, bundle)
     script(config.manager.ssh,
         "sudo -n docker network inspect bosca >/dev/null 2>&1 || sudo -n docker network create --driver overlay --attachable bosca")
+    config.sites.filter { it.kit.enabled }.flatMap(::kitNetworkCommands).forEach { command -> script(config.manager.ssh, command) }
     stackDeploy(config, "infra")
     waitServices(config, expected = setOf("infra_postgres", "infra_pgbouncer", "infra_dragonfly"))
     bootstrapDatabases(config)

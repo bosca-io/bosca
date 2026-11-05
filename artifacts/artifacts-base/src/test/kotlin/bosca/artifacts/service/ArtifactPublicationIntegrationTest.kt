@@ -231,7 +231,7 @@ class ArtifactPublicationIntegrationTest {
         provides<PipelineRunService>(singleton = true) {
             PipelineRunServiceImpl(PipelineRunRepositoryImpl(), PipelineRunLogRepositoryImpl(), results,
                 NodeExecutionRepositoryImpl(), PipelineRunIterationRepositoryImpl(), RollbackRepositoryImpl(),
-                pipelines, PipelineExecutorImpl(), security, config, pubsub)
+                pipelines, PipelineExecutorImpl(), security, config, pubsub, mockk(relaxed = true))
         }
         ProviderRegistry.register(ArtifactPublicationService::class, ArtifactPublicationServiceImplProvider(), true)
         publications = provide()
@@ -241,6 +241,7 @@ class ArtifactPublicationIntegrationTest {
         provides<PipelineEventDispatcher> { PipelineEventDispatcherImpl(null, json) }
         RegisterJobsConfiguration()
         runner = PipelinesConfiguration().pipelinesJobQueueRunner(queue, locks, ErrorCapture.Noop.asProvider())
+        connection().useStatement("CREATE TABLE IF NOT EXISTS principal_groups(principal UUID, group_id UUID)") { it.execute() }
         for (name in PipelinesMigration().resources.filter { it != "V15__pipeline_secret.sql" }) {
             val sql = PipelineRunServiceImpl::class.java.getResource("/db/migrations/$name")?.readText() ?: error("Missing migration $name")
             connection().useStatement(sql) { it.execute() }

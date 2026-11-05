@@ -1,0 +1,86 @@
+name: "Release: Kit Claude Runtime"
+# Start from an existing Git tag; its version identifies the published image.
+on:
+  manual: true
+  release: true
+
+concurrency:
+  group: image-release-kit-claude-runtime
+  cancel-in-progress: false
+
+env:
+  GRADLE_OPTS: "-Xmx4g -XX:+UseG1GC"
+
+jobs:
+  publish-image:
+    runner: linux
+    timeout: 120m
+    artifacts:
+      - type: docker
+        namespace: bosca
+        coordinate: "kit-claude-runtime:${{ version }}"
+    steps:
+      - name: Validate release tag
+        run: |
+          case "$RELEASE_REF" in
+            refs/tags/?*) ;;
+            *) echo "Select an existing Git tag for this image release." >&2; exit 1 ;;
+          esac
+        env:
+          RELEASE_REF: ${{ ref }}
+      - name: Checkout
+        uses: checkout
+      - name: Setup Registry
+        uses: setup-registry
+        with:
+          repository: bosca-maven
+      - name: Setup Java
+        uses: setup-java
+        with:
+          distribution: graal
+          stream: 25i4
+          version: "25.0.4.1.1"
+      - name: Setup Rust
+        uses: setup-rust
+        with:
+          toolchain: stable
+      - name: Setup Node
+        uses: setup-node
+        with:
+          version: "22"
+      - name: Setup pnpm
+        uses: setup-pnpm
+        with:
+          version: "10"
+      - name: Check image release commands
+        run: node --test scripts/release/build_image.test.mjs
+      - name: Build and push image
+        run: scripts/release/build-image.sh "$IMAGE" "$VERSION"
+        env:
+          IMAGE: kit-claude-runtime
+          VERSION: ${{ version }}
+      - name: Retain runtime compatibility record
+        uses: upload-artifact
+        with:
+          name: kit-claude-runtime-compatibility
+          paths:
+            - "ai/kit/runtime/artifacts/release-${{ version }}/compatibility.json"
+
+  notify:
+    runner: linux
+    timeout: 5m
+    needs: [publish-image]
+    if: always()
+    steps:
+      - name: Notify Success
+        uses: notify
+        if: needs.publish-image.result == 'success'
+        with:
+          channel: slack
+          message: "Image bosca/kit-claude-runtime:${{ version }} published to Bosca Artifacts"
+      - name: Notify Failure
+        uses: notify
+        if: needs.publish-image.result != 'success'
+        with:
+          channel: slack
+          message: "Image bosca/kit-claude-runtime:${{ version }} release FAILED — check pipeline logs"

@@ -4,6 +4,8 @@ import bosca.cli.BoscaCliCommand
 import bosca.cli.api.AnalyticsApi
 import bosca.cli.api.ContentApi
 import bosca.cli.api.KitApi
+import bosca.cli.api.MemoryApi
+import kotlin.uuid.Uuid
 import bosca.cli.api.WorkOpsApi
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.options.option
@@ -13,6 +15,9 @@ import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.asSink
 import kotlinx.io.asSource
@@ -34,12 +39,16 @@ internal val MCP_SERVER_INSTRUCTIONS = """
     This is the Bosca MCP server. It exposes several independent tool families:
       • Kit — conversational access to Bosca's AI assistant for analytics questions, image generation,
         content work, and other platform tasks, including downloading generated assets.
+      • Memory — explicitly remember, find, update, and forget reusable preferences, facts and decisions.
+        Never save memories automatically or store credentials. Saved memories have their own retention.
       • WorkOps planning & tracking — portfolios, programs, projects, specs, requirements, tasks,
         sprints, boards, comments, links, worklogs, search, notifications.
       • Content management — metadata (documents, guides, data, media), collections, templates,
         supplementary attachments, relationships. These are first-class and usable on their own,
         not just as spec/requirement backing documents.
       • Analytics — execute and manage saved queries, visualization definitions, and dashboards.
+      • Scripture — discover installed translations and retrieve exact, attributed passages permitted for AI context.
+      • GraphQL — inspect the live schema and execute caller-authorized queries and mutations when domain tools do not fit.
     Use whichever family the task needs; nothing here requires you to involve WorkOps when you are
     only doing content (or other) work.
 
@@ -134,36 +143,48 @@ class McpServerCommand : BoscaCliCommand(name = "mcp-server") {
         // CLI config — so the token never expires mid-session and no background
         // refresh loop is required.
         val network = networkClient(url, token, username, password)
-        val api = WorkOpsApi(network)
-        val contentApi = ContentApi(network)
-        val analyticsApi = AnalyticsApi(network)
-        val kitApi = KitApi(network)
+        serveMcp(network, System.getenv("BOSCA_MEMORY_SESSION_ID")?.let(Uuid::parse))
+    }
+}
 
-        val server = Server(
-            Implementation("bosca-mcp", "1.0.0"),
-            ServerOptions(
-                capabilities = ServerCapabilities(
-                    tools = ServerCapabilities.Tools(listChanged = false),
-                ),
+internal suspend fun serveMcp(network: bosca.cli.api.NetworkClient, memorySessionId: Uuid?) = kotlinx.coroutines.coroutineScope {
+    val api = WorkOpsApi(network)
+    val contentApi = ContentApi(network)
+    val analyticsApi = AnalyticsApi(network)
+    val kitApi = KitApi(network)
+
+    val server = Server(
+        Implementation("bosca-mcp", "1.0.0"),
+        ServerOptions(
+            capabilities = ServerCapabilities(
+                tools = ServerCapabilities.Tools(listChanged = false),
             ),
-            MCP_SERVER_INSTRUCTIONS,
-        )
+        ),
+        MCP_SERVER_INSTRUCTIONS,
+    )
 
-        McpToolRegistrar.registerAll(server, api, contentApi)
-        ContentToolRegistrar.registerAll(server, contentApi)
-        AnalyticsToolRegistrar.registerAll(server, analyticsApi)
-        KitToolRegistrar.registerAll(server, kitApi)
-        val transport = StdioServerTransport(
-            inputStream = System.`in`.asSource().buffered(),
-            outputStream = System.out.asSink().buffered(),
-        )
+    McpToolRegistrar.registerAll(server, api, contentApi)
+    ContentToolRegistrar.registerAll(server, contentApi)
+    ScriptingToolRegistrar.registerAll(server, bosca.cli.api.ScriptingApi(network))
+    PipelineToolRegistrar.registerAll(server, bosca.cli.api.PipelineApi(network))
+    ScriptureToolRegistrar.registerAll(server, contentApi.scripture)
+    AnalyticsToolRegistrar.registerAll(server, analyticsApi)
+    KitToolRegistrar.registerAll(server, kitApi)
+    MemoryToolRegistrar.registerAll(server, MemoryApi(network, memorySessionId))
+    memorySessionId?.let { DelegationToolRegistrar.registerAll(server, bosca.cli.api.DelegationApi(network, it)) }
+    GraphQLToolRegistrar.registerAll(server, network.boscaGraphql)
+    val transport = StdioServerTransport(
+        inputStream = System.`in`.asSource().buffered(),
+        outputStream = System.out.asSink().buffered(),
+    )
 
-        val session = server.createSession(transport)
-
+    val requests = SupervisorJob(coroutineContext[Job])
+    try {
         val closeJob = Job()
-        transport.onClose {
-            closeJob.complete()
-        }
+        transport.onClose { closeJob.complete() }
+        server.createSession(KitMcpTransport(transport, CoroutineScope(coroutineContext + requests)))
         closeJob.join()
+    } finally {
+        requests.cancelAndJoin()
     }
 }

@@ -1,0 +1,20 @@
+fragment StoredImage on Metadata {
+    id version name uploaded content { type length }
+}
+mutation GenerateContentImage($prompt: String!, $name: String!, $parentCollectionId: UUID) {
+    content { images { generate(prompt: $prompt, name: $name, parentCollectionId: $parentCollectionId) { ...StoredImage } } }
+}
+mutation EditContentImage($sourceId: UUID!, $prompt: String!, $name: String!, $parentCollectionId: UUID) {
+    content { images { edit(sourceId: $sourceId, prompt: $prompt, name: $name, parentCollectionId: $parentCollectionId) { ...StoredImage } } }
+}
+query GetContentImage($id: UUID!) {
+    content { metadata(id: $id) { ...StoredImage } }
+}
+mutation AttachContentImage($imageMetadataId: UUID!, $targetMetadataId: UUID, $targetCollectionId: UUID, $targetLanguageTag: String, $attributeKey: String, $crop: ImageCropInput) {
+    content { images { attach(imageMetadataId: $imageMetadataId, targetMetadataId: $targetMetadataId, targetCollectionId: $targetCollectionId, targetLanguageTag: $targetLanguageTag, attributeKey: $attributeKey, crop: $crop) {
+        success attached targetLanguageTag collaborationUpdated optimized warning error
+        attribute { key name description relationship list targetSize defaultAspectRatio }
+        availableAttributes { key name description relationship list targetSize defaultAspectRatio }
+        crop { top left width height }
+    } } }
+}

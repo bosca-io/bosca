@@ -94,6 +94,7 @@ open class CounterMetricsServiceImpl(
         private val FAMILIES = listOf(
             CounterFamily("sessions.", AnalyticsCounterType.GAUGE, bucketSeconds = 15L * 60, defaultWindow = 2),
             CounterFamily("http.", AnalyticsCounterType.COUNTER, bucketSeconds = 60, defaultWindow = 60),
+            CounterFamily("kit.runtime.", AnalyticsCounterType.COUNTER, bucketSeconds = 60, defaultWindow = 60),
         )
     }
 }

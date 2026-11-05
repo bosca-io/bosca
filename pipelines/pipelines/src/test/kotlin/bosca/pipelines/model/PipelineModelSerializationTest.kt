@@ -760,4 +760,32 @@ class PipelineModelSerializationTest {
         val await = PipelineRunAwait(nodeId = "n")
         assertEquals("n", await.nodeId)
     }
+
+    @Test
+    fun `run authority and rollback records round-trip with and without their optional fields`() {
+        for (codec in listOf(json, jsonEncodeDefaults)) {
+            val group = bosca.serialization.UUID.random()
+            for (authority in listOf(
+                PipelineRunAuthority(system = true),
+                PipelineRunAuthority(false, listOf(group), listOf("jobs:execute"), 42, sessionBoundCredential = true),
+            )) {
+                val encoded = codec.encodeToString(PipelineRunAuthority.serializer(), authority)
+                kotlin.test.assertEquals(authority, codec.decodeFromString(PipelineRunAuthority.serializer(), encoded))
+            }
+            val run = bosca.serialization.UUID.random()
+            for (record in listOf(
+                RollbackRecord(run, "n1", group),
+                RollbackRecord(run, "n1", group, kotlinx.serialization.json.JsonPrimitive("out"), 7, "undo failed", java.time.OffsetDateTime.parse("2026-01-01T00:00:00Z")),
+            )) {
+                val encoded = codec.encodeToString(RollbackRecord.serializer(), record)
+                kotlin.test.assertEquals(record, codec.decodeFromString(RollbackRecord.serializer(), encoded))
+            }
+            val snapshot = kotlinx.serialization.json.JsonObject(emptyMap())
+            for (authority in listOf(null, PipelineRunAuthority(system = true))) {
+                val stored = PipelineRun(pipelineId = group, graphSnapshot = snapshot, authority = authority)
+                val encoded = codec.encodeToString(PipelineRun.serializer(), stored)
+                kotlin.test.assertEquals(authority, codec.decodeFromString(PipelineRun.serializer(), encoded).authority)
+            }
+        }
+    }
 }

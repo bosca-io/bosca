@@ -90,6 +90,53 @@ selected for jobs or counters. For later Dragonfly upgrades, change
 `images.dragonfly` and deploy again; `swarm update-images` updates Bosca application
 images.
 
+## Kit
+
+Enable Kit in a site entry and supply its provider key through the existing
+secret configuration:
+
+```json
+{
+  "kit": {"enabled": true, "harness": "codex"},
+  "secrets": {"kitProvider": "YOUR_PROVIDER_API_KEY"}
+}
+```
+
+Merge these fields into the existing site and preserve its other secrets.
+Choose `claude` for Claude. Run the normal `render` and `deploy` commands. The CLI
+reads image-owned versions and resolves immutable image pins, then generates the
+site's manager controller, provider Secret, routing, isolation/resource settings,
+and identical API/Runner runtime profiles. It generates and preserves the
+controller credential; no manual controller process or private policy is required.
+
+Kit images default to the installed CLI release. `swarm update-images` updates
+their release tags along with the other Bosca images. Optional site settings
+include `kit.image`, `kit.scopes`, `kit.idleSeconds`, admission limits, memory and
+tmpfs sizes. Provider data remains in a Docker Secret and the private rendered
+bundle, not native-workload environment strings. Encrypt and back up this config
+with the rest of the deployment. Kit reuses the site's private object storage.
+
+Private runtime images use the existing matching `registryAuth` login. The
+installer mounts its authentication payload as a separate Docker Secret in the
+manager controller, which supplies Docker's registry-auth header when creating
+a runtime Service. The credential is not mounted in the harness container.
+Generated placement retains the pinned image's OS and architecture so a worker
+with a different architecture is not eligible for that image.
+
+Kit runtimes have no direct internet access. Deployment creates the site's
+`<site>-kit-runtime` overlay as an internal network and a routable
+`<site>-kit-egress` overlay for the site's `kit-egress` proxy, which runs from the
+same `bosca-cli` image as the controller. The proxy permits HTTPS `CONNECT` to the
+site's public hostnames, the profile's model provider API, the session agent's
+remote MCP registrations, and the `egressHosts` list in the private `kit.harness`
+policy. An existing runtime overlay that is not internal stops deployment with the
+commands to remove it; Docker cannot change that setting in place.
+
+Same-family image upgrades restore the harness's operational directory and let
+the harness reopen or migrate its own files. Archive warm work before an upgrade
+and retain a recoverable backup. Switching Codex/Claude starts a new native
+session using permitted Bosca context; it does not translate native databases.
+
 ## Services and isolation
 
 Each site's runner uses the application configuration bundled in its image,

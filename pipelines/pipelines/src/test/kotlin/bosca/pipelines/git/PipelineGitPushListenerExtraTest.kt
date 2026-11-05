@@ -104,4 +104,15 @@ class PipelineGitPushListenerExtraTest {
 
         coVerify { pipelineGitSyncService.onPushEvent(event.repositoryId, "before", "after") }
     }
+
+    @Test
+    fun `handle passes the pusher to the sync`() = runTest {
+        val pusher = bosca.serialization.UUID.random()
+        val listener = PipelineGitPushListener(pubSubService, pipelineGitSyncService)
+        val event = pushEvent().copy(pusherPrincipalId = pusher)
+
+        listener.handle(event)
+
+        coVerify { pipelineGitSyncService.onPushEvent(event.repositoryId, "before", "after", pusher) }
+    }
 }

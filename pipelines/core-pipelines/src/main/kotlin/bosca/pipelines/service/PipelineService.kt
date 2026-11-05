@@ -91,6 +91,12 @@ interface PipelineService : PermissionService<Pipeline, UUID> {
     /** Soft-deletes the pipeline and removes its scheduled job, if any. */
     suspend fun delete(id: UUID)
 
+    /**
+     * Whether pipeline [id] can execute under the pipelines service account: it is triggered or
+     * scheduled, or a pipeline that is reaches it as a child, iteration body or rollback pipeline.
+     */
+    suspend fun runsUnattended(id: UUID): Boolean
+
     /** The pipeline's node/edge graph as a [JsonElement] (drives the editor). */
     suspend fun graphAsJsonElement(pipeline: Pipeline): JsonElement
 

@@ -23,4 +23,16 @@ interface RollbackRepository {
     /** A run's rollback entries in **reverse** order (last completed first) — the rollback order. */
     @Query("select * from pipelines.pipeline_run_rollback where run_id = :runId order by seq desc")
     suspend fun listForRunReversed(runId: UUID): List<RollbackRecord>
+
+    /** A run's failed rollback entries in rollback order. */
+    @Query("select * from pipelines.pipeline_run_rollback where run_id = :runId and failed_at is not null order by seq desc")
+    suspend fun listFailedReversed(runId: UUID): List<RollbackRecord>
+
+    /** Records why a rollback did not complete. */
+    @Query("update pipelines.pipeline_run_rollback set error = :error, failed_at = now() where seq = :seq")
+    suspend fun markFailed(seq: Long, error: String)
+
+    /** Clears a failure for one retry; only the caller that receives 1 may run the rollback again. */
+    @Query("update pipelines.pipeline_run_rollback set error = null, failed_at = null where seq = :seq and failed_at is not null", returnUpdateCount = true)
+    suspend fun claimFailed(seq: Long): Int
 }

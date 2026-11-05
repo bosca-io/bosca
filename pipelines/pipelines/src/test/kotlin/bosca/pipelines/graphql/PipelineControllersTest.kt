@@ -339,7 +339,7 @@ class PipelineControllersTest {
         val controller = pipelinesController(runService = runService)
         val pipelineId = UUID.random()
 
-        controller.runs(mockk(), pipelineId, null, null)
+        controller.runs(pipelineAdministrator(), pipelineId, null, null)
         coVerify(exactly = 1) { runService.listRunHistory(pipelineId, 0L, 50) }
     }
 
@@ -349,7 +349,7 @@ class PipelineControllersTest {
         val controller = pipelinesController(runService = runService)
         val pipelineId = UUID.random()
 
-        controller.runs(mockk(), pipelineId, 5, 9999)
+        controller.runs(pipelineAdministrator(), pipelineId, 5, 9999)
         coVerify(exactly = 1) { runService.listRunHistory(pipelineId, 5L, 200) }
     }
 
@@ -359,7 +359,7 @@ class PipelineControllersTest {
         val controller = pipelinesController(runService = runService)
         val pipelineId = UUID.random()
 
-        controller.runs(mockk(), pipelineId, 0, 0)
+        controller.runs(pipelineAdministrator(), pipelineId, 0, 0)
         coVerify(exactly = 1) { runService.listRunHistory(pipelineId, 0L, 1) }
     }
 
@@ -367,10 +367,11 @@ class PipelineControllersTest {
     fun `runs rejects a non-admin`() = runTest {
         val groups = mockk<GroupEvaluator>()
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = pipelinesController(groups = groups, runService = runService)
 
-        val ex = assertFailsWith<IllegalStateException> { controller.runs(mockk(), UUID.random(), null, null) }
+        val ex = assertFailsWith<IllegalStateException> { controller.runs(pipelineAdministrator(), UUID.random(), null, null) }
         assertTrue(ex.message!!.contains("not an admin"))
         coVerify(exactly = 0) { runService.listRunHistory(any(), any(), any()) }
     }
@@ -380,7 +381,7 @@ class PipelineControllersTest {
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = pipelinesController(runService = runService)
 
-        controller.allRuns(mockk(), null, null)
+        controller.allRuns(pipelineAdministrator(), null, null)
         coVerify(exactly = 1) { runService.listAllRunHistory(0L, 50) }
     }
 
@@ -389,7 +390,7 @@ class PipelineControllersTest {
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = pipelinesController(runService = runService)
 
-        controller.allRuns(mockk(), 10, 25)
+        controller.allRuns(pipelineAdministrator(), 10, 25)
         coVerify(exactly = 1) { runService.listAllRunHistory(10L, 25) }
     }
 
@@ -397,10 +398,11 @@ class PipelineControllersTest {
     fun `allRuns rejects a non-admin`() = runTest {
         val groups = mockk<GroupEvaluator>()
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = pipelinesController(groups = groups, runService = runService)
 
-        assertFailsWith<IllegalStateException> { controller.allRuns(mockk(), null, null) }
+        assertFailsWith<IllegalStateException> { controller.allRuns(pipelineAdministrator(), null, null) }
         coVerify(exactly = 0) { runService.listAllRunHistory(any(), any()) }
     }
 
@@ -410,7 +412,7 @@ class PipelineControllersTest {
         coEvery { service.getAll() } returns listOf(pipeline())
         val controller = pipelinesController(service = service)
 
-        assertEquals(1, controller.all(mockk()).size)
+        assertEquals(1, controller.all(pipelineAdministrator()).size)
         coVerify(exactly = 1) { service.getAll() }
     }
 
@@ -418,10 +420,11 @@ class PipelineControllersTest {
     fun `all rejects a non-admin`() = runTest {
         val groups = mockk<GroupEvaluator>()
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
         val service = mockk<PipelineService>(relaxed = true)
         val controller = pipelinesController(service = service, groups = groups)
 
-        assertFailsWith<IllegalStateException> { controller.all(mockk()) }
+        assertFailsWith<IllegalStateException> { controller.all(pipelineAdministrator()) }
         coVerify(exactly = 0) { service.getAll() }
     }
 
@@ -432,7 +435,7 @@ class PipelineControllersTest {
         coEvery { service.get(id) } returns null
         val controller = pipelinesController(service = service)
 
-        assertNull(controller.pipeline(mockk(), id))
+        assertNull(controller.pipeline(pipelineAdministrator(), id))
         coVerify(exactly = 1) { service.get(id) }
     }
 
@@ -443,17 +446,18 @@ class PipelineControllersTest {
         coEvery { service.get(found.id) } returns found
         val controller = pipelinesController(service = service)
 
-        assertEquals(found, controller.pipeline(mockk(), found.id))
+        assertEquals(found, controller.pipeline(pipelineAdministrator(), found.id))
     }
 
     @Test
     fun `pipeline rejects a non-admin`() = runTest {
         val groups = mockk<GroupEvaluator>()
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
         val service = mockk<PipelineService>(relaxed = true)
         val controller = pipelinesController(service = service, groups = groups)
 
-        assertFailsWith<IllegalStateException> { controller.pipeline(mockk(), UUID.random()) }
+        assertFailsWith<IllegalStateException> { controller.pipeline(pipelineAdministrator(), UUID.random()) }
         coVerify(exactly = 0) { service.get(any()) }
     }
 
@@ -463,7 +467,7 @@ class PipelineControllersTest {
         val broken = BrokenPipeline(UUID.random(), "Broken", "broken", "invalid graph")
         coEvery { service.getBroken() } returns listOf(broken)
 
-        assertEquals(listOf(broken), pipelinesController(service = service).broken(mockk()))
+        assertEquals(listOf(broken), pipelinesController(service = service).broken(pipelineAdministrator()))
         coVerify(exactly = 1) { service.getBroken() }
     }
 
@@ -477,7 +481,7 @@ class PipelineControllersTest {
         coEvery { shapeService.list() } returns listOf(shape)
         val controller = pipelinesController(runService = runService, shapeService = shapeService)
 
-        assertEquals(listOf(step), controller.stepsForTrigger(mockk(), "release.created"))
+        assertEquals(listOf(step), controller.stepsForTrigger(pipelineAdministrator(), "release.created"))
         assertEquals(listOf(shape), controller.shapes())
 
         val namedShapeController = PipelineNamedShapeController()
@@ -490,7 +494,7 @@ class PipelineControllersTest {
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = pipelinesController(runService = runService)
 
-        controller.activeRuns(mockk(), null, 500)
+        controller.activeRuns(pipelineAdministrator(), null, 500)
         coVerify(exactly = 1) { runService.listActive(0L, 200) }
     }
 
@@ -498,10 +502,11 @@ class PipelineControllersTest {
     fun `activeRuns rejects a non-admin`() = runTest {
         val groups = mockk<GroupEvaluator>()
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = pipelinesController(groups = groups, runService = runService)
 
-        assertFailsWith<IllegalStateException> { controller.activeRuns(mockk(), null, null) }
+        assertFailsWith<IllegalStateException> { controller.activeRuns(pipelineAdministrator(), null, null) }
         coVerify(exactly = 0) { runService.listActive(any(), any()) }
     }
 
@@ -510,7 +515,7 @@ class PipelineControllersTest {
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = pipelinesController(runService = runService)
 
-        controller.deadLetter(mockk(), null, null)
+        controller.deadLetter(pipelineAdministrator(), null, null)
         coVerify(exactly = 1) { runService.listDeadLetter(0L, 50) }
     }
 
@@ -519,7 +524,7 @@ class PipelineControllersTest {
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = pipelinesController(runService = runService)
 
-        controller.deadLetter(mockk(), 3, 7)
+        controller.deadLetter(pipelineAdministrator(), 3, 7)
         coVerify(exactly = 1) { runService.listDeadLetter(3L, 7) }
     }
 
@@ -527,10 +532,11 @@ class PipelineControllersTest {
     fun `deadLetter rejects a non-admin`() = runTest {
         val groups = mockk<GroupEvaluator>()
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = pipelinesController(groups = groups, runService = runService)
 
-        assertFailsWith<IllegalStateException> { controller.deadLetter(mockk(), null, null) }
+        assertFailsWith<IllegalStateException> { controller.deadLetter(pipelineAdministrator(), null, null) }
         coVerify(exactly = 0) { runService.listDeadLetter(any(), any()) }
     }
 
@@ -541,7 +547,7 @@ class PipelineControllersTest {
         coEvery { runService.get(runId) } returns null
         val controller = pipelinesController(runService = runService)
 
-        assertNull(controller.run(mockk(), runId))
+        assertNull(controller.run(pipelineAdministrator(), runId))
         coVerify(exactly = 1) { runService.get(runId) }
     }
 
@@ -549,10 +555,11 @@ class PipelineControllersTest {
     fun `run rejects a non-admin`() = runTest {
         val groups = mockk<GroupEvaluator>()
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = pipelinesController(groups = groups, runService = runService)
 
-        assertFailsWith<IllegalStateException> { controller.run(mockk(), UUID.random()) }
+        assertFailsWith<IllegalStateException> { controller.run(pipelineAdministrator(), UUID.random()) }
         coVerify(exactly = 0) { runService.get(any()) }
     }
 
@@ -563,7 +570,7 @@ class PipelineControllersTest {
         coEvery { runService.nodeMetrics(pipelineId) } returns emptyList()
         val controller = pipelinesController(runService = runService)
 
-        assertEquals(emptyList(), controller.nodeMetrics(mockk(), pipelineId))
+        assertEquals(emptyList(), controller.nodeMetrics(pipelineAdministrator(), pipelineId))
         coVerify(exactly = 1) { runService.nodeMetrics(pipelineId) }
     }
 
@@ -571,10 +578,11 @@ class PipelineControllersTest {
     fun `nodeMetrics rejects a non-admin`() = runTest {
         val groups = mockk<GroupEvaluator>()
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = pipelinesController(groups = groups, runService = runService)
 
-        assertFailsWith<IllegalStateException> { controller.nodeMetrics(mockk(), UUID.random()) }
+        assertFailsWith<IllegalStateException> { controller.nodeMetrics(pipelineAdministrator(), UUID.random()) }
         coVerify(exactly = 0) { runService.nodeMetrics(any()) }
     }
 
@@ -584,7 +592,7 @@ class PipelineControllersTest {
         coEvery { secretService.listSecrets() } returns emptyList()
         val controller = pipelinesController(secretService = secretService)
 
-        assertEquals(emptyList(), controller.secrets(mockk()))
+        assertEquals(emptyList(), controller.secrets(pipelineAdministrator()))
         coVerify(exactly = 1) { secretService.listSecrets() }
     }
 
@@ -592,10 +600,11 @@ class PipelineControllersTest {
     fun `secrets rejects a non-admin`() = runTest {
         val groups = mockk<GroupEvaluator>()
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
         val secretService = mockk<PipelineSecretService>(relaxed = true)
         val controller = pipelinesController(groups = groups, secretService = secretService)
 
-        assertFailsWith<IllegalStateException> { controller.secrets(mockk()) }
+        assertFailsWith<IllegalStateException> { controller.secrets(pipelineAdministrator()) }
         coVerify(exactly = 0) { secretService.listSecrets() }
     }
 
@@ -608,7 +617,7 @@ class PipelineControllersTest {
     @Test
     fun `nodeTypes returns empty when no serializers are registered`() = runTest {
         val controller = pipelinesController()
-        assertEquals(emptyList(), controller.nodeTypes(mockk()))
+        assertEquals(emptyList(), controller.nodeTypes(pipelineAdministrator()))
     }
 
     @Test
@@ -632,7 +641,7 @@ class PipelineControllersTest {
         }
 
         val controller = pipelinesController()
-        val descriptors = controller.nodeTypes(mockk())
+        val descriptors = controller.nodeTypes(pipelineAdministrator())
 
         // Sort is compareBy(category, label) over the NodeCategory enum order
         // (INPUT, OUTPUT, TRANSFORM, FETCH, COMBINE, ROUTE, ACTION): TRANSFORM precedes ACTION, so
@@ -646,9 +655,10 @@ class PipelineControllersTest {
     fun `nodeTypes rejects a non-admin`() = runTest {
         val groups = mockk<GroupEvaluator>()
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
         val controller = pipelinesController(groups = groups)
 
-        assertFailsWith<IllegalStateException> { controller.nodeTypes(mockk()) }
+        assertFailsWith<IllegalStateException> { controller.nodeTypes(pipelineAdministrator()) }
     }
 
     @Test
@@ -659,7 +669,7 @@ class PipelineControllersTest {
             CataloguedPipelineValue::class.java,
         )
 
-        val types = pipelinesController().types(mockk())
+        val types = pipelinesController().types(pipelineAdministrator())
 
         assertTrue(CataloguedPipelineValueImpl.serializer().descriptor.serialName in types)
         assertTrue(CataloguedPipelineValue::class.java.name in types)
@@ -670,7 +680,8 @@ class PipelineControllersTest {
     fun `types rejects a non-admin`() = runTest {
         val groups = mockk<GroupEvaluator>()
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
 
-        assertFailsWith<IllegalStateException> { pipelinesController(groups = groups).types(mockk()) }
+        assertFailsWith<IllegalStateException> { pipelinesController(groups = groups).types(pipelineAdministrator()) }
     }
 }

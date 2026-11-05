@@ -131,7 +131,10 @@ class KtsEngine(
             val compiledScript = withContext(compilationDispatcher) {
                 val scriptSource = source.toScriptSource("$key.bosca.kts")
                 val result = host.compiler(scriptSource, BoscaScriptCompilationConfiguration)
-                result.valueOrThrow()
+                when (result) {
+                    is ResultWithDiagnostics.Success -> result.value
+                    is ResultWithDiagnostics.Failure -> throw ScriptCompilationException(result.reports.map { it.message })
+                }
             }
             log.info("Script compiled: {} v{}", key, version)
             val compiled = BoscaCompiledScriptImpl<T>(executionTimeoutSeconds, compiledScript, host, classLoader)

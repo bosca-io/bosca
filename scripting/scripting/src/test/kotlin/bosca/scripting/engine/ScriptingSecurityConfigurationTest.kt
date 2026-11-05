@@ -46,7 +46,6 @@ class ScriptingSecurityConfigurationTest {
         val config = ScriptingSecurityConfiguration()
         assertEquals(ScriptingSecurityConfiguration.DEFAULT_ALLOWED_PREFIXES, config.allowedPrefixes)
         assertEquals(600L, config.executionTimeoutSeconds)
-        assertEquals("sa", config.triggerServiceAccount)
     }
 
     @Test
@@ -54,10 +53,8 @@ class ScriptingSecurityConfigurationTest {
         val custom = ScriptingSecurityConfiguration(
             allowedPrefixes = listOf("com.example."),
             executionTimeoutSeconds = 30L,
-            triggerServiceAccount = "admin"
         )
         assertEquals(listOf("com.example."), custom.allowedPrefixes)
         assertEquals(30L, custom.executionTimeoutSeconds)
-        assertEquals("admin", custom.triggerServiceAccount)
     }
 }

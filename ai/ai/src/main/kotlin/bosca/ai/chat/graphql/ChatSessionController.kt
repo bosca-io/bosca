@@ -16,7 +16,8 @@ import kotlin.uuid.Uuid
 @OptIn(ExperimentalUuidApi::class)
 @TypeController
 class ChatSessionController(
-    private val service: ChatHistoryService
+    private val service: ChatHistoryService,
+    private val harness: bosca.ai.kit.harness.KitHarnessService
 ) : GraphQLController<ChatSession> {
 
     @Field
@@ -63,6 +64,27 @@ class ChatSessionController(
 
     @Field
     fun modified(session: ChatSession): OffsetDateTime = session.modified
+
+    @Field
+    suspend fun harnessState(session: ChatSession) = harness.state(session.id)
+
+    @Field
+    suspend fun harnessContext(authentication: bosca.security.service.AuthenticationContext, session: ChatSession) =
+        harness.context(authentication, session.id)
+
+    @Field
+    suspend fun harnessSettings(authentication: bosca.security.service.AuthenticationContext, session: ChatSession) =
+        harness.settings(authentication, session.id)
+
+    @Field
+    suspend fun harnessApprovals(session: ChatSession): kotlinx.serialization.json.JsonElement =
+        kotlinx.serialization.json.JsonArray(harness.approvals(session.id).map {
+            kotlinx.serialization.json.buildJsonObject {
+                put("id", JsonPrimitive(it.id.toString()))
+                put("request", it.request)
+                put("expires", JsonPrimitive(it.expires.toString()))
+            }
+        })
 
     @Field
     suspend fun messages(session: ChatSession): List<ChatHistoryMessage> {

@@ -40,6 +40,10 @@ type Bible {
     book(usfm: String!): BibleBook
     "Search for scripture by a human-readable reference string (e.g. 'Genesis 1:1' or 'John 3:16-18'). Returns matching books, chapters, and verse ranges."
     find(human: String!): [FindBibleResult!]!
+    "Resolve human-readable references without retrieving passage content"
+    references(human: String!): [BibleReference!]!
+    "Retrieve passage components and attribution for AI context. Requires content access and the source's AI_CONTEXT grant."
+    aiContext(human: String!): [FindBibleResult!]!
 }
 
 "An attached recording; listing it does not download audio"

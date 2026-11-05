@@ -22,6 +22,10 @@ interface DocumentRepository {
     @Query("select * from documents where metadata_id = :metadataId and version = :version")
     suspend fun getByMetadataIdAndVersion(metadataId: UUID, version: Int): Document?
 
+    /** Locks the persisted draft for a checked document revision or deletion. */
+    @Query("select * from documents where metadata_id = :metadataId and version = :version for update")
+    suspend fun getForUpdate(metadataId: UUID, version: Int): Document?
+
     /** Reads the document fields without deserializing content after a typed read fails. */
     @Query("select metadata_id, version, template_metadata_id, template_metadata_version, title, null::jsonb as content from documents where metadata_id = :metadataId and version = :version")
     suspend fun getByMetadataIdAndVersionWithoutContent(metadataId: UUID, version: Int): Document?

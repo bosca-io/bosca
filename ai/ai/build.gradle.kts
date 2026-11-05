@@ -45,6 +45,9 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.mockk)
+    testImplementation(project(":bosca-core:test-support"))
+    testImplementation(project(":content:content"))
+    testImplementation(project(":bosca-core:core-storage"))
 }
 
 ksp {

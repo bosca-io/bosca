@@ -24,7 +24,20 @@ import bosca.cli.Version
 import bosca.cli.api.KitApi
 import bosca.cli.api.KitChatTurn
 import bosca.cli.api.KitResponse
+import bosca.cli.api.KitTurnControl
+import bosca.cli.api.KitTurnCancelledBeforeSubmission
+import ai.koog.a2a.exceptions.A2ATaskNotCancelableException
+import ai.koog.a2a.model.TaskIdParams
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import bosca.cli.api.responseContent
+import bosca.cli.api.resultContent
+import bosca.cli.api.summaryJson
+import bosca.graphql.client.GraphQLJson
+import com.agentclientprotocol.model.ContentBlock
+import com.agentclientprotocol.model.EmbeddedResourceResource
+import com.agentclientprotocol.model.ToolCallContent
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.cancellation.CancellationException
@@ -37,6 +50,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 
 /** Bridges A2A tasks to Kit's durable, server-side chat sessions. */
@@ -48,6 +62,7 @@ internal class KitA2AAgentExecutor(
     private val sessions = ConcurrentHashMap<String, Uuid>()
     private val contextLocks = ConcurrentHashMap<String, Mutex>()
     private val sessionLocks = ConcurrentHashMap<Uuid, Mutex>()
+    private val activeTurns = ConcurrentHashMap<String, KitTurnControl>()
 
     override suspend fun execute(
         context: RequestContext<MessageSendParams>,
@@ -62,45 +77,62 @@ internal class KitA2AAgentExecutor(
             return
         }
 
-        val workingMessage = eventProcessor.sendInitialTask(
-            context,
-            TaskState.Working,
-            "Kit is working on the request",
-        )
+        val control = KitTurnControl()
+        check(activeTurns.putIfAbsent(context.taskId, control) == null) { "Kit task is already running" }
         try {
-            val turn = contextLocks.computeIfAbsent(context.contextId) { Mutex() }.withLock {
-                ask(context, userText)
+            val workingMessage = eventProcessor.sendInitialTask(context, TaskState.Working, "Kit is working on the request")
+            val turn = withContext(control) {
+                contextLocks.computeIfAbsent(context.contextId) { Mutex() }.withLock {
+                    ask(context, userText)
+                }
             }
             val response = turn.responseContent()
             val metadata = sessionMetadata(turn)
             val artifacts = sendArtifacts(context, eventProcessor, turn, response, metadata)
 
-            val failed = turn.session.status.name == "FAILED" ||
-                (response.text.isBlank() && response.displayEvents.isEmpty() && response.images.isEmpty())
-            val text = response.text.ifBlank {
-                if (failed) "Kit failed to complete the request." else "Kit completed the request."
-            }
+            val failed = response.failed || response.empty
+            val text = listOfNotNull(response.text.takeIf(String::isNotBlank), response.outcomeText)
+                .joinToString("\n\n").ifBlank { if (failed) "Kit returned no response." else "Kit completed the request." }
             eventProcessor.sendFinalTask(
                 context = context,
-                state = if (failed) TaskState.Failed else TaskState.Completed,
+                state = when {
+                    response.cancelled -> TaskState.Canceled
+                    failed -> TaskState.Failed
+                    else -> TaskState.Completed
+                },
                 text = text,
                 metadata = metadata,
                 artifacts = artifacts,
                 history = listOf(workingMessage),
             )
+        } catch (e: KitTurnCancelledBeforeSubmission) {
+            eventProcessor.sendFinalTask(context, TaskState.Canceled, requireNotNull(e.message))
         } catch (e: CancellationException) {
+            control.finish(e)
             throw e
         } catch (e: Exception) {
             eventProcessor.sendFinalTask(
                 context,
                 TaskState.Failed,
                 "Kit request failed: ${e.message ?: "unknown error"}",
-                history = listOf(workingMessage),
             )
+        } finally {
+            activeTurns.remove(context.taskId, control)
+            control.finish()
+        }
+    }
+
+    /** Forwards cancellation intent, leaving the execution path to publish the actual terminal outcome. */
+    override suspend fun cancel(context: RequestContext<TaskIdParams>, eventProcessor: SessionEventProcessor, agentJob: Deferred<Unit>?) {
+        val control = activeTurns[context.taskId] ?: throw A2ATaskNotCancelableException("Kit task is no longer running")
+        control.requestCancellation()
+        if (withTimeoutOrNull(5_000) { control.awaitFinished(); true } != true) {
+            throw A2ATaskNotCancelableException("Cancellation requested; Bosca has not confirmed the outcome. Check the task again.")
         }
     }
 
     private suspend fun ask(context: RequestContext<MessageSendParams>, message: String): KitChatTurn {
+        kotlinx.coroutines.currentCoroutineContext()[KitTurnControl]?.checkBeforeSubmission()
         val requestedSession = requestedSessionId(context)
         val sessionId = requestedSession ?: sessions[context.contextId] ?: api.createSession(defaultTitle(message)).id
         sessions[context.contextId] = sessionId
@@ -128,6 +160,42 @@ internal class KitA2AAgentExecutor(
         metadata: JsonObject,
     ): List<Artifact> {
         val artifacts = mutableListOf<Artifact>()
+        for (harness in response.harnessTurns) {
+            val artifact = Artifact(
+                artifactId = harness.turnId,
+                name = "Kit turn result",
+                parts = buildList {
+                    add(DataPart(harness.summaryJson()))
+                    harness.resultContent().forEach { (toolId, result) ->
+                        val partMetadata = buildJsonObject {
+                            put("boscaTurnId", harness.turnId)
+                            toolId?.let { put("boscaToolCallId", it) }
+                        }
+                        val block = (result as? ToolCallContent.Content)?.content
+                        add(when (block) {
+                            is ContentBlock.Text -> TextPart(block.text, metadata = partMetadata)
+                            is ContentBlock.Image -> FilePart(FileWithBytes(bytes = block.data, mimeType = block.mimeType), metadata =
+                                buildJsonObject { partMetadata.forEach(::put); block.uri?.let { put("uri", it) } })
+                            is ContentBlock.Audio -> FilePart(FileWithBytes(bytes = block.data, mimeType = block.mimeType), metadata = partMetadata)
+                            is ContentBlock.ResourceLink -> DataPart(
+                                GraphQLJson.encodeToJsonElement(ContentBlock.serializer(), block).jsonObject, metadata = partMetadata)
+                            is ContentBlock.Resource -> when (val resource = block.resource) {
+                                is EmbeddedResourceResource.BlobResourceContents -> FilePart(
+                                    FileWithBytes(bytes = resource.blob, mimeType = resource.mimeType),
+                                    metadata = buildJsonObject { partMetadata.forEach(::put); put("uri", resource.uri) })
+                                is EmbeddedResourceResource.TextResourceContents -> DataPart(
+                                    GraphQLJson.encodeToJsonElement(ContentBlock.serializer(), block).jsonObject, metadata = partMetadata)
+                            }
+                            else -> DataPart(GraphQLJson.encodeToJsonElement(ToolCallContent.serializer(), result).jsonObject, metadata = partMetadata)
+                        })
+                    }
+                },
+                metadata = metadata,
+            )
+            artifacts += artifact
+            eventProcessor.sendTaskEvent(TaskArtifactUpdateEvent(taskId = context.taskId, contextId = context.contextId,
+                artifact = artifact, append = false, lastChunk = true, metadata = metadata))
+        }
         if (response.displayEvents.isNotEmpty()) {
             val artifact = Artifact(
                 artifactId = "${context.taskId}-analytics",

@@ -58,12 +58,19 @@ requests without a recording identifier continue to read the current recording.
 The audio route supports byte ranges and checks content and playback access on every request.
 Recording metadata remains on existing chapter rows, and media uses `ObjectStorageService`.
 Warm playback uses the chapter cache, which reads recording metadata from PostgreSQL on a miss.
+
 Background jobs retain the newest 50 files per upstream recording across configurations
 and delete evicted or expired media. Responses expire
 after 14 days; private usage metadata remains on the chapter after media eviction until
 that expiry. Evicted recordings are excluded from playback and the 50-file limit. Cache entries
 are removed immediately, while media deletion has a five-minute grace period so requests
 that already resolved a recording can open it.
+
+Bible `references(human)` resolves references without fetching passage text.
+`aiContext(human)` retrieves exact passage components and attribution after checking
+content access and the source's `AI_CONTEXT` grant. The existing `find(human)`
+uses `DISPLAY`. Both return each resolved reference's own component tree; AI use
+denial propagates without a display fallback.
 
 The Bible compiler tests download KJV and ASV DBL bundles rather than storing them in Git.
 Set `BIBLE_RAW_ARTIFACTS` to the raw artifact download base URL, including the namespace,
@@ -79,6 +86,31 @@ are added only to the test runtime classpath, so they are not packaged as projec
 Locally, if the variable is unset or a download fails, the build prints a prominent warning
 and tests requiring the missing bundles are skipped. Other compiler tests still run.
 In CI (`CI=true`), missing bundle configuration or a failed download fails the build.
+
+## Image generation
+
+`content.images.generate` and `content.images.edit` create uploaded content items
+through `ImageGenerationService`, implemented by Kit using the configured Gemini
+image client. Both accept a name and destination collection; edits also require an
+uploaded source image and leave it unchanged. API authorization checks content
+creation scope, destination EDIT access (or editor membership for root creation),
+and source content VIEW access for edits. Results use the ordinary metadata,
+download, readiness and publication APIs. Generation does not publish the image.
+
+See [Kit's tool and provider configuration](../ai/kit/README.md#tool-results) for
+MCP previews and provider settings. The generation request is attempted once;
+provider and storage failures propagate without automatically generating another image.
+
+`content.images.attach` attaches an uploaded image to a document, data item, or
+collection through its template. It requires source content VIEW and target EDIT
+access, including the selected collection language variant. An omitted
+`attributeKey` selects the sole image attribute or returns the available choices
+without changing relationships. Template settings supply the relationship, list
+behavior, target size, and default crop ratio; `crop` accepts source pixels.
+Single-image replacement is transactional and serializes concurrent attachments to
+the same target. Optimization and collaboration failures
+after attachment are returned as warnings with `attached: true`. Attachment does
+not publish either item.
 
 ## Architecture
 

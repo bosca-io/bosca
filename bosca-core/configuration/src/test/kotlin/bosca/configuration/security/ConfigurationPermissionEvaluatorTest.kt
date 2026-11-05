@@ -2,6 +2,8 @@ package bosca.configuration.security
 
 import bosca.configuration.graphql.ConfigurationController
 import bosca.configuration.graphql.ConfigurationsController
+import bosca.configuration.graphql.ConfigurationsMutationController
+import bosca.configuration.model.ConfigurationInput
 import bosca.configuration.model.Configuration
 import bosca.configuration.model.ConfigurationPermission
 import bosca.configuration.service.ConfigurationService
@@ -120,5 +122,34 @@ class ConfigurationPermissionEvaluatorTest {
         assertTrue(evaluator.isAllowed(authentication(emptyList(), team), configuration.copy(public = true), PermissionAction.VIEW))
         assertTrue(evaluator.isAllowed(null, configuration.copy(public = true), PermissionAction.VIEW))
         assertFalse(evaluator.isAllowed(authentication(emptyList()), configuration, PermissionAction.VIEW))
+    }
+
+    @Test
+    fun `replacing configuration values and grants requires manage rather than edit`() = runTest {
+        val mutations = ConfigurationsMutationController(service, evaluator, GroupEvaluator(security))
+        val caller = context(AuthenticatedPrincipal(Principal(id = UUID.random()), listOf(team)))
+        val input = ConfigurationInput(configuration.key, "Policy", secret, false, emptyList())
+        permissions = listOf(ConfigurationPermission(configuration.id, PermissionAction.EDIT, team.id))
+        assertFailsWith<SecurityException> { mutations.setConfiguration(caller, input) }
+        coVerify(exactly = 0) { service.setConfiguration(any()) }
+        permissions = listOf(ConfigurationPermission(configuration.id, PermissionAction.MANAGE, team.id))
+        coEvery { service.setConfiguration(input) } returns configuration
+        assertEquals(configuration, mutations.setConfiguration(caller, input))
+    }
+
+    @Test
+    fun `deleting configuration requires manage rather than delete or a built in editor role`() = runTest {
+        val mutations = ConfigurationsMutationController(service, evaluator, GroupEvaluator(security))
+        val editor = context(AuthenticatedPrincipal(Principal(id = UUID.random()), listOf(Group(UUID.random(), "editors", "", GroupType.SYSTEM))))
+        val caller = context(AuthenticatedPrincipal(Principal(id = UUID.random()), listOf(team)))
+        coEvery { service.getByKey(configuration.key) } returns configuration
+        permissions = emptyList()
+        assertFailsWith<SecurityException> { mutations.deleteConfiguration(editor, configuration.key) }
+        permissions = listOf(ConfigurationPermission(configuration.id, PermissionAction.DELETE, team.id))
+        assertFailsWith<SecurityException> { mutations.deleteConfiguration(caller, configuration.key) }
+        coVerify(exactly = 0) { service.deleteConfiguration(any()) }
+        permissions = listOf(ConfigurationPermission(configuration.id, PermissionAction.MANAGE, team.id))
+        coEvery { service.deleteConfiguration(configuration.key) } returns configuration.id
+        assertEquals(configuration.id, mutations.deleteConfiguration(caller, configuration.key))
     }
 }

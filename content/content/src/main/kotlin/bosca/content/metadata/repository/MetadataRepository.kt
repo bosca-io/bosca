@@ -11,6 +11,10 @@ import kotlinx.serialization.json.JsonElement
 @Repository
 interface MetadataRepository {
 
+    /** Locks the current content row before checking its document revision. */
+    @Query("select * from metadata where id = :id for update")
+    suspend fun getForUpdate(id: UUID): Metadata?
+
     @Query("insert into metadata (parent_id, name, type, content_type, content_length, language_tag, labels, recommendation_contexts, attributes, system_attributes, public, public_content, public_supplementary, created, modified, source_id, source_identifier, source_url, delete_workflow_id, permission_mutation, etag, locked, searchable, recommendable, sync_variant_collections, sync_variant_relationships) values (:parentId, :name, :type, :contentType, :contentLength, :languageTag, :labels, :recommendationContexts, :attributes, :systemAttributes, :public, :publicContent, :publicSupplementary, :created, :modified, :sourceId, :sourceIdentifier, :sourceUrl, :deleteWorkflowId, :permissionMutation, :etag, :locked, :searchable, :recommendable, :syncVariantCollections, :syncVariantRelationships) returning *")
     suspend fun add(metadata: Metadata): Metadata
 

@@ -87,6 +87,42 @@ class KubernetesJobControllerTest {
     }
 
     @Test
+    fun `worker image observations use real pod status and reject unrelated or ambiguous pods`() = runTest {
+        val fixture = observedExecutionFixture(KubernetesJobExecutionStatus.RUNNING)
+        val job = buildKubernetesJob(JobProfile.from(resource()), KubernetesJobRequest("android", "ci-1"), fixture.dispatchId)
+        job.metadata.uid = "job-owner"
+        mockwebserver3.MockWebServer().use { server ->
+            server.start()
+            server.enqueue(mockwebserver3.MockResponse.Builder().body("""{
+              "apiVersion":"v1","kind":"PodList","items":[{
+                "apiVersion":"v1","kind":"Pod","metadata":{"name":"worker-pod","namespace":"workers",
+                  "ownerReferences":[{"apiVersion":"batch/v1","kind":"Job","name":"job","uid":"job-owner","controller":true}]},
+                "spec":{"containers":[{"name":"sidecar","image":"sidecar:latest"},{"name":"worker","image":"worker@sha256:actual"}]},
+                "status":{"phase":"Running","containerStatuses":[
+                  {"name":"sidecar","imageID":"wrong-sidecar","state":{"running":{}}},
+                  {"name":"worker","imageID":"containerd://sha256:resolved","state":{"running":{}}}]} }]}
+            """.trimIndent()).build())
+            val config = io.fabric8.kubernetes.client.ConfigBuilder().withMasterUrl(server.url("/").toString()).build()
+            val pods = io.fabric8.kubernetes.client.KubernetesClientBuilder().withConfig(config).build().use { client ->
+                client.pods().inNamespace("workers").list().items
+            }
+            fixture.controller.recordWorkerImage(fixture.dispatchId, job, pods)
+            coVerify(exactly = 1) { fixture.executions.recordImage(fixture.dispatchId, "worker@sha256:actual", "containerd://sha256:resolved") }
+            val pod = pods.single()
+            fixture.controller.recordWorkerImage(fixture.dispatchId, job, listOf(pod, pod))
+            pod.metadata.ownerReferences.single().uid = "another-job"
+            fixture.controller.recordWorkerImage(fixture.dispatchId, job, pods)
+            pod.metadata.ownerReferences.single().uid = "job-owner"
+            pod.metadata.deletionTimestamp = "2026-01-01T00:00:00Z"
+            fixture.controller.recordWorkerImage(fixture.dispatchId, job, pods)
+            pod.metadata.deletionTimestamp = null
+            pod.status.containerStatuses.last().state = ContainerStateBuilder().withNewWaiting().endWaiting().build()
+            fixture.controller.recordWorkerImage(fixture.dispatchId, job, pods)
+            coVerify(exactly = 4) { fixture.executions.recordImage(fixture.dispatchId, null, null) }
+        }
+    }
+
+    @Test
     fun `reconcile consumes one queue item and creates one kubernetes job`() = runTest {
         val clusterId = UUID.random()
         val dispatchId = UUID.random()
@@ -175,6 +211,7 @@ class KubernetesJobControllerTest {
         coEvery { lock.release() } returns true
 
         KubernetesJobController(
+            encryption = mockk(),
             pool,
             clusters,
             executions,
@@ -320,6 +357,7 @@ class KubernetesJobControllerTest {
         coEvery { lock.release() } returns true
 
         KubernetesJobController(
+            encryption = mockk(),
             pool,
             clusters,
             executions,
@@ -387,6 +425,7 @@ class KubernetesJobControllerTest {
         coEvery { lock.release() } returns true
 
         KubernetesJobController(
+            encryption = mockk(),
             pool,
             clusters,
             executions,
@@ -472,6 +511,7 @@ class KubernetesJobControllerTest {
         coEvery { lock.release() } returns true
 
         KubernetesJobController(
+            encryption = mockk(),
             pool,
             clusters,
             executions,
@@ -757,6 +797,7 @@ class KubernetesJobControllerTest {
         coEvery { lock.release() } returns true
 
         KubernetesJobController(
+            encryption = mockk(),
             pool,
             clusters,
             executions,
@@ -901,6 +942,7 @@ class KubernetesJobControllerTest {
         coEvery { lock.release() } returns true
 
         KubernetesJobController(
+            encryption = mockk(),
             pool,
             clusters,
             executions,
@@ -1001,6 +1043,7 @@ class KubernetesJobControllerTest {
         coEvery { lock.release() } returns true
 
         KubernetesJobController(
+            encryption = mockk(),
             pool,
             clusters,
             executions,
@@ -1411,6 +1454,7 @@ class KubernetesJobControllerTest {
         coEvery { lock.release() } returns true
 
         KubernetesJobController(
+            encryption = mockk(),
             pool,
             clusters,
             executions,
@@ -1961,6 +2005,7 @@ class KubernetesJobControllerTest {
         coEvery { lock.release() } returns true
 
         KubernetesJobController(
+            encryption = mockk(),
             pool,
             clusters,
             executions,
@@ -2071,6 +2116,7 @@ class KubernetesJobControllerTest {
         coEvery { lock.release() } returns true
         return EmptyProfileFixture(
             controller = KubernetesJobController(
+            encryption = mockk(),
                 pool,
                 clusters,
                 executions,
@@ -2183,6 +2229,7 @@ class KubernetesJobControllerTest {
         coEvery { lock.release() } returns true
         return ObservedExecutionFixture(
             controller = KubernetesJobController(
+            encryption = mockk(),
                 pool,
                 clusters,
                 executions,
@@ -2267,6 +2314,7 @@ class KubernetesJobControllerTest {
         coEvery { lock.release() } returns true
         return QueuedDispatchFixture(
             controller = KubernetesJobController(
+            encryption = mockk(),
                 pool,
                 clusters,
                 executions,

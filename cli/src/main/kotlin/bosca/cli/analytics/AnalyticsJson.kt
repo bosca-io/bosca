@@ -5,6 +5,7 @@ import bosca.graphql.gen.AnalyticsQueryParameterInput
 import bosca.graphql.gen.AnalyticsVisualizationInstanceInput
 import bosca.graphql.gen.IAnalyticsDashboardFragment
 import bosca.graphql.gen.IAnalyticsDashboardSummaryFragment
+import bosca.graphql.gen.IAnalyticsQueryEvidenceFragment
 import bosca.graphql.gen.IAnalyticsQueryFragment
 import bosca.graphql.gen.IAnalyticsQuerySummaryFragment
 import bosca.graphql.gen.IAnalyticsVisualizationFragment
@@ -243,11 +244,22 @@ internal fun IAnalyticsDashboardFragment.toJson(): JsonObject = buildJsonObject 
     })
 }
 
+internal fun IAnalyticsQueryEvidenceFragment.toJson(): JsonObject = buildJsonObject {
+    put("queryId", queryId.toString()); put("sql", sql)
+    put("executedAt", executedAt.toString()); put("durationMs", durationMs)
+    put("parameters", JsonArray(parameters.map { buildJsonObject {
+        put("position", it.position); put("parameter", it.parameter); put("type", it.type.name)
+        put("value", it.value ?: JsonNull)
+    } }))
+}
+
 internal fun recordsJson(
     records: List<JsonElement>,
     cached: Boolean,
     refreshedAt: String?,
     maxRecords: Int = records.size,
+    stale: Boolean = false,
+    evidence: IAnalyticsQueryEvidenceFragment? = null,
 ): JsonObject {
     val bounded = records.take(maxRecords)
     return buildJsonObject {
@@ -255,7 +267,9 @@ internal fun recordsJson(
         put("returnedRecords", bounded.size)
         put("truncated", records.size > bounded.size)
         put("cached", cached)
+        put("stale", stale)
         put("refreshedAt", refreshedAt)
+        put("evidence", evidence?.toJson() ?: JsonNull)
     }
 }
 

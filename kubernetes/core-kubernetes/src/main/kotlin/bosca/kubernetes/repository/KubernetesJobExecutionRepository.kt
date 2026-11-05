@@ -153,6 +153,14 @@ interface KubernetesJobExecutionRepository {
     )
     suspend fun markRunning(dispatchId: UUID): KubernetesJobExecution?
 
+    /** Records current worker identity; null clears an observation that is no longer unambiguous. */
+    @Query("""
+        update kubernetes.job_execution set image = :image, image_id = :imageId, modified_at = now()
+        where dispatch_id = :dispatchId and status in ('materialized', 'running')
+          and (image is distinct from :image or image_id is distinct from :imageId)
+    """)
+    suspend fun recordImage(dispatchId: UUID, image: String?, imageId: String?)
+
     @Query(
         """
         update kubernetes.job_execution

@@ -16,9 +16,11 @@ import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.Tool
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.*
 import java.io.File
 import kotlin.uuid.Uuid
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Registers coarse-grained MCP tools for the Bosca content management
@@ -28,6 +30,7 @@ import kotlin.uuid.Uuid
 object ContentToolRegistrar {
 
     fun registerAll(server: Server, api: ContentApi) {
+        ImageToolRegistrar.registerAll(server, api.images)
         registerTemplateTools(server, api)
         registerMetadataTools(server, api)
         registerCollectionTools(server, api)
@@ -386,7 +389,7 @@ object ContentToolRegistrar {
             Tool(
                 name = "content_metadata",
                 description = "Manage content metadata items (documents, guides, data, media). " +
-                    "Use 'create' to create items with optional inline document content. " +
+                    "Use 'create' to save inline documentContent in one request. The title defaults to name and the content type to bosca/v-document. Creation does not mark content ready or publish it. " +
                     "Use 'set_content' to set the body. For spec/requirement/document-like artifacts (anything that should render as a structured doc), the canonical path is `documentContent` — the typed Bosca Document model wrapped as `{ document: { type: 'doc', content: [...] } }`, routed through setMetadataDocument(DocumentInput) so it deserializes against the typed schema. `markdownContent` is also supported as a convenience (server-side converts markdown → typed Document via MarkdownConverter). `textContent`, `jsonContent`, and `filePath` are reserved for non-document metadata (raw text blobs, opaque JSON, image/video/file uploads) and must not be used for document bodies — they bypass the Document model and won't render as a structured doc. " +
                     "Use 'get_document' or 'get_guide' to fetch rich content details.",
                 inputSchema = ToolSchema(
@@ -407,7 +410,7 @@ object ContentToolRegistrar {
                         put("parentCollectionId", buildJsonObject { put("type", "string"); put("description", "Parent collection UUID") })
                         put("templateId", buildJsonObject { put("type", "string"); put("description", "Template metadata UUID") })
                         put("templateVersion", buildJsonObject { put("type", "integer"); put("description", "Template version (default: 1)") })
-                        put("documentTitle", buildJsonObject { put("type", "string"); put("description", "Document title (create with document)") })
+                        put("documentTitle", buildJsonObject { put("type", "string"); put("description", "Document title (defaults to name on create)") })
                         put("documentContent", buildJsonObject { put("type", "object"); put("description",
                             "Typed Bosca Document content (used by both `create` and `set_content`). PREFERRED path " +
                             "for any document-shaped metadata (specs, requirements, articles, guides). " +
@@ -425,7 +428,7 @@ object ContentToolRegistrar {
                             "(@tiptap/starter-kit + @tiptap/extension-{table,table-row,table-header,table-cell," +
                             "task-list,task-item,underline,superscript,subscript,link,text-align}). " +
                             "Pass `documentTitle` to title the document. Optionally bind to a template via " +
-                            "`templateId` + `templateVersion`.") })
+                            "`templateId` + `templateVersion` when creating it; set_content preserves the existing template.") })
                         put("textContent", buildJsonObject { put("type", "string"); put("description",
                             "Plain text content (set_content). For NON-document metadata only — raw text blobs, plain " +
                             "data items. NEVER use for spec/requirement/document-like artifacts; it bypasses the typed " +
@@ -454,181 +457,202 @@ object ContentToolRegistrar {
                 ),
             ),
         ) { request ->
-            val args = request.arguments ?: error("Missing arguments")
-            try {
-                val result = when (args.str("action")) {
-                    "list" -> {
-                        val offset = args.optInt("offset") ?: 0
-                        val limit = args.optInt("limit") ?: 20
-                        val contentTypes = args.optStr("contentType")?.let { listOf(it) }
-                        val traitIds = args.optStringArray("traitIds")
-                        val items = api.metadata.findMetadata(
-                            contentTypes = contentTypes,
-                            traitIds = traitIds,
-                            offset = offset,
-                            limit = limit,
-                        )
-                        json.encodeToString(JsonArray.serializer(), JsonArray(items.map {
-                            metadataSummaryJson(it.id.toString(), it.name, it.content?.type ?: "", it.languageTag, it.version, it.metadataWorkflow.state)
-                        }))
-                    }
-                    "get" -> {
-                        val byId = args.optStr("id")?.let { api.metadata.get(Uuid.parse(it)) }
-                        val detail = if (byId != null) {
-                            metadataDetailJson(byId.id.toString(), byId.name, byId.content?.type ?: "", byId.languageTag, byId.version, byId.attributes, byId.labels, byId.public, byId.publicContent, byId.publicSupplementary, byId.metadataWorkflow.state, byId.created.toString(), byId.modified.toString())
-                        } else {
-                            val bySlug = args.optStr("slug")?.let { api.metadata.getBySlug(it) } ?: error("Provide id or slug")
-                            metadataDetailJson(bySlug.id.toString(), bySlug.name, bySlug.content?.type ?: "", bySlug.languageTag, bySlug.version, bySlug.attributes, bySlug.labels, bySlug.public, bySlug.publicContent, bySlug.publicSupplementary, bySlug.metadataWorkflow.state, bySlug.created.toString(), bySlug.modified.toString())
-                        }
-                        json.encodeToString(JsonElement.serializer(), detail)
-                    }
-                    "create" -> {
-                        val templateId = args.optStr("templateId")?.let { Uuid.parse(it) }
-                        val templateVersion = args.optInt("templateVersion") ?: 1
-                        val documentInput = args.optStr("documentTitle")?.let { title ->
-                            DocumentInput(
-                                title = title,
-                                content = args.optJsonObject("documentContent") ?: JsonObject(emptyMap()),
-                                templateMetadataId = templateId,
-                                templateMetadataVersion = templateVersion,
-                            )
-                        }
-                        val metadataInput = MetadataInput(
-                            name = args.str("name"),
-                            contentType = args.optStr("contentType") ?: "text/html",
-                            languageTag = args.optStr("languageTag") ?: "en",
-                            slug = args.optStr("slug"),
-                            parentCollectionId = args.optStr("parentCollectionId")?.let { Uuid.parse(it) },
-                            document = documentInput,
-                            attributes = args.optJsonObject("attributes"),
-                            traitIds = args.optStringArray("traitIds"),
-                        )
-                        val id = api.metadata.add(metadataInput) ?: error("Failed to create metadata")
-
-                        if (documentInput != null) {
-                            api.metadata.setDocument(id, 1, documentInput)
-                        }
-
-                        args.optBool("public")?.let { api.metadata.setPublic(id, it) }
-                        args.optBool("publicContent")?.let { api.metadata.setPublicContent(id, it) }
-                        args.optBool("publicSupplementary")?.let { api.metadata.setPublicSupplementary(id, it) }
-
-                        buildJsonObject { put("id", id.toString()); put("name", args.str("name")); put("status", "created") }.toString()
-                    }
-                    "edit" -> {
-                        val id = Uuid.parse(args.str("id"))
-                        val existing = api.metadata.get(id) ?: error("Metadata not found: $id")
-                        val metadataInput = MetadataInput(
-                            name = args.optStr("name") ?: existing.name,
-                            contentType = args.optStr("contentType") ?: existing.content?.type ?: "text/html",
-                            languageTag = args.optStr("languageTag") ?: existing.languageTag,
-                            slug = args.optStr("slug"),
-                            attributes = args.optJsonObject("attributes"),
-                            traitIds = args.optStringArray("traitIds"),
-                        )
-                        api.metadata.edit(id, metadataInput) ?: error("Failed to edit metadata: $id")
-
-                        args.optBool("public")?.let { api.metadata.setPublic(id, it) }
-                        args.optBool("publicContent")?.let { api.metadata.setPublicContent(id, it) }
-                        args.optBool("publicSupplementary")?.let { api.metadata.setPublicSupplementary(id, it) }
-
-                        buildJsonObject { put("id", id.toString()); put("status", "updated") }.toString()
-                    }
-                    "delete" -> {
-                        api.metadata.delete(Uuid.parse(args.str("id")))
-                        """{"deleted": true}"""
-                    }
-                    "set_content" -> {
-                        val id = Uuid.parse(args.str("id"))
-                        when {
-                            args.optJsonObject("documentContent") != null -> {
-                                val existing = api.metadata.get(id) ?: error("Metadata not found: $id")
-                                val title = args.optStr("documentTitle") ?: existing.name
-                                val tmplId = args.optStr("templateId")?.let { Uuid.parse(it) }
-                                val tmplVersion = args.optInt("templateVersion")
-                                val documentInput = DocumentInput(
-                                    title = title,
-                                    content = args["documentContent"]!!,
-                                    templateMetadataId = tmplId,
-                                    templateMetadataVersion = tmplVersion,
-                                )
-                                api.metadata.setDocument(id, existing.version, documentInput)
-                                buildJsonObject { put("id", id.toString()); put("status", "document_set"); put("title", title) }.toString()
-                            }
-                            args.optStr("filePath") != null -> {
-                                val file = File(args.str("filePath"))
-                                if (!file.exists()) error("File not found: ${file.absolutePath}")
-                                val ct = args.optStr("contentType") ?: file.detectContentType()
-                                api.metadata.setFileContents(id, bosca.graphql.client.Upload(file.name, ct, file.readBytes()))
-                                buildJsonObject { put("id", id.toString()); put("status", "uploaded"); put("contentType", ct) }.toString()
-                            }
-                            args.optStr("markdownContent") != null -> {
-                                val existing = api.metadata.get(id) ?: error("Metadata not found: $id")
-                                val title = args.optStr("documentTitle") ?: existing.name
-                                api.metadata.setMarkdown(id, existing.version, title, args.str("markdownContent"))
-                                buildJsonObject { put("id", id.toString()); put("status", "markdown_set"); put("title", title) }.toString()
-                            }
-                            args.optJsonObject("jsonContent") != null -> {
-                                val ct = args.optStr("contentType") ?: "application/json"
-                                api.metadata.setJsonContent(id, ct, args["jsonContent"]!!)
-                                buildJsonObject { put("id", id.toString()); put("status", "json_set") }.toString()
-                            }
-                            args.optStr("textContent") != null -> {
-                                val ct = args.optStr("contentType") ?: "text/plain"
-                                api.metadata.setTextContent(id, ct, args.str("textContent"))
-                                buildJsonObject { put("id", id.toString()); put("status", "text_set") }.toString()
-                            }
-                            else -> error("Provide documentContent, filePath, markdownContent, jsonContent, or textContent")
-                        }
-                    }
-                    "set_attributes" -> {
-                        val id = Uuid.parse(args.str("id"))
-                        api.metadata.mergeAttributes(id, args["attributes"] ?: error("Provide attributes"))
-                        buildJsonObject { put("id", id.toString()); put("status", "attributes_updated") }.toString()
-                    }
-                    "set_ready" -> {
-                        val id = Uuid.parse(args.str("id"))
-                        api.metadata.setReady(id)
-                        buildJsonObject { put("id", id.toString()); put("status", "ready") }.toString()
-                    }
-                    "get_document" -> {
-                        val id = Uuid.parse(args.str("id"))
-                        val version = args.optInt("version") ?: api.metadata.get(id)?.version ?: error("Metadata not found")
-                        val doc = api.metadata.getDocument(id, version) ?: error("Document not found")
-                        buildJsonObject {
-                            put("id", id.toString())
-                            put("title", doc.title)
-                            put("content", doc.content)
-                            put("templateId", doc.template?.id?.toString())
-                            put("templateVersion", doc.template?.version)
-                        }.toString()
-                    }
-                    "get_guide" -> {
-                        val id = Uuid.parse(args.str("id"))
-                        val version = args.optInt("version") ?: api.metadata.get(id)?.version ?: error("Metadata not found")
-                        val guide = api.metadata.getGuide(id, version) ?: error("Guide not found")
-                        buildJsonObject {
-                            put("id", id.toString())
-                            put("type", guide.type.name)
-                            put("rrule", guide.rrule)
-                            put("templateId", guide.template?.id?.toString())
-                            put("templateVersion", guide.template?.version)
-                            put("steps", JsonArray(guide.steps.map { s ->
-                                val step = s
-                                buildJsonObject {
-                                    put("metadataId", step.metadata?.id?.toString())
-                                    put("metadataName", step.metadata?.name)
-                                }
-                            }))
-                        }.toString()
-                    }
-                    else -> error("Unknown action")
-                }
-                CallToolResult(content = listOf(TextContent(result)))
-            } catch (e: Exception) {
-                CallToolResult(content = listOf(TextContent("Error: ${e.message}")), isError = true)
-            }
+            handleMetadata(api, request.arguments ?: error("Missing arguments"))
         }
+    }
+
+    internal suspend fun handleMetadata(api: ContentApi, args: Map<String, JsonElement>): CallToolResult {
+        return try {
+            if (args.str("action") == "create") return createMetadata(api, args)
+            val result = when (args.str("action")) {
+                "list" -> {
+                    val offset = args.optInt("offset") ?: 0
+                    val limit = args.optInt("limit") ?: 20
+                    val contentTypes = args.optStr("contentType")?.let { listOf(it) }
+                    val traitIds = args.optStringArray("traitIds")
+                    val items = api.metadata.findMetadata(
+                        contentTypes = contentTypes,
+                        traitIds = traitIds,
+                        offset = offset,
+                        limit = limit,
+                    )
+                    json.encodeToString(JsonArray.serializer(), JsonArray(items.map {
+                        metadataSummaryJson(it.id.toString(), it.name, it.content?.type ?: "", it.languageTag, it.version, it.metadataWorkflow.state)
+                    }))
+                }
+                "get" -> {
+                    val byId = args.optStr("id")?.let { api.metadata.get(Uuid.parse(it)) }
+                    val detail = if (byId != null) {
+                        metadataDetailJson(byId.id.toString(), byId.name, byId.content?.type ?: "", byId.languageTag, byId.version, byId.attributes, byId.labels, byId.public, byId.publicContent, byId.publicSupplementary, byId.metadataWorkflow.state, byId.created.toString(), byId.modified.toString())
+                    } else {
+                        val bySlug = args.optStr("slug")?.let { api.metadata.getBySlug(it) } ?: error("Provide id or slug")
+                        metadataDetailJson(bySlug.id.toString(), bySlug.name, bySlug.content?.type ?: "", bySlug.languageTag, bySlug.version, bySlug.attributes, bySlug.labels, bySlug.public, bySlug.publicContent, bySlug.publicSupplementary, bySlug.metadataWorkflow.state, bySlug.created.toString(), bySlug.modified.toString())
+                    }
+                    json.encodeToString(JsonElement.serializer(), detail)
+                }
+                "edit" -> {
+                    val id = Uuid.parse(args.str("id"))
+                    val existing = api.metadata.get(id) ?: error("Metadata not found: $id")
+                    val metadataInput = MetadataInput(
+                        name = args.optStr("name") ?: existing.name,
+                        contentType = args.optStr("contentType") ?: existing.content?.type ?: "text/html",
+                        languageTag = args.optStr("languageTag") ?: existing.languageTag,
+                        slug = args.optStr("slug"),
+                        attributes = args.optJsonObject("attributes"),
+                        traitIds = args.optStringArray("traitIds"),
+                    )
+                    api.metadata.edit(id, metadataInput) ?: error("Failed to edit metadata: $id")
+
+                    args.optBool("public")?.let { api.metadata.setPublic(id, it) }
+                    args.optBool("publicContent")?.let { api.metadata.setPublicContent(id, it) }
+                    args.optBool("publicSupplementary")?.let { api.metadata.setPublicSupplementary(id, it) }
+
+                    buildJsonObject { put("id", id.toString()); put("status", "updated") }.toString()
+                }
+                "delete" -> {
+                    api.metadata.delete(Uuid.parse(args.str("id")))
+                    """{"deleted": true}"""
+                }
+                "set_content" -> {
+                    val bodies = listOf("documentContent", "filePath", "markdownContent", "jsonContent", "textContent")
+                        .count { args[it] != null && args[it] != JsonNull }
+                    require(bodies == 1) { "Provide exactly one of documentContent, filePath, markdownContent, jsonContent, or textContent" }
+                    val id = Uuid.parse(args.str("id"))
+                    when {
+                        args.optJsonObject("documentContent") != null -> {
+                            val existing = api.metadata.get(id) ?: error("Metadata not found: $id")
+                            val title = args.optStr("documentTitle") ?: existing.name
+                            val tmplId = args.optStr("templateId")?.let { Uuid.parse(it) }
+                            val tmplVersion = args.optInt("templateVersion")
+                            val documentInput = DocumentInput(
+                                title = title,
+                                content = requireNotNull(args.optJsonObject("documentContent")),
+                                templateMetadataId = tmplId,
+                                templateMetadataVersion = tmplVersion,
+                            )
+                            api.metadata.setDocument(id, existing.version, documentInput)
+                            buildJsonObject { put("id", id.toString()); put("status", "document_set"); put("title", title) }.toString()
+                        }
+                        args.optStr("filePath") != null -> {
+                            val file = File(args.str("filePath"))
+                            if (!file.exists()) error("File not found: ${file.absolutePath}")
+                            val ct = args.optStr("contentType") ?: file.detectContentType()
+                            api.metadata.setFileContents(id, bosca.graphql.client.Upload(file.name, ct, file.readBytes()))
+                            buildJsonObject { put("id", id.toString()); put("status", "uploaded"); put("contentType", ct) }.toString()
+                        }
+                        args.optStr("markdownContent") != null -> {
+                            val existing = api.metadata.get(id) ?: error("Metadata not found: $id")
+                            val title = args.optStr("documentTitle") ?: existing.name
+                            api.metadata.setMarkdown(id, existing.version, title, args.str("markdownContent"))
+                            buildJsonObject { put("id", id.toString()); put("status", "markdown_set"); put("title", title) }.toString()
+                        }
+                        args.optJsonObject("jsonContent") != null -> {
+                            val ct = args.optStr("contentType") ?: "application/json"
+                            api.metadata.setJsonContent(id, ct, requireNotNull(args.optJsonObject("jsonContent")))
+                            buildJsonObject { put("id", id.toString()); put("status", "json_set") }.toString()
+                        }
+                        args.optStr("textContent") != null -> {
+                            val ct = args.optStr("contentType") ?: "text/plain"
+                            api.metadata.setTextContent(id, ct, args.str("textContent"))
+                            buildJsonObject { put("id", id.toString()); put("status", "text_set") }.toString()
+                        }
+                        else -> error("Provide documentContent, filePath, markdownContent, jsonContent, or textContent")
+                    }
+                }
+                "set_attributes" -> {
+                    val id = Uuid.parse(args.str("id"))
+                    api.metadata.mergeAttributes(id, args["attributes"] ?: error("Provide attributes"))
+                    buildJsonObject { put("id", id.toString()); put("status", "attributes_updated") }.toString()
+                }
+                "set_ready" -> {
+                    val id = Uuid.parse(args.str("id"))
+                    api.metadata.setReady(id)
+                    buildJsonObject { put("id", id.toString()); put("status", "ready") }.toString()
+                }
+                "get_document" -> {
+                    val id = Uuid.parse(args.str("id"))
+                    val version = args.optInt("version") ?: api.metadata.get(id)?.version ?: error("Metadata not found")
+                    val doc = api.metadata.getDocument(id, version) ?: error("Document not found")
+                    buildJsonObject {
+                        put("id", id.toString())
+                        put("title", doc.title)
+                        put("content", doc.content)
+                        put("templateId", doc.template?.id?.toString())
+                        put("templateVersion", doc.template?.version)
+                    }.toString()
+                }
+                "get_guide" -> {
+                    val id = Uuid.parse(args.str("id"))
+                    val version = args.optInt("version") ?: api.metadata.get(id)?.version ?: error("Metadata not found")
+                    val guide = api.metadata.getGuide(id, version) ?: error("Guide not found")
+                    buildJsonObject {
+                        put("id", id.toString())
+                        put("type", guide.type.name)
+                        put("rrule", guide.rrule)
+                        put("templateId", guide.template?.id?.toString())
+                        put("templateVersion", guide.template?.version)
+                        put("steps", JsonArray(guide.steps.map { s ->
+                            val step = s
+                            buildJsonObject {
+                                put("metadataId", step.metadata?.id?.toString())
+                                put("metadataName", step.metadata?.name)
+                            }
+                        }))
+                    }.toString()
+                }
+                else -> error("Unknown action")
+            }
+            BoscaToolResources.metadata(args.str("action"), result)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            CallToolResult(content = listOf(TextContent("Error: ${e.message}")), isError = true)
+        }
+    }
+
+    private suspend fun createMetadata(api: ContentApi, args: Map<String, JsonElement>): CallToolResult {
+        require(listOf("filePath", "markdownContent", "jsonContent", "textContent").none { args[it] != null && args[it] != JsonNull }) {
+            "Use documentContent for inline document creation; other body formats require set_content on the saved item"
+        }
+        val name = args.str("name")
+        val templateId = args.optStr("templateId")?.let(Uuid::parse)
+        val content = args["documentContent"]?.takeUnless { it == JsonNull }?.jsonObject
+        val document = if (content != null || args.optStr("documentTitle") != null || templateId != null ||
+            args.optStr("contentType") == "bosca/v-document"
+        ) DocumentInput(
+            title = args.optStr("documentTitle") ?: name,
+            content = content ?: buildJsonObject { putJsonObject("document") {
+                put("type", "doc"); put("content", JsonArray(emptyList()))
+            } },
+            templateMetadataId = templateId,
+            templateMetadataVersion = templateId?.let { args.optInt("templateVersion") ?: 1 },
+        ) else null
+        val metadata = MetadataInput(
+            name = name,
+            contentType = args.optStr("contentType") ?: if (document != null) "bosca/v-document" else "text/html",
+            languageTag = args.optStr("languageTag") ?: "en",
+            slug = args.optStr("slug"),
+            parentCollectionId = args.optStr("parentCollectionId")?.let(Uuid::parse),
+            document = document,
+            attributes = args.optJsonObject("attributes"),
+            traitIds = args.optStringArray("traitIds"),
+        )
+        val id = api.metadata.add(metadata) ?: error("Failed to create metadata")
+        var failure: String? = null
+        try {
+            args.optBool("public")?.let { api.metadata.setPublic(id, it) }
+            args.optBool("publicContent")?.let { api.metadata.setPublicContent(id, it) }
+            args.optBool("publicSupplementary")?.let { api.metadata.setPublicSupplementary(id, it) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (exception: Exception) {
+            failure = "Metadata was created, but its requested visibility settings did not finish: ${exception.message}. Read the saved item before retrying those settings."
+        }
+        val result = BoscaToolResources.metadata("create", buildJsonObject {
+            put("id", id.toString()); put("name", name); put("status", "created")
+            failure?.let { put("error", it) }
+        }.toString())
+        return result.copy(isError = failure != null)
     }
 
     // ── Collections ────────────────────────────────────────────
@@ -638,6 +662,8 @@ object ContentToolRegistrar {
             Tool(
                 name = "content_collection",
                 description = "Manage content collections (folders, groups). " +
+                    "Use 'find' with filters of {key, value} to match collection attributes, such as [{key: 'type', value: 'Topic'}]. " +
+                    "All filters must match. Find uses offset pagination (default 20, maximum 100) and returns only collections the caller can view. " +
                     "Use 'list_items' to see what's in a collection. " +
                     "Use 'add_item'/'remove_item' to associate metadata or child collections.",
                 inputSchema = ToolSchema(
@@ -645,7 +671,7 @@ object ContentToolRegistrar {
                         put("action", buildJsonObject {
                             put("type", "string")
                             put("enum", JsonArray(listOf(
-                                "list", "get", "create", "edit", "delete",
+                                "list", "find", "get", "create", "edit", "delete",
                                 "add_item", "remove_item", "list_items", "set_ready",
                             ).map { JsonPrimitive(it) }))
                         })
@@ -661,6 +687,18 @@ object ContentToolRegistrar {
                         put("templateId", buildJsonObject { put("type", "string"); put("description", "Collection template metadata UUID") })
                         put("templateVersion", buildJsonObject { put("type", "integer") })
                         put("attributes", buildJsonObject { put("type", "object") })
+                        put("filters", buildJsonObject {
+                            put("type", "array")
+                            put("description", "Attribute conditions for find; all must match")
+                            put("minItems", 1)
+                            putJsonObject("items") {
+                                put("type", "object")
+                                putJsonObject("properties") {
+                                    for (key in listOf("key", "value")) putJsonObject(key) { put("type", "string") }
+                                }
+                                put("required", JsonArray(listOf("key", "value").map(::JsonPrimitive)))
+                            }
+                        })
                         put("traitIds", buildJsonObject { put("type", "array"); put("items", buildJsonObject { put("type", "string") }) })
                         put("metadataId", buildJsonObject { put("type", "string"); put("description", "Metadata UUID (add_item/remove_item)") })
                         put("childCollectionId", buildJsonObject { put("type", "string"); put("description", "Child collection UUID (remove_item)") })
@@ -676,6 +714,7 @@ object ContentToolRegistrar {
             val args = request.arguments ?: error("Missing arguments")
             try {
                 val result = when (args.str("action")) {
+                    "find" -> return@addTool findCollections(api, args)
                     "list" -> {
                         val offset = args.optInt("offset") ?: 0
                         val limit = args.optInt("limit") ?: 20
@@ -774,11 +813,28 @@ object ContentToolRegistrar {
                     else -> error("Unknown action")
                 }
                 CallToolResult(content = listOf(TextContent(result)))
-            } catch (e: Exception) {
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (e: Exception) {
                 CallToolResult(content = listOf(TextContent("Error: ${e.message}")), isError = true)
             }
         }
     }
+
+    /** Finds attribute-matched pages through the existing caller-authorized collection API. */
+    internal suspend fun findCollections(api: ContentApi, args: Map<String, JsonElement>): CallToolResult = try {
+        val filters = json.decodeFromJsonElement(ListSerializer(FindAttributeInput.serializer()),
+            requireNotNull(args["filters"]) { "Provide collection attribute filters" })
+        require(filters.isNotEmpty() && filters.all { it.key.isNotBlank() }) { "Provide at least one nonblank attribute key" }
+        val offset = args["offset"]?.jsonPrimitive?.int ?: 0
+        val limit = args["limit"]?.jsonPrimitive?.int ?: 20
+        require(offset >= 0 && limit in 1..100) { "Use a nonnegative offset and a limit between 1 and 100" }
+        val collections = api.collections.findCollections(filters, offset, limit)
+        val result = JsonArray(collections.map { collection -> buildJsonObject {
+            put("id", collection.id.toString()); put("name", collection.name); put("public", collection.`public`)
+        } })
+        CallToolResult(content = listOf(TextContent(result.toString())))
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (failure: Exception) { CallToolResult(content = listOf(TextContent("Error: ${failure.message}")), isError = true) }
 
     // ── Supplementary ──────────────────────────────────────────
 

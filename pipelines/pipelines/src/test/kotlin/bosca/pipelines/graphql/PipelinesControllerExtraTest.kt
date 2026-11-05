@@ -78,7 +78,7 @@ class PipelinesControllerExtraTest {
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = pipelinesController(runService = runService)
 
-        controller.activeRuns(mockk(), 3, null)
+        controller.activeRuns(pipelineAdministrator(), 3, null)
         coVerify(exactly = 1) { runService.listActive(3L, 50) }
     }
 
@@ -87,7 +87,7 @@ class PipelinesControllerExtraTest {
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = pipelinesController(runService = runService)
 
-        controller.activeRuns(mockk(), 0, 0)
+        controller.activeRuns(pipelineAdministrator(), 0, 0)
         coVerify(exactly = 1) { runService.listActive(0L, 1) }
     }
 
@@ -120,7 +120,7 @@ class PipelinesControllerExtraTest {
         shapeService = mockk(relaxed = true),
     )
 
-    private val auth = AuthenticationContext(null, null)
+    private val auth = pipelineAdministrator()
 
     @BeforeTest
     fun setUp() {

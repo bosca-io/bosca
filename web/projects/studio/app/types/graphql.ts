@@ -12,20 +12,11 @@ export type Scalars = {
   Boolean: { input: boolean; output: boolean; }
   Int: { input: number; output: number; }
   Float: { input: number; output: number; }
-  /** An ISO 8601 date-time string (e.g. 2024-01-15T09:30:00Z) */
   DateTime: { input: string; output: string; }
-  /** Arbitrary JSON object */
   JSON: { input: any; output: any; }
-  /** 64-bit integer, used for values that exceed the 32-bit Int range */
   Long: { input: number; output: number; }
-  /**
-   * A monetary amount with fixed scale-4 decimal precision, serialized as a decimal string
-   * (e.g. "19.9900"). Mirrors the module's Kotlin Money value type.
-   */
   Money: { input: any; output: any; }
-  /** Universally unique identifier (UUID) string */
   UUID: { input: string; output: string; }
-  /** File upload scalar for multipart form data */
   Upload: { input: File; output: File; }
 };
 
@@ -169,6 +160,7 @@ export type AddCartItemInput = {
 export type AddGitReviewCommentInput = {
   commitSha: Scalars['String']['input'];
   content: Scalars['String']['input'];
+  expectedVersion?: InputMaybe<Scalars['Long']['input']>;
   filePath: Scalars['String']['input'];
   newLineNumber?: InputMaybe<Scalars['Int']['input']>;
   oldLineNumber?: InputMaybe<Scalars['Int']['input']>;
@@ -812,8 +804,10 @@ export type Ai = {
   agentTools: AgentTools;
   /** Agent CRUD + sub-agent / tool join lookups. */
   agents: Agents;
+  delegations: KitDelegations;
   /** MCP namespace: inbound external-server registrations (`servers`) and the outbound Bosca MCP surface (`bosca`). */
   mcp: AiMcp;
+  memories: Memories;
   /** AI model definitions. */
   models: Models;
   /** Prompt template CRUD. */
@@ -867,8 +861,10 @@ export type AiMutation = {
   agentTools: AgentToolsMutation;
   /** Agent CRUD + sub-agent / tool wiring. */
   agents: AgentsMutation;
+  delegations: KitDelegationsMutation;
   /** MCP namespace: manage inbound external-server registrations and the outbound Bosca MCP surface. */
   mcp: AiMcpMutation;
+  memories: MemoriesMutation;
   /** AI model CRUD. */
   models: ModelsMutation;
   /** Prompt template CRUD. */
@@ -952,6 +948,7 @@ export type Analytics = {
   scriptBindings: AnalyticsScriptBindings;
   /** Access analytics visualization queries */
   visualizations: AnalyticsVisualizations;
+  warehouse: AnalyticsWarehouse;
 };
 
 /** A distributed counter (active sessions, API response-code rates, …) read as a typed window aggregate or a per-bucket time series. */
@@ -1384,6 +1381,15 @@ export type AnalyticsQuery = {
   refreshIntervalSeconds?: Maybe<Scalars['Int']['output']>;
 };
 
+/** A parameter's actual bound value after defaulting, coercion and relative-date resolution. */
+export type AnalyticsQueryBinding = {
+  __typename?: 'AnalyticsQueryBinding';
+  parameter: Scalars['String']['output'];
+  position: Scalars['Int']['output'];
+  type: QueryParameterType;
+  value?: Maybe<Scalars['JSON']['output']>;
+};
+
 /** Describes a single output column of an analytics query, derived from its result-set metadata. */
 export type AnalyticsQueryColumn = {
   __typename?: 'AnalyticsQueryColumn';
@@ -1393,6 +1399,17 @@ export type AnalyticsQueryColumn = {
   nullable: Scalars['Boolean']['output'];
   /** The SQL type name of the column (e.g. varchar, bigint, double) */
   typeName: Scalars['String']['output'];
+};
+
+/** Original execution evidence, returned only with query VIEW permission. */
+export type AnalyticsQueryEvidence = {
+  __typename?: 'AnalyticsQueryEvidence';
+  durationMs: Scalars['Long']['output'];
+  executedAt: Scalars['DateTime']['output'];
+  parameters: Array<AnalyticsQueryBinding>;
+  queryId: Scalars['UUID']['output'];
+  /** The SQL sent to JDBC, with positional placeholders resolved by parameters. */
+  sql: Scalars['String']['output'];
 };
 
 /** A named parameter value to pass when executing an analytics query */
@@ -1467,6 +1484,7 @@ export type AnalyticsQueryResponse = {
   __typename?: 'AnalyticsQueryResponse';
   /** Whether the records were served from the query result cache instead of being computed for this request */
   cached: Scalars['Boolean']['output'];
+  evidence?: Maybe<AnalyticsQueryEvidence>;
   /** Array of result records, where each record is a JSON object representing one row of data */
   records: Array<Scalars['JSON']['output']>;
   /** When the records were last computed by the analytics store; null for uncached executions, where the records are always current */
@@ -1547,6 +1565,17 @@ export type AnalyticsScriptBindingsMutation_UpdateArgs = {
   ordinal?: InputMaybe<Scalars['Int']['input']>;
   scriptId: Scalars['UUID']['input'];
   transform?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+/** Uncached execution evidence for the exact SQL submitted, with at most the requested number of rows. */
+export type AnalyticsSqlResult = {
+  __typename?: 'AnalyticsSqlResult';
+  columns: Array<AnalyticsQueryColumn>;
+  durationMs: Scalars['Long']['output'];
+  executedAt: Scalars['DateTime']['output'];
+  records: Array<Scalars['JSON']['output']>;
+  sql: Scalars['String']['output'];
+  truncated: Scalars['Boolean']['output'];
 };
 
 /** A reusable visualization definition that specifies how to render analytics query results */
@@ -1703,6 +1732,55 @@ export type AnalyticsVisualizationsMutation_DeletePermissionArgs = {
 /** Mutation operations for managing analytics visualization definitions */
 export type AnalyticsVisualizationsMutation_EditArgs = {
   visualization: AnalyticsVisualizationInput;
+};
+
+/** Direct read-only warehouse inspection, restricted to administrators or analytics managers with analytics:sql. */
+export type AnalyticsWarehouse = {
+  __typename?: 'AnalyticsWarehouse';
+  catalogs: Array<Scalars['String']['output']>;
+  describe: Array<AnalyticsQueryColumn>;
+  execute: AnalyticsSqlResult;
+  schemas: Array<Scalars['String']['output']>;
+  tables: Array<Scalars['String']['output']>;
+};
+
+
+/** Direct read-only warehouse inspection, restricted to administrators or analytics managers with analytics:sql. */
+export type AnalyticsWarehouse_CatalogsArgs = {
+  limit?: Scalars['Int']['input'];
+  offset?: Scalars['Int']['input'];
+};
+
+
+/** Direct read-only warehouse inspection, restricted to administrators or analytics managers with analytics:sql. */
+export type AnalyticsWarehouse_DescribeArgs = {
+  catalog: Scalars['String']['input'];
+  schema: Scalars['String']['input'];
+  table: Scalars['String']['input'];
+};
+
+
+/** Direct read-only warehouse inspection, restricted to administrators or analytics managers with analytics:sql. */
+export type AnalyticsWarehouse_ExecuteArgs = {
+  limit?: Scalars['Int']['input'];
+  sql: Scalars['String']['input'];
+};
+
+
+/** Direct read-only warehouse inspection, restricted to administrators or analytics managers with analytics:sql. */
+export type AnalyticsWarehouse_SchemasArgs = {
+  catalog: Scalars['String']['input'];
+  limit?: Scalars['Int']['input'];
+  offset?: Scalars['Int']['input'];
+};
+
+
+/** Direct read-only warehouse inspection, restricted to administrators or analytics managers with analytics:sql. */
+export type AnalyticsWarehouse_TablesArgs = {
+  catalog: Scalars['String']['input'];
+  limit?: Scalars['Int']['input'];
+  offset?: Scalars['Int']['input'];
+  schema: Scalars['String']['input'];
 };
 
 /** A long-lived API token credential for programmatic access. The raw token value is only available at creation time. */
@@ -2595,6 +2673,8 @@ export type Bible = {
   abbreviation: Scalars['String']['output'];
   /** Short abbreviation of the Bible translation in its native language */
   abbreviationLocal: Scalars['String']['output'];
+  /** Retrieve passage components and attribution for AI context. Requires content access and the source's AI_CONTEXT grant. */
+  aiContext: Array<FindBibleResult>;
   /** Recordings attached to this exact Bible variant; listing does not download media */
   audio: Array<BibleAudio>;
   /** Authorized chapter recording with its attribution and timing; media is downloaded on demand */
@@ -2621,6 +2701,8 @@ export type Bible = {
   name: Scalars['String']['output'];
   /** Display name of the Bible translation in its native language */
   nameLocal: Scalars['String']['output'];
+  /** Resolve human-readable references without retrieving passage content */
+  references: Array<BibleReference>;
   /** JSON object defining the rendering styles for scripture display (e.g. verse numbers, red letter, poetry indentation) */
   styles: Scalars['JSON']['output'];
   /** Unique identifier for this Bible within the external Bible API or system */
@@ -2631,6 +2713,12 @@ export type Bible = {
   variants: Array<Bible>;
   /** Content version containing this Bible variant */
   version: Scalars['Int']['output'];
+};
+
+
+/** A Bible translation or version available in the system, containing books, chapters, and verses with rendering metadata for scripture display */
+export type Bible_AiContextArgs = {
+  human: Scalars['String']['input'];
 };
 
 
@@ -2655,6 +2743,12 @@ export type Bible_ChapterArgs = {
 
 /** A Bible translation or version available in the system, containing books, chapters, and verses with rendering metadata for scripture display */
 export type Bible_FindArgs = {
+  human: Scalars['String']['input'];
+};
+
+
+/** A Bible translation or version available in the system, containing books, chapters, and verses with rendering metadata for scripture display */
+export type Bible_ReferencesArgs = {
   human: Scalars['String']['input'];
 };
 
@@ -4600,6 +4694,14 @@ export type ChatSession = {
   collectionAttachments: Array<Scalars['UUID']['output']>;
   /** Timestamp when this chat session was created */
   created: Scalars['DateTime']['output'];
+  /** Pending native harness permission requests; reading does not extend runtime lifetime. */
+  harnessApprovals: Scalars['JSON']['output'];
+  /** Permitted context sources and handoff limitations, without source bodies or connection credentials. */
+  harnessContext?: Maybe<KitContextStatus>;
+  /** Effective harness settings and only the choices the caller may select. */
+  harnessSettings?: Maybe<KitHarnessSettings>;
+  /** Current harness lifecycle without extending the idle deadline. */
+  harnessState?: Maybe<KitHarnessStatus>;
   /** Unique identifier for this chat session */
   id: Scalars['UUID']['output'];
   /** The ordered list of messages in this chat session, representing the full conversation history */
@@ -4656,22 +4758,44 @@ export type ChatSessions_SessionArgs = {
 /** Mutation operations for managing chat sessions */
 export type ChatSessionsMutation = {
   __typename?: 'ChatSessionsMutation';
+  /** Resume an archived or repaired harness and its queued messages without sending another message. */
+  activateHarness: Scalars['Boolean']['output'];
   /** Attach a metadata item to a chat session, making it available as context for the AI agent */
   addAttachment: ChatSession;
   /** Attach a collection to a chat session, making its contents available as context for the AI agent */
   addCollectionAttachment: ChatSession;
+  /** Select a permitted source for the next turn. Does not start or extend a runtime. */
+  addHarnessSource: Scalars['Boolean']['output'];
+  /** Archive an idle harness; the next activation resolves current integration credentials. */
+  archiveHarness: Scalars['Boolean']['output'];
+  /** Request cancellation of current and queued work; messages accepted afterward remain queued. */
+  cancel: Scalars['Boolean']['output'];
+  /** Clear additional WorkOps and Git selections, including unavailable sources. */
+  clearHarnessSources: Scalars['Boolean']['output'];
   /** Create a new chat session with a specified AI agent */
   create: ChatSession;
+  /** Answer a pending native harness permission request. */
+  decideHarnessPermission: Scalars['Boolean']['output'];
   /** Delete a chat session and all its messages. Returns true if the session was deleted. */
   delete: Scalars['Boolean']['output'];
   /** Remove a metadata attachment from a chat session */
   removeAttachment: ChatSession;
   /** Remove a collection attachment from a chat session */
   removeCollectionAttachment: ChatSession;
+  /** Remove an explicit source selection from subsequent turns. */
+  removeHarnessSource: Scalars['Boolean']['output'];
   /** Send a message to the AI agent in a chat session and begin generating a response */
   send?: Maybe<Scalars['Boolean']['output']>;
+  /** Choose an authorized deployment profile for subsequent turns; null restores managed defaults. */
+  setHarnessSettings: Scalars['Boolean']['output'];
   /** Update the display title of an existing chat session */
   updateTitle: ChatSession;
+};
+
+
+/** Mutation operations for managing chat sessions */
+export type ChatSessionsMutation_ActivateHarnessArgs = {
+  sessionId: Scalars['UUID']['input'];
 };
 
 
@@ -4690,8 +4814,41 @@ export type ChatSessionsMutation_AddCollectionAttachmentArgs = {
 
 
 /** Mutation operations for managing chat sessions */
+export type ChatSessionsMutation_AddHarnessSourceArgs = {
+  sessionId: Scalars['UUID']['input'];
+  source: KitContextSelection;
+};
+
+
+/** Mutation operations for managing chat sessions */
+export type ChatSessionsMutation_ArchiveHarnessArgs = {
+  sessionId: Scalars['UUID']['input'];
+};
+
+
+/** Mutation operations for managing chat sessions */
+export type ChatSessionsMutation_CancelArgs = {
+  sessionId: Scalars['UUID']['input'];
+};
+
+
+/** Mutation operations for managing chat sessions */
+export type ChatSessionsMutation_ClearHarnessSourcesArgs = {
+  sessionId: Scalars['UUID']['input'];
+};
+
+
+/** Mutation operations for managing chat sessions */
 export type ChatSessionsMutation_CreateArgs = {
   session: ChatSessionInput;
+};
+
+
+/** Mutation operations for managing chat sessions */
+export type ChatSessionsMutation_DecideHarnessPermissionArgs = {
+  approvalId: Scalars['UUID']['input'];
+  optionId: Scalars['String']['input'];
+  sessionId: Scalars['UUID']['input'];
 };
 
 
@@ -4716,8 +4873,22 @@ export type ChatSessionsMutation_RemoveCollectionAttachmentArgs = {
 
 
 /** Mutation operations for managing chat sessions */
+export type ChatSessionsMutation_RemoveHarnessSourceArgs = {
+  sessionId: Scalars['UUID']['input'];
+  source: KitContextSelection;
+};
+
+
+/** Mutation operations for managing chat sessions */
 export type ChatSessionsMutation_SendArgs = {
   message: ChatMessageInput;
+  sessionId: Scalars['UUID']['input'];
+};
+
+
+/** Mutation operations for managing chat sessions */
+export type ChatSessionsMutation_SetHarnessSettingsArgs = {
+  choice?: InputMaybe<KitHarnessChoice>;
   sessionId: Scalars['UUID']['input'];
 };
 
@@ -7421,6 +7592,7 @@ export type ContentMutation = {
   collection: CollectionMutation;
   /** Access content health check mutations for resolving identified issues */
   healthCheck: ContentHealthCheckMutation;
+  images: ImagesMutation;
   /** Access metadata mutations */
   metadata: MetadataMutation;
   /** Rebuild all storage system content indexes */
@@ -7443,6 +7615,7 @@ export type ContentRelationship = CollectionLanguageVariantMetadataRelationship 
 /** Defines what analytics events count as conversions for an experiment. */
 export type ConversionGoal = {
   __typename?: 'ConversionGoal';
+  activation?: Maybe<GoalActivation>;
   created: Scalars['DateTime']['output'];
   /** CUPED covariate for variance reduction. Null when no adjustment is configured. */
   cupedCovariate?: Maybe<CupedCovariate>;
@@ -7458,14 +7631,18 @@ export type ConversionGoal = {
   itemExtraValue?: Maybe<Scalars['String']['output']>;
   metricType: GoalMetricType;
   name: Scalars['String']['output'];
+  outcomeScope?: Maybe<GoalOutcomeScope>;
   /** Page path filter — when set, the goal only counts events with this page.path. */
   pagePath?: Maybe<Scalars['String']['output']>;
+  /** Alternative page path prefixes. A match on any exact path or prefix qualifies. */
+  pagePathPrefixes: Array<Scalars['String']['output']>;
   /** Role in verdict logic. Drives how regressions on this goal influence the overall SHIP/HALT decision. */
   role: ConversionGoalRole;
 };
 
 /** Input for creating a conversion goal for an experiment. */
 export type ConversionGoalInput = {
+  activation?: InputMaybe<GoalActivationInput>;
   /** Optional CUPED covariate configuration for variance reduction. */
   cupedCovariate?: InputMaybe<CupedCovariateInput>;
   elementId?: InputMaybe<Scalars['String']['input']>;
@@ -7479,8 +7656,11 @@ export type ConversionGoalInput = {
   /** Defaults to UNIQUE_CONVERSION if omitted. */
   metricType?: InputMaybe<GoalMetricType>;
   name: Scalars['String']['input'];
+  outcomeScope?: InputMaybe<GoalOutcomeScopeInput>;
   /** Restricts the goal to events emitted on a specific page path. Null = match any page. */
   pagePath?: InputMaybe<Scalars['String']['input']>;
+  /** Alternative page path prefixes. A match on any exact path or prefix qualifies. */
+  pagePathPrefixes?: InputMaybe<Array<Scalars['String']['input']>>;
   /** Defaults to PRIMARY if omitted. */
   role?: InputMaybe<ConversionGoalRole>;
 };
@@ -7522,6 +7702,8 @@ export type CreateBridgeBindingInput = {
 
 /** Input for creating a pull request. */
 export type CreateGitPullRequestInput = {
+  /** Defaults to the repository's branch cleanup setting when omitted. */
+  deleteBranchOnMerge?: InputMaybe<Scalars['Boolean']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   isDraft?: InputMaybe<Scalars['Boolean']['input']>;
   repositoryId: Scalars['UUID']['input'];
@@ -8080,6 +8262,20 @@ export type DeliveryStatuses = {
   __typename?: 'DeliveryStatuses';
   statuses: Array<RecipientDeliveryStatus>;
   total: Scalars['Long']['output'];
+};
+
+export type DestinationAttribution = {
+  __typename?: 'DestinationAttribution';
+  attributedInteractions: Scalars['Long']['output'];
+  attributedSubjects: Scalars['Long']['output'];
+  engagedSubjects: Scalars['Long']['output'];
+  interactions: Scalars['Long']['output'];
+  interval?: Maybe<MetricInterval>;
+  missingSessions: Scalars['Long']['output'];
+  missingSlugs: Scalars['Long']['output'];
+  unmatchedDestinations: Scalars['Long']['output'];
+  unresolvedTargets: Scalars['Long']['output'];
+  unsupportedTypes: Scalars['Long']['output'];
 };
 
 /** A registered client installation, optionally associated with the currently signed-in principal. */
@@ -9571,6 +9767,8 @@ export enum ExecutionStatus {
 /** An experiment is observation+stats attached to a single targeting rule on a feature flag. The variations being measured are the variations the attached rule's rollout splits across — experiments do not own values. */
 export type Experiment = {
   __typename?: 'Experiment';
+  /** Event filter whose first match gates the experiment's outcome cohort. */
+  activationFilter?: Maybe<ExperimentActivationFilter>;
   /** Statistical method used by the analyzer. */
   analysisMethod: AnalysisMethod;
   /**
@@ -9592,6 +9790,8 @@ export type Experiment = {
   created: Scalars['DateTime']['output'];
   description: Scalars['String']['output'];
   endDate?: Maybe<Scalars['DateTime']['output']>;
+  /** Account principal IDs omitted from all experiment calculations. */
+  excludedPrincipalIds: Array<Scalars['UUID']['output']>;
   exclusionLayer?: Maybe<ExclusionLayer>;
   featureFlag?: Maybe<FeatureFlag>;
   featureFlagId: Scalars['UUID']['output'];
@@ -9651,8 +9851,41 @@ export type Experiment_RolloutPolicyEventsArgs = {
   offset?: Scalars['Long']['input'];
 };
 
+/** Configured analytics event filter that activates an assigned experiment subject. */
+export type ExperimentActivationFilter = {
+  __typename?: 'ExperimentActivationFilter';
+  applicationIds: Array<Scalars['String']['output']>;
+  elementId?: Maybe<Scalars['String']['output']>;
+  elementIdContains?: Maybe<Scalars['String']['output']>;
+  elementType?: Maybe<Scalars['String']['output']>;
+  eventType?: Maybe<EventType>;
+  itemExtraKey?: Maybe<Scalars['String']['output']>;
+  itemExtraValue?: Maybe<Scalars['String']['output']>;
+  pagePath?: Maybe<Scalars['String']['output']>;
+  pagePathPrefixes: Array<Scalars['String']['output']>;
+  recommendationCard: Scalars['Boolean']['output'];
+};
+
+/** Filters the first analytics event that activates an assigned experiment subject. */
+export type ExperimentActivationFilterInput = {
+  applicationIds?: InputMaybe<Array<Scalars['String']['input']>>;
+  elementId?: InputMaybe<Scalars['String']['input']>;
+  elementIdContains?: InputMaybe<Scalars['String']['input']>;
+  elementType?: InputMaybe<Scalars['String']['input']>;
+  eventType?: InputMaybe<EventType>;
+  itemExtraKey?: InputMaybe<Scalars['String']['input']>;
+  itemExtraValue?: InputMaybe<Scalars['String']['input']>;
+  /** Optional exact page path alternative. */
+  pagePath?: InputMaybe<Scalars['String']['input']>;
+  /** Page path prefixes combined as alternatives, for example /articles/, /talks/, and /studies/. */
+  pagePathPrefixes?: InputMaybe<Array<Scalars['String']['input']>>;
+  recommendationCard?: Scalars['Boolean']['input'];
+};
+
 /** Input for creating or updating an experiment. */
 export type ExperimentInput = {
+  /** Event filter whose first match makes an assigned subject eligible for outcome analysis. Null disables activation gating. */
+  activationFilter?: InputMaybe<ExperimentActivationFilterInput>;
   /** Statistical method. Defaults to FREQUENTIST. */
   analysisMethod?: InputMaybe<AnalysisMethod>;
   /** Bayesian prior overrides. Null = sane defaults. */
@@ -9663,6 +9896,8 @@ export type ExperimentInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   /** When the experiment should stop accepting traffic. */
   endDate?: InputMaybe<Scalars['DateTime']['input']>;
+  /** Account principal IDs omitted from all calculations while their assignment remains active. Omit on edit to preserve the current list; send an empty list to clear it. */
+  excludedPrincipalIds?: InputMaybe<Array<Scalars['UUID']['input']>>;
   /** UUID of an optional mutual exclusion layer. */
   exclusionLayerId?: InputMaybe<Scalars['UUID']['input']>;
   /** The UUID of the feature flag this experiment observes. */
@@ -9688,6 +9923,8 @@ export type ExperimentResult = {
   adjustedMean?: Maybe<Scalars['Float']['output']>;
   /** CUPED-adjusted per-user variance. Strictly smaller than `variance` when the covariate explains any post-period variation. */
   adjustedVariance?: Maybe<Scalars['Float']['output']>;
+  /** Raw assignments used for rollout allocation and sample-ratio diagnostics. */
+  assignments: Scalars['Long']['output'];
   /** Statistical confidence (0.0 to 1.0) that the difference from control is real. */
   confidenceLevel?: Maybe<Scalars['Float']['output']>;
   conversionRate: Scalars['Float']['output'];
@@ -9696,19 +9933,21 @@ export type ExperimentResult = {
   expectedLoss?: Maybe<Scalars['Float']['output']>;
   experimentId: Scalars['UUID']['output'];
   goal?: Maybe<ConversionGoal>;
+  goalAnalysis?: Maybe<GoalPopulationAnalysis>;
   goalId: Scalars['UUID']['output'];
   id: Scalars['UUID']['output'];
+  /** Number of subjects eligible for outcomes after applying the activation filter. */
   impressions: Scalars['Long']['output'];
   /** Percentage improvement over the control variation. */
   liftOverControl?: Maybe<Scalars['Float']['output']>;
-  /** Per-user mean of matching events for EVENT_COUNT, or observed seconds for SESSION_DURATION. */
+  /** Per-user mean of matching events for EVENT_COUNT, or derived session seconds for SESSION_DURATION. */
   mean?: Maybe<Scalars['Float']['output']>;
   /** Independent subject-level observations used by the statistic. */
   observationCount: Scalars['Long']['output'];
   /** Posterior P(this variation > control). Populated only for Bayesian runs on non-control rows. */
   probabilityBeatsControl?: Maybe<Scalars['Float']['output']>;
   updatedAt: Scalars['DateTime']['output'];
-  /** Unbiased sample variance of matching events per user or observed session seconds. Null for UNIQUE_CONVERSION. */
+  /** Unbiased sample variance of matching events per user or derived session seconds. Null for UNIQUE_CONVERSION. */
   variance?: Maybe<Scalars['Float']['output']>;
   /** The variation key these metrics apply to. Resolve against the parent flag's variations to display name/value. */
   variationKey: Scalars['String']['output'];
@@ -11094,7 +11333,7 @@ export type Git = {
   blob?: Maybe<GitBlob>;
   /** List branch protection rules for a repository. */
   branchProtectionRules: Array<GitBranchProtectionRule>;
-  /** List all branches with head SHA and ahead/behind counts. */
+  /** List all branches with head SHA. Set includeAheadBehind to false to skip history comparisons and return zero counts. */
   branches: Array<GitBranchInfo>;
   /** Get a single commit by SHA. */
   commit?: Maybe<GitCommitInfo>;
@@ -11126,6 +11365,8 @@ export type Git = {
   pipelines: Array<GitPipeline>;
   /** Look up a pull request by repository and number. */
   pullRequest?: Maybe<GitPullRequest>;
+  /** Look up a pull request by its unique ID. */
+  pullRequestById?: Maybe<GitPullRequest>;
   /** List unresolved pull requests in the order they would be merged, with the requested pull request last. */
   pullRequestMergePlan: Array<GitPullRequest>;
   /** List pull requests for a repository with optional filters. */
@@ -11204,6 +11445,7 @@ export type Git_BranchProtectionRulesArgs = {
 
 /** Queries for the git repository system. */
 export type Git_BranchesArgs = {
+  includeAheadBehind?: InputMaybe<Scalars['Boolean']['input']>;
   repositoryId: Scalars['UUID']['input'];
 };
 
@@ -11262,6 +11504,7 @@ export type Git_PermissionsArgs = {
 
 /** Queries for the git repository system. */
 export type Git_PipelineAgentsArgs = {
+  id?: InputMaybe<Scalars['UUID']['input']>;
   status?: InputMaybe<GitAgentStatus>;
 };
 
@@ -11305,6 +11548,7 @@ export type Git_PipelineSecretsArgs = {
 
 /** Queries for the git repository system. */
 export type Git_PipelinesArgs = {
+  id?: InputMaybe<Scalars['UUID']['input']>;
   repositoryId: Scalars['UUID']['input'];
 };
 
@@ -11313,6 +11557,12 @@ export type Git_PipelinesArgs = {
 export type Git_PullRequestArgs = {
   number: Scalars['Int']['input'];
   repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Queries for the git repository system. */
+export type Git_PullRequestByIdArgs = {
+  id: Scalars['UUID']['input'];
 };
 
 
@@ -11517,11 +11767,13 @@ export type GitAppStoreReviewOutcome = {
   state: Scalars['String']['output'];
 };
 
-/** An artifact a pipeline's job declares it produces — enough to resolve it in the registry (type + namespace + type-specific coordinate). The coordinate is the raw `${{ }}` template as authored. */
+/** An artifact declared by a pipeline job. Coordinates are templates in pipeline definitions and resolved values on jobs. */
 export type GitArtifactDefinition = {
   __typename?: 'GitArtifactDefinition';
   /** Type-specific coordinate (repository + version in that type's form); may contain `${{ }}`. */
   coordinate: Scalars['String']['output'];
+  /** Environment names this artifact serves; empty means every environment. */
+  environments: Array<Scalars['String']['output']>;
   /** Registry namespace the artifact is published to, e.g. bosca-maven. */
   namespace: Scalars['String']['output'];
   /** Registry type the coordinate resolves against: docker, helm, maven, npm, raw, ml. */
@@ -11705,6 +11957,8 @@ export type GitDiffFile = {
   __typename?: 'GitDiffFile';
   changeType: GitDiffChangeType;
   hunks: Array<GitDiffHunk>;
+  /** Number of text lines in the new version; zero when the file was deleted or is binary. */
+  newLineCount: Scalars['Int']['output'];
   newPath?: Maybe<Scalars['String']['output']>;
   oldPath?: Maybe<Scalars['String']['output']>;
 };
@@ -11744,6 +11998,258 @@ export enum GitDiffLineType {
   Context = 'CONTEXT',
   Delete = 'DELETE'
 }
+
+/** Queries for GitHub synchronization configuration and delivery history. */
+export type GitHub = {
+  __typename?: 'GitHub';
+  /** Verified delivery intake history, restricted to administrators. */
+  deliveries: Array<GitHubDelivery>;
+  /** Administrator-only repository synchronization configuration. */
+  pair?: Maybe<GitHubRepositoryPair>;
+  /** Counterpart mappings and unresolved PR synchronization problems, restricted to administrators. */
+  pullRequestStates: Array<GitHubPullRequestState>;
+  /** Common branch/tag values and concurrent edits requiring reconciliation. */
+  refStates: Array<GitHubRefState>;
+  /** Administrator-verified identity mappings. */
+  users: Array<GitHubUser>;
+};
+
+
+/** Queries for GitHub synchronization configuration and delivery history. */
+export type GitHub_DeliveriesArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Long']['input']>;
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Queries for GitHub synchronization configuration and delivery history. */
+export type GitHub_PairArgs = {
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Queries for GitHub synchronization configuration and delivery history. */
+export type GitHub_PullRequestStatesArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Long']['input']>;
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Queries for GitHub synchronization configuration and delivery history. */
+export type GitHub_RefStatesArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Long']['input']>;
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Queries for GitHub synchronization configuration and delivery history. */
+export type GitHub_UsersArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Long']['input']>;
+};
+
+/** An authentic delivery retained for workflow processing and reconciliation. */
+export type GitHubDelivery = {
+  __typename?: 'GitHubDelivery';
+  created: Scalars['DateTime']['output'];
+  deliveryId: Scalars['String']['output'];
+  event: Scalars['String']['output'];
+  githubUserId?: Maybe<Scalars['Long']['output']>;
+  ignored: Scalars['Boolean']['output'];
+  /** Current access blocker for importing this delivery; null does not mean synchronization completed. */
+  importProblem?: Maybe<Scalars['String']['output']>;
+  payload: Scalars['JSON']['output'];
+  principalId?: Maybe<Scalars['UUID']['output']>;
+  /** Most recent synchronization failure; cleared when this delivery succeeds. */
+  problem?: Maybe<Scalars['String']['output']>;
+  repositoryId: Scalars['UUID']['output'];
+};
+
+/** Mutations for GitHub repository pairing and user mappings. */
+export type GitHubMutation = {
+  __typename?: 'GitHubMutation';
+  /** Map an immutable GitHub human user ID to a Bosca principal without granting permissions. */
+  mapUser: GitHubUser;
+  /** Resolve a GitHub username and map its immutable human user ID to a Bosca principal. */
+  mapUserByUsername: GitHubUser;
+  /** Pull current GitHub branches and tags as the calling administrator; repository Edit and Bosca branch protections apply. */
+  pullRefs: Array<GitHubRefState>;
+  /** Push current Bosca branches and tags as the calling administrator; repository Edit and GitHub protections apply. */
+  pushRefs: Array<GitHubRefState>;
+  /** Reconcile current pull requests without creating new merge commits. */
+  reconcilePullRequests: Array<GitHubPullRequestState>;
+  /** Reconcile current branches and tags in both directions as the calling administrator; repository Edit, destination protections and conflicts apply. */
+  reconcileRefs: Array<GitHubRefState>;
+  /** Resolve one recorded ref conflict using the selected host's reviewed value; both refs are checked and destination protections apply. */
+  resolveRef: GitHubRefState;
+  /** Administrator-only pairing configuration; stores secret references, never credentials. */
+  savePair: GitHubRepositoryPair;
+  /** Remove a user mapping without rewriting previous delivery attribution. */
+  unmapUser: Scalars['Boolean']['output'];
+};
+
+
+/** Mutations for GitHub repository pairing and user mappings. */
+export type GitHubMutation_MapUserArgs = {
+  githubUserId: Scalars['Long']['input'];
+  principalId: Scalars['UUID']['input'];
+};
+
+
+/** Mutations for GitHub repository pairing and user mappings. */
+export type GitHubMutation_MapUserByUsernameArgs = {
+  principalId: Scalars['UUID']['input'];
+  username: Scalars['String']['input'];
+};
+
+
+/** Mutations for GitHub repository pairing and user mappings. */
+export type GitHubMutation_PullRefsArgs = {
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Mutations for GitHub repository pairing and user mappings. */
+export type GitHubMutation_PushRefsArgs = {
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Mutations for GitHub repository pairing and user mappings. */
+export type GitHubMutation_ReconcilePullRequestsArgs = {
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Mutations for GitHub repository pairing and user mappings. */
+export type GitHubMutation_ReconcileRefsArgs = {
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Mutations for GitHub repository pairing and user mappings. */
+export type GitHubMutation_ResolveRefArgs = {
+  input: GitHubRefResolutionInput;
+};
+
+
+/** Mutations for GitHub repository pairing and user mappings. */
+export type GitHubMutation_SavePairArgs = {
+  input: GitHubRepositoryPairInput;
+};
+
+
+/** Mutations for GitHub repository pairing and user mappings. */
+export type GitHubMutation_UnmapUserArgs = {
+  githubUserId: Scalars['Long']['input'];
+};
+
+export type GitHubPullRequestSnapshot = {
+  __typename?: 'GitHubPullRequestSnapshot';
+  description?: Maybe<Scalars['String']['output']>;
+  mergeSha?: Maybe<Scalars['String']['output']>;
+  sourceBranch: Scalars['String']['output'];
+  status: GitPullRequestStatus;
+  targetBranch: Scalars['String']['output'];
+  title: Scalars['String']['output'];
+};
+
+/** Administrator-controlled pairing; GitHub repository IDs survive renames. */
+export type GitHubPullRequestState = {
+  __typename?: 'GitHubPullRequestState';
+  bosca?: Maybe<GitHubPullRequestSnapshot>;
+  github?: Maybe<GitHubPullRequestSnapshot>;
+  githubId?: Maybe<Scalars['Long']['output']>;
+  githubNumber?: Maybe<Scalars['Int']['output']>;
+  modified: Scalars['DateTime']['output'];
+  problem?: Maybe<Scalars['String']['output']>;
+  pullRequestId?: Maybe<Scalars['UUID']['output']>;
+  repositoryId: Scalars['UUID']['output'];
+  snapshot?: Maybe<GitHubPullRequestSnapshot>;
+};
+
+export enum GitHubRefResolution {
+  Bosca = 'BOSCA',
+  Github = 'GITHUB'
+}
+
+export type GitHubRefResolutionInput = {
+  /** Reviewed Bosca object ID; null means the ref is absent. */
+  expectedBoscaSha?: InputMaybe<Scalars['String']['input']>;
+  /** Reviewed GitHub object ID; null means the ref is absent. */
+  expectedGitHubSha?: InputMaybe<Scalars['String']['input']>;
+  ref: Scalars['String']['input'];
+  repositoryId: Scalars['UUID']['input'];
+  resolution: GitHubRefResolution;
+};
+
+export type GitHubRefState = {
+  __typename?: 'GitHubRefState';
+  boscaSha?: Maybe<Scalars['String']['output']>;
+  conflict: Scalars['Boolean']['output'];
+  githubSha?: Maybe<Scalars['String']['output']>;
+  modified: Scalars['DateTime']['output'];
+  ref: Scalars['String']['output'];
+  repositoryId: Scalars['UUID']['output'];
+  sha?: Maybe<Scalars['String']['output']>;
+  synchronized: Scalars['Boolean']['output'];
+};
+
+/** Administrator-controlled pairing; GitHub repository IDs survive renames. */
+export type GitHubRepositoryPair = {
+  __typename?: 'GitHubRepositoryPair';
+  created: Scalars['DateTime']['output'];
+  enabled: Scalars['Boolean']['output'];
+  githubRepositoryId: Scalars['Long']['output'];
+  modified: Scalars['DateTime']['output'];
+  name: Scalars['String']['output'];
+  owner: Scalars['String']['output'];
+  /** Automatic pull branch exclude globs; empty excludes match none. */
+  pullBranchExcludes: Array<Scalars['String']['output']>;
+  /** Automatic pull branch include globs; empty includes match all. */
+  pullBranchIncludes: Array<Scalars['String']['output']>;
+  /** Automatic push branch exclude globs; empty excludes match none. */
+  pushBranchExcludes: Array<Scalars['String']['output']>;
+  /** Automatic push branch include globs; empty includes match all. */
+  pushBranchIncludes: Array<Scalars['String']['output']>;
+  repositoryId: Scalars['UUID']['output'];
+  tokenSecretName: Scalars['String']['output'];
+  version: Scalars['Long']['output'];
+  webhookSecretName: Scalars['String']['output'];
+};
+
+export type GitHubRepositoryPairInput = {
+  enabled?: Scalars['Boolean']['input'];
+  /** Omit to resolve using the token on creation or rename; unchanged pairs retain their immutable ID. */
+  githubRepositoryId?: InputMaybe<Scalars['Long']['input']>;
+  name: Scalars['String']['input'];
+  owner: Scalars['String']['input'];
+  /** Automatic pull branch exclude globs; empty excludes match none. */
+  pullBranchExcludes?: Array<Scalars['String']['input']>;
+  /** Automatic pull branch include globs; empty includes match all. */
+  pullBranchIncludes?: Array<Scalars['String']['input']>;
+  /** Automatic push branch exclude globs; empty excludes match none. */
+  pushBranchExcludes?: Array<Scalars['String']['input']>;
+  /** Automatic push branch include globs; empty includes match all. */
+  pushBranchIncludes?: Array<Scalars['String']['input']>;
+  repositoryId: Scalars['UUID']['input'];
+  tokenSecretName: Scalars['String']['input'];
+  version?: Scalars['Long']['input'];
+  webhookSecretName: Scalars['String']['input'];
+};
+
+/** An administrator-verified human user mapping; permissions remain group-based. */
+export type GitHubUser = {
+  __typename?: 'GitHubUser';
+  created: Scalars['DateTime']['output'];
+  githubUserId: Scalars['Long']['output'];
+  githubUsername?: Maybe<Scalars['String']['output']>;
+  modified: Scalars['DateTime']['output'];
+  principalId: Scalars['UUID']['output'];
+};
 
 /** Determines how a pull request's source branch is integrated into the target. */
 export enum GitMergeStrategy {
@@ -11812,6 +12318,8 @@ export type GitMutation = {
   createReleaseTag: GitCreateTagResult;
   /** Create a new repository. */
   createRepository: GitRepository;
+  /** Create an annotated tag from a branch, tag, or commit SHA. Existing tags are never replaced. Requires EDIT permission on an active repository. */
+  createTag: GitTagInfo;
   /** Create a webhook. Requires MANAGE permission. */
   createWebhook: GitWebhook;
   /** Decrypt secrets for a pipeline job. Called by CLI runners before step execution. */
@@ -11875,6 +12383,8 @@ export type GitMutation = {
   renameRepository: GitRepository;
   /** Reopen a previously closed pull request. */
   reopenPullRequest: GitPullRequest;
+  /** Reply using the original comment's review and line context, including outdated discussions. */
+  replyReviewComment: GitReviewComment;
   /** Report a commit status check. Called by CLI runners to update CI status. */
   reportCommitStatus: Scalars['Boolean']['output'];
   /** Re-runs only a terminal run's FAILED/CANCELLED jobs — succeeded jobs keep their results; the run keeps its identity. */
@@ -12122,6 +12632,17 @@ export type GitMutation_CreateRepositoryArgs = {
 
 
 /** Mutations for the git repository system. */
+export type GitMutation_CreateTagArgs = {
+  message?: Scalars['String']['input'];
+  repositoryId: Scalars['UUID']['input'];
+  tag: Scalars['String']['input'];
+  taggerEmail: Scalars['String']['input'];
+  taggerName: Scalars['String']['input'];
+  targetRef: Scalars['String']['input'];
+};
+
+
+/** Mutations for the git repository system. */
 export type GitMutation_CreateWebhookArgs = {
   input: GitWebhookInput;
   repositoryId: Scalars['UUID']['input'];
@@ -12247,6 +12768,8 @@ export type GitMutation_MarkReleasedFromJobArgs = {
 
 /** Mutations for the git repository system. */
 export type GitMutation_MergePullRequestArgs = {
+  bypassStatusChecks?: Scalars['Boolean']['input'];
+  expectedVersion?: InputMaybe<Scalars['Long']['input']>;
   id: Scalars['UUID']['input'];
   strategy: GitMergeStrategy;
 };
@@ -12254,6 +12777,8 @@ export type GitMutation_MergePullRequestArgs = {
 
 /** Mutations for the git repository system. */
 export type GitMutation_MergePullRequestWithDependenciesArgs = {
+  bypassStatusChecks?: Scalars['Boolean']['input'];
+  expectedVersion?: InputMaybe<Scalars['Long']['input']>;
   id: Scalars['UUID']['input'];
   strategy: GitMergeStrategy;
 };
@@ -12349,6 +12874,15 @@ export type GitMutation_RenameRepositoryArgs = {
 /** Mutations for the git repository system. */
 export type GitMutation_ReopenPullRequestArgs = {
   id: Scalars['UUID']['input'];
+};
+
+
+/** Mutations for the git repository system. */
+export type GitMutation_ReplyReviewCommentArgs = {
+  commentId: Scalars['UUID']['input'];
+  content: Scalars['String']['input'];
+  expectedVersion?: InputMaybe<Scalars['Long']['input']>;
+  pullRequestId: Scalars['UUID']['input'];
 };
 
 
@@ -12712,6 +13246,8 @@ export type GitPipelineJob = {
   approvedAt?: Maybe<Scalars['DateTime']['output']>;
   /** Who approved the job. */
   approvedBy?: Maybe<Scalars['UUID']['output']>;
+  /** Artifacts produced by this job, with coordinates resolved at run creation. */
+  artifacts: Array<GitArtifactDefinition>;
   /** Which execution attempt this is (1 = first run; incremented by re-run-failed). */
   attempt: Scalars['Int']['output'];
   /** True while the job is parked at its approval gate: queued, unapproved, every earlier gate cleared. */
@@ -12874,23 +13410,31 @@ export type GitPullRequest = {
   assignees: Array<Profile>;
   /** Profile ID of the PR author. */
   authorId: Scalars['UUID']['output'];
+  /** Commits unique to this comparison, newest first. Merged requests use their recorded merge history. */
+  commits: Array<GitCommitInfo>;
   /** Files with merge conflicts, if any. */
   conflictingFiles: Array<Scalars['String']['output']>;
   created: Scalars['DateTime']['output'];
+  /** Whether to delete this PR's source branch after a successful merge. */
+  deleteBranchOnMerge: Scalars['Boolean']['output'];
   /** Pull requests that must be merged before this pull request. */
   dependencies: Array<GitPullRequest>;
   /** Pull requests that directly depend on this pull request. */
   dependents: Array<GitPullRequest>;
   /** Markdown description. */
   description?: Maybe<Scalars['String']['output']>;
-  /** Structured diff between source and target branches. */
+  /** All PR changes, or one comparison commit against its first parent when commitSha is supplied. */
   diff: Array<GitDiffFile>;
+  /** Reported or required checks without a successful result on the current source commit, including required checks that have not reported. */
+  failingStatusChecks: Array<Scalars['String']['output']>;
   id: Scalars['UUID']['output'];
+  /** Target commit immediately before the completed merge, when its base is known. */
+  mergeBaseSha?: Maybe<Scalars['String']['output']>;
   /** The SHA of the merge commit. */
   mergeSha?: Maybe<Scalars['String']['output']>;
   /** The strategy used when merged. */
   mergeStrategy?: Maybe<GitMergeStrategy>;
-  /** Whether the PR can be cleanly merged. */
+  /** Whether Git can merge the branches without conflicts. Does not include reviews, dependencies or status checks. */
   mergeable: Scalars['Boolean']['output'];
   mergedAt?: Maybe<Scalars['DateTime']['output']>;
   mergedBy?: Maybe<Scalars['UUID']['output']>;
@@ -12907,6 +13451,21 @@ export type GitPullRequest = {
   targetBranch: Scalars['String']['output'];
   title: Scalars['String']['output'];
   updated: Scalars['DateTime']['output'];
+  /** Version used to reject stale edits and reviews. */
+  version: Scalars['Long']['output'];
+};
+
+
+/** A pull request within a repository. */
+export type GitPullRequest_CommitsArgs = {
+  limit?: Scalars['Int']['input'];
+  offset?: Scalars['Long']['input'];
+};
+
+
+/** A pull request within a repository. */
+export type GitPullRequest_DiffArgs = {
+  commitSha?: InputMaybe<Scalars['String']['input']>;
 };
 
 export enum GitPullRequestActivityAction {
@@ -12994,6 +13553,10 @@ export type GitRepository = {
   __typename?: 'GitRepository';
   /** Whether the repository is archived (read-only). */
   archived: Scalars['Boolean']['output'];
+  /** Whether the current caller may execute builds in this repository. */
+  canEdit: Scalars['Boolean']['output'];
+  canExecute: Scalars['Boolean']['output'];
+  canManage: Scalars['Boolean']['output'];
   /** The fully-qualified HTTP clone URL for this repository. */
   cloneUrl: Scalars['String']['output'];
   /** Merge and commit policy configuration. */
@@ -13271,21 +13834,114 @@ export type GitWebhookInput = {
   url: Scalars['String']['input'];
 };
 
+export type GoalActivation = {
+  __typename?: 'GoalActivation';
+  applicationIds: Array<Scalars['String']['output']>;
+  defaultFilter?: Maybe<ExperimentActivationFilter>;
+  maxDelaySeconds?: Maybe<Scalars['Int']['output']>;
+  sameSession: Scalars['Boolean']['output'];
+  variationRules: Array<GoalActivationRule>;
+};
+
+export type GoalActivationInput = {
+  applicationIds?: Array<Scalars['String']['input']>;
+  defaultFilter?: InputMaybe<ExperimentActivationFilterInput>;
+  maxDelaySeconds?: InputMaybe<Scalars['Int']['input']>;
+  sameSession?: Scalars['Boolean']['input'];
+  variationRules?: InputMaybe<Array<GoalActivationRuleInput>>;
+};
+
+export enum GoalActivationMode {
+  Event = 'EVENT',
+  Inherit = 'INHERIT',
+  NotApplicable = 'NOT_APPLICABLE'
+}
+
+export type GoalActivationRule = {
+  __typename?: 'GoalActivationRule';
+  filter?: Maybe<ExperimentActivationFilter>;
+  mode: GoalActivationMode;
+  variationKey: Scalars['String']['output'];
+};
+
+export type GoalActivationRuleInput = {
+  filter?: InputMaybe<ExperimentActivationFilterInput>;
+  mode: GoalActivationMode;
+  variationKey: Scalars['String']['input'];
+};
+
+export type GoalDiagnostics = {
+  __typename?: 'GoalDiagnostics';
+  duplicateDeliveries: Scalars['Long']['output'];
+  excludedInstallations: Scalars['Long']['output'];
+  excludedPrincipals: Scalars['Long']['output'];
+  missingApplication: Scalars['Long']['output'];
+  outsideApplication: Scalars['Long']['output'];
+};
+
 /**
  * Selects which statistical metric a conversion goal reports.
  *
  * `UNIQUE_CONVERSION` counts each converting user at most once and analyzes
  * the resulting proportion with chi-squared. `EVENT_COUNT` totals matching
  * events per user, reports the per-user mean and variance, and analyzes the
- * difference with Welch's t-test. `SESSION_DURATION` reports the mean observed
- * session span in seconds per subject and also uses Welch's t-test. These metrics
- * answer different questions and cannot share a single statistical engine.
+ * difference with Welch's t-test. `SESSION_DURATION` reports each subject's mean
+ * session duration in seconds, including observed audio/video progress. Older play events
+ * estimate remaining media duration, limited by later player events and the aggregation cutoff.
+ * Sessions end five minutes after their last activity or playback. This also uses
+ * Welch's t-test. These metrics answer different
+ * questions and cannot share a single statistical engine.
  */
 export enum GoalMetricType {
   EventCount = 'EVENT_COUNT',
   SessionDuration = 'SESSION_DURATION',
   UniqueConversion = 'UNIQUE_CONVERSION'
 }
+
+export type GoalOutcomeScope = {
+  __typename?: 'GoalOutcomeScope';
+  applicationIds: Array<Scalars['String']['output']>;
+  attributeRecommendationDestination: Scalars['Boolean']['output'];
+  maxDelaySeconds?: Maybe<Scalars['Int']['output']>;
+  recommendationCard: Scalars['Boolean']['output'];
+  sameSession: Scalars['Boolean']['output'];
+};
+
+export type GoalOutcomeScopeInput = {
+  applicationIds?: Array<Scalars['String']['input']>;
+  attributeRecommendationDestination?: Scalars['Boolean']['input'];
+  maxDelaySeconds?: InputMaybe<Scalars['Int']['input']>;
+  recommendationCard?: Scalars['Boolean']['input'];
+  sameSession?: Scalars['Boolean']['input'];
+};
+
+export type GoalPopulation = {
+  __typename?: 'GoalPopulation';
+  conversions: Scalars['Long']['output'];
+  distribution?: Maybe<MetricDistribution>;
+  estimate?: Maybe<Scalars['Float']['output']>;
+  interval?: Maybe<MetricInterval>;
+  observationCount: Scalars['Long']['output'];
+  subjects: Scalars['Long']['output'];
+  variance?: Maybe<Scalars['Float']['output']>;
+};
+
+export type GoalPopulationAnalysis = {
+  __typename?: 'GoalPopulationAnalysis';
+  activated?: Maybe<GoalPopulation>;
+  activationConfigured: Scalars['Boolean']['output'];
+  attribution?: Maybe<DestinationAttribution>;
+  cutoff: Scalars['String']['output'];
+  diagnostics: GoalDiagnostics;
+  exposureEvents?: Maybe<Scalars['Long']['output']>;
+  exposureIntensity?: Maybe<MetricDistribution>;
+  notActivated?: Maybe<GoalPopulation>;
+  notApplicable: Scalars['Boolean']['output'];
+  overall: GoalPopulation;
+  placement?: Maybe<PlacementIntegrity>;
+  reach?: Maybe<Scalars['Float']['output']>;
+  reachInterval?: Maybe<MetricInterval>;
+};
 
 /** A security group used for role-based access control. Groups are assigned to principals and can be granted permissions on entities. */
 export type Group = {
@@ -13508,6 +14164,8 @@ export type GuideStep = {
   __typename?: 'GuideStep';
   /** The assigned date for this step in calendar-based guides, null for linear guides */
   date?: Maybe<Scalars['DateTime']['output']>;
+  /** The parent guide's metadata, including its ID and slug; null when the caller cannot view it */
+  guide?: Maybe<Metadata>;
   /** Unique identifier for this step within the guide */
   id: Scalars['Int']['output'];
   /** The metadata item containing the content for this step */
@@ -13817,6 +14475,76 @@ export enum IapRedemptionStatus {
   VerificationUnavailable = 'VERIFICATION_UNAVAILABLE'
 }
 
+/** Attachment outcome, template choices, and any incomplete post-processing. */
+export type ImageAttachment = {
+  __typename?: 'ImageAttachment';
+  attached: Scalars['Boolean']['output'];
+  attribute?: Maybe<TemplateImageAttribute>;
+  availableAttributes: Array<TemplateImageAttribute>;
+  collaborationUpdated: Scalars['Boolean']['output'];
+  crop?: Maybe<ImageCrop>;
+  error?: Maybe<Scalars['String']['output']>;
+  optimized: Scalars['Boolean']['output'];
+  success: Scalars['Boolean']['output'];
+  targetLanguageTag?: Maybe<Scalars['String']['output']>;
+  warning?: Maybe<Scalars['String']['output']>;
+};
+
+export type ImageCrop = {
+  __typename?: 'ImageCrop';
+  height: Scalars['Float']['output'];
+  left: Scalars['Float']['output'];
+  top: Scalars['Float']['output'];
+  width: Scalars['Float']['output'];
+};
+
+/** Source image crop in pixels. */
+export type ImageCropInput = {
+  height: Scalars['Float']['input'];
+  left: Scalars['Float']['input'];
+  top: Scalars['Float']['input'];
+  width: Scalars['Float']['input'];
+};
+
+/** Generate, edit, or attach uploaded images. */
+export type ImagesMutation = {
+  __typename?: 'ImagesMutation';
+  /** Attach an uploaded image through a template image attribute. Omit attributeKey to select the sole attribute or return choices without writing. */
+  attach: ImageAttachment;
+  /** Edit an uploaded image without changing the source. Requires source content VIEW and destination creation access. */
+  edit: Metadata;
+  /** Create an image. Requires content creation access in the destination. */
+  generate: Metadata;
+};
+
+
+/** Generate, edit, or attach uploaded images. */
+export type ImagesMutation_AttachArgs = {
+  attributeKey?: InputMaybe<Scalars['String']['input']>;
+  crop?: InputMaybe<ImageCropInput>;
+  imageMetadataId: Scalars['UUID']['input'];
+  targetCollectionId?: InputMaybe<Scalars['UUID']['input']>;
+  targetLanguageTag?: InputMaybe<Scalars['String']['input']>;
+  targetMetadataId?: InputMaybe<Scalars['UUID']['input']>;
+};
+
+
+/** Generate, edit, or attach uploaded images. */
+export type ImagesMutation_EditArgs = {
+  name?: Scalars['String']['input'];
+  parentCollectionId?: InputMaybe<Scalars['UUID']['input']>;
+  prompt: Scalars['String']['input'];
+  sourceId: Scalars['UUID']['input'];
+};
+
+
+/** Generate, edit, or attach uploaded images. */
+export type ImagesMutation_GenerateArgs = {
+  name?: Scalars['String']['input'];
+  parentCollectionId?: InputMaybe<Scalars['UUID']['input']>;
+  prompt: Scalars['String']['input'];
+};
+
 /** An individual installer within a package version */
 export type InstalledPackage = {
   __typename?: 'InstalledPackage';
@@ -14109,6 +14837,238 @@ export type KeyValueProviderConfiguration = {
   __typename?: 'KeyValueProviderConfiguration';
   type: Scalars['String']['output'];
   values: Array<ProviderConfigurationValue>;
+};
+
+export type KitContextReference = {
+  __typename?: 'KitContextReference';
+  id: Scalars['String']['output'];
+  kind: Scalars['String']['output'];
+  path?: Maybe<Scalars['String']['output']>;
+  ref?: Maybe<Scalars['String']['output']>;
+  selected: Scalars['Boolean']['output'];
+  title: Scalars['String']['output'];
+};
+
+export type KitContextSelection = {
+  id: Scalars['UUID']['input'];
+  kind: KitContextSourceKind;
+  path?: InputMaybe<Scalars['String']['input']>;
+  ref?: InputMaybe<Scalars['String']['input']>;
+};
+
+export enum KitContextSourceKind {
+  Collection = 'COLLECTION',
+  GitFile = 'GIT_FILE',
+  Metadata = 'METADATA',
+  Requirement = 'REQUIREMENT',
+  Spec = 'SPEC',
+  Task = 'TASK'
+}
+
+export type KitContextStatus = {
+  __typename?: 'KitContextStatus';
+  integrations: Array<Scalars['String']['output']>;
+  notices: Array<Scalars['String']['output']>;
+  selectionCount: Scalars['Int']['output'];
+  sources: Array<KitContextReference>;
+};
+
+export type KitDelegation = {
+  __typename?: 'KitDelegation';
+  childSessionId: Scalars['UUID']['output'];
+  deadline: Scalars['DateTime']['output'];
+  depth: Scalars['Int']['output'];
+  failure?: Maybe<Scalars['String']['output']>;
+  id: Scalars['UUID']['output'];
+  parentSessionId: Scalars['UUID']['output'];
+  parentTurnId: Scalars['UUID']['output'];
+  partial: Scalars['Boolean']['output'];
+  profile: Scalars['String']['output'];
+  result?: Maybe<KitDelegationResult>;
+  runtimeSeconds: Scalars['Long']['output'];
+  status: KitDelegationStatus;
+};
+
+export type KitDelegationArtifact = {
+  __typename?: 'KitDelegationArtifact';
+  label: Scalars['String']['output'];
+  metadataId: Scalars['UUID']['output'];
+};
+
+export type KitDelegationArtifactInput = {
+  label?: Scalars['String']['input'];
+  metadataId: Scalars['UUID']['input'];
+};
+
+export type KitDelegationContextInput = {
+  id: Scalars['UUID']['input'];
+  kind: KitContextSourceKind;
+  path?: InputMaybe<Scalars['String']['input']>;
+  ref?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type KitDelegationInput = {
+  artifacts?: Array<Scalars['UUID']['input']>;
+  brief: Scalars['String']['input'];
+  context?: Array<KitDelegationContextInput>;
+  deadline?: InputMaybe<Scalars['DateTime']['input']>;
+  expectedResult: Scalars['String']['input'];
+  profile: Scalars['String']['input'];
+  requestId: Scalars['UUID']['input'];
+  runtimeSeconds?: Scalars['Long']['input'];
+  scopes?: InputMaybe<Array<Scalars['String']['input']>>;
+};
+
+export type KitDelegationPolicy = {
+  __typename?: 'KitDelegationPolicy';
+  maxActive: Scalars['Int']['output'];
+  maxChildren: Scalars['Int']['output'];
+  maxDepth: Scalars['Int']['output'];
+  maxRuntimeSeconds: Scalars['Long']['output'];
+  profiles: Array<Scalars['String']['output']>;
+  totalRuntimeSeconds: Scalars['Long']['output'];
+};
+
+export type KitDelegationResult = {
+  __typename?: 'KitDelegationResult';
+  artifacts: Array<KitDelegationArtifact>;
+  summary: Scalars['String']['output'];
+};
+
+export type KitDelegationResultInput = {
+  artifacts?: Array<KitDelegationArtifactInput>;
+  summary: Scalars['String']['input'];
+};
+
+export enum KitDelegationStatus {
+  Cancelled = 'CANCELLED',
+  Completed = 'COMPLETED',
+  Failed = 'FAILED',
+  Interrupted = 'INTERRUPTED',
+  Queued = 'QUEUED',
+  Running = 'RUNNING',
+  TimedOut = 'TIMED_OUT'
+}
+
+/** Runtime-bound reads for managed child tasks. */
+export type KitDelegations = {
+  __typename?: 'KitDelegations';
+  get?: Maybe<KitDelegation>;
+  list: Array<KitDelegation>;
+  settings: KitDelegationPolicy;
+};
+
+
+/** Runtime-bound reads for managed child tasks. */
+export type KitDelegations_GetArgs = {
+  id: Scalars['UUID']['input'];
+  sessionId: Scalars['UUID']['input'];
+};
+
+
+/** Runtime-bound reads for managed child tasks. */
+export type KitDelegations_ListArgs = {
+  limit?: Scalars['Int']['input'];
+  offset?: Scalars['Long']['input'];
+  sessionId: Scalars['UUID']['input'];
+};
+
+
+/** Runtime-bound reads for managed child tasks. */
+export type KitDelegations_SettingsArgs = {
+  sessionId: Scalars['UUID']['input'];
+};
+
+/** The narrow ai:delegate surface; these operations do not grant general AI conversation execution. */
+export type KitDelegationsMutation = {
+  __typename?: 'KitDelegationsMutation';
+  cancel: KitDelegation;
+  start: KitDelegation;
+  submit: KitDelegation;
+  wait: KitDelegation;
+};
+
+
+/** The narrow ai:delegate surface; these operations do not grant general AI conversation execution. */
+export type KitDelegationsMutation_CancelArgs = {
+  id: Scalars['UUID']['input'];
+  sessionId: Scalars['UUID']['input'];
+};
+
+
+/** The narrow ai:delegate surface; these operations do not grant general AI conversation execution. */
+export type KitDelegationsMutation_StartArgs = {
+  input: KitDelegationInput;
+  sessionId: Scalars['UUID']['input'];
+};
+
+
+/** The narrow ai:delegate surface; these operations do not grant general AI conversation execution. */
+export type KitDelegationsMutation_SubmitArgs = {
+  output: KitDelegationResultInput;
+  sessionId: Scalars['UUID']['input'];
+};
+
+
+/** The narrow ai:delegate surface; these operations do not grant general AI conversation execution. */
+export type KitDelegationsMutation_WaitArgs = {
+  id: Scalars['UUID']['input'];
+  sessionId: Scalars['UUID']['input'];
+};
+
+export type KitHarnessChoice = {
+  capabilityVersion?: InputMaybe<Scalars['String']['input']>;
+  mcpServers?: InputMaybe<Array<Scalars['String']['input']>>;
+  model?: InputMaybe<Scalars['String']['input']>;
+  policyVersion: Scalars['String']['input'];
+  profile: Scalars['String']['input'];
+  reasoning?: InputMaybe<Scalars['String']['input']>;
+};
+
+/** Public effective settings; infrastructure and credentials remain private. */
+export type KitHarnessSettings = {
+  __typename?: 'KitHarnessSettings';
+  canOverride: Scalars['Boolean']['output'];
+  capabilityVersion?: Maybe<Scalars['String']['output']>;
+  choices: Array<Scalars['String']['output']>;
+  effectiveProfile: Scalars['String']['output'];
+  mcpNotices: Array<Scalars['String']['output']>;
+  mcpOptions: Array<KitMcpOption>;
+  mcpServers: Array<Scalars['String']['output']>;
+  model?: Maybe<Scalars['String']['output']>;
+  modelSource: Scalars['String']['output'];
+  models: Array<KitModelOption>;
+  notice?: Maybe<Scalars['String']['output']>;
+  policyVersion: Scalars['String']['output'];
+  reasoning?: Maybe<Scalars['String']['output']>;
+  reasoningOptions: Array<KitModelOption>;
+  reasoningSource: Scalars['String']['output'];
+  requestedMcpServers?: Maybe<Array<Scalars['String']['output']>>;
+  requestedModel?: Maybe<Scalars['String']['output']>;
+  requestedProfile?: Maybe<Scalars['String']['output']>;
+  requestedReasoning?: Maybe<Scalars['String']['output']>;
+  source: Scalars['String']['output'];
+};
+
+/** Public lifecycle of the conversation's harness. */
+export type KitHarnessStatus = {
+  __typename?: 'KitHarnessStatus';
+  cancellationRequested: Scalars['Boolean']['output'];
+  failure?: Maybe<Scalars['String']['output']>;
+  state: Scalars['String']['output'];
+};
+
+export type KitMcpOption = {
+  __typename?: 'KitMcpOption';
+  key: Scalars['String']['output'];
+  name: Scalars['String']['output'];
+  required: Scalars['Boolean']['output'];
+};
+
+export type KitModelOption = {
+  __typename?: 'KitModelOption';
+  name: Scalars['String']['output'];
+  value: Scalars['String']['output'];
 };
 
 /** A supported language for content localization, identified by an IETF BCP 47 language tag. */
@@ -15946,6 +16906,95 @@ export type MeilisearchVersion = {
   pkgVersion: Scalars['String']['output'];
 };
 
+/** Reusable, explicitly saved knowledge backed by Bosca content documents. */
+export type Memories = {
+  __typename?: 'Memories';
+  get?: Maybe<Memory>;
+  search: Array<Memory>;
+};
+
+
+/** Reusable, explicitly saved knowledge backed by Bosca content documents. */
+export type Memories_GetArgs = {
+  conversationId?: InputMaybe<Scalars['UUID']['input']>;
+  id: Scalars['UUID']['input'];
+};
+
+
+/** Reusable, explicitly saved knowledge backed by Bosca content documents. */
+export type Memories_SearchArgs = {
+  conversationId?: InputMaybe<Scalars['UUID']['input']>;
+  query: MemoryQuery;
+};
+
+export type MemoriesMutation = {
+  __typename?: 'MemoriesMutation';
+  forget: Scalars['Boolean']['output'];
+  remember: Memory;
+  update: Memory;
+};
+
+
+export type MemoriesMutation_ForgetArgs = {
+  expectedRevision: Scalars['String']['input'];
+  id: Scalars['UUID']['input'];
+};
+
+
+export type MemoriesMutation_RememberArgs = {
+  input: RememberMemoryInput;
+};
+
+
+export type MemoriesMutation_UpdateArgs = {
+  conversationId?: InputMaybe<Scalars['UUID']['input']>;
+  expectedRevision: Scalars['String']['input'];
+  id: Scalars['UUID']['input'];
+  refreshSource?: InputMaybe<Scalars['Boolean']['input']>;
+  statement: Scalars['String']['input'];
+};
+
+export type Memory = {
+  __typename?: 'Memory';
+  created: Scalars['DateTime']['output'];
+  id: Scalars['UUID']['output'];
+  modified?: Maybe<Scalars['DateTime']['output']>;
+  provenance: MemoryAttributes;
+  revision: Scalars['String']['output'];
+  sourceChanged: Scalars['Boolean']['output'];
+  statement: Scalars['String']['output'];
+  tags: Array<Scalars['String']['output']>;
+  version: Scalars['Int']['output'];
+};
+
+export type MemoryAttributes = {
+  __typename?: 'MemoryAttributes';
+  collectionId?: Maybe<Scalars['UUID']['output']>;
+  conversationId?: Maybe<Scalars['UUID']['output']>;
+  /** Null retains this explicitly saved memory until it is forgotten, independently of its conversation. */
+  expires?: Maybe<Scalars['DateTime']['output']>;
+  ownerId: Scalars['UUID']['output'];
+  scope: MemoryScope;
+  sourceMetadataId?: Maybe<Scalars['UUID']['output']>;
+  sourceRevision?: Maybe<Scalars['String']['output']>;
+  sourceVersion?: Maybe<Scalars['Int']['output']>;
+};
+
+export type MemoryQuery = {
+  collectionIds?: InputMaybe<Array<Scalars['UUID']['input']>>;
+  ids?: InputMaybe<Array<Scalars['UUID']['input']>>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Long']['input']>;
+  personal?: InputMaybe<Scalars['Boolean']['input']>;
+  tags?: InputMaybe<Array<Scalars['String']['input']>>;
+  text?: InputMaybe<Scalars['String']['input']>;
+};
+
+export enum MemoryScope {
+  Collection = 'COLLECTION',
+  Personal = 'PERSONAL'
+}
+
 /** A single content block within a chat message, representing text, media, or a reference */
 export type MessageContent = {
   __typename?: 'MessageContent';
@@ -16107,6 +17156,8 @@ export type Metadata = {
   name: Scalars['String']['output'];
   /** Paginated list of parent collections that contain this metadata item */
   parentCollections: Array<Collection>;
+  /** Accessible current guides that contain this metadata version as a step, including their IDs and slugs */
+  parentGuides: Array<Metadata>;
   /** ID of the parent metadata item if this is a variant */
   parentId?: Maybe<Scalars['String']['output']>;
   /** Access permissions defined on this metadata item */
@@ -17390,6 +18441,25 @@ export type MetadataWorkflowState = {
   status: Scalars['String']['input'];
 };
 
+export type MetricDistribution = {
+  __typename?: 'MetricDistribution';
+  count: Scalars['Long']['output'];
+  maximum: Scalars['Float']['output'];
+  mean: Scalars['Float']['output'];
+  p50: Scalars['Float']['output'];
+  p75: Scalars['Float']['output'];
+  p90: Scalars['Float']['output'];
+  p95: Scalars['Float']['output'];
+  p99: Scalars['Float']['output'];
+  standardDeviation: Scalars['Float']['output'];
+};
+
+export type MetricInterval = {
+  __typename?: 'MetricInterval';
+  lower: Scalars['Float']['output'];
+  upper: Scalars['Float']['output'];
+};
+
 /** An AI/ML model configuration registered in the system for use with prompts and AI workflows */
 export type Model = {
   __typename?: 'Model';
@@ -17534,6 +18604,8 @@ export type Mutation = {
   gateway: GatewayMutations;
   /** Git repository mutations. */
   git: GitMutation;
+  /** GitHub synchronization mutations. */
+  github: GitHubMutation;
   /** Access job management mutations */
   jobs: JobsMutation;
   /** Entry point for language mutations. */
@@ -19503,6 +20575,14 @@ export type PipelineDryRun = {
   skipped: Scalars['JSON']['output'];
 };
 
+/** An unsaved graph checked by the engine, with deterministic editor coordinates. */
+export type PipelineGraphValidation = {
+  __typename?: 'PipelineGraphValidation';
+  errors: Array<Scalars['String']['output']>;
+  graph: Scalars['JSON']['output'];
+  valid: Scalars['Boolean']['output'];
+};
+
 /** One finished pipeline execution recorded in run history (the append-only audit; distinct from PipelineRunState, the live durable run). */
 export type PipelineHistoryRun = {
   __typename?: 'PipelineHistoryRun';
@@ -19759,6 +20839,15 @@ export type PipelineRepoValidationError = {
   path: Scalars['String']['output'];
 };
 
+/** A rollback that failed for a terminated pipeline run. */
+export type PipelineRollbackFailure = {
+  __typename?: 'PipelineRollbackFailure';
+  error: Scalars['String']['output'];
+  failedAt: Scalars['DateTime']['output'];
+  nodeId: Scalars['String']['output'];
+  rollbackPipelineId: Scalars['UUID']['output'];
+};
+
 /** Result of a manual pipeline run. */
 export type PipelineRunResult = {
   __typename?: 'PipelineRunResult';
@@ -19791,13 +20880,19 @@ export type PipelineRunState = {
   /** The event that triggered the run. */
   eventName: Scalars['String']['output'];
   id: Scalars['UUID']['output'];
+  /** Original input captured for the run. */
+  input?: Maybe<Scalars['JSON']['output']>;
   /** For a run a For Each spawned: the 0-based index of the item it processes; null for a Run Pipeline child or a top-level run. */
   itemIndex?: Maybe<Scalars['Int']['output']>;
   /** Last state change — for a suspended run, how long it has been waiting. */
   modifiedAt: Scalars['DateTime']['output'];
   /** The per-node execution timeline for this run, in execution order. */
   nodes: Array<PipelineNodeExecution>;
+  /** Final output, including runs that completed after the initiating request returned. */
+  output?: Maybe<Scalars['JSON']['output']>;
   pipelineId: Scalars['UUID']['output'];
+  /** Rollbacks of this terminated run that failed, in rollback order. Their side effects may remain in place. */
+  rollbackFailures: Array<PipelineRollbackFailure>;
   status: PipelineRunStatus;
   /** The step-oriented progress view: one row per Status node and per human wait, recursing into fan-out children (per-item rows) — never engine plumbing nodes. */
   steps: Array<PipelineRunStep>;
@@ -19943,7 +21038,7 @@ export type Pipelines = {
   __typename?: 'Pipelines';
   /** In-flight durable runs (running or suspended), newest activity first. */
   activeRuns: Array<PipelineRunState>;
-  /** All pipelines. */
+  /** Administrator pipeline discovery with optional search and offset pagination. */
   all: Array<Pipeline>;
   /** Run history across every pipeline, newest first. */
   allRuns: Array<PipelineHistoryRun>;
@@ -19957,6 +21052,8 @@ export type Pipelines = {
   nodeTypes: Array<PipelineNodeType>;
   /** A pipeline by id, or null if not found. */
   pipeline?: Maybe<Pipeline>;
+  /** A pipeline by its endpoint key. */
+  pipelineByKey?: Maybe<Pipeline>;
   /** A single durable run's live state + (via its nodes field) per-node timeline, by run id; in-flight or finished. */
   run?: Maybe<PipelineRunState>;
   /** Run history for a pipeline, newest first. */
@@ -19969,6 +21066,8 @@ export type Pipelines = {
   stepsForTrigger: Array<PipelineRunStep>;
   /** Every catalogued concrete value type and its domain interfaces/base types — drives Cast targets. */
   types: Array<Scalars['String']['output']>;
+  /** Validate and lay out an unsaved graph without storing or executing it. */
+  validateGraph: PipelineGraphValidation;
 };
 
 
@@ -19976,6 +21075,14 @@ export type Pipelines = {
 export type Pipelines_ActiveRunsArgs = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
+/** Pipeline query operations. */
+export type Pipelines_AllArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  search?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -20006,6 +21113,12 @@ export type Pipelines_PipelineArgs = {
 
 
 /** Pipeline query operations. */
+export type Pipelines_PipelineByKeyArgs = {
+  key: Scalars['String']['input'];
+};
+
+
+/** Pipeline query operations. */
 export type Pipelines_RunArgs = {
   runId: Scalars['UUID']['input'];
 };
@@ -20022,6 +21135,12 @@ export type Pipelines_RunsArgs = {
 /** Pipeline query operations. */
 export type Pipelines_StepsForTriggerArgs = {
   eventName: Scalars['String']['input'];
+};
+
+
+/** Pipeline query operations. */
+export type Pipelines_ValidateGraphArgs = {
+  graph: Scalars['JSON']['input'];
 };
 
 /** Pipeline mutation operations. */
@@ -20061,8 +21180,10 @@ export type PipelinesMutation = {
   resolveGate: Scalars['Boolean']['output'];
   /** Restart a dead-lettered (failed) run: re-run from its seed input against the current pipeline. Null if the source run is gone. */
   restartRun?: Maybe<PipelineRunState>;
+  /** Run a terminated run's failed rollbacks again under the calling administrator's authority. Returns the rollbacks that are still failed. */
+  retryRollbacks: Array<PipelineRollbackFailure>;
   /**
-   * Run a pipeline now, inline, FOR REAL — action nodes execute their side effects. The payload
+   * Run a pipeline now as a durable job, FOR REAL — action nodes execute their side effects. The payload
    * is the pipeline's input (validated against the input schema for JSON-input pipelines, or
    * decoded as the accepted event type). Runs under the caller's principal and is recorded in
    * run history as a "manual" run.
@@ -20171,6 +21292,12 @@ export type PipelinesMutation_RestartRunArgs = {
 
 
 /** Pipeline mutation operations. */
+export type PipelinesMutation_RetryRollbacksArgs = {
+  runId: Scalars['UUID']['input'];
+};
+
+
+/** Pipeline mutation operations. */
 export type PipelinesMutation_RunArgs = {
   id: Scalars['UUID']['input'];
   payload: Scalars['JSON']['input'];
@@ -20196,6 +21323,14 @@ export type PipelinesMutation_SaveShapeArgs = {
 export type PipelinesMutation_SetSecretArgs = {
   name: Scalars['String']['input'];
   value: Scalars['String']['input'];
+};
+
+export type PlacementIntegrity = {
+  __typename?: 'PlacementIntegrity';
+  both: Scalars['Long']['output'];
+  expectedOnly: Scalars['Long']['output'];
+  neither: Scalars['Long']['output'];
+  unexpectedOnly: Scalars['Long']['output'];
 };
 
 /** Subscription-plan-specific behavior. */
@@ -22116,6 +23251,8 @@ export type Query = {
   gateway: GatewayNamespace;
   /** Git repository operations. */
   git: Git;
+  /** GitHub synchronization operations. */
+  github: GitHub;
   /** Access the list of supported languages for content localization. */
   languages: Languages;
   /** Entry point for localization queries */
@@ -22215,6 +23352,7 @@ export type Recommendation = {
   contexts: RecommendationContexts;
   /** The authenticated user's personalized feed ("For you"), retrieved and ranked live from the trained model. Defaults to the caller's own profile; supplying an explicit profileId is allowed only for its owner or an admin/service account. */
   forYou: Array<RecommendationResult>;
+  modelSelection: RecommendationModelSelection;
   /** Access Personalization Signal definitions — the config for how profile attributes/segments personalize recommendations (admin only). */
   personalizationSignals: PersonalizationSignals;
   /** Retrieve recommendations for a specific display placement. */
@@ -22378,35 +23516,35 @@ export type RecommendationContextModel = {
   version: Scalars['Long']['output'];
 };
 
-/** Admin operations for saved recommendation contexts. */
+/** Administrator context reads and artifact-filtered model discovery. */
 export type RecommendationContexts = {
   __typename?: 'RecommendationContexts';
-  /** Retrieve every saved recommendation context. */
+  /** Retrieve saved contexts. Artifact tokens see only contexts with model versions they can pull. */
   all: Array<RecommendationContext>;
   /** Retrieve a context by identifier. */
   context?: Maybe<RecommendationContext>;
   /** Retrieve a context by the type value used in requests. */
   contextByType?: Maybe<RecommendationContext>;
-  /** Recent training history plus protected active and pinned versions. */
+  /** Recent training history plus protected active and pinned versions. Artifact tokens see only versions they can pull. */
   models: Array<RecommendationContextModel>;
-  /** Exact exported versions needed by serving or awaiting load validation. */
+  /** Exact exported versions needed by serving or awaiting load validation. Artifact tokens see only versions they can pull. */
   servingModels: Array<RecommendationContextModel>;
 };
 
 
-/** Admin operations for saved recommendation contexts. */
+/** Administrator context reads and artifact-filtered model discovery. */
 export type RecommendationContexts_ContextArgs = {
   id: Scalars['UUID']['input'];
 };
 
 
-/** Admin operations for saved recommendation contexts. */
+/** Administrator context reads and artifact-filtered model discovery. */
 export type RecommendationContexts_ContextByTypeArgs = {
   type: Scalars['String']['input'];
 };
 
 
-/** Admin operations for saved recommendation contexts. */
+/** Administrator context reads and artifact-filtered model discovery. */
 export type RecommendationContexts_ModelsArgs = {
   contextId: Scalars['UUID']['input'];
 };
@@ -22522,6 +23660,12 @@ export type RecommendationMetadataFilterInput = {
   includedAttributeTypes?: Array<Scalars['String']['input']>;
   /** When non-empty, only metadata whose content type starts with one of these prefixes is assigned to the context. */
   includedContentTypePrefixes?: Array<Scalars['String']['input']>;
+};
+
+/** Model versions visible under the caller's artifact pull permissions. */
+export type RecommendationModelSelection = {
+  __typename?: 'RecommendationModelSelection';
+  personalizedVersions: Array<Scalars['Long']['output']>;
 };
 
 /** Unified mutation entry point for the recommendation system. Provides user preference operations and admin management for strategies, placements, and contexts. */
@@ -23008,6 +24152,18 @@ export type RegisterWorkOpsArtifactInput = {
   versionId: Scalars['UUID']['input'];
 };
 
+export type RememberMemoryInput = {
+  collectionId?: InputMaybe<Scalars['UUID']['input']>;
+  conversationId?: InputMaybe<Scalars['UUID']['input']>;
+  expires?: InputMaybe<Scalars['DateTime']['input']>;
+  /** Caller-generated UUID; reuse the same UUID and input when retrying a save. */
+  requestId: Scalars['UUID']['input'];
+  scope?: InputMaybe<MemoryScope>;
+  sourceMetadataId?: InputMaybe<Scalars['UUID']['input']>;
+  statement: Scalars['String']['input'];
+  tags?: InputMaybe<Array<Scalars['String']['input']>>;
+};
+
 /** Requests a return/RMA against a paid order. */
 export type ReturnInput = {
   cartId: Scalars['UUID']['input'];
@@ -23452,6 +24608,13 @@ export enum ScriptType {
   Trigger = 'TRIGGER'
 }
 
+export type ScriptValidationResult = {
+  __typename?: 'ScriptValidationResult';
+  compiled: Scalars['Boolean']['output'];
+  errors: Array<Scalars['String']['output']>;
+  valid: Scalars['Boolean']['output'];
+};
+
 export type Scripts = {
   __typename?: 'Scripts';
   all: Array<Script>;
@@ -23462,6 +24625,8 @@ export type Scripts = {
 
 export type Scripts_AllArgs = {
   includeDeleted?: InputMaybe<Scalars['Boolean']['input']>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
   type?: InputMaybe<ScriptType>;
 };
 
@@ -23485,6 +24650,7 @@ export type ScriptsMutation = {
   editScript: Script;
   enableScript: Scalars['Boolean']['output'];
   executeScript?: Maybe<Scalars['JSON']['output']>;
+  validateScript: ScriptValidationResult;
 };
 
 
@@ -23515,6 +24681,7 @@ export type ScriptsMutation_DisableScriptArgs = {
 
 
 export type ScriptsMutation_EditScriptArgs = {
+  expectedVersion?: InputMaybe<Scalars['Int']['input']>;
   id: Scalars['UUID']['input'];
   script: ScriptInput;
   sourceRef?: InputMaybe<SourceRefInput>;
@@ -23529,6 +24696,13 @@ export type ScriptsMutation_EnableScriptArgs = {
 export type ScriptsMutation_ExecuteScriptArgs = {
   id: Scalars['UUID']['input'];
   input?: InputMaybe<Scalars['JSON']['input']>;
+};
+
+
+export type ScriptsMutation_ValidateScriptArgs = {
+  compile?: InputMaybe<Scalars['Boolean']['input']>;
+  id?: InputMaybe<Scalars['UUID']['input']>;
+  source: Scalars['String']['input'];
 };
 
 /** Entry point for search operations. Provides full-text and semantic search across collections, metadata, and profiles, as well as administrative search configuration tools. */
@@ -24662,6 +25836,7 @@ export type StyleInput = {
 /** Input for submitting a review. */
 export type SubmitGitReviewInput = {
   body?: InputMaybe<Scalars['String']['input']>;
+  expectedVersion?: InputMaybe<Scalars['Long']['input']>;
   pullRequestId: Scalars['UUID']['input'];
   status: GitReviewStatus;
 };
@@ -25122,6 +26297,18 @@ export type TemplateAttributeToolsMutation_DeleteArgs = {
 export type TemplateAttributeToolsMutation_EditArgs = {
   id: Scalars['UUID']['input'];
   tool: TemplateAttributeToolInput;
+};
+
+/** An image relationship declared by the target template. */
+export type TemplateImageAttribute = {
+  __typename?: 'TemplateImageAttribute';
+  defaultAspectRatio?: Maybe<Scalars['Float']['output']>;
+  description: Scalars['String']['output'];
+  key: Scalars['String']['output'];
+  list: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
+  relationship: Scalars['String']['output'];
+  targetSize?: Maybe<Array<Scalars['Int']['output']>>;
 };
 
 /** A tool definition inline within a template attribute, used to execute a query and extract results for the attribute */
@@ -25822,7 +27009,12 @@ export enum TranslationState {
 
 /** Input for updating a pull request. */
 export type UpdateGitPullRequestInput = {
+  /** Changes this PR's branch cleanup setting. Omit to preserve it. */
+  deleteBranchOnMerge?: InputMaybe<Scalars['Boolean']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
+  expectedVersion?: InputMaybe<Scalars['Long']['input']>;
+  sourceBranch?: InputMaybe<Scalars['String']['input']>;
+  targetBranch?: InputMaybe<Scalars['String']['input']>;
   title?: InputMaybe<Scalars['String']['input']>;
 };
 
@@ -28363,6 +29555,7 @@ export type WorkOpsReleaseProjectVersion = {
 export type WorkOpsReleaseRepositoryAccess = {
   __typename?: 'WorkOpsReleaseRepositoryAccess';
   canEdit: Scalars['Boolean']['output'];
+  canExecute: Scalars['Boolean']['output'];
   repositoryId: Scalars['UUID']['output'];
 };
 
@@ -28438,6 +29631,8 @@ export type WorkOpsRequirement = {
   id: Scalars['UUID']['output'];
   key: Scalars['String']['output'];
   labelIds: Array<Scalars['UUID']['output']>;
+  /** The linked content item, visible only with both requirement and content view access. */
+  metadata?: Maybe<Metadata>;
   metadataId: Scalars['UUID']['output'];
   modifiedAt: Scalars['DateTime']['output'];
   modifiedByPrincipalId: Scalars['UUID']['output'];

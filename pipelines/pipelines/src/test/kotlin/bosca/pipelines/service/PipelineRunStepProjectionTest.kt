@@ -54,6 +54,7 @@ class PipelineRunStepProjectionTest {
         securityService = mockk<SecurityService>(relaxed = true),
         config = mockk<PipelinesRuntimeConfiguration>(relaxed = true),
         pubSub = mockk<PubSubService>(relaxed = true),
+        tokens = mockk(relaxed = true),
     )
 
     @Test

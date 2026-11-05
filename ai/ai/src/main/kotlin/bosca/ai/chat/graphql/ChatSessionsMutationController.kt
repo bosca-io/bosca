@@ -5,9 +5,7 @@ import bosca.ai.chat.model.ChatSession
 import bosca.ai.chat.model.ChatSessionInput
 import bosca.ai.chat.service.ChatDispatcher
 import bosca.ai.chat.service.ChatHistoryService
-import bosca.cache.withRequestCache
 import bosca.db.transaction
-import bosca.db.withConnectionManager
 import bosca.di.annotation.ProviderName
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
@@ -15,10 +13,6 @@ import bosca.graphql.annotations.TypeController
 import bosca.security.service.AuthenticationContext
 import bosca.security.service.SecurityException
 import bosca.serialization.UUID
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -28,22 +22,47 @@ object ChatSessionsMutation
 @TypeController
 class ChatSessionsMutationController(
     private val service: ChatHistoryService,
+    private val harness: bosca.ai.kit.harness.KitHarnessService,
     @ProviderName("kit-chat-dispatcher")
     private val chatDispatcher: ChatDispatcher
 ) : GraphQLController<ChatSessionsMutation> {
 
-    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-
     @Field
     suspend fun create(authentication: AuthenticationContext, session: ChatSessionInput): ChatSession {
+        verifyExecutionScope(authentication)
         val principalId = authentication.principal()?.id ?: throw SecurityException("Not authenticated")
-        return service.createSession(principalId, session)
+        return transaction {
+            service.createSession(principalId, session).also {
+                if (it.agentKey == "kit") harness.activate(authentication, it.id)
+            }
+        }
     }
 
     @Field
     suspend fun updateTitle(authentication: AuthenticationContext, id: UUID, title: String): ChatSession {
         verifySessionOwnership(authentication, id)
         return service.updateSessionTitle(id, title)
+    }
+
+    @Field
+    suspend fun clearHarnessSources(authentication: AuthenticationContext, sessionId: UUID): Boolean {
+        verifySessionOwnership(authentication, sessionId)
+        harness.clearContext(sessionId)
+        return true
+    }
+
+    @Field
+    suspend fun addHarnessSource(authentication: AuthenticationContext, sessionId: UUID, source: bosca.ai.kit.harness.KitContextSelection): Boolean {
+        verifySessionOwnership(authentication, sessionId)
+        harness.selectContext(sessionId, source, false)
+        return true
+    }
+
+    @Field
+    suspend fun removeHarnessSource(authentication: AuthenticationContext, sessionId: UUID, source: bosca.ai.kit.harness.KitContextSelection): Boolean {
+        verifySessionOwnership(authentication, sessionId)
+        harness.selectContext(sessionId, source, true)
+        return true
     }
 
     @Field
@@ -101,32 +120,66 @@ class ChatSessionsMutationController(
     @Field
     suspend fun send(authenticationContext: AuthenticationContext, sessionId: UUID, message: ChatMessageInput): Boolean {
         verifySessionOwnership(authenticationContext, sessionId)
-        service.setProcessing(sessionId, true)
-        scope.launch {
-            try {
-                withConnectionManager {
-                    withRequestCache {
-                        chatDispatcher.dispatch(authenticationContext, sessionId, message)
-                    }
-                }
-            } catch (e: Exception) {
-                try {
-                    withConnectionManager { service.setProcessing(sessionId, false) }
-                } catch (_: Exception) {
-                }
-            }
-        }
+        chatDispatcher.dispatch(authenticationContext, sessionId, message)
+        return true
+    }
+
+    @Field
+    suspend fun decideHarnessPermission(authentication: AuthenticationContext, sessionId: UUID, approvalId: UUID, optionId: String): Boolean {
+        verifySessionOwnership(authentication, sessionId)
+        harness.decide(authentication, sessionId, approvalId, optionId)
+        return true
+    }
+
+    @Field
+    suspend fun setHarnessSettings(authentication: AuthenticationContext, sessionId: UUID, choice: bosca.ai.kit.harness.KitHarnessChoice?): Boolean {
+        verifySessionOwnership(authentication, sessionId)
+        harness.verifySettings(authentication, sessionId, choice)
+        harness.setSettings(sessionId, choice)
+        return true
+    }
+
+    @Field
+    suspend fun activateHarness(authentication: AuthenticationContext, sessionId: UUID): Boolean {
+        verifySessionOwnership(authentication, sessionId)
+        harness.activate(authentication, sessionId)
+        return true
+    }
+
+    @Field
+    suspend fun archiveHarness(authentication: AuthenticationContext, sessionId: UUID): Boolean {
+        verifySessionOwnership(authentication, sessionId)
+        harness.retire(sessionId)
+        return true
+    }
+
+    @Field
+    suspend fun cancel(authentication: AuthenticationContext, sessionId: UUID): Boolean {
+        verifySessionOwnership(authentication, sessionId)
+        harness.cancel(sessionId)
         return true
     }
 
     @Field
     suspend fun delete(authentication: AuthenticationContext, id: UUID): Boolean {
         verifySessionOwnership(authentication, id)
-        service.deleteSession(id)
+        transaction {
+            harness.delete(id)
+            service.deleteSession(id)
+        }
         return true
     }
 
+    private fun verifyExecutionScope(authentication: AuthenticationContext) {
+        val principal = authentication.principal() ?: throw SecurityException("Not authenticated")
+        if (principal is bosca.security.service.ScopedAuthenticatedPrincipal &&
+            !principal.hasScope(bosca.security.service.ApiTokenScopes.AI_EXECUTE.name)) {
+            throw SecurityException("AI conversation mutations require the ai:execute token scope")
+        }
+    }
+
     private suspend fun verifySessionOwnership(authentication: AuthenticationContext, sessionId: UUID) {
+        verifyExecutionScope(authentication)
         val principalId = authentication.principal()?.id ?: throw SecurityException("Not authenticated")
         val session = service.getSession(sessionId) ?: throw SecurityException("Session not found")
         if (session.principalId != principalId) {

@@ -286,6 +286,11 @@ suspend fun BoscaApplication.module() {
 
     val jobJob = async {
         provide<JobEnqueueEventForwarder>().start()
+        if (environment.config.propertyOrNull("kit.harness") != null) {
+            val recovery = provide<bosca.ai.kit.harness.runtime.KitRuntimeRecovery>()
+            recovery.start()
+            onShutdown { recovery.close() }
+        }
 
         enabledRunners.forEach {
             launch {

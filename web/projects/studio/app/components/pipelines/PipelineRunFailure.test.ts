@@ -5,7 +5,10 @@ import ActiveRuns from './PipelineActiveRunsTable.vue'
 import RunDetail from './PipelineRunDetailModal.vue'
 
 const query = vi.fn()
-vi.stubGlobal('useGraphQL', () => ({ query, mutation: vi.fn(), useSubscription: vi.fn() }))
+const mutation = vi.fn()
+const toast = { success: vi.fn(), error: vi.fn() }
+vi.stubGlobal('useGraphQL', () => ({ query, mutation, useSubscription: vi.fn() }))
+vi.stubGlobal('useToast', () => toast)
 const table = defineComponent({
   props: ['rows', 'columns'],
   template: '<div><div v-for="row in rows" :key="row.id"><div v-for="column in columns" :key="column.key"><slot :name="\'col-\' + column.key" :row="row">{{ row[column.key] }}</slot></div></div></div>',
@@ -24,7 +27,7 @@ const run = {
   eventName: 'bosca.git.model.GitHubDelivery', input: { repositoryId: 'repo-1' },
   error: 'The originating GitHub user requires Bosca repository EDIT permission',
   createdAt: '2026-10-08T10:00:00Z', modifiedAt: '2026-10-08T10:00:01Z',
-  awaitingNodeIds: ['import'], completedNodeIds: ['input'], awaitingNodes: [], steps: [], nodes: [],
+  awaitingNodeIds: ['import'], completedNodeIds: ['input'], awaitingNodes: [], steps: [], nodes: [], rollbackFailures: [],
 }
 
 describe('pipeline retry failures', () => {
@@ -52,6 +55,39 @@ describe('pipeline retry failures', () => {
     expect(links).toContain('/git/settings/github')
     expect(links).toContain('/git/repositories/repo-1?tab=Settings&setting=permissions')
     expect(links).toContain('/git/repositories/repo-1?tab=Settings&setting=github')
+    expect(wrapper.text()).not.toContain('Retry rollback')
+    wrapper.unmount()
+  })
+
+  const failure = { nodeId: 'refund', rollbackPipelineId: 'pipeline-2', error: 'Payment provider unavailable', failedAt: '2026-10-08T10:00:02Z' }
+  const failedRun = { ...run, status: 'FAILED', rollbackFailures: [failure] }
+
+  it('lists failed rollbacks and clears them after a successful retry', async () => {
+    query.mockResolvedValueOnce({ pipelines: { run: failedRun } })
+    const wrapper = mount(RunDetail, { props: { runId: run.id }, global: { stubs } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Rollback did not finish for one node')
+    expect(wrapper.text()).toContain('Payment provider unavailable')
+
+    mutation.mockResolvedValueOnce({ pipelines: { retryRollbacks: [] } })
+    query.mockResolvedValueOnce({ pipelines: { run: { ...failedRun, rollbackFailures: [] } } })
+    await wrapper.get('.rollback-failures button').trigger('click')
+    await flushPromises()
+    expect(mutation).toHaveBeenCalledWith(expect.anything(), { runId: run.id })
+    expect(toast.success).toHaveBeenCalledWith('Rollbacks completed')
+    expect(wrapper.text()).not.toContain('Rollback did not finish')
+    wrapper.unmount()
+  })
+
+  it('keeps failed rollbacks visible when the retry fails again', async () => {
+    query.mockResolvedValue({ pipelines: { run: failedRun } })
+    mutation.mockResolvedValueOnce({ pipelines: { retryRollbacks: [failure] } })
+    const wrapper = mount(RunDetail, { props: { runId: run.id }, global: { stubs } })
+    await flushPromises()
+    await wrapper.get('.rollback-failures button').trigger('click')
+    await flushPromises()
+    expect(toast.error).toHaveBeenCalledWith('1 rollback failed again')
+    expect(wrapper.text()).toContain('Payment provider unavailable')
     wrapper.unmount()
   })
 })

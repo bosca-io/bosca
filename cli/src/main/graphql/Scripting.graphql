@@ -1,0 +1,19 @@
+fragment ManagedScript on Script {
+    id key name description type source version enabled public inputSchema outputSchema configuration
+}
+query ListManagedScripts($type: ScriptType, $includeDeleted: Boolean, $offset: Int!, $limit: Int!) {
+    scripts { all(type: $type, includeDeleted: $includeDeleted, offset: $offset, limit: $limit) { ...ManagedScript } }
+}
+query GetManagedScript($id: UUID!) { scripts { script(id: $id) { ...ManagedScript } } }
+query GetManagedScriptByKey($key: String!) { scripts { scriptByKey(key: $key) { ...ManagedScript } } }
+mutation AddManagedScript($script: ScriptInput!) { scripts { addScript(script: $script) { ...ManagedScript } } }
+mutation EditManagedScript($id: UUID!, $script: ScriptInput!, $expectedVersion: Int!) {
+    scripts { editScript(id: $id, script: $script, expectedVersion: $expectedVersion) { ...ManagedScript } }
+}
+mutation DeleteManagedScript($id: UUID!) { scripts { deleteScript(id: $id) } }
+mutation EnableManagedScript($id: UUID!) { scripts { enableScript(id: $id) } }
+mutation DisableManagedScript($id: UUID!) { scripts { disableScript(id: $id) } }
+mutation ExecuteManagedScript($id: UUID!, $input: JSON) { scripts { executeScript(id: $id, input: $input) } }
+mutation ValidateManagedScript($source: String!, $compile: Boolean!, $id: UUID) {
+    scripts { validateScript(source: $source, compile: $compile, id: $id) { valid compiled errors } }
+}

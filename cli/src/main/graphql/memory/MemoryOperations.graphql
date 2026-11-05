@@ -1,0 +1,22 @@
+fragment MemoryFragment on Memory {
+    id version revision statement sourceChanged tags created modified
+    provenance {
+        scope ownerId collectionId sourceMetadataId sourceVersion sourceRevision conversationId expires
+    }
+}
+
+query GetMemory($id: UUID!, $conversationId: UUID) {
+    ai { memories { get(id: $id, conversationId: $conversationId) { ...MemoryFragment } } }
+}
+query SearchMemories($query: MemoryQuery!, $conversationId: UUID) {
+    ai { memories { search(query: $query, conversationId: $conversationId) { ...MemoryFragment } } }
+}
+mutation RememberMemory($input: RememberMemoryInput!) {
+    ai { memories { remember(input: $input) { ...MemoryFragment } } }
+}
+mutation UpdateMemory($id: UUID!, $expectedRevision: String!, $statement: String!, $refreshSource: Boolean, $conversationId: UUID) {
+    ai { memories { update(id: $id, expectedRevision: $expectedRevision, statement: $statement, refreshSource: $refreshSource, conversationId: $conversationId) { ...MemoryFragment } } }
+}
+mutation ForgetMemory($id: UUID!, $expectedRevision: String!) {
+    ai { memories { forget(id: $id, expectedRevision: $expectedRevision) } }
+}

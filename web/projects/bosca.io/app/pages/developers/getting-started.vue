@@ -30,6 +30,13 @@ const groups = (SECTIONS.find(section => section.id === 'developers')?.groups ??
       For an introduction to the platform, visit the
       <NuxtLink to="/discover/developers">developers overview</NuxtLink>.
     </p>
+    <p>
+      To use or operate Kit, follow the
+      <NuxtLink to="/kit-reference/getting-started">Kit Reference</NuxtLink>.
+      It covers conversations, native harness state, tools, Kubernetes and Swarm runtimes,
+      the role of Compose, and operational recovery. Starting the platform is separate from
+      configuring its conversation workloads.
+    </p>
     <h2 id="choose-path">
       Choose a starting point
     </h2>

@@ -2,6 +2,7 @@
 
 package bosca.cli.acp
 
+import bosca.cli.api.KitHarnessFixture
 import bosca.cli.api.KitApi
 import bosca.cli.api.NetworkClient
 import bosca.graphql.client.GraphQLJson
@@ -193,24 +194,21 @@ class KitAcpAgentTest {
 
     @Test
     fun `ACP cancellation stops the active Kit turn`() = runBlocking {
-        Fixture(processForever = true).use { fixture ->
+        KitHarnessFixture(outcome = "CANCELLED", waitForCancellation = true).use { fixture ->
             val session = KitAcpAgentSession(
-                fixture.api(pollIntervalMillis = 25),
+                fixture.api(),
                 kotlin.uuid.Uuid.parse(SESSION_ID),
                 30_000,
             )
             val turn = async { session.prompt(listOf(ContentBlock.Text("Keep working")), null).toList() }
 
             withTimeout(5_000) {
-                while (fixture.operationCount("GetKitChatSession") < 2) delay(10)
+                while (fixture.operations.count { it == "GetKitChatSession" } < 2) delay(10)
             }
             session.cancel()
-            try {
-                turn.await()
-                fail("Expected the active ACP prompt to be cancelled")
-            } catch (_: CancellationException) {
-                // Cancellation is the ACP contract for an interrupted prompt.
-            }
+            val events = turn.await()
+            assertEquals(StopReason.CANCELLED, assertIs<Event.PromptResponseEvent>(events.last()).response.stopReason)
+            assertEquals(1, fixture.operations.count { it == "CancelKitChatSession" })
         }
     }
 

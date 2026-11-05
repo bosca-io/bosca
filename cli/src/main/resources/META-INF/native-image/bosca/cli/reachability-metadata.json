@@ -1,5 +1,15 @@
 {
   "reflection": [
+    {"type": "io.modelcontextprotocol.kotlin.sdk.types.JSONRPCRequest", "fields": [{"name": "Companion"}]},
+    {"type": "io.modelcontextprotocol.kotlin.sdk.types.JSONRPCRequest$Companion", "methods": [{"name": "serializer", "parameterTypes": []}]},
+    {"type": "io.modelcontextprotocol.kotlin.sdk.types.JSONRPCNotification", "fields": [{"name": "Companion"}]},
+    {"type": "io.modelcontextprotocol.kotlin.sdk.types.JSONRPCNotification$Companion", "methods": [{"name": "serializer", "parameterTypes": []}]},
+    {"type": "io.modelcontextprotocol.kotlin.sdk.types.ImageContent", "fields": [{"name": "Companion"}]},
+    {"type": "io.modelcontextprotocol.kotlin.sdk.types.ImageContent$Companion", "methods": [{"name": "serializer", "parameterTypes": []}]},
+    {"type": "io.modelcontextprotocol.kotlin.sdk.types.AudioContent", "fields": [{"name": "Companion"}]},
+    {"type": "io.modelcontextprotocol.kotlin.sdk.types.AudioContent$Companion", "methods": [{"name": "serializer", "parameterTypes": []}]},
+    {"type": "io.modelcontextprotocol.kotlin.sdk.types.BlobResourceContents", "fields": [{"name": "Companion"}]},
+    {"type": "io.modelcontextprotocol.kotlin.sdk.types.BlobResourceContents$Companion", "methods": [{"name": "serializer", "parameterTypes": []}]},
     {
       "type": "bosca.cli.helm.HelmCommand"
     },
@@ -355,6 +365,30 @@
           "name": "Companion"
         }
       ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.EmbeddedResource",
+      "fields": [{ "name": "Companion" }]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.EmbeddedResource$Companion",
+      "methods": [{ "name": "serializer", "parameterTypes": [] }]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.TextResourceContents",
+      "fields": [{ "name": "Companion" }]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.TextResourceContents$Companion",
+      "methods": [{ "name": "serializer", "parameterTypes": [] }]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.ResourceLink",
+      "fields": [{ "name": "Companion" }]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.ResourceLink$Companion",
+      "methods": [{ "name": "serializer", "parameterTypes": [] }]
     },
     {
       "type": "io.modelcontextprotocol.kotlin.sdk.types.TextContent$Companion",

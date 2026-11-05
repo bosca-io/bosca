@@ -119,6 +119,6 @@ class FileSystemObjectStorageService(
 
     override suspend fun delete(path: ObjectPath) {
         val file = path.toFile(basePath)
-        file.delete()
+        java.nio.file.Files.deleteIfExists(file.toPath())
     }
 }

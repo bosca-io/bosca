@@ -320,3 +320,4 @@ data:
       executionTimeoutSeconds: 600
 
     timeout: {}
+    {{- include "bosca-common.kitConfiguration" . | nindent 4 }}

@@ -19,6 +19,65 @@ For an existing deployment, use its current release names, namespaces and values
 files. Chart versions follow the selected Git release tag. Update any version
 constraints that still select the former independent `0.1.x` chart releases.
 
+## Kit
+
+Published `bosca-services` charts include Kit's image pins, native versions, and
+workload defaults. Add this to the normal services values and upgrade the release:
+
+```yaml
+global:
+  kit:
+    enabled: true
+    harness: codex
+```
+
+Codex uses `openai-token/token`; Claude uses `anthropic-token/token`. Select
+`harness: claude` or override `global.kit.providerSecret.name` and `.key` to use
+another existing Secret. The chart generates matching API/Runner profiles and
+the controller's JobProfile. Managed defaults require no private policy seed.
+Optional overrides include `global.kit.profile`, resources, state/workspace sizes,
+node selectors, and global/per-user admission limits. Existing content object
+storage holds the private archives.
+
+Kit Jobs inherit `bosca-kubernetes-controller.imagePullSecrets`, like the
+controller's other Pods; the default is `docker-registry`. Kit uses the existing
+Kubernetes dispatch queue and does not override Runner's controller HTTP URL.
+If you rename the API Service with `bosca-server.nameOverride` or
+`fullnameOverride`, also set `global.kit.boscaEndpoint` to its GraphQL URL. The
+umbrella chart rejects an implicit endpoint that would use the former name.
+
+Kit runtimes have no direct internet access. With `global.kit.egress.enabled`
+(the default), the umbrella chart adds a `<release>-kit-egress` Deployment and
+Service (port 3128) running `bosca harness egress` from the `bosca-cli` image, and
+adds `egressProxy` and the provider's `egressHosts` (`api.openai.com:443` or
+`api.anthropic.com:443`) to the generated profile. It also adds two NetworkPolicies:
+
+- `<release>-kit-runtime` lets Kit runtime Pods accept connections only from
+  Runner Pods on 8080 and connect only to cluster DNS (`k8s-app: kube-dns`, port
+  53), bosca-server Pods on 8080 and the egress proxy on 3128.
+- `<release>-kit-egress` lets the proxy accept connections only from Kit runtime
+  Pods and connect to cluster DNS, bosca-server Pods, the Pods behind the public
+  Bosca routes, and public IPv4 addresses.
+
+The proxy supports only HTTPS `CONNECT` with the runtime session's credential. It
+permits every Gateway hostname on port 443, the profile's `egressHosts`, the
+remote MCP registrations assigned to the session's agent, and the `egressHosts`
+list in the private `kit.harness` policy. It refuses other destinations that
+resolve to private, loopback, link-local, shared or other non-public addresses.
+The policies take effect only with a network plugin that enforces NetworkPolicy.
+The proxy image tag defaults to the CLI release of the bundled Kit runtime and
+uses the controller's `imagePullSecrets`; `global.kit.egress` accepts `replicas`,
+`resources`, `image`, `imagePullSecrets`, `nodeSelector` and `tolerations`.
+Installing `bosca-kubernetes-controller` without the umbrella chart renders no
+proxy or policies.
+
+Maintainers publish Kit runtime images before packaging the matching charts.
+Packaging reads the images' immutable identities and `io.bosca.kit.versions`
+labels and embeds them in `bosca-common`; operators do not maintain version or
+kubelet-identity copies. Source-chart/custom-image development can supply
+`global.kit.runtime` metadata. `release.sh package --kit-images FILE` accepts a
+validated pre-resolved catalog for offline packaging tests or an alternate build.
+
 ## Bible usage worker
 
 The runner chart enables `fumsQueueRunner` for API.Bible usage reports. If your
@@ -132,6 +191,11 @@ existing Git tag. Packaging requires that tag's bare semantic version, such as
 `6.31.0` or `6.31.0-rc.1`, and applies it to every chart and bundled local
 dependency. The same version identifies the HTTP Helm package and OCI tag;
 checked-in chart versions are only development defaults.
+
+The chart pipeline waits up to two hours for that tag's qualified Codex and
+Claude runtime images, then embeds their deployment metadata before packaging.
+Image release jobs can run alongside chart release; a failed image release
+prevents publication of charts with missing or guessed Kit identities.
 
 Bosca application `appVersion` defaults and explicit Bosca image tags (including
 the model loader sidecar) also use the release tag. Bosca images are identified

@@ -130,6 +130,7 @@ class ApiTokenServiceImpl(
         principalId: UUID,
         input: ApiTokenInput,
         createdBy: UUID,
+        sessionBound: Boolean,
     ): ApiTokenCreationResult {
         require(input.expiresAt != null) { "ephemeral token expiration is required" }
         return createToken(
@@ -138,6 +139,7 @@ class ApiTokenServiceImpl(
             createdBy = createdBy,
             enforcePrincipalScopeGrant = false,
             enforcePersonalTokenLimit = false,
+            sessionBound = sessionBound,
         )
     }
 
@@ -147,6 +149,7 @@ class ApiTokenServiceImpl(
         createdBy: UUID,
         enforcePrincipalScopeGrant: Boolean,
         enforcePersonalTokenLimit: Boolean,
+        sessionBound: Boolean = false,
     ): ApiTokenCreationResult {
         val description = input.description
         require(input.name.isNotBlank()) { "token name must not be blank" }
@@ -194,6 +197,7 @@ class ApiTokenServiceImpl(
             allowedGroups = input.allowedGroups?.map { it.toString() },
             expiresAt = input.expiresAt,
             createdBy = createdBy.toString(),
+            sessionBound = sessionBound,
         )
 
         val credential = PrincipalCredential(principal = principalId, attributes = attributes)
@@ -233,6 +237,7 @@ class ApiTokenServiceImpl(
                 scopes = cached.attrs.scopes,
                 allowedGroupIds = cached.allowedGroupIds,
                 credentialId = cached.credential.id,
+                sessionBoundCredential = cached.attrs.sessionBound,
             )
         }
 
@@ -270,6 +275,7 @@ class ApiTokenServiceImpl(
             scopes = attrs.scopes,
             allowedGroupIds = allowedGroupIds,
             credentialId = credential.id,
+            sessionBoundCredential = attrs.sessionBound,
         )
     }
 

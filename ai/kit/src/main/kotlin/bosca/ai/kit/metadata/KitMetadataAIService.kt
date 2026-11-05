@@ -3,7 +3,6 @@ package bosca.ai.kit.metadata
 import ai.koog.prompt.executor.model.PromptExecutor
 import ai.koog.prompt.llm.LLModel
 import bosca.ai.kit.agents.KitModels
-import bosca.ai.kit.agents.actions.metadataDocumentText
 import bosca.ai.kit.agents.description.DescriptionAgent
 import bosca.ai.kit.agents.description.DescriptionRequest
 import bosca.ai.kit.agents.readingtime.ReadingTimeAgent
@@ -30,8 +29,8 @@ import kotlinx.serialization.json.Json
 /**
  * Kit's implementation of the content-layer [MetadataAIService] contract — the direct (non-chat) entry
  * point that `MetadataAIController` calls. It reuses Kit's structured sub-agents
- * ([DescriptionAgent]/[TopicsAgent]/[ReadingTimeAgent]) with `sessionService = null` (a one-shot query
- * doesn't checkpoint), reading the document text the same way the chat actions do
+ * ([DescriptionAgent]/[TopicsAgent]/[ReadingTimeAgent]) as one-shot structured requests, reading provided
+ * or stored rich document content
  * ([metadataDocumentText] — provided-or-fetched), and returns the suggestions without persisting them.
  *
  * Each feature is driven by its configured [bosca.ai.prompts.model.Prompt] and [bosca.ai.models.model.Model]
@@ -58,7 +57,6 @@ class KitMetadataAIService(
             promptExecutor,
             model(MODEL_DESCRIPTION, models.describe),
             json,
-            null,
             promptService.getByKey(PROMPT_DESCRIPTION),
         )
         return describer.run(DescriptionRequest(text), UUID.random().toString()).description
@@ -81,7 +79,6 @@ class KitMetadataAIService(
             promptExecutor,
             model(MODEL_TOPICS, models.topics),
             json,
-            null,
             promptService.getByKey(PROMPT_TOPICS),
         )
         val response = topicMatcher.run(
@@ -98,7 +95,6 @@ class KitMetadataAIService(
             promptExecutor,
             model(MODEL_READING_TIME, models.readingTime),
             json,
-            null,
             promptService.getByKey(PROMPT_READING_TIME),
         )
         return estimator.run(ReadingTimeRequest(text), UUID.random().toString()).readingTimeInMinutes

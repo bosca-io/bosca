@@ -176,7 +176,7 @@ class ArtifactSyncIntegrationTest {
         provides<PipelineRunService>(singleton = true) {
             PipelineRunServiceImpl(PipelineRunRepositoryImpl(), PipelineRunLogRepositoryImpl(), results,
                 NodeExecutionRepositoryImpl(), PipelineRunIterationRepositoryImpl(), RollbackRepositoryImpl(),
-                pipelines, PipelineExecutorImpl(), security, config, pubsub)
+                pipelines, PipelineExecutorImpl(), security, config, pubsub, mockk(relaxed = true))
         }
         provides<NodeSuspensionService> { NodeSuspensionServiceImpl() }
         provides<PipelineRunDriveListener> { PipelineRunDriveListenerImpl(application.json) }
@@ -191,6 +191,7 @@ class ArtifactSyncIntegrationTest {
                 val sql = javaClass.getResource("/db/migrations/$name")?.readText() ?: error("Missing migration $name")
                 connection().useStatement(sql) { it.execute() }
             }
+            connection().useStatement("CREATE TABLE IF NOT EXISTS principal_groups(principal UUID, group_id UUID)") { it.execute() }
             for (name in PipelinesMigration().resources) {
                 val sql = PipelineRunServiceImpl::class.java.getResource("/db/migrations/$name")?.readText() ?: error("Missing migration $name")
                 connection().useStatement(sql) { it.execute() }

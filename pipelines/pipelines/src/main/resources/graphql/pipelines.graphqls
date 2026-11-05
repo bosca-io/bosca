@@ -218,6 +218,8 @@ type PipelineHistoryRun {
 
 "The live, durable state of an in-flight pipeline run (distinct from the append-only run history above)."
 type PipelineRunState {
+    "Final output, including runs that completed after the initiating request returned."
+    output: JSON
     "Original input captured for the run."
     input: JSON
     id: UUID!
@@ -241,9 +243,19 @@ type PipelineRunState {
     childRuns(nodeId: String!): [PipelineRunState!]!
     "Set when the run failed or was cancelled."
     error: String
+    "Rollbacks of this terminated run that failed, in rollback order. Their side effects may remain in place."
+    rollbackFailures: [PipelineRollbackFailure!]!
     createdAt: DateTime!
     "Last state change — for a suspended run, how long it has been waiting."
     modifiedAt: DateTime!
+}
+
+"A rollback that failed for a terminated pipeline run."
+type PipelineRollbackFailure {
+    nodeId: String!
+    rollbackPipelineId: UUID!
+    error: String!
+    failedAt: DateTime!
 }
 
 "One row of a run's step-oriented progress view: an authored Status milestone or a human wait."
@@ -308,8 +320,12 @@ type BrokenPipeline {
 
 "Pipeline query operations."
 type Pipelines {
-    "All pipelines."
-    all: [Pipeline!]!
+    "Administrator pipeline discovery with optional search and offset pagination."
+    all(offset: Int = 0, limit: Int, search: String): [Pipeline!]!
+    "A pipeline by its endpoint key."
+    pipelineByKey(key: String!): Pipeline
+    "Validate and lay out an unsaved graph without storing or executing it."
+    validateGraph(graph: JSON!): PipelineGraphValidation!
     "A pipeline by id, or null if not found."
     pipeline(id: UUID!): Pipeline
     "Pipelines whose stored graph no longer decodes (renamed/removed node types, corrupt data) — absent from `all` and unopenable, surfaced here so they can be deleted."
@@ -472,7 +488,7 @@ type PipelinesMutation {
     """
     dryRun(id: UUID!, eventType: String, payload: JSON!): PipelineDryRun!
     """
-    Run a pipeline now, inline, FOR REAL — action nodes execute their side effects. The payload
+    Run a pipeline now as a durable job, FOR REAL — action nodes execute their side effects. The payload
     is the pipeline's input (validated against the input schema for JSON-input pipelines, or
     decoded as the accepted event type). Runs under the caller's principal and is recorded in
     run history as a "manual" run.
@@ -480,6 +496,8 @@ type PipelinesMutation {
     run(id: UUID!, payload: JSON!): PipelineRunResult!
     "Cancel an in-flight (running or suspended) durable run; a later resume for it is ignored."
     cancelRun(runId: UUID!): Boolean!
+    "Run a terminated run's failed rollbacks again under the calling administrator's authority. Returns the rollbacks that are still failed."
+    retryRollbacks(runId: UUID!): [PipelineRollbackFailure!]!
     "Supply the value a Wait for Input node is parked on and resume the run with it as that node's output. Authorized by the pipeline's EXECUTE permission. Approvals, forms, and chosen options all use this."
     provideInput(runId: UUID!, nodeId: String!, input: JSON!): Boolean!
     "Decide an Approval Gate: approved resumes the run with the gate's inbound value flowing on unchanged; rejected fails the run at the gate (with the note)."
@@ -552,4 +570,11 @@ type PipelineRunUpdate {
 extend type Subscription {
     "Live run + per-node status changes for a durable run. Admin-gated."
     pipelineRun(runId: UUID!): PipelineRunUpdate!
+}
+
+"An unsaved graph checked by the engine, with deterministic editor coordinates."
+type PipelineGraphValidation {
+    valid: Boolean!
+    errors: [String!]!
+    graph: JSON!
 }

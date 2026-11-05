@@ -35,10 +35,19 @@ enum class RemoteScriptContextType {
 data class RemoteScriptExecutionJob(
     @Contextual
     val scriptId: UUID,
+    val scriptVersion: Int,
     val contextType: RemoteScriptContextType,
+    /** Effective caller groups at submission; the worker intersects these with current membership. */
+    val groupIds: List<@Contextual UUID>?,
+    /** API-token scopes at submission; null means unrestricted, including non-token callers. */
+    val scopes: List<String>?,
+    /** API-token credential identity for current revocation and restriction checks, never the raw token. */
+    val credentialId: Long?,
     val input: JsonElement = JsonNull,
     @Contextual
     val principalId: UUID? = null,
     val eventName: String? = null,
-    val eventPayload: JsonElement? = null
+    val eventPayload: JsonElement? = null,
+    /** The credential is retired with a runtime session, so its absence does not end this execution. */
+    val sessionBoundCredential: Boolean = false,
 ) : IJobDefinition

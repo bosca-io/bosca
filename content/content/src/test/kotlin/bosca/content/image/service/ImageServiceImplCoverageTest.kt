@@ -151,6 +151,9 @@ class ImageServiceImplCoverageTest {
         client = client,
         json = json,
         distributedLockFactory = lockFactory,
+        documentService = mockk(), dataService = mockk(), documentTemplateService = mockk(),
+        dataTemplateService = mockk(), collectionTemplateService = mockk(),
+        attachments = mockk(),
     )
 
     private fun imageMetadata(

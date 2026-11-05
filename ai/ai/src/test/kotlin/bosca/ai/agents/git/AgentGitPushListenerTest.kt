@@ -7,7 +7,9 @@ import bosca.pubsub.PubSubService
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.uuid.ExperimentalUuidApi
@@ -18,18 +20,17 @@ class AgentGitPushListenerTest {
     private val pubSubService = mockk<PubSubService>(relaxed = true)
     private val agentGitSyncService = mockk<AgentGitSyncService>(relaxed = true)
 
-    private fun newListener(): AgentGitPushListener {
-        // PubSub subscribe is wired by the init block; emit nothing so the loop sits idle
-        // while the test drives `handle` directly.
+    private fun newListener(scope: CoroutineScope): AgentGitPushListener {
+        // Keep the subscription open until the test cancels its background scope.
         coEvery {
             pubSubService.subscribe("bosca.git.push", PushEvent.serializer())
-        } returns emptyFlow()
-        return AgentGitPushListener(pubSubService, agentGitSyncService)
+        } returns flow { awaitCancellation() }
+        return AgentGitPushListener(pubSubService, agentGitSyncService, scope)
     }
 
     @Test
     fun `handle forwards repositoryId beforeSha and afterSha to sync service`() = runTest {
-        val listener = newListener()
+        val listener = newListener(backgroundScope)
         val repoId = Uuid.random()
         val event = PushEvent(
             repositoryId = repoId,
@@ -45,7 +46,7 @@ class AgentGitPushListenerTest {
 
     @Test
     fun `handle swallows sync exceptions so one bad event cannot kill the listener`() = runTest {
-        val listener = newListener()
+        val listener = newListener(backgroundScope)
         val event = PushEvent(
             repositoryId = Uuid.random(),
             ref = "refs/heads/main",

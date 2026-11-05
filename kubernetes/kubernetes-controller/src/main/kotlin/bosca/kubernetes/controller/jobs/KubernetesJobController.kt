@@ -36,6 +36,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 
@@ -47,6 +48,7 @@ import org.slf4j.LoggerFactory
  * the request without launching a duplicate workload.
  */
 class KubernetesJobController(
+    private val encryption: bosca.security.encryption.EncryptionService,
     private val pool: ClusterClientPool,
     private val clusters: ClusterRepository,
     private val executions: KubernetesJobExecutionRepository,
@@ -279,6 +281,7 @@ class KubernetesJobController(
             check(isExpectedJob(existing, request, dispatchId)) {
                 "Kubernetes Job ${candidate.profile.namespace}/$jobName has conflicting dispatch identity"
             }
+            ensureWorkloadResources(candidate.client, existing, request, dispatchId)
             val materialized = markMaterialized(dispatchId, candidate, existing)
             if (materialized.status == KubernetesJobExecutionStatus.CANCEL_REQUESTED) {
                 deleteJob(candidate.client, candidate.profile.namespace, jobName)
@@ -309,6 +312,7 @@ class KubernetesJobController(
             }
             existing
         }
+        ensureWorkloadResources(target.client, created, request, dispatchId)
         val materialized = markMaterialized(dispatchId, target, created)
         if (materialized.status == KubernetesJobExecutionStatus.CANCEL_REQUESTED) {
             deleteJob(target.client, target.profile.namespace, jobName)
@@ -324,6 +328,45 @@ class KubernetesJobController(
             created.metadata?.name,
             request.profile,
         )
+    }
+
+    /** Resources share the immutable Job owner; a stale generation cannot address a replacement. */
+    internal suspend fun ensureWorkloadResources(client: KubernetesClient, job: Job, request: KubernetesJobRequest, dispatchId: UUID) {
+        if (request.secrets == null && request.servicePort == null) return
+        val namespace = requireNotNull(job.metadata.namespace)
+        val name = requireNotNull(job.metadata.name)
+        val owner = io.fabric8.kubernetes.api.model.OwnerReferenceBuilder()
+            .withApiVersion("batch/v1").withKind("Job").withName(name)
+            .withUid(requireNotNull(job.metadata.uid)).withController(true).build()
+        request.secrets?.let { encrypted ->
+            val existing = withContext(Dispatchers.IO) { client.secrets().inNamespace(namespace).withName(name).get() }
+            if (existing == null) {
+                val bytes = encryption.decrypt(bosca.security.encryption.EncryptionService.Encrypted(
+                    java.util.Base64.getDecoder().decode(encrypted.nonce),
+                    java.util.Base64.getDecoder().decode(encrypted.ciphertext)), encrypted.keyId)
+                val values = json.decodeFromString(kotlinx.serialization.builtins.MapSerializer(
+                    String.serializer(), String.serializer()), bytes.decodeToString())
+                require(values.keys == encrypted.names.toSet()) { "Secret names differ from encrypted payload" }
+                val secret = io.fabric8.kubernetes.api.model.SecretBuilder().withNewMetadata()
+                    .withName(name).withNamespace(namespace).withOwnerReferences(owner).endMetadata()
+                    .withType("Opaque").withImmutable(true).addToStringData(values).build()
+                withContext(Dispatchers.IO) { client.secrets().inNamespace(namespace).resource(secret).create() }
+            } else {
+                check(existing.metadata.ownerReferences.any { it.uid == owner.uid }) { "Workload Secret has another owner" }
+            }
+        }
+        request.servicePort?.let { port ->
+            val existing = withContext(Dispatchers.IO) { client.services().inNamespace(namespace).withName(name).get() }
+            if (existing == null) {
+                val service = io.fabric8.kubernetes.api.model.ServiceBuilder().withNewMetadata()
+                    .withName(name).withNamespace(namespace).withOwnerReferences(owner).endMetadata()
+                    .withNewSpec().withType("ClusterIP").addToSelector(DISPATCH_ID_LABEL, dispatchId.toString())
+                    .addNewPort().withName("runtime").withPort(port).withNewTargetPort(port).endPort().endSpec().build()
+                withContext(Dispatchers.IO) { client.services().inNamespace(namespace).resource(service).create() }
+            } else {
+                check(existing.metadata.ownerReferences.any { it.uid == owner.uid }) { "Workload Service has another owner" }
+            }
+        }
     }
 
     private suspend fun ensureExecution(
@@ -554,6 +597,7 @@ class KubernetesJobController(
             requireNotNull(job.metadata?.name),
         )
         val startupFailure = pods.firstNotNullOfOrNull(Pod::startupFailureMessage)
+        recordWorkerImage(observed.dispatchId, job, pods)
         val graceElapsed = OffsetDateTime.now().isAfter(
             requireNotNull(execution.materializedAt) {
                 "Materialized Kubernetes Job execution ${observed.dispatchId} has no materialized timestamp"
@@ -582,6 +626,22 @@ class KubernetesJobController(
         ) {
             withConnectionManager { executions.markRunning(observed.dispatchId) }
         }
+    }
+
+    /** Only a single running worker owned by this exact Job can supply readiness identity. */
+    internal suspend fun recordWorkerImage(dispatchId: UUID, job: Job, pods: List<Pod>) {
+        val worker = job.spec?.template?.spec?.containers.orEmpty().singleOrNull { container ->
+            container.env.orEmpty().any { it.name == DISPATCH_ID_ENV && it.value == dispatchId.toString() }
+        }?.name
+        val pod = pods.filter { pod ->
+            job.metadata?.uid != null && pod.metadata?.deletionTimestamp == null &&
+                pod.metadata?.ownerReferences.orEmpty().any { it.kind == "Job" && it.uid == job.metadata.uid && it.controller == true } &&
+                pod.status?.phase == "Running"
+        }.singleOrNull()
+        val status = pod?.status?.containerStatuses.orEmpty().singleOrNull { it.name == worker && it.state?.running != null }
+        val image = status?.let { pod?.spec?.containers.orEmpty().singleOrNull { it.name == worker }?.image }?.takeIf(String::isNotBlank)
+        val imageId = status?.imageID?.takeIf(String::isNotBlank)
+        withConnectionManager { executions.recordImage(dispatchId, image, imageId) }
     }
 
     /**

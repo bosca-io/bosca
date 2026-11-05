@@ -7,7 +7,10 @@ import bosca.cli.api.KitApi
 import bosca.cli.api.KitAsset
 import bosca.cli.api.KitChatTurn
 import bosca.cli.api.KitImageReference
+import bosca.cli.api.KitTurnControl
+import bosca.cli.api.KitTurnCancelledBeforeSubmission
 import bosca.cli.api.responseContent
+import bosca.cli.api.acpUpdates
 import com.agentclientprotocol.agent.AgentInfo
 import com.agentclientprotocol.agent.AgentSession
 import com.agentclientprotocol.agent.AgentSupport
@@ -25,13 +28,12 @@ import com.agentclientprotocol.model.SessionUpdate
 import com.agentclientprotocol.model.StopReason
 import java.util.Base64
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.job
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonArray
@@ -95,7 +97,7 @@ internal class KitAcpAgentSession(
     override val sessionId = SessionId(kitSessionId.toString())
 
     private val turnMutex = Mutex()
-    private val activeTurn = AtomicReference<Job?>()
+    private val activeTurn = AtomicReference<KitTurnControl?>()
 
     override suspend fun prompt(content: List<ContentBlock>, _meta: JsonElement?): Flow<Event> = flow {
         val message = content.filterIsInstance<ContentBlock.Text>()
@@ -110,19 +112,31 @@ internal class KitAcpAgentSession(
         }
 
         turnMutex.withLock {
-            val job = currentCoroutineContext().job
-            check(activeTurn.compareAndSet(null, job)) { "Kit session $kitSessionId is already processing a prompt" }
+            val control = KitTurnControl()
+            check(activeTurn.compareAndSet(null, control)) { "Kit session $kitSessionId is already processing a prompt" }
             try {
-                val turn = api.ask(message = message, sessionId = kitSessionId, timeoutMillis = timeoutMillis)
+                val turn = withContext(control) { api.ask(message = message, sessionId = kitSessionId, timeoutMillis = timeoutMillis) }
                 emitTurn(turn)
+            } catch (e: KitTurnCancelledBeforeSubmission) {
+                emit(agentMessage(ContentBlock.Text(requireNotNull(e.message))))
+                emit(promptResponse(StopReason.CANCELLED))
+            } catch (e: Throwable) {
+                control.finish(e)
+                throw e
             } finally {
-                activeTurn.compareAndSet(job, null)
+                activeTurn.compareAndSet(control, null)
+                control.finish()
             }
         }
     }
 
     override suspend fun cancel() {
-        activeTurn.get()?.cancel(CancellationException("Kit ACP prompt cancelled by the client"))
+        activeTurn.get()?.let { control ->
+            control.requestCancellation()
+            // ACP cancels its collector after this hook returns, so wait briefly to drain the confirmed response. The hook
+            // runs on the connection's inbound loop; a bounded wait keeps one slow cancellation from stalling other sessions.
+            withTimeoutOrNull(CANCELLATION_DRAIN) { control.awaitFinished() }
+        }
     }
 
     private suspend fun kotlinx.coroutines.flow.FlowCollector<Event>.emitTurn(turn: KitChatTurn) {
@@ -138,6 +152,10 @@ internal class KitAcpAgentSession(
         if (responseText.isNotBlank()) {
             emit(agentMessage(ContentBlock.Text(responseText)))
         }
+        response.harnessTurns.forEach { turn ->
+            turn.acpUpdates().forEach { emit(Event.SessionUpdateEvent(it)) }
+        }
+        response.outcomeText?.let { emit(agentMessage(ContentBlock.Text(it))) }
         if (response.displayEvents.isNotEmpty()) {
             emit(agentMessage(
                 ContentBlock.Resource(
@@ -163,14 +181,17 @@ internal class KitAcpAgentSession(
             ))
         }
 
-        val failed = turn.session.status.name == "FAILED" ||
-            (response.text.isBlank() && response.displayEvents.isEmpty() && response.images.isEmpty())
-        if (response.text.isBlank() && response.displayEvents.isEmpty() && response.images.isEmpty()) {
+        val failed = response.failed || response.empty
+        if (response.empty && response.outcomeText == null) {
             emit(agentMessage(ContentBlock.Text(
                 if (failed) "Kit failed to complete the request." else "Kit completed the request.",
             )))
         }
-        emit(promptResponse(if (failed) StopReason.REFUSAL else StopReason.END_TURN))
+        emit(promptResponse(when {
+            response.cancelled -> StopReason.CANCELLED
+            failed -> StopReason.REFUSAL
+            else -> StopReason.END_TURN
+        }))
     }
 
     /**
@@ -203,4 +224,8 @@ internal class KitAcpAgentSession(
 
     private fun promptResponse(stopReason: StopReason) =
         Event.PromptResponseEvent(PromptResponse(stopReason))
+
+    private companion object {
+        val CANCELLATION_DRAIN = 5.seconds
+    }
 }

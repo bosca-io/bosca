@@ -20,6 +20,7 @@ kotlin {
 
 dependencies {
     implementation(project(":bosca-core:core"))
+    implementation(project(":bosca-core:core-security"))
     implementation(project(":bosca-core:core-events"))
     // Phase 4 reuses CommentStatus from core-comments and ProfileVisibility
     // from core-profile so the workops task_comment shape matches the

@@ -89,6 +89,7 @@ class Configuration {
 
     @Provider(singleton = true)
     fun kubernetesJobController(
+        encryption: bosca.security.encryption.EncryptionService,
         pool: ClusterClientPool,
         clusters: ClusterRepository,
         executions: KubernetesJobExecutionRepository,
@@ -96,6 +97,7 @@ class Configuration {
         distributedLockFactory: DistributedLockFactory,
         json: Json,
     ) = KubernetesJobController(
+        encryption,
         pool,
         clusters,
         executions,

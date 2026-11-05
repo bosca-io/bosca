@@ -58,10 +58,9 @@ jte = "3.2.3"
 junit = "4.13.2"
 junit-jupiter = "1.21.4"
 junit-platform = "6.0.3"
-koog = "1.1.1"
-koog-a2a = "1.0.0-beta"
-koog-additions = "1.1.1-beta"
-koog-planner = "1.1.1-beta"
+koog = "1.3.0"
+koog-a2a = "1.3.0-beta"
+koog-additions = "1.3.0-beta"
 kotlin = "2.4.0"
 kotlinpoet-ksp = "2.3.0"
 kotlinx-benchmark = "0.4.17"
@@ -190,9 +189,7 @@ koog-a2a-server = { module = "ai.koog:a2a-server", version.ref = "koog-a2a" }
 koog-a2a-transport-server-jsonrpc-http = { module = "ai.koog:a2a-transport-server-jsonrpc-http", version.ref = "koog-a2a" }
 koog-agents = { module = "ai.koog:koog-agents", version.ref = "koog" }
 koog-agents-additions = { module = "ai.koog:koog-agents-additions", version.ref = "koog-additions" }
-koog-agents-event-handler = { module = "ai.koog:agents-features-event-handler", version.ref = "koog" }
 koog-agents-memory = { module = "ai.koog:agents-features-memory", version.ref = "koog" }
-koog-agents-planner = { module = "ai.koog:agents-planner", version.ref = "koog-planner" }
 koog-agents-snapshot = { module = "ai.koog:agents-features-snapshot", version.ref = "koog" }
 koog-agents-test = { module = "ai.koog:agents-test", version.ref = "koog" }
 koog-prompt-llm = { module = "ai.koog:prompt-llm", version.ref = "koog" }
@@ -242,6 +239,7 @@ ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.re
 lettuce-core = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 lucide-icons = { module = "com.composables:icons-lucide-cmp", version.ref = "lucide" }
+mcp-client = { module = "io.modelcontextprotocol:kotlin-sdk-client", version.ref = "mcp" }
 mcp-sdk = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 nats = { module = "io.nats:jnats", version.ref = "nats" }
@@ -274,6 +272,7 @@ tamboui-widgets = { module = "dev.tamboui:tamboui-widgets", version.ref = "tambo
 testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql", version.ref = "testcontainers" }
 trino = { module = "io.trino:trino-jdbc", version.ref = "trino" }
+trino-parser = { module = "io.trino:trino-parser", version.ref = "trino" }
 webauthn4j-core = { module = "com.webauthn4j:webauthn4j-core", version.ref = "webauthn4j" }
 
 [plugins]

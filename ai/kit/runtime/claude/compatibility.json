@@ -1,0 +1,9 @@
+{
+  "transportVersion": 1,
+  "acpVersion": 1,
+  "archiveFormatVersion": 1,
+  "statePolicy": "claude-home-v1",
+  "adapter": "@agentclientprotocol/claude-agent-acp@0.94.0",
+  "harness": "@anthropic-ai/claude-agent-sdk@0.3.303",
+  "paths": {"workspace": "/workspace", "harness": "/state/harness", "scratch": "/state/scratch"}
+}

@@ -265,6 +265,7 @@ fun main(args: Array<String>) {
             ProfileUnsetCommand(),
             ProfileRemoveCommand(),
         ),
+        bosca.cli.harness.HarnessCommand().subcommands(bosca.cli.harness.HarnessServeCommand(), bosca.cli.harness.HarnessMcpCommand(), bosca.cli.harness.egress.HarnessEgressCommand()),
         McpServerCommand(),
         McpInstallCommand(),
         KitA2AServerCommand(),
@@ -501,6 +502,7 @@ fun main(args: Array<String>) {
             ServiceStatusCommand(),
         ),
         SwarmCommand().subcommands(
+            bosca.cli.swarm.runtime.SwarmRuntimeControllerCommand(),
             SwarmInitCommand(),
             SwarmEncryptCommand(),
             SwarmDecryptCommand(),

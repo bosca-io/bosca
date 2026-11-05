@@ -13,6 +13,7 @@ import bosca.pipelines.PipelineContext
 import bosca.pipelines.git.PipelineBackfillEntry
 import bosca.pipelines.git.PipelineGitSyncService
 import bosca.pipelines.git.PipelineSyncResult
+import bosca.pipelines.model.RollbackRecord
 import bosca.pipelines.model.Pipeline
 import bosca.pipelines.model.PipelineNamedShape
 import bosca.pipelines.model.PipelineRun
@@ -29,6 +30,7 @@ import bosca.pipelines.service.PipelineShapeService
 import bosca.pipelines.service.requireCompleted
 import bosca.security.model.PermissionAction
 import bosca.security.model.PermissionInput
+import bosca.security.service.ApiTokenScopes
 import bosca.security.service.AuthenticationContext
 import bosca.security.service.GroupEvaluator
 import bosca.serialization.UUID
@@ -95,6 +97,19 @@ class PipelinesMutationController(
     private val log = LoggerFactory.getLogger(PipelinesMutationController::class.java)
 
     /**
+     * Event-triggered and scheduled runs execute as the pipelines service account, so enabling them, or changing a
+     * pipeline that already has them or that they reach as a child, needs full administrator authority rather
+     * than the narrower edit scope.
+     */
+    private suspend fun verifyCanSaveUnattendedRuns(authentication: AuthenticationContext, input: PipelineInput) {
+        if (groups.hasAdminGroup(authentication)) return
+        val existing = input.id?.takeIf { it != UUID.NIL }?.let { service.get(it) }
+        val requested = input.triggered == true || !input.schedule.isNullOrBlank()
+        val current = existing != null && (existing.triggered || !existing.schedule.isNullOrBlank() || service.runsUnattended(existing.id))
+        if (requested || current) groups.throwUnauthorized()
+    }
+
+    /**
      * Authorizes [run]/[dryRun]: public pipelines are open to anyone; otherwise the caller needs
      * [PermissionAction.EXECUTE] via a group grant (admins and service accounts always pass).
      */
@@ -128,7 +143,8 @@ class PipelinesMutationController(
         authorName: String? = null,
         authorEmail: String? = null,
     ): Pipeline {
-        groups.verifyHasAdminGroup(authentication)
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_EDIT)
+        verifyCanSaveUnattendedRuns(authentication, input)
         val saved = service.save(
             id = input.id ?: UUID.NIL,
             name = input.name,
@@ -293,6 +309,12 @@ class PipelinesMutationController(
         groups.verifyHasAdminGroup(authentication)
         runService.cancel(runId, "cancelled by operator")
         return true
+    }
+
+    @Field
+    suspend fun retryRollbacks(authentication: AuthenticationContext, runId: UUID): List<RollbackRecord> {
+        groups.verifyHasAdminGroup(authentication)
+        return runService.retryRollbacks(runId, authentication)
     }
 
     /**

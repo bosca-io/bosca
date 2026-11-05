@@ -1,5 +1,6 @@
 package bosca.analytics.service
 
+import bosca.analytics.model.AnalyticsSqlResult
 import bosca.analytics.model.AnalyticsQueryColumn
 import bosca.analytics.model.AnalyticsQueryExecutionParameterInput
 import bosca.analytics.model.AnalyticsQueryResponse
@@ -14,6 +15,22 @@ import bosca.service.Service
  * in the query's parameter definitions.
  */
 interface AnalyticsQueryExecutionService : Service {
+
+    /** Lists warehouse catalogs with bounded offset pagination. Requires warehouse authorization at the API boundary. */
+    suspend fun listCatalogs(offset: Int, limit: Int): List<String>
+
+    /** Lists schemas in an exact catalog; identifiers are quoted and validated before querying. */
+    suspend fun listSchemas(catalog: String, offset: Int, limit: Int): List<String>
+
+    /** Lists tables in an exact catalog and schema with bounded offset pagination. */
+    suspend fun listTables(catalog: String, schema: String, offset: Int, limit: Int): List<String>
+
+    /** Reads a table's result metadata without retrieving its rows. */
+    suspend fun describeTable(catalog: String, schema: String, table: String): List<AnalyticsQueryColumn>
+
+    /** Executes one parsed read-only query, returning at most [limit] rows and actual execution evidence. */
+    suspend fun executeSql(sql: String, limit: Int): AnalyticsSqlResult
+
 
     /**
      * Executes the analytics query identified by its human-readable key,

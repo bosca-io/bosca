@@ -329,6 +329,37 @@ class MetadataMutationControllerTest {
         kotlin.test.assertEquals(metadata, result.metadata)
     }
 
+    @Test
+    fun `generic metadata writes cannot create convert or re-attribute memories without administrator authority`() = runTest {
+        val editor = mockk<AuthenticationContext>()
+        val memoryType = bosca.content.metadata.model.MemoryAttributes.CONTENT_TYPE
+        val document = commentMetadata(UUID.random()).copy(contentType = "text/plain")
+        val memory = commentMetadata(UUID.random()).copy(contentType = memoryType)
+        coEvery { metadataService.getById(document.id) } returns document
+        coEvery { metadataService.getById(memory.id) } returns memory
+        coEvery { metadataPermissionEvaluator.verifyAllowed(editor, any<Metadata>(), PermissionAction.EDIT) } returns Unit
+        coEvery { groupEvaluator.verifyHasEditorGroup(editor) } returns Unit
+        coEvery { groupEvaluator.verifyHasAdminGroup(editor) } throws bosca.security.service.SecurityException("Unauthorized access")
+        val toMemory = MetadataInput(name = "forged", languageTag = "en", contentType = memoryType)
+
+        kotlin.test.assertFailsWith<bosca.security.service.SecurityException> { controller.add(editor, toMemory, null, false) }
+        kotlin.test.assertFailsWith<bosca.security.service.SecurityException> { controller.edit(editor, document.id, toMemory) }
+        kotlin.test.assertFailsWith<bosca.security.service.SecurityException> {
+            controller.edit(editor, memory.id, toMemory.copy(contentType = "text/plain"))
+        }
+        kotlin.test.assertFailsWith<bosca.security.service.SecurityException> {
+            controller.setMetadataSystemAttributes(editor, memory.id, JsonObject(mapOf("ownerId" to JsonPrimitive(UUID.random().toString()))))
+        }
+        coVerify(exactly = 0) { metadataService.add(any(), any(), any()); metadataService.edit(any(), any()); metadataService.setSystemAttributes(any(), any()) }
+
+        val administrator = mockk<AuthenticationContext>()
+        coEvery { metadataPermissionEvaluator.verifyAllowed(administrator, any<Metadata>(), PermissionAction.EDIT) } returns Unit
+        coEvery { groupEvaluator.verifyHasAdminGroup(administrator) } returns Unit
+        coEvery { metadataService.edit(document.id, toMemory) } returns document.copy(contentType = memoryType)
+        controller.edit(administrator, document.id, toMemory)
+        coVerify(exactly = 1) { metadataService.edit(document.id, toMemory) }
+    }
+
     private fun commentMetadata(id: UUID, locked: Boolean = false, repliesEnabled: Boolean = false) = Metadata(
         id = id,
         name = "commentable",

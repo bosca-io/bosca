@@ -13,6 +13,11 @@ import bosca.serialization.UUID
 /**
  * Evaluates whether a caller has permission to access or execute a specific [Script],
  * applying the standard permission model (public flags, group-based grants, admin overrides).
+ *
+ * Script source runs under the authority of whichever pipeline, analytics transform or caller
+ * invokes it, so the built-in editors and managers roles hold no implicit access to scripts.
+ * Only administrators and service accounts have role-based access; everyone else needs an
+ * explicit grant on the script.
  */
 class ScriptPermissionEvaluator(
     override val service: ScriptService,
@@ -28,5 +33,12 @@ class ScriptPermissionEvaluator(
             else -> return false
         }
         return groupEvaluator.hasScope(authentication, scope.name)
+    }
+
+    override fun hasImplicitEditAccess(authentication: AuthenticationContext?): Boolean = false
+
+    override fun hasRoleBasedAccess(authentication: AuthenticationContext, action: PermissionAction): Boolean {
+        val principal = authentication.principal() ?: return false
+        return principal.hasGroup("sa") || principal.hasGroup("administrators")
     }
 }

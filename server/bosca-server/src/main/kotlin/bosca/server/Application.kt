@@ -104,6 +104,7 @@ import bosca.pipelines.configuration.PipelinesModule
 import bosca.routes.configureCollaborationRoutes
 import bosca.routes.configureCommunicationsRoutes
 import bosca.routes.configureContentRoutes
+import bosca.routes.configureKitRoutes
 import bosca.routes.configureGatewayRoutes
 import bosca.routes.configureMessagesPagesPageRoutes
 import bosca.routes.configurePipelinesRoutes
@@ -315,6 +316,9 @@ suspend fun BoscaApplication.module() {
 
     log.info("configuring pipeline routes")
     configurePipelinesRoutes()
+
+    log.info("configuring kit routes")
+    configureKitRoutes()
 
     log.info("configuring message routes")
     routing {

@@ -8,11 +8,19 @@ import bosca.cli.api.KitImageReference
 import bosca.cli.api.displayEventOrNull
 import bosca.cli.api.responseContent
 import bosca.cli.api.textContent
+import bosca.cli.api.resultContent
+import bosca.cli.api.summaryJson
+import bosca.cli.api.displayJson
+import bosca.cli.api.harnessTurnOrNull
+import bosca.graphql.client.GraphQLJson
+import com.agentclientprotocol.model.ToolCallContent
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.ContentBlock
 import io.modelcontextprotocol.kotlin.sdk.types.ImageContent
 import io.modelcontextprotocol.kotlin.sdk.types.ResourceLink
+import io.modelcontextprotocol.kotlin.sdk.types.EmbeddedResource
+import io.modelcontextprotocol.kotlin.sdk.types.TextResourceContents
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.Tool
 import io.modelcontextprotocol.kotlin.sdk.types.ToolAnnotations
@@ -49,13 +57,14 @@ object KitToolRegistrar {
             The call waits for Kit's response and returns analytics display events as structured data.
             Generated images are returned as MCP image content by default. When the user asks to save
             them locally, pass downloadDirectory; files are written there using their metadata UUID.
-            Other actions: list, get, delete.
+            Other actions: list, get, cancel, delete. Cancel requests stopping active and queued work
+            in the conversation; it acknowledges the request, not completion. Read history for the outcome.
         """.trimIndent(),
         inputSchema = ToolSchema(
             properties = buildJsonObject {
-                enumProperty("action", "Operation to perform", "ask", "list", "get", "delete")
+                enumProperty("action", "Operation to perform", "ask", "list", "get", "cancel", "delete")
                 stringProperty("message", "Natural-language message for Kit (ask)")
-                stringProperty("sessionId", "Existing Kit chat session UUID (ask/get/delete)")
+                stringProperty("sessionId", "Existing Kit chat session UUID (ask/get/cancel/delete)")
                 stringProperty("title", "Title for a new conversation (ask without sessionId)")
                 integerProperty("timeoutSeconds", "How long to wait for Kit, 1-900 seconds (default 300)")
                 integerProperty("limit", "Maximum sessions returned by list (default 20, max 200)")
@@ -134,6 +143,18 @@ object KitToolRegistrar {
                 }
                 CallToolResult(content = listOf(TextContent(structured.toString())), structuredContent = structured)
             }
+            "cancel" -> {
+                val id = Uuid.parse(args.str("sessionId"))
+                val requested = api.cancelSession(id)
+                val structured = buildJsonObject {
+                    put("sessionId", id.toString())
+                    put("cancellationRequested", requested)
+                }
+                CallToolResult(content = listOf(TextContent(
+                    if (requested) "Cancellation requested. Read the session history for the confirmed outcome."
+                    else "Bosca did not accept cancellation."
+                )), structuredContent = structured, isError = (!requested).takeIf { it })
+            }
             else -> error("Unknown kit_chat action: $action")
         }
 
@@ -186,12 +207,47 @@ object KitToolRegistrar {
             prepareImage(api, reference, includeImages, downloadDirectory)
         }
 
-        val failedStatus = turn.session.status.name == "FAILED"
-        val errorText = preparedImages.mapNotNull { it.error }.joinToString("\n")
+        val failedStatus = response.failed
+        val retrievalErrors = preparedImages.mapNotNull { it.error }.toMutableList()
+        val harnessContent = buildList {
+            response.harnessTurns.forEach { harness ->
+                harness.resultContent().forEachIndexed { index, (toolId, result) ->
+                    val meta = buildJsonObject {
+                        put("boscaTurnId", harness.turnId)
+                        toolId?.let { put("boscaToolCallId", it) }
+                    }
+                    if (result is ToolCallContent.Content) {
+                        val block = result.content
+                        if (block is com.agentclientprotocol.model.ContentBlock.Image) {
+                            if (downloadDirectory != null) {
+                                val path = downloadDirectory.resolve("${Uuid.parse(harness.turnId)}-$index.${extension(block.mimeType)}")
+                                try {
+                                    withContext(Dispatchers.IO) { Files.write(path, Base64.getDecoder().decode(block.data), StandardOpenOption.CREATE_NEW) }
+                                    add(ResourceLink(name = path.fileName.toString(), uri = path.toUri().toString(), mimeType = block.mimeType, meta = meta))
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    retrievalErrors += "${path.fileName}: ${e.message}"
+                                }
+                            }
+                            if (!includeImages) return@forEachIndexed
+                        }
+                        add(block.toMcpContent(meta))
+                    } else {
+                        add(EmbeddedResource(TextResourceContents(
+                            text = GraphQLJson.encodeToString(ToolCallContent.serializer(), result),
+                            uri = "bosca://kit/sessions/${turn.session.id}/turns/${harness.turnId}/results/$index",
+                            mimeType = "application/json"), meta = meta))
+                    }
+                }
+            }
+        }
+        val errorText = retrievalErrors.joinToString("\n")
         val visibleText = buildString {
             append(responseText.ifBlank {
-                if (failedStatus) "Kit failed to complete the request." else "Kit completed the request."
+                response.outcomeText ?: if (response.empty) "Kit returned no response." else "Kit completed the request."
             })
+            if (responseText.isNotBlank()) response.outcomeText?.let { append("\n\n$it") }
             if (errorText.isNotBlank()) append("\n\nImage retrieval errors:\n$errorText")
         }
         val structured = buildJsonObject {
@@ -199,12 +255,14 @@ object KitToolRegistrar {
             put("title", turn.session.title)
             put("status", turn.session.status.name)
             put("response", responseText)
-            put("messages", JsonArray(turn.messages.map { it.toJson() }))
+            put("messages", JsonArray(turn.messages.map { it.toJson(includeHarnessContent = false) }))
             put("displayEvents", JsonArray(displayEvents))
+            put("harnessTurns", JsonArray(response.harnessTurns.map { it.summaryJson() }))
             put("images", JsonArray(preparedImages.map { it.toJson() }))
         }
         val content = buildList<ContentBlock> {
             add(TextContent(visibleText))
+            addAll(harnessContent)
             preparedImages.forEach { image ->
                 image.asset?.takeIf { includeImages && it.contentType.startsWith("image/") }?.let { asset ->
                     add(ImageContent(Base64.getEncoder().encodeToString(asset.bytes), asset.contentType))
@@ -222,8 +280,7 @@ object KitToolRegistrar {
                 }
             }
         }
-        val failed = failedStatus ||
-            (responseText.isBlank() && displayEvents.isEmpty() && references.isEmpty())
+        val failed = failedStatus || response.cancelled || response.empty
         return CallToolResult(content = content, isError = failed.takeIf { it }, structuredContent = structured)
     }
 
@@ -264,13 +321,15 @@ object KitToolRegistrar {
         put("messages", JsonArray(messages.map { it.toJson() }))
     }
 
-    private fun KitChatMessage.toJson(): JsonObject = buildJsonObject {
+    private fun KitChatMessage.toJson(includeHarnessContent: Boolean = true): JsonObject = buildJsonObject {
         put("id", id.toString())
         put("sessionId", sessionId.toString())
         put("author", author)
         put("created", created.toString())
         put("text", textContent())
-        val eventObject = event.displayEventOrNull()
+        val eventObject = event.displayEventOrNull() ?: event.harnessTurnOrNull()?.let {
+            if (includeHarnessContent) it.displayJson() else it.summaryJson()
+        }
         if (eventObject != null) {
             put("event", eventObject)
         } else {

@@ -30,6 +30,16 @@ Run these commands from the **workspace root**. `analytics` is part of the root 
 ./gradlew :analytics:analytics-collector:nativeCompile  # Build a native image
 ```
 
+## Saved-query execution evidence
+
+Saved-query results carry the prepared SQL, positional JDBC parameter values,
+execution time and duration alongside the rows. Relative dates use one execution
+timestamp. GraphQL and REST omit this evidence unless the caller can VIEW the
+query; EXECUTE continues to grant access to its rows.
+
+Evidence describes a live execution. The result cache stores rows only, so cache
+hits return `evidence: null`.
+
 ## Local Infrastructure
 
 From the workspace root:

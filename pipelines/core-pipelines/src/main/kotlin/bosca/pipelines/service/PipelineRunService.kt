@@ -1,6 +1,7 @@
 package bosca.pipelines.service
 
 import bosca.pipelines.model.NodeExecutionRecord
+import bosca.pipelines.model.RollbackRecord
 import bosca.pipelines.model.RunStep
 import bosca.pipelines.model.NodeMetrics
 import bosca.pipelines.model.Pipeline
@@ -41,10 +42,10 @@ interface PipelineRunService : Service {
      * rather than driven inline, which would orphan it in SUSPENDED at the first suspending node (the
      * backing job having no run job to resume it) — and the call blocks briefly for a fast run to
      * settle. Inside an active database transaction it returns without waiting, since job delivery is
-     * deferred until the outermost transaction commits. Its [authentication] principal is captured on
-     * the run row so the whole durable run (first pass, backing work, every resume) executes under
-     * the caller's security context — security
-     * traverses end to end, not just the first pass. A `null` [authentication] is a triggered/scheduled
+     * deferred until the outermost transaction commits. The principal, effective groups, scopes and
+     * credential identity are captured on the run row and revalidated before driving or backing work.
+     * Child runs, restarts and rollback retain that authority; anonymous callers remain anonymous.
+     * A `null` [authentication] is a triggered/scheduled
      * run, already executing inside its run job; it is driven inline under the pipelines service account
      * (as every resume of such a run does). Returns the run handle — OK with an Output if it finished in
      * one pass, SUSPENDED/RUNNING if it parked or is still in flight on the queue — or `null` if shed.
@@ -65,6 +66,20 @@ interface PipelineRunService : Service {
 
     /** Durable run state by id, or `null` when absent or soft-deleted. */
     suspend fun get(runId: UUID): PipelineRun?
+
+    /** Revalidate a run's captured caller, groups and credential restrictions before driving or backing work. */
+    suspend fun authentication(run: PipelineRun): AuthenticationContext
+
+    /** A terminated run's rollbacks that failed, in rollback order; their side effects may remain in place. */
+    suspend fun rollbackFailures(runId: UUID): List<RollbackRecord>
+
+    /**
+     * Run a terminated run's failed rollbacks again under [authentication], for when the run's captured
+     * authority no longer applies. Each failure is retried by one caller at most.
+     *
+     * @return the rollbacks that are still failed
+     */
+    suspend fun retryRollbacks(runId: UUID, authentication: AuthenticationContext): List<RollbackRecord>
 
     /**
      * Latest retained run for a pipeline and typed input containing [inputMatch].

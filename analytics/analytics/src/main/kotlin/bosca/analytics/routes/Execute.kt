@@ -35,7 +35,9 @@ class Execute(
         val query = queryService.getQueryById(id)
         queryPermissionEvaluator.verifyAllowed(authenticationContext, query, PermissionAction.EXECUTE)
         val request = call.receive<ExecuteRequest>()
-        return service.execute(id, request.parameters)
+        val response = service.execute(id, request.parameters)
+        if (response.evidence == null || queryPermissionEvaluator.isAllowed(authenticationContext, query, PermissionAction.VIEW)) return response
+        return AnalyticsQueryResponse(response.records, response.cached, response.refreshedAt, response.stale)
     }
 }
 
@@ -74,6 +76,8 @@ class ExecuteGet(
                 ))
             }
         }
-        return service.execute(id, parameters)
+        val response = service.execute(id, parameters)
+        if (response.evidence == null || queryPermissionEvaluator.isAllowed(authenticationContext, query, PermissionAction.VIEW)) return response
+        return AnalyticsQueryResponse(response.records, response.cached, response.refreshedAt, response.stale)
     }
 }

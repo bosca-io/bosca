@@ -10,6 +10,9 @@ object Analytics
 class AnalyticsController() : GraphQLController<Analytics> {
 
     @Field
+    fun warehouse() = AnalyticsWarehouse
+
+    @Field
     fun queries() = AnalyticsQueries
 
     @Field

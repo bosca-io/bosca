@@ -72,12 +72,15 @@ interface ApiTokenService : Service {
      * @param principalId the principal whose authorization the workload executes under
      * @param input creation parameters, including a mandatory expiration
      * @param createdBy the principal recorded as creating the token
+     * @param sessionBound whether the token is retired with one runtime session, so durable work it
+     *   started keeps the authority captured at submission after the token is revoked, expires or is deleted
      * @return the persisted credential and one-time raw token
      */
     suspend fun createEphemeralToken(
         principalId: UUID,
         input: ApiTokenInput,
         createdBy: UUID,
+        sessionBound: Boolean = false,
     ): ApiTokenCreationResult
 
     /**

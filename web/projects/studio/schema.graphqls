@@ -113,6 +113,7 @@ input AddCartItemInput {
 input AddGitReviewCommentInput {
   commitSha: String!
   content: String!
+  expectedVersion: Long
   filePath: String!
   newLineNumber: Int
   oldLineNumber: Int
@@ -756,10 +757,12 @@ type Ai {
   agentTools: AgentTools!
   """Agent CRUD + sub-agent / tool join lookups."""
   agents: Agents!
+  delegations: KitDelegations!
   """
   MCP namespace: inbound external-server registrations (`servers`) and the outbound Bosca MCP surface (`bosca`).
   """
   mcp: AiMcp!
+  memories: Memories!
   """AI model definitions."""
   models: Models!
   """Prompt template CRUD."""
@@ -819,10 +822,12 @@ type AiMutation {
   agentTools: AgentToolsMutation!
   """Agent CRUD + sub-agent / tool wiring."""
   agents: AgentsMutation!
+  delegations: KitDelegationsMutation!
   """
   MCP namespace: manage inbound external-server registrations and the outbound Bosca MCP surface.
   """
   mcp: AiMcpMutation!
+  memories: MemoriesMutation!
   """AI model CRUD."""
   models: ModelsMutation!
   """Prompt template CRUD."""
@@ -906,6 +911,7 @@ type Analytics {
   scriptBindings: AnalyticsScriptBindings!
   """Access analytics visualization queries"""
   visualizations: AnalyticsVisualizations!
+  warehouse: AnalyticsWarehouse!
 }
 
 """
@@ -1214,6 +1220,16 @@ type AnalyticsQuery {
 }
 
 """
+A parameter's actual bound value after defaulting, coercion and relative-date resolution.
+"""
+type AnalyticsQueryBinding {
+  parameter: String!
+  position: Int!
+  type: QueryParameterType!
+  value: JSON
+}
+
+"""
 Describes a single output column of an analytics query, derived from its result-set metadata.
 """
 type AnalyticsQueryColumn {
@@ -1225,6 +1241,18 @@ type AnalyticsQueryColumn {
   nullable: Boolean!
   """The SQL type name of the column (e.g. varchar, bigint, double)"""
   typeName: String!
+}
+
+"""Original execution evidence, returned only with query VIEW permission."""
+type AnalyticsQueryEvidence {
+  durationMs: Long!
+  executedAt: DateTime!
+  parameters: [AnalyticsQueryBinding!]!
+  queryId: UUID!
+  """
+  The SQL sent to JDBC, with positional placeholders resolved by parameters.
+  """
+  sql: String!
 }
 
 """A named parameter value to pass when executing an analytics query"""
@@ -1321,6 +1349,7 @@ type AnalyticsQueryResponse {
   Whether the records were served from the query result cache instead of being computed for this request
   """
   cached: Boolean!
+  evidence: AnalyticsQueryEvidence
   """
   Array of result records, where each record is a JSON object representing one row of data
   """
@@ -1379,6 +1408,18 @@ type AnalyticsScriptBindingsMutation {
   delete(id: UUID!): Boolean!
   """Replace the mutable fields of an existing binding"""
   update(enabled: Boolean, id: UUID!, ordinal: Int, scriptId: UUID!, transform: Boolean): AnalyticsScriptBinding!
+}
+
+"""
+Uncached execution evidence for the exact SQL submitted, with at most the requested number of rows.
+"""
+type AnalyticsSqlResult {
+  columns: [AnalyticsQueryColumn!]!
+  durationMs: Long!
+  executedAt: DateTime!
+  records: [JSON!]!
+  sql: String!
+  truncated: Boolean!
 }
 
 """
@@ -1519,6 +1560,17 @@ type AnalyticsVisualizationsMutation {
   deletePermission(permission: PermissionInput!): Permission!
   """Update an existing analytics visualization definition"""
   edit(visualization: AnalyticsVisualizationInput!): AnalyticsVisualization!
+}
+
+"""
+Direct read-only warehouse inspection, restricted to administrators or analytics managers with analytics:sql.
+"""
+type AnalyticsWarehouse {
+  catalogs(limit: Int! = 100, offset: Int! = 0): [String!]!
+  describe(catalog: String!, schema: String!, table: String!): [AnalyticsQueryColumn!]!
+  execute(limit: Int! = 100, sql: String!): AnalyticsSqlResult!
+  schemas(catalog: String!, limit: Int! = 100, offset: Int! = 0): [String!]!
+  tables(catalog: String!, limit: Int! = 100, offset: Int! = 0, schema: String!): [String!]!
 }
 
 """
@@ -2150,6 +2202,10 @@ type Bible {
   """Short abbreviation of the Bible translation in its native language"""
   abbreviationLocal: String!
   """
+  Retrieve passage components and attribution for AI context. Requires content access and the source's AI_CONTEXT grant.
+  """
+  aiContext(human: String!): [FindBibleResult!]!
+  """
   Recordings attached to this exact Bible variant; listing does not download media
   """
   audio: [BibleAudio!]!
@@ -2187,6 +2243,8 @@ type Bible {
   name: String!
   """Display name of the Bible translation in its native language"""
   nameLocal: String!
+  """Resolve human-readable references without retrieving passage content"""
+  references(human: String!): [BibleReference!]!
   """
   JSON object defining the rendering styles for scripture display (e.g. verse numbers, red letter, poetry indentation)
   """
@@ -3636,6 +3694,18 @@ type ChatSession {
   collectionAttachments: [UUID!]!
   """Timestamp when this chat session was created"""
   created: DateTime!
+  """
+  Pending native harness permission requests; reading does not extend runtime lifetime.
+  """
+  harnessApprovals: JSON!
+  """
+  Permitted context sources and handoff limitations, without source bodies or connection credentials.
+  """
+  harnessContext: KitContextStatus
+  """Effective harness settings and only the choices the caller may select."""
+  harnessSettings: KitHarnessSettings
+  """Current harness lifecycle without extending the idle deadline."""
+  harnessState: KitHarnessStatus
   """Unique identifier for this chat session"""
   id: UUID!
   """
@@ -3702,6 +3772,10 @@ type ChatSessions {
 """Mutation operations for managing chat sessions"""
 type ChatSessionsMutation {
   """
+  Resume an archived or repaired harness and its queued messages without sending another message.
+  """
+  activateHarness(sessionId: UUID!): Boolean!
+  """
   Attach a metadata item to a chat session, making it available as context for the AI agent
   """
   addAttachment(
@@ -3719,11 +3793,29 @@ type ChatSessionsMutation {
     """The unique identifier of the chat session"""
     id: UUID!
   ): ChatSession!
+  """
+  Select a permitted source for the next turn. Does not start or extend a runtime.
+  """
+  addHarnessSource(sessionId: UUID!, source: KitContextSelection!): Boolean!
+  """
+  Archive an idle harness; the next activation resolves current integration credentials.
+  """
+  archiveHarness(sessionId: UUID!): Boolean!
+  """
+  Request cancellation of current and queued work; messages accepted afterward remain queued.
+  """
+  cancel(sessionId: UUID!): Boolean!
+  """
+  Clear additional WorkOps and Git selections, including unavailable sources.
+  """
+  clearHarnessSources(sessionId: UUID!): Boolean!
   """Create a new chat session with a specified AI agent"""
   create(
     """The chat session definition to create"""
     session: ChatSessionInput!
   ): ChatSession!
+  """Answer a pending native harness permission request."""
+  decideHarnessPermission(approvalId: UUID!, optionId: String!, sessionId: UUID!): Boolean!
   """
   Delete a chat session and all its messages. Returns true if the session was deleted.
   """
@@ -3745,6 +3837,8 @@ type ChatSessionsMutation {
     """The unique identifier of the chat session"""
     id: UUID!
   ): ChatSession!
+  """Remove an explicit source selection from subsequent turns."""
+  removeHarnessSource(sessionId: UUID!, source: KitContextSelection!): Boolean!
   """
   Send a message to the AI agent in a chat session and begin generating a response
   """
@@ -3754,6 +3848,10 @@ type ChatSessionsMutation {
     """The unique identifier of the chat session to send the message to"""
     sessionId: UUID!
   ): Boolean
+  """
+  Choose an authorized deployment profile for subsequent turns; null restores managed defaults.
+  """
+  setHarnessSettings(choice: KitHarnessChoice, sessionId: UUID!): Boolean!
   """Update the display title of an existing chat session"""
   updateTitle(
     """The unique identifier of the chat session to update"""
@@ -5406,6 +5504,7 @@ type ContentMutation {
   collection: CollectionMutation!
   """Access content health check mutations for resolving identified issues"""
   healthCheck: ContentHealthCheckMutation!
+  images: ImagesMutation!
   """Access metadata mutations"""
   metadata: MetadataMutation!
   """Rebuild all storage system content indexes"""
@@ -5429,6 +5528,7 @@ union ContentRelationship = CollectionLanguageVariantMetadataRelationship | Coll
 
 """Defines what analytics events count as conversions for an experiment."""
 type ConversionGoal {
+  activation: GoalActivation
   created: DateTime!
   """
   CUPED covariate for variance reduction. Null when no adjustment is configured.
@@ -5446,10 +5546,15 @@ type ConversionGoal {
   itemExtraValue: String
   metricType: GoalMetricType!
   name: String!
+  outcomeScope: GoalOutcomeScope
   """
   Page path filter — when set, the goal only counts events with this page.path.
   """
   pagePath: String
+  """
+  Alternative page path prefixes. A match on any exact path or prefix qualifies.
+  """
+  pagePathPrefixes: [String!]!
   """
   Role in verdict logic. Drives how regressions on this goal influence the overall SHIP/HALT decision.
   """
@@ -5458,6 +5563,7 @@ type ConversionGoal {
 
 """Input for creating a conversion goal for an experiment."""
 input ConversionGoalInput {
+  activation: GoalActivationInput
   """Optional CUPED covariate configuration for variance reduction."""
   cupedCovariate: CupedCovariateInput
   elementId: String
@@ -5475,10 +5581,15 @@ input ConversionGoalInput {
   """Defaults to UNIQUE_CONVERSION if omitted."""
   metricType: GoalMetricType
   name: String!
+  outcomeScope: GoalOutcomeScopeInput
   """
   Restricts the goal to events emitted on a specific page path. Null = match any page.
   """
   pagePath: String
+  """
+  Alternative page path prefixes. A match on any exact path or prefix qualifies.
+  """
+  pagePathPrefixes: [String!]
   """Defaults to PRIMARY if omitted."""
   role: ConversionGoalRole
 }
@@ -5524,6 +5635,8 @@ input CreateBridgeBindingInput {
 
 """Input for creating a pull request."""
 input CreateGitPullRequestInput {
+  """Defaults to the repository's branch cleanup setting when omitted."""
+  deleteBranchOnMerge: Boolean
   description: String
   isDraft: Boolean
   repositoryId: UUID!
@@ -6082,6 +6195,19 @@ enum DeliveryStatusType {
 type DeliveryStatuses {
   statuses: [RecipientDeliveryStatus!]!
   total: Long!
+}
+
+type DestinationAttribution {
+  attributedInteractions: Long!
+  attributedSubjects: Long!
+  engagedSubjects: Long!
+  interactions: Long!
+  interval: MetricInterval
+  missingSessions: Long!
+  missingSlugs: Long!
+  unmatchedDestinations: Long!
+  unresolvedTargets: Long!
+  unsupportedTypes: Long!
 }
 
 """
@@ -7090,6 +7216,8 @@ enum ExecutionStatus {
 An experiment is observation+stats attached to a single targeting rule on a feature flag. The variations being measured are the variations the attached rule's rollout splits across — experiments do not own values.
 """
 type Experiment {
+  """Event filter whose first match gates the experiment's outcome cohort."""
+  activationFilter: ExperimentActivationFilter
   """Statistical method used by the analyzer."""
   analysisMethod: AnalysisMethod!
   """
@@ -7111,6 +7239,8 @@ type Experiment {
   created: DateTime!
   description: String!
   endDate: DateTime
+  """Account principal IDs omitted from all experiment calculations."""
+  excludedPrincipalIds: [UUID!]!
   exclusionLayer: ExclusionLayer
   featureFlag: FeatureFlag
   featureFlagId: UUID!
@@ -7146,8 +7276,48 @@ type Experiment {
   targetingRuleId: String
 }
 
+"""
+Configured analytics event filter that activates an assigned experiment subject.
+"""
+type ExperimentActivationFilter {
+  applicationIds: [String!]!
+  elementId: String
+  elementIdContains: String
+  elementType: String
+  eventType: EventType
+  itemExtraKey: String
+  itemExtraValue: String
+  pagePath: String
+  pagePathPrefixes: [String!]!
+  recommendationCard: Boolean!
+}
+
+"""
+Filters the first analytics event that activates an assigned experiment subject.
+"""
+input ExperimentActivationFilterInput {
+  applicationIds: [String!]
+  elementId: String
+  elementIdContains: String
+  elementType: String
+  eventType: EventType
+  itemExtraKey: String
+  itemExtraValue: String
+  """Optional exact page path alternative."""
+  pagePath: String
+  """
+  Page path prefixes combined as alternatives, for example /articles/, /talks/, and /studies/.
+  """
+  pagePathPrefixes: [String!]
+  recommendationCard: Boolean! = false
+}
+
 """Input for creating or updating an experiment."""
 input ExperimentInput {
+  """
+  Event filter whose first match makes an assigned subject eligible for outcome analysis. Null disables activation gating.
+  """
+  activationFilter: ExperimentActivationFilterInput
   """Statistical method. Defaults to FREQUENTIST."""
   analysisMethod: AnalysisMethod
   """Bayesian prior overrides. Null = sane defaults."""
@@ -7160,6 +7330,10 @@ input ExperimentInput {
   description: String
   """When the experiment should stop accepting traffic."""
   endDate: DateTime
+  """
+  Account principal IDs omitted from all calculations while their assignment remains active. Omit on edit to preserve the current list; send an empty list to clear it.
+  """
+  excludedPrincipalIds: [UUID!]
   """UUID of an optional mutual exclusion layer."""
   exclusionLayerId: UUID
   """The UUID of the feature flag this experiment observes."""
@@ -7197,6 +7371,10 @@ type ExperimentResult {
   """
   adjustedVariance: Float
   """
+  Raw assignments used for rollout allocation and sample-ratio diagnostics.
+  """
+  assignments: Long!
+  """
   Statistical confidence (0.0 to 1.0) that the difference from control is real.
   """
   confidenceLevel: Float
@@ -7208,13 +7386,17 @@ type ExperimentResult {
   expectedLoss: Float
   experimentId: UUID!
   goal: ConversionGoal
+  goalAnalysis: GoalPopulationAnalysis
   goalId: UUID!
   id: UUID!
+  """
+  Number of subjects eligible for outcomes after applying the activation filter.
+  """
   impressions: Long!
   """Percentage improvement over the control variation."""
   liftOverControl: Float
   """
-  Per-user mean of matching events for EVENT_COUNT, or observed seconds for SESSION_DURATION.
+  Per-user mean of matching events for EVENT_COUNT, or derived session seconds for SESSION_DURATION.
   """
   mean: Float
   """Independent subject-level observations used by the statistic."""
@@ -7225,7 +7407,7 @@ type ExperimentResult {
   probabilityBeatsControl: Float
   updatedAt: DateTime!
   """
-  Unbiased sample variance of matching events per user or observed session seconds. Null for UNIQUE_CONVERSION.
+  Unbiased sample variance of matching events per user or derived session seconds. Null for UNIQUE_CONVERSION.
   """
   variance: Float
   """
@@ -8244,8 +8426,10 @@ type Git {
   blob(path: String!, ref: String!, repositoryId: UUID!): GitBlob
   """List branch protection rules for a repository."""
   branchProtectionRules(repositoryId: UUID!): [GitBranchProtectionRule!]!
-  """List all branches with head SHA and ahead/behind counts."""
-  branches(repositoryId: UUID!): [GitBranchInfo!]!
+  """
+  List all branches with head SHA. Set includeAheadBehind to false to skip history comparisons and return zero counts.
+  """
+  branches(includeAheadBehind: Boolean = true, repositoryId: UUID!): [GitBranchInfo!]!
   """Get a single commit by SHA."""
   commit(repositoryId: UUID!, sha: String!): GitCommitInfo
   """List commit statuses for a specific commit."""
@@ -8267,7 +8451,7 @@ type Git {
   """
   List registered build agents. System admins see all agents; agent credentials see only themselves and their direct children.
   """
-  pipelineAgents(status: GitAgentStatus): [GitPipelineAgent!]!
+  pipelineAgents(id: UUID, status: GitAgentStatus): [GitPipelineAgent!]!
   """
   Manual input declarations read from the pipeline definition at the selected ref. Requires VIEW permission.
   """
@@ -8285,9 +8469,11 @@ type Git {
   """
   pipelineSecrets(repositoryId: UUID!): [GitPipelineSecretInfo!]!
   """List pipelines for a repository."""
-  pipelines(repositoryId: UUID!): [GitPipeline!]!
+  pipelines(id: UUID, repositoryId: UUID!): [GitPipeline!]!
   """Look up a pull request by repository and number."""
   pullRequest(number: Int!, repositoryId: UUID!): GitPullRequest
+  """Look up a pull request by its unique ID."""
+  pullRequestById(id: UUID!): GitPullRequest
   """
   List unresolved pull requests in the order they would be merged, with the requested pull request last.
   """
@@ -8384,13 +8570,15 @@ type GitAppStoreReviewOutcome {
 }
 
 """
-An artifact a pipeline's job declares it produces — enough to resolve it in the registry (type + namespace + type-specific coordinate). The coordinate is the raw `${{ }}` template as authored.
+An artifact declared by a pipeline job. Coordinates are templates in pipeline definitions and resolved values on jobs.
 """
 type GitArtifactDefinition {
   """
   Type-specific coordinate (repository + version in that type's form); may contain `${{ }}`.
   """
   coordinate: String!
+  """Environment names this artifact serves; empty means every environment."""
+  environments: [String!]!
   """Registry namespace the artifact is published to, e.g. bosca-maven."""
   namespace: String!
   """
@@ -8575,6 +8763,10 @@ enum GitDiffChangeType {
 type GitDiffFile {
   changeType: GitDiffChangeType!
   hunks: [GitDiffHunk!]!
+  """
+  Number of text lines in the new version; zero when the file was deleted or is binary.
+  """
+  newLineCount: Int!
   newPath: String
   oldPath: String
 }
@@ -8604,6 +8796,189 @@ enum GitDiffLineType {
   ADD
   CONTEXT
   DELETE
+}
+
+"""Queries for GitHub synchronization configuration and delivery history."""
+type GitHub {
+  """Verified delivery intake history, restricted to administrators."""
+  deliveries(limit: Int = 25, offset: Long = 0, repositoryId: UUID!): [GitHubDelivery!]!
+  """Administrator-only repository synchronization configuration."""
+  pair(repositoryId: UUID!): GitHubRepositoryPair
+  """
+  Counterpart mappings and unresolved PR synchronization problems, restricted to administrators.
+  """
+  pullRequestStates(limit: Int = 25, offset: Long = 0, repositoryId: UUID!): [GitHubPullRequestState!]!
+  """
+  Common branch/tag values and concurrent edits requiring reconciliation.
+  """
+  refStates(limit: Int = 25, offset: Long = 0, repositoryId: UUID!): [GitHubRefState!]!
+  """Administrator-verified identity mappings."""
+  users(limit: Int = 25, offset: Long = 0): [GitHubUser!]!
+}
+
+"""
+An authentic delivery retained for workflow processing and reconciliation.
+"""
+type GitHubDelivery {
+  created: DateTime!
+  deliveryId: String!
+  event: String!
+  githubUserId: Long
+  ignored: Boolean!
+  """
+  Current access blocker for importing this delivery; null does not mean synchronization completed.
+  """
+  importProblem: String
+  payload: JSON!
+  principalId: UUID
+  """
+  Most recent synchronization failure; cleared when this delivery succeeds.
+  """
+  problem: String
+  repositoryId: UUID!
+}
+
+"""Mutations for GitHub repository pairing and user mappings."""
+type GitHubMutation {
+  """
+  Map an immutable GitHub human user ID to a Bosca principal without granting permissions.
+  """
+  mapUser(githubUserId: Long!, principalId: UUID!): GitHubUser!
+  """
+  Resolve a GitHub username and map its immutable human user ID to a Bosca principal.
+  """
+  mapUserByUsername(principalId: UUID!, username: String!): GitHubUser!
+  """
+  Pull current GitHub branches and tags as the calling administrator; repository Edit and Bosca branch protections apply.
+  """
+  pullRefs(repositoryId: UUID!): [GitHubRefState!]!
+  """
+  Push current Bosca branches and tags as the calling administrator; repository Edit and GitHub protections apply.
+  """
+  pushRefs(repositoryId: UUID!): [GitHubRefState!]!
+  """Reconcile current pull requests without creating new merge commits."""
+  reconcilePullRequests(repositoryId: UUID!): [GitHubPullRequestState!]!
+  """
+  Reconcile current branches and tags in both directions as the calling administrator; repository Edit, destination protections and conflicts apply.
+  """
+  reconcileRefs(repositoryId: UUID!): [GitHubRefState!]!
+  """
+  Resolve one recorded ref conflict using the selected host's reviewed value; both refs are checked and destination protections apply.
+  """
+  resolveRef(input: GitHubRefResolutionInput!): GitHubRefState!
+  """
+  Administrator-only pairing configuration; stores secret references, never credentials.
+  """
+  savePair(input: GitHubRepositoryPairInput!): GitHubRepositoryPair!
+  """Remove a user mapping without rewriting previous delivery attribution."""
+  unmapUser(githubUserId: Long!): Boolean!
+}
+
+type GitHubPullRequestSnapshot {
+  description: String
+  mergeSha: String
+  sourceBranch: String!
+  status: GitPullRequestStatus!
+  targetBranch: String!
+  title: String!
+}
+
+"""
+Administrator-controlled pairing; GitHub repository IDs survive renames.
+"""
+type GitHubPullRequestState {
+  bosca: GitHubPullRequestSnapshot
+  github: GitHubPullRequestSnapshot
+  githubId: Long
+  githubNumber: Int
+  modified: DateTime!
+  problem: String
+  pullRequestId: UUID
+  repositoryId: UUID!
+  snapshot: GitHubPullRequestSnapshot
+}
+
+enum GitHubRefResolution {
+  BOSCA
+  GITHUB
+}
+
+input GitHubRefResolutionInput {
+  """Reviewed Bosca object ID; null means the ref is absent."""
+  expectedBoscaSha: String
+  """Reviewed GitHub object ID; null means the ref is absent."""
+  expectedGitHubSha: String
+  ref: String!
+  repositoryId: UUID!
+  resolution: GitHubRefResolution!
+}
+
+type GitHubRefState {
+  boscaSha: String
+  conflict: Boolean!
+  githubSha: String
+  modified: DateTime!
+  ref: String!
+  repositoryId: UUID!
+  sha: String
+  synchronized: Boolean!
+}
+
+"""
+Administrator-controlled pairing; GitHub repository IDs survive renames.
+"""
+type GitHubRepositoryPair {
+  created: DateTime!
+  enabled: Boolean!
+  githubRepositoryId: Long!
+  modified: DateTime!
+  name: String!
+  owner: String!
+  """Automatic pull branch exclude globs; empty excludes match none."""
+  pullBranchExcludes: [String!]!
+  """Automatic pull branch include globs; empty includes match all."""
+  pullBranchIncludes: [String!]!
+  """Automatic push branch exclude globs; empty excludes match none."""
+  pushBranchExcludes: [String!]!
+  """Automatic push branch include globs; empty includes match all."""
+  pushBranchIncludes: [String!]!
+  repositoryId: UUID!
+  tokenSecretName: String!
+  version: Long!
+  webhookSecretName: String!
+}
+
+input GitHubRepositoryPairInput {
+  enabled: Boolean! = false
+  """
+  Omit to resolve using the token on creation or rename; unchanged pairs retain their immutable ID.
+  """
+  githubRepositoryId: Long
+  name: String!
+  owner: String!
+  """Automatic pull branch exclude globs; empty excludes match none."""
+  pullBranchExcludes: [String!]! = []
+  """Automatic pull branch include globs; empty includes match all."""
+  pullBranchIncludes: [String!]! = []
+  """Automatic push branch exclude globs; empty excludes match none."""
+  pushBranchExcludes: [String!]! = []
+  """Automatic push branch include globs; empty includes match all."""
+  pushBranchIncludes: [String!]! = []
+  repositoryId: UUID!
+  tokenSecretName: String!
+  version: Long! = 0
+  webhookSecretName: String!
+}
+
+"""
+An administrator-verified human user mapping; permissions remain group-based.
+"""
+type GitHubUser {
+  created: DateTime!
+  githubUserId: Long!
+  githubUsername: String
+  modified: DateTime!
+  principalId: UUID!
 }
 
 """
@@ -8704,6 +9079,10 @@ type GitMutation {
   createReleaseTag(jobId: UUID!, message: String, repository: String!, tag: String): GitCreateTagResult!
   """Create a new repository."""
   createRepository(input: CreateGitRepositoryInput!): GitRepository!
+  """
+  Create an annotated tag from a branch, tag, or commit SHA. Existing tags are never replaced. Requires EDIT permission on an active repository.
+  """
+  createTag(message: String! = "", repositoryId: UUID!, tag: String!, taggerEmail: String!, taggerName: String!, targetRef: String!): GitTagInfo!
   """Create a webhook. Requires MANAGE permission."""
   createWebhook(input: GitWebhookInput!, repositoryId: UUID!): GitWebhook!
   """
@@ -8756,11 +9135,11 @@ type GitMutation {
   """
   markReleasedFromJob(jobId: UUID!): Boolean!
   """Merge a pull request using the specified strategy."""
-  mergePullRequest(id: UUID!, strategy: GitMergeStrategy!): GitPullRequest!
+  mergePullRequest(bypassStatusChecks: Boolean! = false, expectedVersion: Long, id: UUID!, strategy: GitMergeStrategy!): GitPullRequest!
   """
   Merge every unresolved dependency in dependency-first order, then merge the requested pull request.
   """
-  mergePullRequestWithDependencies(id: UUID!, strategy: GitMergeStrategy!): [GitPullRequest!]!
+  mergePullRequestWithDependencies(bypassStatusChecks: Boolean! = false, expectedVersion: Long, id: UUID!, strategy: GitMergeStrategy!): [GitPullRequest!]!
   """
   The uses:play-rollout action — advances a Google Play staged rollout to a store-neutral percentage (0–100) without re-uploading.
   """
@@ -8795,6 +9174,10 @@ type GitMutation {
   renameRepository(id: UUID!, newSlug: String!): GitRepository!
   """Reopen a previously closed pull request."""
   reopenPullRequest(id: UUID!): GitPullRequest!
+  """
+  Reply using the original comment's review and line context, including outdated discussions.
+  """
+  replyReviewComment(commentId: UUID!, content: String!, expectedVersion: Long, pullRequestId: UUID!): GitReviewComment!
   """
   Report a commit status check. Called by CLI runners to update CI status.
   """
@@ -9025,6 +9408,10 @@ type GitPipelineJob {
   """Who approved the job."""
   approvedBy: UUID
   """
+  Artifacts produced by this job, with coordinates resolved at run creation.
+  """
+  artifacts: [GitArtifactDefinition!]!
+  """
   Which execution attempt this is (1 = first run; incremented by re-run-failed).
   """
   attempt: Int!
@@ -9211,23 +9598,41 @@ type GitPullRequest {
   assignees: [Profile!]!
   """Profile ID of the PR author."""
   authorId: UUID!
+  """
+  Commits unique to this comparison, newest first. Merged requests use their recorded merge history.
+  """
+  commits(limit: Int! = 25, offset: Long! = 0): [GitCommitInfo!]!
   """Files with merge conflicts, if any."""
   conflictingFiles: [String!]!
   created: DateTime!
+  """Whether to delete this PR's source branch after a successful merge."""
+  deleteBranchOnMerge: Boolean!
   """Pull requests that must be merged before this pull request."""
   dependencies: [GitPullRequest!]!
   """Pull requests that directly depend on this pull request."""
   dependents: [GitPullRequest!]!
   """Markdown description."""
   description: String
-  """Structured diff between source and target branches."""
-  diff: [GitDiffFile!]!
+  """
+  All PR changes, or one comparison commit against its first parent when commitSha is supplied.
+  """
+  diff(commitSha: String): [GitDiffFile!]!
+  """
+  Reported or required checks without a successful result on the current source commit, including required checks that have not reported.
+  """
+  failingStatusChecks: [String!]!
   id: UUID!
+  """
+  Target commit immediately before the completed merge, when its base is known.
+  """
+  mergeBaseSha: String
   """The SHA of the merge commit."""
   mergeSha: String
   """The strategy used when merged."""
   mergeStrategy: GitMergeStrategy
-  """Whether the PR can be cleanly merged."""
+  """
+  Whether Git can merge the branches without conflicts. Does not include reviews, dependencies or status checks.
+  """
   mergeable: Boolean!
   mergedAt: DateTime
   mergedBy: UUID
@@ -9244,6 +9649,8 @@ type GitPullRequest {
   targetBranch: String!
   title: String!
   updated: DateTime!
+  """Version used to reject stale edits and reviews."""
+  version: Long!
 }
 
 enum GitPullRequestActivityAction {
@@ -9328,6 +9735,10 @@ type GitRepoStats {
 type GitRepository {
   """Whether the repository is archived (read-only)."""
   archived: Boolean!
+  """Whether the current caller may execute builds in this repository."""
+  canEdit: Boolean!
+  canExecute: Boolean!
+  canManage: Boolean!
   """The fully-qualified HTTP clone URL for this repository."""
   cloneUrl: String!
   """Merge and commit policy configuration."""
@@ -9602,20 +10013,107 @@ input GitWebhookInput {
   url: String!
 }
 
+type GoalActivation {
+  applicationIds: [String!]!
+  defaultFilter: ExperimentActivationFilter
+  maxDelaySeconds: Int
+  sameSession: Boolean!
+  variationRules: [GoalActivationRule!]!
+}
+
+input GoalActivationInput {
+  applicationIds: [String!]! = []
+  defaultFilter: ExperimentActivationFilterInput
+  maxDelaySeconds: Int
+  sameSession: Boolean! = false
+  variationRules: [GoalActivationRuleInput!] = []
+}
+
+enum GoalActivationMode {
+  EVENT
+  INHERIT
+  NOT_APPLICABLE
+}
+
+type GoalActivationRule {
+  filter: ExperimentActivationFilter
+  mode: GoalActivationMode!
+  variationKey: String!
+}
+
+input GoalActivationRuleInput {
+  filter: ExperimentActivationFilterInput
+  mode: GoalActivationMode!
+  variationKey: String!
+}
+
+type GoalDiagnostics {
+  duplicateDeliveries: Long!
+  excludedInstallations: Long!
+  excludedPrincipals: Long!
+  missingApplication: Long!
+  outsideApplication: Long!
+}
+
 """
 Selects which statistical metric a conversion goal reports.
 
 `UNIQUE_CONVERSION` counts each converting user at most once and analyzes
 the resulting proportion with chi-squared. `EVENT_COUNT` totals matching
 events per user, reports the per-user mean and variance, and analyzes the
-difference with Welch's t-test. `SESSION_DURATION` reports the mean observed
-session span in seconds per subject and also uses Welch's t-test. These metrics
-answer different questions and cannot share a single statistical engine.
+difference with Welch's t-test. `SESSION_DURATION` reports each subject's mean
+session duration in seconds, including observed audio/video progress. Older play events
+estimate remaining media duration, limited by later player events and the aggregation cutoff.
+Sessions end five minutes after their last activity or playback. This also uses
+Welch's t-test. These metrics answer different
+questions and cannot share a single statistical engine.
 """
 enum GoalMetricType {
   EVENT_COUNT
   SESSION_DURATION
   UNIQUE_CONVERSION
+}
+
+type GoalOutcomeScope {
+  applicationIds: [String!]!
+  attributeRecommendationDestination: Boolean!
+  maxDelaySeconds: Int
+  recommendationCard: Boolean!
+  sameSession: Boolean!
+}
+
+input GoalOutcomeScopeInput {
+  applicationIds: [String!]! = []
+  attributeRecommendationDestination: Boolean! = false
+  maxDelaySeconds: Int
+  recommendationCard: Boolean! = false
+  sameSession: Boolean! = false
+}
+
+type GoalPopulation {
+  conversions: Long!
+  distribution: MetricDistribution
+  estimate: Float
+  interval: MetricInterval
+  observationCount: Long!
+  subjects: Long!
+  variance: Float
+}
+
+type GoalPopulationAnalysis {
+  activated: GoalPopulation
+  activationConfigured: Boolean!
+  attribution: DestinationAttribution
+  cutoff: String!
+  diagnostics: GoalDiagnostics!
+  exposureEvents: Long
+  exposureIntensity: MetricDistribution
+  notActivated: GoalPopulation
+  notApplicable: Boolean!
+  overall: GoalPopulation!
+  placement: PlacementIntegrity
+  reach: Float
+  reachInterval: MetricInterval
 }
 
 """
@@ -9781,6 +10279,10 @@ type GuideStep {
   The assigned date for this step in calendar-based guides, null for linear guides
   """
   date: DateTime
+  """
+  The parent guide's metadata, including its ID and slug; null when the caller cannot view it
+  """
+  guide: Metadata
   """Unique identifier for this step within the guide"""
   id: Int!
   """The metadata item containing the content for this step"""
@@ -10054,6 +10556,51 @@ enum IapRedemptionStatus {
   INVALID
   NOT_FOUND
   VERIFICATION_UNAVAILABLE
+}
+
+"""
+Attachment outcome, template choices, and any incomplete post-processing.
+"""
+type ImageAttachment {
+  attached: Boolean!
+  attribute: TemplateImageAttribute
+  availableAttributes: [TemplateImageAttribute!]!
+  collaborationUpdated: Boolean!
+  crop: ImageCrop
+  error: String
+  optimized: Boolean!
+  success: Boolean!
+  targetLanguageTag: String
+  warning: String
+}
+
+type ImageCrop {
+  height: Float!
+  left: Float!
+  top: Float!
+  width: Float!
+}
+
+"""Source image crop in pixels."""
+input ImageCropInput {
+  height: Float!
+  left: Float!
+  top: Float!
+  width: Float!
+}
+
+"""Generate, edit, or attach uploaded images."""
+type ImagesMutation {
+  """
+  Attach an uploaded image through a template image attribute. Omit attributeKey to select the sole attribute or return choices without writing.
+  """
+  attach(attributeKey: String, crop: ImageCropInput, imageMetadataId: UUID!, targetCollectionId: UUID, targetLanguageTag: String, targetMetadataId: UUID): ImageAttachment!
+  """
+  Edit an uploaded image without changing the source. Requires source content VIEW and destination creation access.
+  """
+  edit(name: String! = "Edited Image", parentCollectionId: UUID, prompt: String!, sourceId: UUID!): Metadata!
+  """Create an image. Requires content creation access in the destination."""
+  generate(name: String! = "Generated Image", parentCollectionId: UUID, prompt: String!): Metadata!
 }
 
 """An individual installer within a package version"""
@@ -10348,6 +10895,181 @@ type JobsMutation {
 type KeyValueProviderConfiguration {
   type: String!
   values: [ProviderConfigurationValue!]!
+}
+
+type KitContextReference {
+  id: String!
+  kind: String!
+  path: String
+  ref: String
+  selected: Boolean!
+  title: String!
+}
+
+input KitContextSelection {
+  id: UUID!
+  kind: KitContextSourceKind!
+  path: String
+  ref: String
+}
+
+enum KitContextSourceKind {
+  COLLECTION
+  GIT_FILE
+  METADATA
+  REQUIREMENT
+  SPEC
+  TASK
+}
+
+type KitContextStatus {
+  integrations: [String!]!
+  notices: [String!]!
+  selectionCount: Int!
+  sources: [KitContextReference!]!
+}
+
+type KitDelegation {
+  childSessionId: UUID!
+  deadline: DateTime!
+  depth: Int!
+  failure: String
+  id: UUID!
+  parentSessionId: UUID!
+  parentTurnId: UUID!
+  partial: Boolean!
+  profile: String!
+  result: KitDelegationResult
+  runtimeSeconds: Long!
+  status: KitDelegationStatus!
+}
+
+type KitDelegationArtifact {
+  label: String!
+  metadataId: UUID!
+}
+
+input KitDelegationArtifactInput {
+  label: String! = ""
+  metadataId: UUID!
+}
+
+input KitDelegationContextInput {
+  id: UUID!
+  kind: KitContextSourceKind!
+  path: String
+  ref: String
+}
+
+input KitDelegationInput {
+  artifacts: [UUID!]! = []
+  brief: String!
+  context: [KitDelegationContextInput!]! = []
+  deadline: DateTime
+  expectedResult: String!
+  profile: String!
+  requestId: UUID!
+  runtimeSeconds: Long! = 300
+  scopes: [String!]
+}
+
+type KitDelegationPolicy {
+  maxActive: Int!
+  maxChildren: Int!
+  maxDepth: Int!
+  maxRuntimeSeconds: Long!
+  profiles: [String!]!
+  totalRuntimeSeconds: Long!
+}
+
+type KitDelegationResult {
+  artifacts: [KitDelegationArtifact!]!
+  summary: String!
+}
+
+input KitDelegationResultInput {
+  artifacts: [KitDelegationArtifactInput!]! = []
+  summary: String!
+}
+
+enum KitDelegationStatus {
+  CANCELLED
+  COMPLETED
+  FAILED
+  INTERRUPTED
+  QUEUED
+  RUNNING
+  TIMED_OUT
+}
+
+"""Runtime-bound reads for managed child tasks."""
+type KitDelegations {
+  get(id: UUID!, sessionId: UUID!): KitDelegation
+  list(limit: Int! = 20, offset: Long! = 0, sessionId: UUID!): [KitDelegation!]!
+  settings(sessionId: UUID!): KitDelegationPolicy!
+}
+
+"""
+The narrow ai:delegate surface; these operations do not grant general AI conversation execution.
+"""
+type KitDelegationsMutation {
+  cancel(id: UUID!, sessionId: UUID!): KitDelegation!
+  start(input: KitDelegationInput!, sessionId: UUID!): KitDelegation!
+  submit(output: KitDelegationResultInput!, sessionId: UUID!): KitDelegation!
+  wait(id: UUID!, sessionId: UUID!): KitDelegation!
+}
+
+input KitHarnessChoice {
+  capabilityVersion: String
+  mcpServers: [String!]
+  model: String
+  policyVersion: String!
+  profile: String!
+  reasoning: String
+}
+
+"""
+Public effective settings; infrastructure and credentials remain private.
+"""
+type KitHarnessSettings {
+  canOverride: Boolean!
+  capabilityVersion: String
+  choices: [String!]!
+  effectiveProfile: String!
+  mcpNotices: [String!]!
+  mcpOptions: [KitMcpOption!]!
+  mcpServers: [String!]!
+  model: String
+  modelSource: String!
+  models: [KitModelOption!]!
+  notice: String
+  policyVersion: String!
+  reasoning: String
+  reasoningOptions: [KitModelOption!]!
+  reasoningSource: String!
+  requestedMcpServers: [String!]
+  requestedModel: String
+  requestedProfile: String
+  requestedReasoning: String
+  source: String!
+}
+
+"""Public lifecycle of the conversation's harness."""
+type KitHarnessStatus {
+  cancellationRequested: Boolean!
+  failure: String
+  state: String!
+}
+
+type KitMcpOption {
+  key: String!
+  name: String!
+  required: Boolean!
+}
+
+type KitModelOption {
+  name: String!
+  value: String!
 }
 
 """
@@ -11835,6 +12557,61 @@ type MeilisearchVersion {
 }
 
 """
+Reusable, explicitly saved knowledge backed by Bosca content documents.
+"""
+type Memories {
+  get(conversationId: UUID, id: UUID!): Memory
+  search(conversationId: UUID, query: MemoryQuery!): [Memory!]!
+}
+
+type MemoriesMutation {
+  forget(expectedRevision: String!, id: UUID!): Boolean!
+  remember(input: RememberMemoryInput!): Memory!
+  update(conversationId: UUID, expectedRevision: String!, id: UUID!, refreshSource: Boolean = false, statement: String!): Memory!
+}
+
+type Memory {
+  created: DateTime!
+  id: UUID!
+  modified: DateTime
+  provenance: MemoryAttributes!
+  revision: String!
+  sourceChanged: Boolean!
+  statement: String!
+  tags: [String!]!
+  version: Int!
+}
+
+type MemoryAttributes {
+  collectionId: UUID
+  conversationId: UUID
+  """
+  Null retains this explicitly saved memory until it is forgotten, independently of its conversation.
+  """
+  expires: DateTime
+  ownerId: UUID!
+  scope: MemoryScope!
+  sourceMetadataId: UUID
+  sourceRevision: String
+  sourceVersion: Int
+}
+
+input MemoryQuery {
+  collectionIds: [UUID!] = []
+  ids: [UUID!] = []
+  limit: Int = 5
+  offset: Long = 0
+  personal: Boolean = true
+  tags: [String!] = []
+  text: String = ""
+}
+
+enum MemoryScope {
+  COLLECTION
+  PERSONAL
+}
+
+"""
 A single content block within a chat message, representing text, media, or a reference
 """
 type MessageContent {
@@ -12041,6 +12818,10 @@ type Metadata {
   name: String!
   """Paginated list of parent collections that contain this metadata item"""
   parentCollections(limit: Int!, offset: Long!): [Collection!]!
+  """
+  Accessible current guides that contain this metadata version as a step, including their IDs and slugs
+  """
+  parentGuides: [Metadata!]!
   """ID of the parent metadata item if this is a variant"""
   parentId: String
   """Access permissions defined on this metadata item"""
@@ -12789,6 +13570,23 @@ input MetadataWorkflowState {
   status: String!
 }
 
+type MetricDistribution {
+  count: Long!
+  maximum: Float!
+  mean: Float!
+  p50: Float!
+  p75: Float!
+  p90: Float!
+  p95: Float!
+  p99: Float!
+  standardDeviation: Float!
+}
+
+type MetricInterval {
+  lower: Float!
+  upper: Float!
+}
+
 """
 An AI/ML model configuration registered in the system for use with prompts and AI workflows
 """
@@ -12942,6 +13740,8 @@ type Mutation {
   gateway: GatewayMutations!
   """Git repository mutations."""
   git: GitMutation!
+  """GitHub synchronization mutations."""
+  github: GitHubMutation!
   """Access job management mutations"""
   jobs: JobsMutation!
   """Entry point for language mutations."""
@@ -15048,6 +15848,15 @@ type PipelineDryRun {
 }
 
 """
+An unsaved graph checked by the engine, with deterministic editor coordinates.
+"""
+type PipelineGraphValidation {
+  errors: [String!]!
+  graph: JSON!
+  valid: Boolean!
+}
+
+"""
 One finished pipeline execution recorded in run history (the append-only audit; distinct from PipelineRunState, the live durable run).
 """
 type PipelineHistoryRun {
@@ -15369,6 +16178,14 @@ type PipelineRepoValidationError {
   path: String!
 }
 
+"""A rollback that failed for a terminated pipeline run."""
+type PipelineRollbackFailure {
+  error: String!
+  failedAt: DateTime!
+  nodeId: String!
+  rollbackPipelineId: UUID!
+}
+
 """Result of a manual pipeline run."""
 type PipelineRunResult {
   """
@@ -15417,6 +16234,8 @@ type PipelineRunState {
   """The event that triggered the run."""
   eventName: String!
   id: UUID!
+  """Original input captured for the run."""
+  input: JSON
   """
   For a run a For Each spawned: the 0-based index of the item it processes; null for a Run Pipeline child or a top-level run.
   """
@@ -15425,7 +16244,15 @@ type PipelineRunState {
   modifiedAt: DateTime!
   """The per-node execution timeline for this run, in execution order."""
   nodes: [PipelineNodeExecution!]!
+  """
+  Final output, including runs that completed after the initiating request returned.
+  """
+  output: JSON
   pipelineId: UUID!
+  """
+  Rollbacks of this terminated run that failed, in rollback order. Their side effects may remain in place.
+  """
+  rollbackFailures: [PipelineRollbackFailure!]!
   status: PipelineRunStatus!
   """
   The step-oriented progress view: one row per Status node and per human wait, recursing into fan-out children (per-item rows) — never engine plumbing nodes.
@@ -15582,8 +16409,10 @@ enum PipelineSlotKind {
 type Pipelines {
   """In-flight durable runs (running or suspended), newest activity first."""
   activeRuns(limit: Int = 50, offset: Int = 0): [PipelineRunState!]!
-  """All pipelines."""
-  all: [Pipeline!]!
+  """
+  Administrator pipeline discovery with optional search and offset pagination.
+  """
+  all(limit: Int, offset: Int = 0, search: String): [Pipeline!]!
   """Run history across every pipeline, newest first."""
   allRuns(limit: Int = 50, offset: Int = 0): [PipelineHistoryRun!]!
   """
@@ -15604,6 +16433,8 @@ type Pipelines {
   nodeTypes: [PipelineNodeType!]!
   """A pipeline by id, or null if not found."""
   pipeline(id: UUID!): Pipeline
+  """A pipeline by its endpoint key."""
+  pipelineByKey(key: String!): Pipeline
   """
   A single durable run's live state + (via its nodes field) per-node timeline, by run id; in-flight or finished.
   """
@@ -15624,6 +16455,8 @@ type Pipelines {
   Every catalogued concrete value type and its domain interfaces/base types — drives Cast targets.
   """
   types: [String!]!
+  """Validate and lay out an unsaved graph without storing or executing it."""
+  validateGraph(graph: JSON!): PipelineGraphValidation!
 }
 
 """Pipeline mutation operations."""
@@ -15686,7 +16519,11 @@ type PipelinesMutation {
   """
   restartRun(runId: UUID!): PipelineRunState
   """
-  Run a pipeline now, inline, FOR REAL — action nodes execute their side effects. The payload
+  Run a terminated run's failed rollbacks again under the calling administrator's authority. Returns the rollbacks that are still failed.
+  """
+  retryRollbacks(runId: UUID!): [PipelineRollbackFailure!]!
+  """
+  Run a pipeline now as a durable job, FOR REAL — action nodes execute their side effects. The payload
   is the pipeline's input (validated against the input schema for JSON-input pipelines, or
   decoded as the accepted event type). Runs under the caller's principal and is recorded in
   run history as a "manual" run.
@@ -15717,6 +16554,13 @@ type PipelinesMutation {
   Create or replace a node secret; the value is encrypted at rest and never returned.
   """
   setSecret(name: String!, value: String!): PipelineSecret!
+}
+
+type PlacementIntegrity {
+  both: Long!
+  expectedOnly: Long!
+  neither: Long!
+  unexpectedOnly: Long!
 }
 
 """Subscription-plan-specific behavior."""
@@ -17650,6 +18494,8 @@ type Query {
   gateway: GatewayNamespace!
   """Git repository operations."""
   git: Git!
+  """GitHub synchronization operations."""
+  github: GitHub!
   """Access the list of supported languages for content localization."""
   languages: Languages!
   """Entry point for localization queries"""
@@ -17809,6 +18655,7 @@ type Recommendation {
     """
     profileId: UUID
   ): [RecommendationResult!]!
+  modelSelection: RecommendationModelSelection!
   """
   Access Personalization Signal definitions — the config for how profile attributes/segments personalize recommendations (admin only).
   """
@@ -17992,17 +18839,23 @@ type RecommendationContextModel {
   version: Long!
 }
 
-"""Admin operations for saved recommendation contexts."""
+"""Administrator context reads and artifact-filtered model discovery."""
 type RecommendationContexts {
-  """Retrieve every saved recommendation context."""
+  """
+  Retrieve saved contexts. Artifact tokens see only contexts with model versions they can pull.
+  """
   all: [RecommendationContext!]!
   """Retrieve a context by identifier."""
   context(id: UUID!): RecommendationContext
   """Retrieve a context by the type value used in requests."""
   contextByType(type: String!): RecommendationContext
-  """Recent training history plus protected active and pinned versions."""
+  """
+  Recent training history plus protected active and pinned versions. Artifact tokens see only versions they can pull.
+  """
   models(contextId: UUID!): [RecommendationContextModel!]!
-  """Exact exported versions needed by serving or awaiting load validation."""
+  """
+  Exact exported versions needed by serving or awaiting load validation. Artifact tokens see only versions they can pull.
+  """
   servingModels: [RecommendationContextModel!]!
 }
 
@@ -18089,6 +18942,11 @@ input RecommendationMetadataFilterInput {
   When non-empty, only metadata whose content type starts with one of these prefixes is assigned to the context.
   """
   includedContentTypePrefixes: [String!]! = []
+}
+
+"""Model versions visible under the caller's artifact pull permissions."""
+type RecommendationModelSelection {
+  personalizedVersions: [Long!]!
 }
 
 """
@@ -18617,6 +19475,20 @@ input RegisterWorkOpsArtifactInput {
   versionId: UUID!
 }
 
+input RememberMemoryInput {
+  collectionId: UUID
+  conversationId: UUID
+  expires: DateTime
+  """
+  Caller-generated UUID; reuse the same UUID and input when retrying a save.
+  """
+  requestId: UUID!
+  scope: MemoryScope = PERSONAL
+  sourceMetadataId: UUID
+  statement: String!
+  tags: [String!] = []
+}
+
 """Requests a return/RMA against a paid order."""
 input ReturnInput {
   cartId: UUID!
@@ -19068,8 +19940,14 @@ enum ScriptType {
   TRIGGER
 }
 
+type ScriptValidationResult {
+  compiled: Boolean!
+  errors: [String!]!
+  valid: Boolean!
+}
+
 type Scripts {
-  all(includeDeleted: Boolean, type: ScriptType): [Script!]!
+  all(includeDeleted: Boolean, limit: Int, offset: Int, type: ScriptType): [Script!]!
   script(id: UUID!): Script
   scriptByKey(key: String!): Script
 }
@@ -19080,9 +19958,10 @@ type ScriptsMutation {
   deletePermission(permission: PermissionInput!): Boolean!
   deleteScript(id: UUID!): Boolean!
   disableScript(id: UUID!): Boolean!
-  editScript(id: UUID!, script: ScriptInput!, sourceRef: SourceRefInput): Script!
+  editScript(expectedVersion: Int, id: UUID!, script: ScriptInput!, sourceRef: SourceRefInput): Script!
   enableScript(id: UUID!): Boolean!
   executeScript(id: UUID!, input: JSON): JSON
+  validateScript(compile: Boolean = false, id: UUID, source: String!): ScriptValidationResult!
 }
 
 """
@@ -20177,6 +21056,7 @@ input StyleInput {
 """Input for submitting a review."""
 input SubmitGitReviewInput {
   body: String
+  expectedVersion: Long
   pullRequestId: UUID!
   status: GitReviewStatus!
 }
@@ -20615,6 +21495,17 @@ type TemplateAttributeToolsMutation {
     """The updated tool definition"""
     tool: TemplateAttributeToolInput!
   ): TemplateAttributeTool!
+}
+
+"""An image relationship declared by the target template."""
+type TemplateImageAttribute {
+  defaultAspectRatio: Float
+  description: String!
+  key: String!
+  list: Boolean!
+  name: String!
+  relationship: String!
+  targetSize: [Int!]
 }
 
 """
@@ -21225,7 +22116,12 @@ scalar UUID
 
 """Input for updating a pull request."""
 input UpdateGitPullRequestInput {
+  """Changes this PR's branch cleanup setting. Omit to preserve it."""
+  deleteBranchOnMerge: Boolean
   description: String
+  expectedVersion: Long
+  sourceBranch: String
+  targetBranch: String
   title: String
 }
 
@@ -22842,6 +23738,7 @@ type WorkOpsReleaseProjectVersion {
 
 type WorkOpsReleaseRepositoryAccess {
   canEdit: Boolean!
+  canExecute: Boolean!
   repositoryId: UUID!
 }
 
@@ -22911,6 +23808,10 @@ type WorkOpsRequirement {
   id: UUID!
   key: String!
   labelIds: [UUID!]!
+  """
+  The linked content item, visible only with both requirement and content view access.
+  """
+  metadata: Metadata
   metadataId: UUID!
   modifiedAt: DateTime!
   modifiedByPrincipalId: UUID!

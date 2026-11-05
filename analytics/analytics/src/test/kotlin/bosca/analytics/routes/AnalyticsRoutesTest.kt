@@ -3,6 +3,7 @@ package bosca.analytics.routes
 import bosca.analytics.model.AnalyticsQuery
 import bosca.analytics.model.AnalyticsQueryExecutionParameterInput
 import bosca.analytics.model.AnalyticsQueryParameter
+import bosca.analytics.model.AnalyticsQueryEvidence
 import bosca.analytics.model.AnalyticsQueryResponse
 import bosca.analytics.model.Event
 import bosca.analytics.model.EventPipelineContext
@@ -111,6 +112,35 @@ class AnalyticsRoutesTest {
         assertEquals(response, route.execute(call, authentication))
         assertEquals(AnalyticsQueryResponse.serializer().descriptor, route.serializer().descriptor)
         assertFailsWith<IllegalStateException> { route.execute(call().first, authentication) }
+    }
+
+    @Test
+    fun `both execute routes omit evidence without view permission and retain cache metadata`() = runTest {
+        val id = UUID.random()
+        val query = query(id)
+        val queries = mockk<AnalyticsQueryService>()
+        val execution = mockk<AnalyticsQueryExecutionService>()
+        val evaluator = mockk<AnalyticsQueryPermissionEvaluator>()
+        val at = bosca.serialization.OffsetDateTime.parse("2026-10-23T12:00:00Z")
+        val evidence = AnalyticsQueryEvidence(id, "SELECT 1", emptyList(), at, 17)
+        val original = AnalyticsQueryResponse(listOf(JsonPrimitive(1)), true, at, true, evidence)
+        coEvery { queries.getQueryById(id) } returns query
+        coEvery { queries.getParameters(id) } returns emptyList()
+        coJustRun { evaluator.verifyAllowed(authentication, query, PermissionAction.EXECUTE) }
+        coEvery { execution.execute(id, emptyList()) } returns original
+        val request = call(id.toString(), body = "{}").first
+        for (allowed in listOf(false, true)) {
+            coEvery { evaluator.isAllowed(authentication, query, PermissionAction.VIEW) } returns allowed
+            val post = Execute(queries, execution, evaluator).execute(request, authentication)
+            val get = ExecuteGet(queries, execution, evaluator).execute(request, authentication)
+            for (result in listOf(post, get)) {
+                assertEquals(original.records, result.records)
+                assertTrue(result.cached)
+                assertTrue(result.stale)
+                assertEquals(at, result.refreshedAt)
+                assertEquals(if (allowed) evidence else null, result.evidence)
+            }
+        }
     }
 
     @Test

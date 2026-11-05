@@ -92,3 +92,8 @@ fragment AnalyticsDashboardFragment on AnalyticsDashboard {
         }
     }
 }
+
+fragment AnalyticsQueryEvidenceFragment on AnalyticsQueryEvidence {
+    queryId sql executedAt durationMs
+    parameters { position parameter type value }
+}

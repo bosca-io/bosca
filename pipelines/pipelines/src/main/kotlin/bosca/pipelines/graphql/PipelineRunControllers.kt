@@ -13,6 +13,7 @@ import bosca.pipelines.model.PipelineRunAwait
 import bosca.pipelines.model.PipelineRunUpdate
 import bosca.pipelines.model.PipelineRunLogWithName
 import bosca.pipelines.model.PipelineRunStatus
+import bosca.pipelines.model.RollbackRecord
 import bosca.pipelines.service.PipelineRunService
 import bosca.serialization.UUID
 import kotlinx.serialization.builtins.ListSerializer
@@ -34,6 +35,15 @@ class PipelineRunStepController : GraphQLController<bosca.pipelines.model.RunSte
     @Field fun runId(source: bosca.pipelines.model.RunStep): UUID? = source.runId
     @Field fun type(source: bosca.pipelines.model.RunStep): String? = source.type
     @Field fun channelType(source: bosca.pipelines.model.RunStep): String? = source.channelType
+}
+
+/** Field wiring for the `PipelineRollbackFailure` GraphQL type. */
+@TypeController(type = "PipelineRollbackFailure")
+class PipelineRollbackFailureController : GraphQLController<RollbackRecord> {
+    @Field fun nodeId(source: RollbackRecord): String = source.nodeId
+    @Field fun rollbackPipelineId(source: RollbackRecord): UUID = source.rollbackPipelineId
+    @Field fun error(source: RollbackRecord): String = checkNotNull(source.error) { "Rollback ${source.seq} has not failed" }
+    @Field fun failedAt(source: RollbackRecord): bosca.serialization.OffsetDateTime = checkNotNull(source.failedAt) { "Rollback ${source.seq} has not failed" }
 }
 
 /** A parked node resolved from the run's graph snapshot (the `PipelineAwaitingNode` GraphQL type). */
@@ -111,6 +121,10 @@ class PipelineRunStateController(
     @Field
     fun itemIndex(source: PipelineRun): Int? = source.itemIndex
 
+    /** Final output remains available when a durable run completes after the initiating request. */
+    @Field
+    fun output(source: PipelineRun): JsonElement? = source.output
+
     @Field
     fun id(source: PipelineRun): UUID = source.id
 
@@ -145,6 +159,9 @@ class PipelineRunStateController(
         return runService.nodeTimeline(source.id).associateBy { it.nodeId }.values
             .firstOrNull { it.nodeId in awaiting && it.status == NodeExecutionStatus.FAILED }?.error
     }
+
+    @Field
+    suspend fun rollbackFailures(source: PipelineRun): List<RollbackRecord> = runService.rollbackFailures(source.id)
 
     @Field
     fun input(source: PipelineRun): JsonElement? = source.input

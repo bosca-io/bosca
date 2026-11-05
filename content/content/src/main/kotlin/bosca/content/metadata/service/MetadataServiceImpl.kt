@@ -33,6 +33,7 @@ import bosca.content.metadata.model.BibleInput
 import bosca.content.metadata.model.DataCollaborationInput
 import bosca.content.metadata.model.DataInput
 import bosca.content.metadata.model.DocumentInput
+import bosca.content.metadata.model.Document
 import bosca.content.metadata.model.Guide
 import bosca.content.metadata.model.GuideInput
 import bosca.content.metadata.model.GuideStep
@@ -134,6 +135,25 @@ class MetadataServiceImpl(
     private val transitioner: ObjectProvider<Transitioner>,
     private val videoService: VideoService,
 ) : MetadataService {
+
+    override suspend fun markDocumentDeleted(metadata: Metadata, expectedDocument: Document) = transaction {
+        verifyDocumentUnchanged(metadata, expectedDocument)
+        markDeleted(metadata.id)
+    }
+
+    private suspend fun verifyDocumentUnchanged(metadata: Metadata, expected: Document) {
+        // Match setDocument's lock order: the draft first, then its metadata row.
+        val draft = documentService.getDocumentForUpdate(metadata.id, metadata.version)
+        val current = requireNotNull(repository.getForUpdate(metadata.id)) { "Document is unavailable" }
+        require(!current.deleted && current.version == metadata.version && current.systemAttributes == metadata.systemAttributes) {
+            "Document changed; read it again before editing"
+        }
+        require(expected.metadataId == current.id && expected.version == current.version && draft != null &&
+            draft.title == expected.title && draft.content == expected.content &&
+            draft.templateMetadataId == expected.templateMetadataId && draft.templateMetadataVersion == expected.templateMetadataVersion) {
+            "Document changed; read it again before editing"
+        }
+    }
 
     private suspend fun classifyRecommendationContexts(
         contentType: String?,
@@ -668,6 +688,16 @@ class MetadataServiceImpl(
         repository.setModified(metadata.id)
         removeFromCache(metadata)
         MetadataUpdated(metadata).dispatch()
+    }
+
+    override suspend fun setDocument(
+        metadata: Metadata,
+        document: DocumentInput,
+        expectedDocument: Document,
+        collaborationSync: CollaborationSyncMode,
+    ) = transaction {
+        verifyDocumentUnchanged(metadata, expectedDocument)
+        setDocument(metadata, document, collaborationSync)
     }
 
     override suspend fun setBible(metadata: Metadata, bible: BibleInput) = transaction {

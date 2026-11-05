@@ -10,7 +10,7 @@ concurrency:
 jobs:
   publish-charts:
     runner: linux
-    timeout: 20m
+    timeout: 150m
     steps:
       - name: Validate release tag
         run: |
@@ -26,6 +26,10 @@ jobs:
         uses: setup-registry
         with:
           repository: bosca-maven
+      - name: Setup Node
+        uses: setup-node
+        with:
+          version: "22"
       - name: Setup Helm
         run: |
           set -euo pipefail
@@ -54,10 +58,34 @@ jobs:
         run: bash helm/scripts/release-test.sh
       - name: Test release versions
         run: python3 helm/tests/test_release_versions.py
+      - name: Test Kit image defaults
+        run: node --test helm/scripts/kit-images.test.mjs
       - name: Test Git gateway routing
         run: python3 helm/tests/test_git_routes.py
+      - name: Resolve released Kit runtime metadata
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 7200))
+          while true; do
+            status=0
+            node helm/scripts/kit-images.mjs "${RELEASE_REF#refs/tags/}" .kit-images.json || status=$?
+            (( status == 0 )) && break
+            # Only an unpublished image (exit 75) is worth waiting for; any other failure is permanent.
+            if (( status != 75 )); then
+              echo "Kit runtime metadata could not be resolved for this release." >&2
+              exit "$status"
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "Kit runtime images are not available for this release; check their image release jobs." >&2
+              exit 1
+            fi
+            echo "Waiting for this release's qualified Kit runtime images."
+            sleep 30
+          done
+        env:
+          RELEASE_REF: ${{ ref }}
       - name: Package charts
-        run: bash helm/scripts/release.sh package --version "${RELEASE_REF#refs/tags/}" --output .helm-release-packages
+        run: bash helm/scripts/release.sh package --version "${RELEASE_REF#refs/tags/}" --kit-images .kit-images.json --output .helm-release-packages
         env:
           RELEASE_REF: ${{ ref }}
       - name: Publish and verify both destinations

@@ -38,8 +38,9 @@ class PipelineGitSyncServiceImplTest {
     private val repository = mockk<PipelineRepository>(relaxed = true)
     private val writeService = mockk<RepositoryWriteService>(relaxed = true)
     private val browseService = mockk<RepositoryBrowseService>(relaxed = true)
+    private val security = mockk<bosca.security.service.SecurityService>(relaxed = true)
 
-    private val sync = PipelineGitSyncServiceImpl(pipelineService, repository, writeService, browseService)
+    private val sync = PipelineGitSyncServiceImpl(pipelineService, repository, writeService, browseService, security)
 
     private val repoId = Uuid.random()
     private val emptyGraph = JsonObject(mapOf("nodes" to JsonArray(emptyList()), "edges" to JsonArray(emptyList())))
@@ -116,6 +117,19 @@ class PipelineGitSyncServiceImplTest {
     }
 
     @Test
+    fun `onPushEvent applies the pusher's authority to the pull`() = runTest {
+        val pusher = member()
+        coEvery { browseService.listChangedPaths(repoId, "old", "abc") } returns setOf("pipelines/p.yaml")
+        treeWith("name: P\naccepted_input_type: Event\ntriggered: true\n")
+        coEvery { repository.getByGitRepository(repoId, "pipelines/p.yaml") } returns null
+
+        sync.onPushEvent(repoId, "old", "abc", pusher)
+
+        anySave()
+        coVerify { security.getPrincipalGroups(pusher) }
+    }
+
+    @Test
     fun `onPushEvent triggers a pull when a pipeline file changed`() = runTest {
         coEvery { browseService.listChangedPaths(repoId, "old", "new") } returns setOf("pipelines/p.yaml")
         // Empty tree on the new commit — pullFromGit will succeed trivially.
@@ -158,7 +172,7 @@ class PipelineGitSyncServiceImplTest {
             )
             coEvery { browseService.readBlob(repoId, "abc", path) } returns
                 Blob(content = content, size = content.length.toLong(), sha = "x")
-            val service = PipelineGitSyncServiceImpl(pipelineService, repository, writeService, browseService)
+            val service = PipelineGitSyncServiceImpl(pipelineService, repository, writeService, browseService, security)
             val connectionManager = mockk<ConnectionManager>(relaxed = true)
 
             val result = withContext(connectionManager.asCoroutineContext()) {
@@ -206,8 +220,9 @@ class PipelineGitSyncServiceImplTest {
         } returns saved
 
         val connectionManager = mockk<ConnectionManager>(relaxed = true)
+        val administrator = administrator()
         val result = withContext(connectionManager.asCoroutineContext()) {
-            sync.pullFromGit(repoId, "abc")
+            sync.pullFromGit(repoId, "abc", administrator)
         }
 
         val ok = assertIs<PipelineSyncResult.Ok>(result)
@@ -245,6 +260,152 @@ class PipelineGitSyncServiceImplTest {
         assertIs<PipelineSyncResult.Ok>(result)
         coVerify { pipelineService.save(existingId, "Updated", "", "Event", false, 4, any()) }
         coVerify(exactly = 0) { repository.linkToGit(any(), any(), any()) }
+    }
+
+    // --- pullFromGit: unattended authority ---
+
+    private fun administrator(): UUID = Uuid.random().also {
+        coEvery { security.getPrincipalGroups(it) } returns listOf(
+            bosca.security.model.Group(Uuid.random(), "administrators", "", bosca.security.model.GroupType.SYSTEM),
+        )
+    }
+
+    private fun member(): UUID = Uuid.random().also {
+        coEvery { security.getPrincipalGroups(it) } returns listOf(
+            bosca.security.model.Group(Uuid.random(), "pipeline-editors", "", bosca.security.model.GroupType.PRINCIPAL),
+        )
+    }
+
+    private fun treeWith(content: String, path: String = "pipelines/p.yaml") {
+        coEvery { browseService.listTree(repoId, "abc", PipelineRepoLayout.PIPELINES_DIR) } returns listOf(
+            TreeEntry(name = path.substringAfterLast('/'), path = path, type = TreeEntryType.BLOB, mode = 0, sha = "x"),
+        )
+        coEvery { browseService.readBlob(repoId, "abc", path) } returns Blob(content = content, size = content.length.toLong(), sha = "x")
+        coEvery { pipelineService.validateGraph(any()) } returns null
+    }
+
+    private fun record(id: UUID, triggered: Boolean = false, schedule: String? = null) = PipelineRecord(
+        id = id, name = "P", acceptedInputType = "Event", graph = emptyGraph, triggered = triggered, schedule = schedule, version = 2,
+    )
+
+    private fun anySave() = coVerify(exactly = 0) { pipelineService.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+
+    private suspend fun pullAs(pusher: UUID?) = withContext(mockk<ConnectionManager>(relaxed = true).asCoroutineContext()) {
+        sync.pullFromGit(repoId, "abc", pusher)
+    }
+
+    @Test
+    fun `a new triggered or scheduled pipeline needs an administrator pusher`() = runTest {
+        coEvery { repository.getByGitRepository(repoId, "pipelines/p.yaml") } returns null
+        for (line in listOf("triggered: true", "schedule: \"0 * * * *\"")) {
+            treeWith("name: P\naccepted_input_type: Event\n$line\n")
+            for (pusher in listOf(member(), null)) {
+                val failed = assertIs<PipelineSyncResult.ValidationFailed>(pullAs(pusher), line)
+                assertEquals("pipelines/p.yaml", failed.errors.single().path)
+            }
+        }
+        anySave()
+    }
+
+    @Test
+    fun `a member cannot change a pipeline an unattended pipeline reaches`() = runTest {
+        val id = Uuid.random()
+        val current = pipeline(id = id).copy(triggered = false)
+        treeWith("name: P\naccepted_input_type: Event\n")
+        coEvery { repository.getByGitRepository(repoId, "pipelines/p.yaml") } returns record(id)
+        coEvery { pipelineService.runsUnattended(id) } returns true
+        coEvery { pipelineService.get(id) } returns current
+        coEvery { pipelineService.decodeGraph(any()) } returns bosca.pipelines.model.PipelineGraph(emptyList(), emptyList())
+        coEvery { pipelineService.graphAsJsonElement(current) } returns emptyGraph
+        coEvery { pipelineService.graphAsJsonElement(match { it !== current }) } returns JsonObject(mapOf("changed" to JsonArray(emptyList())))
+
+        assertIs<PipelineSyncResult.ValidationFailed>(pullAs(member()))
+
+        anySave()
+        coVerify { repository.setSyncError(id, match { "administrator" in it }) }
+    }
+
+    @Test
+    fun `a member cannot change the trigger or schedule of a running pipeline`() = runTest {
+        val id = Uuid.random()
+        treeWith("name: P\naccepted_input_type: Event\n")
+        coEvery { repository.getByGitRepository(repoId, "pipelines/p.yaml") } returns record(id, triggered = true)
+        assertIs<PipelineSyncResult.ValidationFailed>(pullAs(member()))
+        coEvery { repository.getByGitRepository(repoId, "pipelines/p.yaml") } returns record(id, schedule = "0 * * * *")
+        assertIs<PipelineSyncResult.ValidationFailed>(pullAs(member()))
+        anySave()
+    }
+
+    @Test
+    fun `an unchanged unattended pipeline does not block a member or an unattributed commit`() = runTest {
+        val id = Uuid.random()
+        val current = pipeline(id = id)
+        treeWith("name: Renamed\naccepted_input_type: Event\ntriggered: true\n")
+        coEvery { repository.getByGitRepository(repoId, "pipelines/p.yaml") } returns record(id, triggered = true)
+        coEvery { pipelineService.get(id) } returns current
+        coEvery { pipelineService.decodeGraph(any()) } returns bosca.pipelines.model.PipelineGraph(emptyList(), emptyList())
+        coEvery { pipelineService.graphAsJsonElement(any()) } returns emptyGraph
+        coEvery { pipelineService.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns current
+
+        assertIs<PipelineSyncResult.Ok>(pullAs(member()))
+        assertIs<PipelineSyncResult.Ok>(pullAs(null))
+    }
+
+    @Test
+    fun `a blank stored schedule counts as no schedule and a matching schedule is not a change`() = runTest {
+        val id = Uuid.random()
+        val current = pipeline(id = id)
+        coEvery { pipelineService.get(id) } returns current
+        coEvery { pipelineService.decodeGraph(any()) } returns bosca.pipelines.model.PipelineGraph(emptyList(), emptyList())
+        coEvery { pipelineService.graphAsJsonElement(any()) } returns emptyGraph
+        coEvery { pipelineService.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns current
+
+        treeWith("name: P\naccepted_input_type: Event\ntriggered: true\n")
+        coEvery { repository.getByGitRepository(repoId, "pipelines/p.yaml") } returns record(id, triggered = true, schedule = " ")
+        assertIs<PipelineSyncResult.Ok>(pullAs(member()))
+
+        treeWith("name: P\naccepted_input_type: Event\nschedule: \"0 * * * *\"\n")
+        coEvery { repository.getByGitRepository(repoId, "pipelines/p.yaml") } returns record(id, schedule = "0 * * * *")
+        assertIs<PipelineSyncResult.Ok>(pullAs(member()))
+
+        coEvery { repository.getByGitRepository(repoId, "pipelines/p.yaml") } returns record(id, schedule = "5 * * * *")
+        assertIs<PipelineSyncResult.ValidationFailed>(pullAs(member()))
+    }
+
+    @Test
+    fun `an unattended row that cannot be read is treated as changed`() = runTest {
+        val id = Uuid.random()
+        treeWith("name: P\naccepted_input_type: Event\ntriggered: true\n")
+        coEvery { repository.getByGitRepository(repoId, "pipelines/p.yaml") } returns record(id, triggered = true)
+        coEvery { pipelineService.get(id) } returns null
+
+        assertIs<PipelineSyncResult.ValidationFailed>(pullAs(member()))
+        anySave()
+    }
+
+    @Test
+    fun `a member can change a pipeline that does not run unattended`() = runTest {
+        val id = Uuid.random()
+        treeWith("name: P\naccepted_input_type: Event\n")
+        coEvery { repository.getByGitRepository(repoId, "pipelines/p.yaml") } returns record(id)
+        coEvery { pipelineService.runsUnattended(id) } returns false
+        coEvery { pipelineService.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns pipeline(id = id)
+
+        assertIs<PipelineSyncResult.Ok>(pullAs(member()))
+
+        coVerify(exactly = 0) { pipelineService.decodeGraph(any()) }
+    }
+
+    @Test
+    fun `an administrator pusher can change an unattended pipeline`() = runTest {
+        val id = Uuid.random()
+        treeWith("name: P\naccepted_input_type: Event\n")
+        coEvery { repository.getByGitRepository(repoId, "pipelines/p.yaml") } returns record(id, triggered = true)
+        coEvery { pipelineService.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns pipeline(id = id)
+
+        assertIs<PipelineSyncResult.Ok>(pullAs(administrator()))
+
+        coVerify(exactly = 0) { pipelineService.runsUnattended(any()) }
     }
 
     // --- backfill ---
@@ -451,12 +612,12 @@ class PipelineGitSyncServiceImplTest {
         // spy the service and stub pullFromGit to return Failure. listChangedPaths still gates the call.
         val spy = spyk(sync)
         coEvery { browseService.listChangedPaths(repoId, "old", "new") } returns setOf("pipelines/p.yaml")
-        coEvery { spy.pullFromGit(repoId, "new") } returns PipelineSyncResult.Failure("boom")
+        coEvery { spy.pullFromGit(repoId, "new", null) } returns PipelineSyncResult.Failure("boom")
 
         // Does not throw; the Failure arm just logs.
         spy.onPushEvent(repoId, "old", "new")
 
-        coVerify(exactly = 1) { spy.pullFromGit(repoId, "new") }
+        coVerify(exactly = 1) { spy.pullFromGit(repoId, "new", null) }
     }
 
     // --- backfill: the ValidationFailed arm of its per-entry when() ---

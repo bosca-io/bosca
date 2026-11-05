@@ -11,6 +11,13 @@ const configsGql = gql`
   }
 `
 
+const { data: groupsData } = useAsyncQuery<{ security: { groups: { all: Array<{ id: string; name: string }> } } }>(
+  'configuration-groups', gql`query ConfigurationGroups { security { groups { all(offset: 0, limit: 500) { id name } } } }`, {}, { server: false },
+)
+const groupOptions = computed(() => (groupsData.value?.security.groups.all ?? []).map(group => ({ label: group.name, value: group.id })))
+const permissionOptions = ['VIEW', 'LIST', 'EDIT', 'DELETE', 'MANAGE', 'EXECUTE', 'IMPERSONATE'].map(action => ({ label: action, value: action }))
+const permissions = ref<Array<{ action: string; groupId: string }>>([])
+
 const setConfigGql = gql`
   mutation SetConfiguration($config: ConfigurationInput!) {
     configurations { setConfiguration(configuration: $config) { id key description public value } }
@@ -49,6 +56,7 @@ const filteredConfigs = computed(() => {
 })
 
 const editingKey = ref<string | null>(null)
+const editingId = ref('')
 const editForm = reactive({ key: '', description: '', value: '', public: false })
 const saving = ref(false)
 const deleteTarget = ref<string | null>(null)
@@ -62,18 +70,22 @@ const valueError = computed(() => {
 
 function startEdit(config: ConfigEntry) {
   editingKey.value = config.key
+  editingId.value = config.id
   editForm.key = config.key
   editForm.description = config.description
   editForm.value = JSON.stringify(config.value, null, 2)
   editForm.public = config.public
+  permissions.value = config.permissions.map(permission => ({ action: permission.action, groupId: permission.group.id }))
 }
 
 function startNew() {
   editingKey.value = '__new__'
+  editingId.value = ''
   editForm.key = ''
   editForm.description = ''
   editForm.value = ''
   editForm.public = false
+  permissions.value = []
 }
 
 function cancelEdit() {
@@ -97,7 +109,8 @@ async function onSave() {
         description: editForm.description,
         value: parsedValue,
         public: editForm.public,
-        permissions: [],
+        // The server assigns grants to the saved configuration; a new one has no ID yet.
+        permissions: permissions.value.map(permission => ({ ...permission, entityId: editingId.value })),
       },
     })
     toast.success('Configuration saved')
@@ -183,13 +196,22 @@ function formatValue(value: unknown): string {
             v-model="editForm.public"
             label="Public (accessible without auth)"
             :accent="accent" />
+          <div class="permissions">
+            <span>Group permissions</span>
+            <div v-for="(permission, index) in permissions" :key="index" class="permission-row">
+              <Select v-model="permission.groupId" :options="groupOptions" label="Group" />
+              <Select v-model="permission.action" :options="permissionOptions" label="Action" />
+              <Button size="sm" @click="permissions.splice(index, 1)">Remove</Button>
+            </div>
+            <Button size="sm" @click="permissions.push({ action: 'VIEW', groupId: '' })">Add permission</Button>
+          </div>
           <div class="edit-actions">
             <Button size="sm" @click="cancelEdit">Cancel</Button>
             <Button
               size="sm"
               primary
               :accent="accent"
-              :disabled="!editForm.key.trim() || saving || !!valueError"
+              :disabled="!editForm.key.trim() || saving || !!valueError || permissions.some(permission => !permission.groupId)"
               @click="onSave">
               {{ saving ? 'Saving…' : 'Save' }}
             </Button>
@@ -237,6 +259,8 @@ function formatValue(value: unknown): string {
 </template>
 
 <style scoped>
+.permissions { display: flex; flex-direction: column; gap: 10px; }
+.permission-row { display: flex; align-items: end; gap: 10px; }
 .config-content {
   display: flex;
   flex-direction: column;

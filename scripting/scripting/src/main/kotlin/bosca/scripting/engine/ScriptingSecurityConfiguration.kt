@@ -6,7 +6,6 @@ import kotlinx.serialization.Serializable
 data class ScriptingSecurityConfiguration(
     val allowedPrefixes: List<String> = DEFAULT_ALLOWED_PREFIXES,
     val executionTimeoutSeconds: Long = 600L,
-    val triggerServiceAccount: String = "sa"
 ) {
     companion object {
 

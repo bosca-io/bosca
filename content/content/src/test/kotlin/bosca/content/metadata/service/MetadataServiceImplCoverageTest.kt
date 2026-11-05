@@ -1,6 +1,32 @@
 package bosca.content.metadata.service
 
 import bosca.cache.CacheManager
+import bosca.attributes.AttributeType
+import bosca.attributes.AttributeUiType
+import bosca.content.attributes.model.TemplateAttribute
+import bosca.content.image.model.Coordinates
+import bosca.content.image.service.ImageServiceImpl
+import bosca.content.metadata.model.Document
+import bosca.content.metadata.model.DocumentTemplateAttribute
+import bosca.content.metadata.graphql.MetadataMutation
+import bosca.content.metadata.graphql.MetadataMutationController
+import bosca.content.metadata.graphql.MetadataMutationControllerDispatcher
+import bosca.content.metadata.repository.DocumentRepositoryImpl
+import bosca.content.metadata.repository.DocumentCollaborationRepositoryImpl
+import bosca.content.metadata.repository.DocumentTemplateRepositoryImpl
+import bosca.content.security.CollectionPermissionEvaluator
+import bosca.content.security.MetadataPermissionEvaluator
+import bosca.documents.Content
+import bosca.documents.MarkdownConverter
+import bosca.graphql.server.*
+import bosca.security.model.Group
+import bosca.security.model.GroupType
+import bosca.security.service.ScopedAuthenticatedPrincipal
+import bosca.security.service.AuthenticationContext
+import bosca.security.service.GroupEvaluator
+import io.opentelemetry.api.GlobalOpenTelemetry
+import io.opentelemetry.api.trace.Tracer
+import bosca.serialization.OffsetDateTime
 import bosca.cache.RequestCache
 import bosca.cache.RequestCacheSerializer
 import bosca.cache.RequestCacheSerializerImpl
@@ -54,6 +80,7 @@ import bosca.trait.service.TraitService
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.spyk
 import io.mockk.unmockkAll
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
@@ -70,6 +97,9 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
 import org.junit.AfterClass
@@ -108,6 +138,7 @@ class MetadataServiceImplCoverageTest {
         serializersModule = SerializersModule {
             contextual(OffsetDateTimeSerializer())
             contextual(UUIDSerializer())
+            contextual(Content.serializer())
         }
     }
 
@@ -366,6 +397,124 @@ class MetadataServiceImplCoverageTest {
     }
 
     // ── Simple boolean/attribute setters ─────────────────────────────────────
+
+    @Test
+    fun `document writing through GraphQL persists typed content and enforces scoped authority`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val documentJson = testJson
+        provides<bosca.db.ConnectionPool> { connectionPool }
+        provides<Tracer> { GlobalOpenTelemetry.getTracer("document-writing-test") }
+        val metadataProvider = mockk<ObjectProvider<MetadataService>>()
+        coEvery { metadataProvider.get() } returns service
+        val documents = DocumentServiceImpl(metadataProvider, DocumentRepositoryImpl(), DocumentCollaborationRepositoryImpl(), mockk(relaxed = true), documentJson)
+        coEvery { documentService.addDocument(any(), any(), any()) } coAnswers {
+            documents.addDocument(firstArg(), secondArg(), thirdArg())
+        }
+        coEvery { documentService.setDocument(any(), any(), any()) } coAnswers {
+            documents.setDocument(firstArg(), secondArg(), thirdArg())
+        }
+        val groups = GroupEvaluator(mockk())
+        val controller = MetadataMutationController(
+            service, collectionService, MetadataPermissionEvaluator(service, mockk(), groups),
+            CollectionPermissionEvaluator(collectionService, mockk(), groups), groups, objectService,
+            guideService, slugService, documents, dataService, collectionTemplateService, guideTemplateService,
+            documentTemplateService, dataTemplateService, documentJson, videoService, mockk(),
+        )
+        fun auth(edit: Boolean, editor: Boolean = true) = object : AuthenticationContext(null, null) {
+            override fun principal() = ScopedAuthenticatedPrincipal(
+                Principal(UUID.random(), anonymous = false),
+                listOf(Group(UUID.random(), if (editor) "editors" else "readers", "Document users", GroupType.SYSTEM)),
+                listOf(if (edit) "content:edit" else "content:view"), null, 1,
+            )
+        }
+        val metadataSdl = requireNotNull(javaClass.getResourceAsStream("/graphql/metadata/metadata.graphqls")).bufferedReader().use { it.readText() }
+        val documentsSdl = requireNotNull(javaClass.getResourceAsStream("/graphql/metadata/documents.graphqls")).bufferedReader().use { it.readText() }
+        val documentInput = requireNotNull(Regex("input DocumentInput \\{[^}]*}").find(documentsSdl)).value
+        val sync = requireNotNull(Regex("enum CollaborationSyncMode \\{[^}]*}").find(metadataSdl)).value
+        val metadataInput = requireNotNull(Regex("input MetadataInput \\{[^}]*}").find(metadataSdl)).value.lines()
+            .filter { it.trim().substringBefore(':') in setOf("name", "languageTag", "contentType", "document") }.joinToString("\n")
+        val mutations = metadataSdl.lines().filter {
+            it.trim().substringBefore('(') in setOf("add", "setMetadataDocument", "setMetadataMarkdown")
+        }.joinToString("\n")
+        val wiring = RuntimeWiringBuilder().apply {
+            scalar("UUID", bosca.graphql.scalars.UUID.Type)
+            scalar("JSON", ExtendedScalars.Json)
+            type("Query") { field("ok") { true } }
+            type("Mutation") { field("metadata") { MetadataMutation } }
+            type("MetadataMutation") {
+                val fields = MetadataMutationControllerDispatcher(controller).type.fieldResolvers
+                for (name in listOf("add", "setMetadataDocument", "setMetadataMarkdown")) field(name, fields.getValue(name))
+            }
+            type("Metadata") { field("id") { (it.source as Metadata).id } }
+        }.build()
+        val graphql = GraphQL(ExecutableSchema.fromSdl("""
+            scalar UUID
+            scalar JSON
+            type Query { ok: Boolean! }
+            type Mutation { metadata: MetadataMutation! }
+            type Metadata { id: UUID! }
+            input MetadataInput { $metadataInput }
+            type MetadataMutation { $mutations }
+            $documentInput
+            $sync
+        """.trimIndent(), wiring))
+        suspend fun execute(query: String, variables: JsonObject, authentication: AuthenticationContext = auth(true)) = withRequest {
+            graphql.execute(GraphQLRequest(query, variables = variables, context = GraphQLContext(mapOf("authenticationContext" to authentication))))
+        }
+        suspend fun countArticles() = withRequest {
+            connection().useStatement("select count(*) from metadata where name = 'GraphQL article'") { statement ->
+                statement.executeQuery().use { result -> result.next(); result.getInt(1) }
+            }
+        }
+        val body = Json.parseToJsonElement("""{"document":{"type":"doc","content":[{"type":"heading","attrs":{"level":1},"content":[{"type":"text","text":"Article"}]},{"type":"paragraph","content":[{"type":"text","text":"Exact quoted words","marks":[{"type":"italic"}]},{"type":"text","text":"1","marks":[{"type":"superscript"}]}]}]}}""")
+        fun createVariables(templateId: UUID? = null, content: kotlinx.serialization.json.JsonElement = body) = buildJsonObject {
+            putJsonObject("metadata") {
+                put("name", "GraphQL article"); put("languageTag", "en"); put("contentType", "bosca/v-document")
+                putJsonObject("document") {
+                    put("title", "Article"); put("content", content)
+                    templateId?.let { put("templateMetadataId", it.toString()); put("templateMetadataVersion", 1) }
+                }
+            }
+        }
+        val create = "mutation(\$metadata: MetadataInput!) { metadata { add(metadata: \$metadata) { id } } }"
+        assertTrue(execute(create, createVariables(), auth(false)).errors.isNotEmpty())
+        assertTrue(execute(create, createVariables(), auth(true, editor = false)).errors.isNotEmpty())
+        assertTrue(execute(create, createVariables(content = Json.parseToJsonElement("""{"document":{"type":"unknown"}}"""))).errors.isNotEmpty())
+        assertTrue(execute(create, createVariables(UUID.random())).errors.isNotEmpty())
+        assertEquals(0, countArticles())
+
+        val template = insertMetadata("Article template", "bosca/v-document-template")
+        withRequest { DocumentTemplateRepositoryImpl().add(template.id, 1, null, null, null, Content()) }
+        val created = execute(create, createVariables(template.id))
+        assertTrue(created.errors.isEmpty(), created.errors.toString())
+        val id = UUID.parse(requireNotNull(created.data).jsonObject.getValue("metadata").jsonObject.getValue("add").jsonObject.getValue("id").jsonPrimitive.content)
+        val saved = assertNotNull(withRequest { documents.getDocument(id, 1) })
+        assertEquals(documentJson.decodeFromJsonElement(Content.serializer(), body), saved.content)
+        assertEquals(template.id, saved.templateMetadataId)
+        assertEquals(1, countArticles())
+
+        val edit = "mutation(\$id:UUID!,\$document:DocumentInput!) { metadata { setMetadataDocument(id:\$id,version:1,document:\$document,collaborationSync:RESET) } }"
+        val editVariables = buildJsonObject {
+            put("id", id.toString()); putJsonObject("document") { put("title", "Revised"); put("content", body) }
+        }
+        assertTrue(execute(edit, editVariables, auth(false)).errors.isNotEmpty())
+        assertEquals("Article", withRequest { documents.getDocument(id, 1) }?.title)
+        assertTrue(execute(edit, editVariables).errors.isEmpty())
+        assertEquals("Revised", withRequest { documents.getDocument(id, 1) }?.title)
+        assertEquals(template.id, withRequest { documents.getDocument(id, 1) }?.templateMetadataId)
+
+        val markdown = "# Revised\n\n**Bold** and *italic*.\n\n- First\n- Second"
+        val converted = execute("mutation(\$id:UUID!,\$markdown:String!) { metadata { setMetadataMarkdown(id:\$id,version:1,title:\"Markdown\",markdown:\$markdown,collaborationSync:RESET) } }",
+            buildJsonObject { put("id", id.toString()); put("markdown", markdown) })
+        assertTrue(converted.errors.isEmpty(), converted.errors.toString())
+        val finalDocument = assertNotNull(withRequest { documents.getDocument(id, 1) })
+        assertEquals(MarkdownConverter.fromMarkdown(markdown), finalDocument.content)
+        assertEquals(template.id, finalDocument.templateMetadataId)
+        val finalMetadata = assertNotNull(withRequest { service.getById(id) })
+        assertEquals(1, finalMetadata.version)
+        assertNull(finalMetadata.ready)
+        assertFalse(finalMetadata.public)
+        assertEquals("pending", finalMetadata.workflowStateId)
+    }
 
     @Test
     fun `setName renames existing and returns null for missing`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
@@ -1187,6 +1336,131 @@ class MetadataServiceImplCoverageTest {
     }
 
     // ── Relationships ────────────────────────────────────────────────────────
+
+    @Test
+    fun `concurrent template image replacements serialize through the outer transaction`() = runBlocking {
+        withTimeout(kotlin.time.Duration.parse("60s")) {
+            val target = insertMetadata("Article", "bosca/v-document")
+            val firstImage = insertMetadata("First image", "image/png").copy(uploaded = OffsetDateTime.now(), contentLength = 10)
+            val secondImage = insertMetadata("Second image", "image/png").copy(uploaded = OffsetDateTime.now(), contentLength = 10)
+            val templateId = UUID.random()
+            coEvery { documentService.getDocument(target.id, target.version) } returns
+                Document(target.id, target.version, templateId, 1, "Article")
+            coEvery { documentTemplateService.getTemplateAttributes(templateId, 1) } returns listOf(
+                TemplateAttribute(documentAttribute = DocumentTemplateAttribute(
+                    metadataId = templateId, version = 1, key = "hero", name = "Hero", description = "Cover image",
+                    type = AttributeType.METADATA, ui = AttributeUiType.IMAGE,
+                    configuration = buildJsonObject { put("relationship", "image.featured") },
+                ))
+            )
+            val firstAdding = CompletableDeferred<Unit>()
+            val releaseInsert = CompletableDeferred<Unit>()
+            val firstAttached = CompletableDeferred<Unit>()
+            val releaseCommit = CompletableDeferred<Unit>()
+            val secondRead = CompletableDeferred<Unit>()
+            val reads = java.util.concurrent.atomic.AtomicInteger()
+            val attachmentMetadata = spyk(service)
+            coEvery { attachmentMetadata.getRelationships(target.id) } coAnswers {
+                service.getRelationships(target.id).also { if (reads.incrementAndGet() == 2) secondRead.complete(Unit) }
+            }
+            coEvery { attachmentMetadata.addRelationship(match<MetadataRelationshipInput> { it.id2 == firstImage.id }) } coAnswers {
+                firstAdding.complete(Unit)
+                releaseInsert.await()
+                service.addRelationship(firstArg<MetadataRelationshipInput>())
+            }
+            val images = spyk(ImageServiceImpl(
+                configuration = mockk(), storage = objectService, metadataService = attachmentMetadata,
+                collectionService = collectionService, timeEventService = mockk(), client = mockk(), json = testJson,
+                distributedLockFactory = mockk(), documentService = documentService, dataService = dataService,
+                documentTemplateService = documentTemplateService, dataTemplateService = dataTemplateService,
+                collectionTemplateService = collectionTemplateService,
+                attachments = bosca.content.image.repository.ImageAttachmentRepositoryImpl(),
+            ))
+            coEvery { images.optimize(any<Metadata>()) } returns emptyList()
+            val first = async {
+                withRequest { transaction {
+                    images.attach(firstImage, target, "hero", null).also {
+                        firstAttached.complete(Unit)
+                        releaseCommit.await()
+                    }
+                } }
+            }
+            try {
+                firstAdding.await()
+                val name = "image-replacement-${target.id}"
+                val second = async {
+                    withRequest { transaction {
+                        assertTrue(service.getRelationships(target.id).isEmpty())
+                        connection().useStatement("select set_config('application_name', ?, true)") { statement ->
+                            statement.setString(1, name)
+                            statement.executeQuery().use { check(it.next()) }
+                        }
+                        images.attach(secondImage, target, "hero", null)
+                    } }
+                }
+                withTimeout(10_000) {
+                    while (!secondRead.isCompleted && waitingNamedTransactions(name) == 0) delay(25)
+                }
+                releaseInsert.complete(Unit)
+                firstAttached.await()
+                assertFalse(secondRead.isCompleted, "The second attachment read a stale target before the first outer transaction committed")
+                assertFalse(second.isCompleted)
+                releaseCommit.complete(Unit)
+                assertTrue(awaitAll(first, second).all { it.attached })
+                assertEquals(listOf(secondImage.id), withRequest { service.getRelationships(target.id) }
+                    .filter { it.relationship == "image.featured" }.map { it.metadataId2 })
+            } finally {
+                releaseInsert.complete(Unit)
+                releaseCommit.complete(Unit)
+            }
+        }
+    }
+
+    @Test
+    fun `template image replacement commits together and rolls back a failed insert`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val target = insertMetadata("Article", "bosca/v-document")
+        val previous = insertMetadata("Previous image", "image/png")
+        val image = insertMetadata("Replacement", "image/png").copy(uploaded = OffsetDateTime.now(), contentLength = 10)
+        val templateId = UUID.random()
+        coEvery { documentService.getDocument(target.id, target.version) } returns
+            Document(target.id, target.version, templateId, 1, "Article")
+        coEvery { documentTemplateService.getTemplateAttributes(templateId, 1) } returns listOf(
+            TemplateAttribute(documentAttribute = DocumentTemplateAttribute(
+                metadataId = templateId, version = 1, key = "hero", name = "Hero", description = "Cover image",
+                type = AttributeType.METADATA, ui = AttributeUiType.IMAGE,
+                configuration = buildJsonObject { put("relationship", "image.featured") },
+            ))
+        )
+        val images = spyk(ImageServiceImpl(
+            configuration = mockk(), storage = objectService, metadataService = service,
+            collectionService = collectionService, timeEventService = mockk(), client = mockk(), json = testJson,
+            distributedLockFactory = mockk(), documentService = documentService, dataService = dataService,
+            documentTemplateService = documentTemplateService, dataTemplateService = dataTemplateService,
+            collectionTemplateService = collectionTemplateService,
+            attachments = bosca.content.image.repository.ImageAttachmentRepositoryImpl(),
+        ))
+        coEvery { images.optimize(any<Metadata>()) } returns emptyList()
+        val original = withRequest {
+            service.addRelationship(MetadataRelationshipInput(target.id, previous.id, "image.featured", JsonObject(emptyMap())))
+        }
+        val missingImage = image.copy(id = UUID.random())
+        val failure = assertFailsWith<java.sql.SQLException> {
+            withRequest { images.attach(missingImage, target, null, Coordinates(0f, 0f, 100f, 100f)) }
+        }
+        assertEquals("23503", failure.sqlState)
+        assertEquals(listOf(original), withRequest { service.getRelationships(target.id) })
+
+        val result = withRequest { images.attach(image, target, null, Coordinates(1f, 2f, 100f, 80f)) }
+        assertTrue(result.attached)
+        assertTrue(result.collaborationUpdated)
+        val saved = withRequest { service.getRelationships(target.id) }.single()
+        assertEquals(image.id, saved.metadataId2)
+        assertEquals("image.featured", saved.relationship)
+        assertEquals(buildJsonObject { put("crop", buildJsonObject {
+            put("top", 1f); put("left", 2f); put("width", 100f); put("height", 80f)
+        }) }, saved.attributes)
+        coVerify(exactly = 1) { documentService.markCollaborationRelationshipsDirty(target.id) }
+    }
 
     @Test
     fun `addRelationship input overload and object overload`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {

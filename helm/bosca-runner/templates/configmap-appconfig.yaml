@@ -169,7 +169,8 @@ data:
         listeners: {{ if hasKey $gitSync "listeners" }}{{ $gitSync.listeners }}{{ else }}true{{ end }}
 
     kubernetes:
-      enabled: {{ or (.Values.appConfig.kubernetesEnabled | default false) (not (empty $kubernetesJobProfiles)) }}
+      enabled: {{ or (.Values.appConfig.kubernetesEnabled | default false) (not (empty $kubernetesJobProfiles)) (dig "kit" "enabled" false (.Values.global | default dict)) }}
+    {{- include "bosca-common.kitConfiguration" . | nindent 4 }}
 
     mailer:
       type: {{ .Values.appConfig.mailerType | default "sendgrid" | quote }}

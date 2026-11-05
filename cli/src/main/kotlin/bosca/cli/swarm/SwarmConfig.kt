@@ -71,6 +71,9 @@ data class SwarmConfig(
     val database: String = "", val warehouse: String = "", val nats: String = "", val jwt: String = "",
     val securityEncryption: String = "", val storageSigner: String = "", val initialAdmin: String = "",
     val initialSa: String = "", val pipeline: String = "",
+    /** Model-provider credential used only by the site's managed harness workloads. */
+    val kitProvider: String = "",
+    val kitController: String = "",
     /** Bearer token for the gateway proxy's config endpoint; random because the Swarm runs no gateway proxy. */
     val gatewayProxy: String = "",
 )
@@ -94,6 +97,7 @@ data class SwarmConfig(
     val bmlArtifactsUrl: String = "SET_URL",
     val bmlArtifactsToken: String = "SET_TOKEN",
     val secrets: SwarmSiteSecrets = SwarmSiteSecrets(),
+    val kit: SwarmKit = SwarmKit(),
     /** Optional Git hostname override; blank uses `git.<domain>`. Kept for configurations created before derived hosts. */
     val gitDomain: String = "",
     val ml: SwarmSiteMl = SwarmSiteMl(),
@@ -210,6 +214,9 @@ internal fun defaultImages() = mapOf(
     "backup" to "restic/restic:0.19.1",
     "caddy" to "caddy:2.11.4", "server" to "ghcr.io/bosca-io/bosca/bosca-server:SET_NEW_TAG",
     "runner" to "ghcr.io/bosca-io/bosca/bosca-runner:SET_NEW_TAG",
+    "kit-controller" to "ghcr.io/bosca-io/bosca/bosca-cli:${bosca.cli.Version.current}",
+    "kit-codex-runtime" to "ghcr.io/bosca-io/bosca/kit-codex-runtime:${bosca.cli.Version.current}",
+    "kit-claude-runtime" to "ghcr.io/bosca-io/bosca/kit-claude-runtime:${bosca.cli.Version.current}",
     "collector" to "ghcr.io/bosca-io/bosca/analytics-collector:SET_NEW_TAG",
     "git" to "ghcr.io/bosca-io/bosca/git-server:SET_NEW_TAG",
     "studio" to "ghcr.io/bosca-io/bosca/bosca-studio:SET_NEW_TAG",
@@ -244,6 +251,7 @@ internal fun SwarmConfig.withSecrets(): SwarmConfig = copy(
             initialSa = filled(s.initialSa), gatewayProxy = filled(s.gatewayProxy), pipeline = s.pipeline.ifEmpty {
                 java.util.Base64.getEncoder().encodeToString(ByteArray(32).also(random::nextBytes))
             },
+            kitController = filled(s.kitController),
         ))
     },
 )

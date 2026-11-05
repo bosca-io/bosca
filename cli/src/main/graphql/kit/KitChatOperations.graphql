@@ -33,3 +33,9 @@ mutation DeleteKitChatSession($id: UUID!) {
         delete(id: $id)
     }
 }
+
+mutation CancelKitChatSession($sessionId: UUID!) {
+    chatSessions {
+        cancel(sessionId: $sessionId)
+    }
+}

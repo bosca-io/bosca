@@ -2,18 +2,12 @@ package bosca.ai.kit.agents
 
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.agent.GraphAIAgentService
-import ai.koog.agents.core.agent.entity.createStorageKey
-import ai.koog.serialization.KotlinClassToken
-import aws.smithy.kotlin.runtime.io.closeIfCloseable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * The contract every Kit sub-agent implements: a specialist the planner delegates to, modeled as a
- * typed [Request] → [Response] capability. Sub-agents **exchange structured objects** — a finished
- * document, query data plus a suggested visualization, an edited image — never bare text. Each
- * implementation owns its own prompt, model, tools, and Koog strategy; the planner's actions hand it
- * a [Request] and fold its [Response] into [KitState].
+ * A direct structured Koog capability used by metadata enrichment. Each implementation owns its
+ * prompt, model and strategy, and returns a typed response to the owning service.
  *
  * @param Request the structured input this sub-agent consumes.
  * @param Response the structured result this sub-agent produces.
@@ -37,9 +31,7 @@ abstract class KitSubAgent<in Request, out Response> {
     }
 
     /**
-     * Run the sub-agent for [request] and return its structured [Response]. [sessionId] correlates this
-     * run to the parent session Kit run (the actions pass `context.runId`) — which is the session id once the
-     * top-level `agent.run(request, sessionId)` is invoked, so sub-agent runs join the same session.
+     * Runs [request] in the explicitly identified Koog session and returns its structured response.
      */
     suspend fun run(request: Request, sessionId: String): Response {
         val session = aiAgent().createSession(sessionId)
