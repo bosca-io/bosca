@@ -165,8 +165,8 @@ login keychain password is usually the account password, prefer a **dedicated
 signing keychain** on the agent (its own throwaway password as the secret) if
 you don't want the login password in CI.
 
-The pipeline installs Oracle GraalVM `25.4.4.1.1` from Oracle GDS via
-`setup-java` (stream `25i4`, JDK version `25.0.4.1.1`). The agent needs ≥ 16 GB
+The pipeline installs Oracle GraalVM `25.5.5.0.3` from Oracle GDS via
+`setup-java` (stream `25i5`, JDK version `25.0.5.0.3`). The agent needs ≥ 16 GB
 RAM free for `native-image`.
 
 The artifact upload authenticates with the agent token surfaced by
