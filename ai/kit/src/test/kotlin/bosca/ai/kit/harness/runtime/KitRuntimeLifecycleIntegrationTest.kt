@@ -62,6 +62,17 @@ class KitRuntimeLifecycleIntegrationTest {
 
     @Test fun `Claude image upgrade reopens its operational directory and preserves native continuity`() = lifecycle("claude", upgradeOnly = true)
 
+    private fun runtimePort() = ServerSocket(0, 0, java.net.InetAddress.getByName("127.0.0.1")).use { it.localPort }
+
+    private suspend fun runtimeReady(endpoint: String) = runInterruptible(Dispatchers.IO) {
+        try {
+            java.net.URI("$endpoint/healthz").toURL().openConnection().apply {
+                connectTimeout = 500
+                readTimeout = 500
+            }.getInputStream().use { true }
+        } catch (_: java.io.IOException) { false }
+    }
+
     private fun lifecycle(family: String, archiveRetentionOnly: Boolean = false, instanceFencingOnly: Boolean = false, upgradeOnly: Boolean = false): Unit = runBlocking {
         val runtimeCli = Path.of(System.getenv("KIT_RUNTIME_CLI") ?: "../../cli/build/install/bosca/bin/bosca").toAbsolutePath().normalize()
         val node = System.getenv("PATH").split(java.io.File.pathSeparator).map { Path.of(it, "node") }.first { Files.isExecutable(it) }.toString()
@@ -286,7 +297,7 @@ class KitRuntimeLifecycleIntegrationTest {
             val request = firstArg<KubernetesJobRequest>()
             val env = json.parseToJsonElement(Base64.getDecoder().decode(requireNotNull(request.secrets).ciphertext).decodeToString()).jsonObject
             launches++
-            val port = ServerSocket(0).use { it.localPort }
+            val port = runtimePort()
             val builder = ProcessBuilder(runtimeCli.toString(), "harness", "serve", "--host", "127.0.0.1", "--port", port.toString(), "--root", root.toString())
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.INHERIT)
             builder.environment().putAll(request.environment)
@@ -302,11 +313,7 @@ class KitRuntimeLifecycleIntegrationTest {
             withTimeout(20_000) {
                 while (true) {
                     check(requireNotNull(process).isAlive) { "Kotlin harness runtime exited during startup" }
-                    val ready = withContext(Dispatchers.IO) {
-                        try { java.net.URI("http://127.0.0.1:$port/healthz").toURL().openConnection().getInputStream().use { true } }
-                        catch (_: java.io.IOException) { false }
-                    }
-                    if (ready) break
+                    if (runtimeReady("http://127.0.0.1:$port")) break
                     delay(50)
                 }
             }
@@ -499,7 +506,7 @@ class KitRuntimeLifecycleIntegrationTest {
             suspend fun replacement(): Pair<String, Path> {
                 val replacementRoot = root.resolve("replacement-${replacements.size}")
                 replacementRoot.toFile().deleteRecursively()
-                val replacementPort = ServerSocket(0).use { it.localPort }
+                val replacementPort = runtimePort()
                 val previous = assertNotNull(lastBuilder)
                 val command = previous.command().toMutableList()
                 command[command.indexOf("--port") + 1] = replacementPort.toString()
@@ -513,11 +520,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 withTimeout(20_000) {
                     while (true) {
                         check(child.isAlive)
-                        val ready = withContext(Dispatchers.IO) {
-                            try { java.net.URI("$endpoint/healthz").toURL().openStream().use { true } }
-                            catch (_: java.io.IOException) { false }
-                        }
-                        if (ready) break
+                        if (runtimeReady(endpoint)) break
                         delay(20)
                     }
                 }

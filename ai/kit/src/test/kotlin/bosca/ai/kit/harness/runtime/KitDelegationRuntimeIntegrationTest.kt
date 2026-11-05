@@ -70,7 +70,7 @@ class KitDelegationRuntimeIntegrationTest {
                         }
                         val secret = arg<KitRuntimeSecrets>(3)
                         val plain = f.json.decodeFromString(MapSerializer(String.serializer(), String.serializer()), Base64.getDecoder().decode(secret.ciphertext).decodeToString())
-                        val port = ServerSocket(0).use { it.localPort }
+                        val port = ServerSocket(0, 0, java.net.InetAddress.getByName("127.0.0.1")).use { it.localPort }
                         val process = ProcessBuilder(cli.toString(), "harness", "serve", "--host", "127.0.0.1", "--port", port.toString(), "--root", directory.toString())
                             .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(directory.resolve("runtime.log").toFile()).apply {
                                 environment().putAll(environment + plain + mapOf(
@@ -83,7 +83,14 @@ class KitDelegationRuntimeIntegrationTest {
                         val endpoint = "http://127.0.0.1:$port"
                         withTimeout(15_000) { while (true) {
                             check(process.isAlive) { Files.readString(directory.resolve("runtime.log")) }
-                            val ready = withContext(Dispatchers.IO) { try { java.net.URI("$endpoint/healthz").toURL().openStream().use { true } } catch (_: java.io.IOException) { false } }
+                            val ready = runInterruptible(Dispatchers.IO) {
+                                try {
+                                    java.net.URI("$endpoint/healthz").toURL().openConnection().apply {
+                                        connectTimeout = 500
+                                        readTimeout = 500
+                                    }.getInputStream().use { true }
+                                } catch (_: java.io.IOException) { false }
+                            }
                             if (ready) break
                             delay(25)
                         } }
