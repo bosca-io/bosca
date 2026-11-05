@@ -3,6 +3,7 @@ import gql from 'graphql-tag'
 import type { Metadata, Profile } from '~/types/graphql'
 import type { OverflowMenuItem } from '@bosca/ui'
 import { getWorkflowState } from '~/utils/workflowStatus'
+import { localDayKey, pageForDay } from '~/utils/guideCalendar'
 
 const route = useRoute()
 const router = useRouter()
@@ -295,6 +296,14 @@ onMounted(() => {
   updateStepScrollState()
   window.addEventListener('resize', updateStepScrollState)
   loadPersonas(); loadFeatures()
+  // Editors open calendar guides to work on the current entry, so land on
+  // today's step (or the latest earlier one) instead of the introduction.
+  // Runs client-side only: "today" must come from the user's clock, not the
+  // server's.
+  if (isCalendar.value && currentPage.value === 1) {
+    const page = pageForDay(steps.value, localDayKey())
+    if (page !== 1) currentPage.value = page
+  }
 })
 
 onBeforeUnmount(() => {
