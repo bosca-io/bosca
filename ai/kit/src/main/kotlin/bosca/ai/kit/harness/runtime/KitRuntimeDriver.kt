@@ -489,9 +489,16 @@ class KitRuntimeDriver(
         }
         val startupDeadline = execution.created.plusSeconds(config.startupSeconds).toInstant()
         val hardDeadline = java.time.Instant.ofEpochSecond(environment(session).getValue("BOSCA_RUNTIME_EXPIRES").toLong())
-        val remaining = java.time.Duration.between(java.time.Instant.now(), minOf(startupDeadline, hardDeadline)).toMillis()
+        val deadline = minOf(startupDeadline, hardDeadline)
+        val remaining = java.time.Duration.between(java.time.Instant.now(), deadline).toMillis()
         if (remaining > 0) {
-            withTimeoutOrNull(remaining) { activate(session, config, execution) }?.let { return it }
+            try {
+                withTimeoutOrNull(remaining) { activate(session, config, execution) }?.let { return it }
+            } catch (failure: AcpConnectionException) {
+                currentCoroutineContext().ensureActive()
+                // Runtime expiry can close ACP before the Runner observes its own timeout.
+                if (java.time.Instant.now().isBefore(deadline)) throw failure
+            }
         }
         // The dispatch timestamp survives queue redelivery and Runner replacement. Persist cleanup
         // intent before external calls so a failed revocation/removal cannot restart expired work.
