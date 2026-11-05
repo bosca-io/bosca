@@ -186,7 +186,7 @@ const profile = computed<Profile>(() => {
 })
 
 const guide = computed(() => (guideMetadata.value as Record<string, unknown> | undefined)?.guide as Record<string, unknown> | null ?? null)
-const steps = computed<Array<{ id: string; metadata: Record<string, unknown>; [key: string]: unknown }>>(() => (guide.value?.steps as Array<{ id: string; metadata: Record<string, unknown>; [key: string]: unknown }>) ?? [])
+const steps = computed<Array<{ id: string; date?: string | null; metadata: Record<string, unknown>; [key: string]: unknown }>>(() => (guide.value?.steps as Array<{ id: string; date?: string | null; metadata: Record<string, unknown>; [key: string]: unknown }>) ?? [])
 const guideType = computed(() => (guide.value?.type as string) ?? 'LINEAR')
 const isCalendar = computed(() => guideType.value === 'CALENDAR' || guideType.value === 'CALENDAR_PROGRESS')
 const templateSteps = computed(() => {
@@ -691,6 +691,12 @@ async function onOverflowAction(id: string) {
 
     <!-- Guide navigation -->
     <div v-if="guideMetadata" class="guide-nav">
+      <GuideCalendarNav
+        v-if="isCalendar"
+        :steps="steps"
+        :current-page="currentPage"
+        @select="currentPage = $event"
+      />
       <button
         v-if="hasStepOverflow"
         class="guide-nav-action"
