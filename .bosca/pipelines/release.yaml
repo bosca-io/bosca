@@ -55,6 +55,8 @@ jobs:
         # bml-runtime checkout's node_modules, which is git-ignored — without
         # this, the client bundle tasks fail with ERR_MODULE_NOT_FOUND.
         run: cd bml/bml-runtime && npm ci --no-audit --no-fund
+      - name: Check BML npm Packages
+        run: node --test scripts/release/bml-packages.test.mjs
       - name: Install BML Test Browser
         working-directory: bml/bml-design-catalog
         run: |
