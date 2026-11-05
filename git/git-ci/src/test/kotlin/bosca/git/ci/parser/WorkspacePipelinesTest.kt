@@ -59,7 +59,7 @@ class WorkspacePipelinesTest {
         assertEquals("always()", notify.condition)
         val artifacts = definition.jobs.getValue("publish-jvm").artifacts
         assertTrue(artifacts.all { it.type == "maven" && it.namespace == "bosca-maven" })
-        val modules = listOf("core", "bml-annotations", "core-bml", "bml", "bml-design", "bml-compiler", "bml-server", "bml-message-host", "bml-message-client", "bml-gradle")
+        val modules = listOf("core", "bml-annotations", "core-bml", "bml", "bml-design", "bml-auth-ui", "bml-compiler", "bml-server", "bml-message-host", "bml-message-client", "bml-gradle")
         val pluginIds = listOf("io.bosca.bml", "io.bosca.bml.host")
         val coordinates = artifacts.map { it.coordinate }
         val expectedCoordinates = modules.map { "io.bosca:$it" } + pluginIds.map { "$it:$it.gradle.plugin" }
@@ -217,22 +217,30 @@ class WorkspacePipelinesTest {
             ExpressionContext(ref = "refs/tags/v7.4.0", event = "tag"),
         ))
         for (job in listOf(web, jobs.getValue("publish-bml-runtime"))) {
-            val publish = job.steps.last().run.orEmpty()
-            assertTrue(publish.contains("npm config set"))
-            assertTrue(publish.contains("BOSCA_REGISTRY_TOKEN"))
-            assertTrue(publish.contains("/npm/"))
+            val registry = job.steps.indexOfFirst { it.uses == "setup-registry" }
+            val authentication = job.steps.indexOfFirst {
+                val run = it.run.orEmpty()
+                run.contains("npm config set") && run.contains("BOSCA_REGISTRY_TOKEN") && run.contains("/npm/")
+            }
+            assertTrue(registry in 0 until authentication)
+            val publishers = job.steps.withIndex().filter { it.value.run.orEmpty().contains(" publish ") }
+            assertTrue(publishers.isNotEmpty())
+            for ((index, step) in publishers) {
+                assertTrue(authentication <= index, "${step.name} requires registry authentication")
+                assertTrue(step.run.orEmpty().contains("--registry"), "${step.name} requires an explicit registry")
+            }
         }
     }
 
     @Test
-    fun `BML browser runtime publishes with the tag version and gates web notifications`() {
+    fun `BML browser packages publish with the tag version and gate web notifications`() {
         val definition = parse("release-web.yaml")
         assertEquals(PipelineTriggerType.TAG, definition.triggers.single().type)
         val runtime = definition.jobs.getValue("publish-bml-runtime")
-        val artifact = runtime.artifacts.single()
-        assertEquals("npm", artifact.type)
-        assertEquals("@bosca", artifact.namespace)
-        assertEquals("bml:\${{ version }}", artifact.coordinate)
+        assertEquals(listOf("publish-web"), runtime.needs)
+        assertEquals(2, runtime.artifacts.size)
+        assertTrue(runtime.artifacts.all { it.type == "npm" && it.namespace == "@bosca" })
+        assertEquals(setOf("bml:\${{ version }}", "bml-auth-ui:\${{ version }}"), runtime.artifacts.map { it.coordinate }.toSet())
         val version = runtime.steps.first { it.name == "Set BML Runtime Version" }
         assertEquals("99.0.0", PipelineExpressionParser().interpolate(
             version.env.getValue("RELEASE_VERSION"), ExpressionContext(ref = "refs/tags/v99.0.0", event = "tag"),
@@ -243,6 +251,17 @@ class WorkspacePipelinesTest {
         assertEquals("bml/bml-runtime", runtime.steps[publishIndex].workingDirectory)
         assertTrue(runtime.steps[publishIndex].run.orEmpty().contains("BOSCA_REGISTRY_URL"))
         assertTrue(runtime.steps.any { it.uses == "setup-registry" })
+        assertTrue(runtime.steps.indexOfFirst { it.name == "Check BML npm Packages" } in 0 until publishIndex)
+        val prepareAuthIndex = runtime.steps.indexOfFirst { it.name == "Prepare BML Authentication UI" }
+        val publishAuthIndex = runtime.steps.indexOfFirst { it.name == "Publish BML Authentication UI" }
+        assertTrue(publishIndex < prepareAuthIndex && prepareAuthIndex < publishAuthIndex)
+        val prepareAuth = runtime.steps[prepareAuthIndex]
+        assertEquals("99.0.0", PipelineExpressionParser().interpolate(
+            prepareAuth.env.getValue("RELEASE_VERSION"), ExpressionContext(ref = "refs/tags/v99.0.0", event = "tag"),
+        ))
+        assertTrue(prepareAuth.run.orEmpty().contains("scripts/release/prepare-bml-auth-ui.mjs"))
+        assertTrue(prepareAuth.run.orEmpty().contains("BOSCA_ENV"))
+        assertTrue(runtime.steps[publishAuthIndex].run.orEmpty().contains("BML_AUTH_UI_PACKAGE"))
 
         val notify = definition.jobs.getValue("notify")
         assertEquals(setOf("publish-web", "publish-bml-runtime"), notify.needs.toSet())
