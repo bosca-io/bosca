@@ -99,6 +99,9 @@ jobs:
         coordinate: "io.bosca:bml-design:${{ version }}"
       - type: maven
         namespace: bosca-maven
+        coordinate: "io.bosca:bml-auth-ui:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
         coordinate: "io.bosca:bml-compiler:${{ version }}"
       - type: maven
         namespace: bosca-maven

@@ -79,9 +79,30 @@ Browser logs remain under `bml/bml-server/build/reports/chunk-cache-browser/` fo
 BML Maven libraries and the `io.bosca.bml` and `io.bosca.bml.host` Gradle plugins publish with the workspace tag through
 the root `publishExceptFirebaseScrypt` task. This includes `bml-server`, which applications embed
 as their host library. The web release pipeline builds, tests, and publishes the `@bosca/bml`
-browser package at the same tag version. Compiled `bosca-messages` projects publish separately
+browser package and `@bosca/bml-auth-ui` at the same tag version. Authentication UI publication
+waits for the web packages (including `@bosca/auth-client-browser`) and stages registry-version
+dependencies in a temporary directory; the source package retains file dependencies for local development.
+The design library's private npm package supplies its compilation dependencies; consumers use the
+published `io.bosca:bml-design` library with its packaged client assets.
+Compiled `bosca-messages` projects publish separately
 to the `bml-message` raw-artifact namespace on workspace tags or manual runs. All three paths
 use the configured Bosca Artifacts registry.
+
+`node --test scripts/release/bml-packages.test.mjs` checks the npm tarballs and authentication
+UI dependency versions without publishing. CI and the npm release pipeline run these checks.
+Maven release tracking includes `io.bosca:bml-auth-ui` alongside the other BML libraries.
+
+Standalone applications must use the same published workspace version for the BML Gradle plugin,
+Maven libraries, `@bosca/bml`, `@bosca/bml-auth-ui`, and `@bosca/auth-client-browser`.
+Configure the Bosca Maven repository in both `pluginManagement.repositories` and
+`dependencyResolutionManagement.repositories`, and configure the `@bosca` npm scope to use the
+Artifacts server's `/npm/` registry with the CI token. Bosca CI's `setup-registry` action writes
+the Maven URL and credentials as `boscaRegistryUrl`, `boscaRegistryUsername`, and
+`boscaRegistryPassword` in Gradle user properties and exports `BOSCA_REGISTRY_URL` and
+`BOSCA_REGISTRY_TOKEN` for npm setup. A standalone consumer should resolve `io.bosca.bml` from
+that repository instead of copying the plugin into `buildSrc`, omit the workspace `includeBuild`,
+and install versioned npm dependencies instead of `file:` paths. Leave `bml.clientBundler` and
+`bml.clientRuntime` unset to use the installed `@bosca/bml` package.
 
 Client bundling resolves Node from `PATH`, then the standard Homebrew locations. For another
 installation, set `bml.nodeExecutable=/absolute/path/to/node` in your Gradle user properties
