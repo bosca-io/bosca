@@ -13,7 +13,6 @@ import bosca.pipelines.PipelineContext
 import bosca.pipelines.git.PipelineBackfillEntry
 import bosca.pipelines.git.PipelineGitSyncService
 import bosca.pipelines.git.PipelineSyncResult
-import bosca.pipelines.model.RollbackRecord
 import bosca.pipelines.model.Pipeline
 import bosca.pipelines.model.PipelineNamedShape
 import bosca.pipelines.model.PipelineRun
@@ -309,12 +308,6 @@ class PipelinesMutationController(
         groups.verifyHasAdminGroup(authentication)
         runService.cancel(runId, "cancelled by operator")
         return true
-    }
-
-    @Field
-    suspend fun retryRollbacks(authentication: AuthenticationContext, runId: UUID): List<RollbackRecord> {
-        groups.verifyHasAdminGroup(authentication)
-        return runService.retryRollbacks(runId, authentication)
     }
 
     /**

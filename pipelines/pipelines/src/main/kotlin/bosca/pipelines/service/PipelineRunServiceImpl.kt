@@ -1139,38 +1139,26 @@ class PipelineRunServiceImpl(
     /**
      * Run the saga rollbacks for a terminated run: replay each
      * rollback-enabled node's rollback pipeline in reverse-completion order, feeding it that node's
-     * output. Isolated: a rollback that fails (or suspends, which a rollback pipeline must not do) is
-     * recorded on its entry and the rollback continues, so one bad rollback never masks the original
-     * failure or blocks the others. Rollbacks retain the run's captured authority and revalidate it
-     * before execution, so a run whose authority is gone keeps visible, retryable failures.
+     * output. A rollback that fails (or suspends, which a rollback pipeline must not do) is
+     * logged and the rollback continues, so one bad rollback never masks the original failure or
+     * blocks the others. Rollbacks retain the run's captured authority and revalidate it before execution.
      */
     private suspend fun runRollbacks(run: PipelineRun) {
         for (record in rollbackRepository.listForRunReversed(run.id)) {
-            compensate(record) { authentication(run) }
+            try {
+                val pipeline = pipelineService.get(record.rollbackPipelineId)
+                if (pipeline == null) {
+                    log.warn("Rollback pipeline {} for run {} node {} not found", record.rollbackPipelineId, run.id, record.nodeId)
+                    continue
+                }
+                val context = PipelineContext(authentication(run), graphJson())
+                executor.execute(pipeline, PipelineValue.ofJson(record.output ?: JsonNull), context).requireCompleted()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.error("Rollback for run {} node {} failed", run.id, record.nodeId, e)
+            }
         }
-    }
-
-    private suspend fun compensate(record: RollbackRecord, authentication: suspend () -> AuthenticationContext) {
-        try {
-            val pipeline = checkNotNull(pipelineService.get(record.rollbackPipelineId)) { "Rollback pipeline ${record.rollbackPipelineId} not found" }
-            val context = PipelineContext(authentication(), graphJson())
-            executor.execute(pipeline, PipelineValue.ofJson(record.output ?: JsonNull), context).requireCompleted()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            log.error("Rollback for run {} node {} failed", record.runId, record.nodeId, e)
-            rollbackRepository.markFailed(record.seq, e.message ?: e.toString())
-        }
-    }
-
-    override suspend fun rollbackFailures(runId: UUID): List<RollbackRecord> =
-        rollbackRepository.listFailedReversed(runId)
-
-    override suspend fun retryRollbacks(runId: UUID, authentication: AuthenticationContext): List<RollbackRecord> {
-        for (record in rollbackFailures(runId)) {
-            if (rollbackRepository.claimFailed(record.seq) == 1) compensate(record) { authentication }
-        }
-        return rollbackFailures(runId)
     }
 
     private suspend fun runContext(

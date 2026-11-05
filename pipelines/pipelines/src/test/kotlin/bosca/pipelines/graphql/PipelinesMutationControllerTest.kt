@@ -197,18 +197,6 @@ class PipelinesMutationControllerTest {
         coVerify(exactly = 0) { service.get(any()) }
     }
 
-    @Test
-    fun `retrying rollbacks requires an administrator and uses the caller`() = runTest {
-        val runId = UUID.random()
-        val still = listOf(bosca.pipelines.model.RollbackRecord(runId, "n1", UUID.random(), seq = 1, error = "x"))
-        coEvery { runService.retryRollbacks(runId, auth) } returns still
-        assertSame(still, controller.retryRollbacks(auth, runId))
-        coVerify(exactly = 1) { groups.verifyHasAdminGroup(auth) }
-
-        coEvery { groups.verifyHasAdminGroup(auth) } throws IllegalStateException("denied")
-        assertFailsWith<IllegalStateException> { controller.retryRollbacks(auth, runId) }
-        coVerify(exactly = 1) { runService.retryRollbacks(any(), any()) }
-    }
 
     @Test
     fun `save coalesces all nullable input fields to their defaults`() = runTest {

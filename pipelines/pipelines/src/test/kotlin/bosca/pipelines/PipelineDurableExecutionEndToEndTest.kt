@@ -462,11 +462,11 @@ class PipelineDurableExecutionEndToEndTest {
     }
 
     @Test
-    fun `rollback that loses its authority keeps a retryable failure`() {
+    fun `rollback that loses its authority cannot run under the service account`() {
         provides<JobConfigurationEnqueuer>(name = PipelineManualRunJobExecutor.NAME) { CapturingChildRunEnqueuer() }
         val authentication = scopedCaller()
         val (rollbackId, _) = persistPipeline(
-            "retried rollback", listOf(InputNode("in", acceptedType = "JSON"), AuthorityProbeNode("probe"), OutputNode("out")),
+            "revoked rollback", listOf(InputNode("in", acceptedType = "JSON"), AuthorityProbeNode("probe"), OutputNode("out")),
             listOf(PipelineEdge("e1", "in", "probe"), PipelineEdge("e2", "probe", "out")), register = true,
         )
         val step = PassThroughNode("step").apply { rollbackPipeline = rollbackId }
@@ -482,18 +482,7 @@ class PipelineDurableExecutionEndToEndTest {
             FailingNode.beforeFailure = null
         }
         assertEquals(PipelineRunStatus.FAILED, withResult { service.get(lostRun.id) }?.status)
-        val failures = withResult { service.rollbackFailures(lostRun.id) }
-        assertEquals(listOf("step"), failures.map { it.nodeId })
-        assertEquals(rollbackId, failures.single().rollbackPipelineId)
-        kotlin.test.assertContains(kotlin.test.assertNotNull(failures.single().error), "credential no longer exists")
-        kotlin.test.assertNotNull(failures.single().failedAt)
         kotlin.test.assertTrue(AuthorityProbeNode.callers.isEmpty(), "The rollback did not run")
-
-        val operator = scopedCaller()
-        assertEquals(emptyList(), withResult { service.retryRollbacks(lostRun.id, operator) })
-        assertEquals(1, AuthorityProbeNode.callers.size, "The retry ran the rollback")
-        assertEquals(emptyList(), withResult { service.retryRollbacks(lostRun.id, operator) })
-        assertEquals(1, AuthorityProbeNode.callers.size, "A completed retry never runs again")
     }
 
     @Test

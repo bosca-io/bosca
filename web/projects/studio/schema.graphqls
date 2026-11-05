@@ -16178,14 +16178,6 @@ type PipelineRepoValidationError {
   path: String!
 }
 
-"""A rollback that failed for a terminated pipeline run."""
-type PipelineRollbackFailure {
-  error: String!
-  failedAt: DateTime!
-  nodeId: String!
-  rollbackPipelineId: UUID!
-}
-
 """Result of a manual pipeline run."""
 type PipelineRunResult {
   """
@@ -16249,10 +16241,6 @@ type PipelineRunState {
   """
   output: JSON
   pipelineId: UUID!
-  """
-  Rollbacks of this terminated run that failed, in rollback order. Their side effects may remain in place.
-  """
-  rollbackFailures: [PipelineRollbackFailure!]!
   status: PipelineRunStatus!
   """
   The step-oriented progress view: one row per Status node and per human wait, recursing into fan-out children (per-item rows) — never engine plumbing nodes.
@@ -16518,10 +16506,6 @@ type PipelinesMutation {
   Restart a dead-lettered (failed) run: re-run from its seed input against the current pipeline. Null if the source run is gone.
   """
   restartRun(runId: UUID!): PipelineRunState
-  """
-  Run a terminated run's failed rollbacks again under the calling administrator's authority. Returns the rollbacks that are still failed.
-  """
-  retryRollbacks(runId: UUID!): [PipelineRollbackFailure!]!
   """
   Run a pipeline now as a durable job, FOR REAL — action nodes execute their side effects. The payload
   is the pipeline's input (validated against the input schema for JSON-input pipelines, or

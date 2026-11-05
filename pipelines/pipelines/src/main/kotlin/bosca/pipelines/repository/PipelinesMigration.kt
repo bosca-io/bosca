@@ -31,6 +31,5 @@ class PipelinesMigration : Migration {
         "V20__pipeline_tags.sql",
         "V21__pipeline_run_iteration_concurrency.sql",
         "V22__pipeline_run_authority.sql",
-        "V23__pipeline_run_rollback_failure.sql",
     )
 }

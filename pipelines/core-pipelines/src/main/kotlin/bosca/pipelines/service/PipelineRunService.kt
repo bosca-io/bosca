@@ -1,7 +1,6 @@
 package bosca.pipelines.service
 
 import bosca.pipelines.model.NodeExecutionRecord
-import bosca.pipelines.model.RollbackRecord
 import bosca.pipelines.model.RunStep
 import bosca.pipelines.model.NodeMetrics
 import bosca.pipelines.model.Pipeline
@@ -69,17 +68,6 @@ interface PipelineRunService : Service {
 
     /** Revalidate a run's captured caller, groups and credential restrictions before driving or backing work. */
     suspend fun authentication(run: PipelineRun): AuthenticationContext
-
-    /** A terminated run's rollbacks that failed, in rollback order; their side effects may remain in place. */
-    suspend fun rollbackFailures(runId: UUID): List<RollbackRecord>
-
-    /**
-     * Run a terminated run's failed rollbacks again under [authentication], for when the run's captured
-     * authority no longer applies. Each failure is retried by one caller at most.
-     *
-     * @return the rollbacks that are still failed
-     */
-    suspend fun retryRollbacks(runId: UUID, authentication: AuthenticationContext): List<RollbackRecord>
 
     /**
      * Latest retained run for a pipeline and typed input containing [inputMatch].

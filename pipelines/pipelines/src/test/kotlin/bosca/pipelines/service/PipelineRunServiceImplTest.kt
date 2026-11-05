@@ -1966,78 +1966,8 @@ class PipelineRunServiceImplTest {
         coVerify(exactly = 1) { executor.execute(rollbackPipeline, any(), any(), null) }
     }
 
-    @Test
-    fun `a failed rollback is recorded and retried once under the operator`() = runTest {
-        val runRepo = mockk<PipelineRunRepository>(relaxed = true)
-        val logRepo = mockk<PipelineRunLogRepository>(relaxed = true)
-        val rollbackRepo = mockk<RollbackRepository>(relaxed = true)
-        val pipelineService = stubbedPipelineService()
-        val executor = mockk<PipelineExecutor>()
-        val runId = UUID.random()
-        val child = suspendedRun(runId).copy(parentRunId = null, parentNodeId = null)
-        coEvery { runRepo.getById(runId) } returns child
-        coEvery { runRepo.complete(runId, PipelineRunStatus.CANCELLED, any(), "stop") } returns null
-        val rollbackPipelineId = UUID.random()
-        val record = bosca.pipelines.model.RollbackRecord(runId, "n1", rollbackPipelineId, JsonPrimitive("undo-me"), seq = 7)
-        val taken = bosca.pipelines.model.RollbackRecord(runId, "n2", rollbackPipelineId, JsonPrimitive("taken"), seq = 8)
-        coEvery { rollbackRepo.listForRunReversed(runId) } returns listOf(record)
-        val rollbackPipeline = pipeline.copy(id = rollbackPipelineId, name = "rb")
-        coEvery { pipelineService.get(rollbackPipelineId) } returns rollbackPipeline
-        coEvery { executor.execute(rollbackPipeline, any(), any(), null) } throws IllegalStateException("undo failed")
-        val runs = service(runRepo = runRepo, logRepo = logRepo, rollbackRepo = rollbackRepo, pipelineService = pipelineService, executor = executor)
 
-        runs.cancel(runId, "stop")
-        coVerify(exactly = 1) { rollbackRepo.markFailed(7, "undo failed") }
 
-        val operator = bosca.security.service.AuthenticationContext(null, null)
-        val contexts = mutableListOf<PipelineContext>()
-        coEvery { rollbackRepo.listFailedReversed(runId) } returnsMany listOf(listOf(record, taken), emptyList())
-        coEvery { rollbackRepo.claimFailed(7) } returns 1
-        coEvery { rollbackRepo.claimFailed(8) } returns 0
-        coEvery { executor.execute(rollbackPipeline, any(), capture(contexts), null) } returns ExecutionResult.Completed(null)
-
-        assertEquals(emptyList(), runs.retryRollbacks(runId, operator))
-        kotlin.test.assertSame(operator, contexts.single().authentication, "Only the claimed rollback runs, under the operator")
-        coVerify(exactly = 1) { rollbackRepo.markFailed(any(), any()) }
-    }
-
-    @Test
-    fun `a rollback whose pipeline is gone is recorded as failed`() = runTest {
-        val runRepo = mockk<PipelineRunRepository>(relaxed = true)
-        val logRepo = mockk<PipelineRunLogRepository>(relaxed = true)
-        val rollbackRepo = mockk<RollbackRepository>(relaxed = true)
-        val pipelineService = stubbedPipelineService()
-        val runId = UUID.random()
-        val missing = UUID.random()
-        coEvery { runRepo.getById(runId) } returns suspendedRun(runId).copy(parentRunId = null, parentNodeId = null)
-        coEvery { runRepo.complete(runId, PipelineRunStatus.CANCELLED, any(), "stop") } returns null
-        coEvery { rollbackRepo.listForRunReversed(runId) } returns listOf(bosca.pipelines.model.RollbackRecord(runId, "n1", missing, null, seq = 3))
-        coEvery { pipelineService.get(missing) } returns null
-
-        service(runRepo = runRepo, logRepo = logRepo, rollbackRepo = rollbackRepo, pipelineService = pipelineService).cancel(runId, "stop")
-
-        coVerify(exactly = 1) { rollbackRepo.markFailed(3, match { missing.toString() in it }) }
-    }
-
-    @Test
-    fun `a rollback failure without a message still records what failed`() = runTest {
-        val runRepo = mockk<PipelineRunRepository>(relaxed = true)
-        val logRepo = mockk<PipelineRunLogRepository>(relaxed = true)
-        val rollbackRepo = mockk<RollbackRepository>(relaxed = true)
-        val pipelineService = stubbedPipelineService()
-        val executor = mockk<PipelineExecutor>()
-        val runId = UUID.random()
-        val rollbackPipelineId = UUID.random()
-        coEvery { runRepo.getById(runId) } returns suspendedRun(runId).copy(parentRunId = null, parentNodeId = null)
-        coEvery { runRepo.complete(runId, PipelineRunStatus.CANCELLED, any(), "stop") } returns null
-        coEvery { rollbackRepo.listForRunReversed(runId) } returns listOf(bosca.pipelines.model.RollbackRecord(runId, "n1", rollbackPipelineId, null, seq = 4))
-        coEvery { pipelineService.get(rollbackPipelineId) } returns pipeline.copy(id = rollbackPipelineId)
-        coEvery { executor.execute(any(), any(), any(), null) } throws IllegalStateException()
-
-        service(runRepo = runRepo, logRepo = logRepo, rollbackRepo = rollbackRepo, pipelineService = pipelineService, executor = executor).cancel(runId, "stop")
-
-        coVerify(exactly = 1) { rollbackRepo.markFailed(4, match { "IllegalStateException" in it }) }
-    }
 
     // ----------------------------------------------------------------------------------------------
     // runRollbacks (via finish, exercised through cancel) — reverse order, missing pipeline, failure isolation

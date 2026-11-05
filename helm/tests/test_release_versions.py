@@ -208,7 +208,7 @@ class PipelineReleaseVersionTest(unittest.TestCase):
             result = subprocess.run(["bash", "-eu", "-c", step["run"]], cwd=root,
                                     env={**os.environ, "RELEASE_REF": f"refs/tags/{VERSION}"},
                                     check=True, capture_output=True, text=True)
-            self.assertEqual(["package", "--version", VERSION, "--kit-images", ".kit-images.json", "--output", ".helm-release-packages"],
+            self.assertEqual(["package", "--version", VERSION, "--output", ".helm-release-packages"],
                              result.stdout.splitlines())
 
     def test_branch_release_is_rejected_before_checkout(self):

@@ -192,10 +192,11 @@ existing Git tag. Packaging requires that tag's bare semantic version, such as
 dependency. The same version identifies the HTTP Helm package and OCI tag;
 checked-in chart versions are only development defaults.
 
-The chart pipeline waits up to two hours for that tag's qualified Codex and
-Claude runtime images, then embeds their deployment metadata before packaging.
-Image release jobs can run alongside chart release; a failed image release
-prevents publication of charts with missing or guessed Kit identities.
+Publish that tag's Codex and Claude runtime images before running the chart
+release. Packaging reads their deployment metadata once and fails if an image
+is unavailable or does not match the release. If the release event starts the
+chart job before the images are published, rerun the chart release after the
+image jobs finish.
 
 Bosca application `appVersion` defaults and explicit Bosca image tags (including
 the model loader sidecar) also use the release tag. Bosca images are identified

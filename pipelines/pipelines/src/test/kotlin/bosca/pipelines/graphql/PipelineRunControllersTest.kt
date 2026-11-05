@@ -331,30 +331,4 @@ class PipelineRunControllersTest {
         assertNull(controller.port(update))
         assertNull(controller.error(update))
     }
-
-    @Test
-    fun `rollback failure fields come from the failed record and an unfailed record is rejected`() {
-        val controller = PipelineRollbackFailureController()
-        val pipelineId = UUID.random()
-        val failedAt = java.time.OffsetDateTime.now()
-        val failed = bosca.pipelines.model.RollbackRecord(UUID.random(), "n1", pipelineId, seq = 3, error = "undo failed", failedAt = failedAt)
-        kotlin.test.assertEquals("n1", controller.nodeId(failed))
-        kotlin.test.assertEquals(pipelineId, controller.rollbackPipelineId(failed))
-        kotlin.test.assertEquals("undo failed", controller.error(failed))
-        kotlin.test.assertEquals(failedAt, controller.failedAt(failed))
-        val pending = failed.copy(error = null, failedAt = null)
-        kotlin.test.assertFailsWith<IllegalStateException> { controller.error(pending) }
-        kotlin.test.assertFailsWith<IllegalStateException> { controller.failedAt(pending) }
-    }
-
-    @Test
-    fun `run state lists its rollback failures`() = kotlinx.coroutines.test.runTest {
-        val runId = UUID.random()
-        val failures = listOf(bosca.pipelines.model.RollbackRecord(runId, "n1", UUID.random(), seq = 1, error = "x"))
-        val runs = io.mockk.mockk<bosca.pipelines.service.PipelineRunService>()
-        io.mockk.coEvery { runs.rollbackFailures(runId) } returns failures
-        val state = PipelineRunStateController(kotlinx.serialization.json.Json, runs)
-        val run = bosca.pipelines.model.PipelineRun(id = runId, pipelineId = UUID.random(), graphSnapshot = kotlinx.serialization.json.JsonObject(emptyMap()))
-        kotlin.test.assertSame(failures, state.rollbackFailures(run))
-    }
 }

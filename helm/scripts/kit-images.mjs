@@ -31,28 +31,14 @@ export function validateKitImages(images, version) {
   return images;
 }
 
-/** Exit status for a release whose Kit runtime image is not published yet; callers may retry only this case. */
-export const IMAGE_UNAVAILABLE = 75;
-
-function inspectManifest(reference) {
-  try {
-    return execFileSync('docker', ['buildx', 'imagetools', 'inspect', '--raw', reference], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  } catch (error) {
-    if (/not found|manifest unknown/i.test(String(error.stderr ?? ''))) {
-      process.stderr.write(`Kit runtime image is not published yet: ${reference}\n`);
-      process.exit(IMAGE_UNAVAILABLE);
-    }
-    throw error;
-  }
-}
-
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [version, output, input] = process.argv.slice(2);
   if (version === '--verify') validateKitImages(JSON.parse(fs.readFileSync(input, 'utf8')), output);
   else {
     if (!version || !output) throw new Error('Usage: node kit-images.mjs VERSION OUTPUT');
     const images = kitImages(version, process.env.BOSCA_KIT_IMAGE_REGISTRY ?? 'ghcr.io/bosca-io/bosca', reference => {
-      const manifest = JSON.parse(inspectManifest(reference));
+      const manifest = JSON.parse(execFileSync('docker', ['buildx', 'imagetools', 'inspect', '--raw', reference],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
       const selected = manifest.manifests?.filter(entry => entry.platform?.os === 'linux' && entry.platform?.architecture === 'amd64');
       if (selected && selected.length !== 1) throw new Error('Kit release needs one linux/amd64 manifest');
       const pin = selected ? `${reference.slice(0, reference.lastIndexOf(':'))}@${selected[0].digest}` : reference;

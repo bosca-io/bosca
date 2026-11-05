@@ -12,11 +12,20 @@ export type Scalars = {
   Boolean: { input: boolean; output: boolean; }
   Int: { input: number; output: number; }
   Float: { input: number; output: number; }
+  /** An ISO 8601 date-time string (e.g. 2024-01-15T09:30:00Z) */
   DateTime: { input: string; output: string; }
+  /** Arbitrary JSON object */
   JSON: { input: any; output: any; }
+  /** 64-bit integer, used for values that exceed the 32-bit Int range */
   Long: { input: number; output: number; }
+  /**
+   * A monetary amount with fixed scale-4 decimal precision, serialized as a decimal string
+   * (e.g. "19.9900"). Mirrors the module's Kotlin Money value type.
+   */
   Money: { input: any; output: any; }
+  /** Universally unique identifier (UUID) string */
   UUID: { input: string; output: string; }
+  /** File upload scalar for multipart form data */
   Upload: { input: File; output: File; }
 };
 
@@ -20839,15 +20848,6 @@ export type PipelineRepoValidationError = {
   path: Scalars['String']['output'];
 };
 
-/** A rollback that failed for a terminated pipeline run. */
-export type PipelineRollbackFailure = {
-  __typename?: 'PipelineRollbackFailure';
-  error: Scalars['String']['output'];
-  failedAt: Scalars['DateTime']['output'];
-  nodeId: Scalars['String']['output'];
-  rollbackPipelineId: Scalars['UUID']['output'];
-};
-
 /** Result of a manual pipeline run. */
 export type PipelineRunResult = {
   __typename?: 'PipelineRunResult';
@@ -20891,8 +20891,6 @@ export type PipelineRunState = {
   /** Final output, including runs that completed after the initiating request returned. */
   output?: Maybe<Scalars['JSON']['output']>;
   pipelineId: Scalars['UUID']['output'];
-  /** Rollbacks of this terminated run that failed, in rollback order. Their side effects may remain in place. */
-  rollbackFailures: Array<PipelineRollbackFailure>;
   status: PipelineRunStatus;
   /** The step-oriented progress view: one row per Status node and per human wait, recursing into fan-out children (per-item rows) — never engine plumbing nodes. */
   steps: Array<PipelineRunStep>;
@@ -21180,8 +21178,6 @@ export type PipelinesMutation = {
   resolveGate: Scalars['Boolean']['output'];
   /** Restart a dead-lettered (failed) run: re-run from its seed input against the current pipeline. Null if the source run is gone. */
   restartRun?: Maybe<PipelineRunState>;
-  /** Run a terminated run's failed rollbacks again under the calling administrator's authority. Returns the rollbacks that are still failed. */
-  retryRollbacks: Array<PipelineRollbackFailure>;
   /**
    * Run a pipeline now as a durable job, FOR REAL — action nodes execute their side effects. The payload
    * is the pipeline's input (validated against the input schema for JSON-input pipelines, or
@@ -21287,12 +21283,6 @@ export type PipelinesMutation_ResolveGateArgs = {
 
 /** Pipeline mutation operations. */
 export type PipelinesMutation_RestartRunArgs = {
-  runId: Scalars['UUID']['input'];
-};
-
-
-/** Pipeline mutation operations. */
-export type PipelinesMutation_RetryRollbacksArgs = {
   runId: Scalars['UUID']['input'];
 };
 

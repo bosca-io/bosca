@@ -775,7 +775,7 @@ class PipelineModelSerializationTest {
             val run = bosca.serialization.UUID.random()
             for (record in listOf(
                 RollbackRecord(run, "n1", group),
-                RollbackRecord(run, "n1", group, kotlinx.serialization.json.JsonPrimitive("out"), 7, "undo failed", java.time.OffsetDateTime.parse("2026-01-01T00:00:00Z")),
+                RollbackRecord(run, "n1", group, kotlinx.serialization.json.JsonPrimitive("out")),
             )) {
                 val encoded = codec.encodeToString(RollbackRecord.serializer(), record)
                 kotlin.test.assertEquals(record, codec.decodeFromString(RollbackRecord.serializer(), encoded))

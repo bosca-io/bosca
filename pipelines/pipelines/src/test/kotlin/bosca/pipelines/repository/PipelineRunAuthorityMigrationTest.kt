@@ -47,7 +47,7 @@ class PipelineRunAuthorityMigrationTest {
         val pipelines = PipelinesMigration()
         FlywayMigration(pool).migrate(listOf(object : Migration {
             override val schema = pipelines.schema
-            override val resources = pipelines.resources - setOf("V22__pipeline_run_authority.sql", "V23__pipeline_run_rollback_failure.sql")
+            override val resources = pipelines.resources - "V22__pipeline_run_authority.sql"
         }))
         val pipelineId = UUID.random()
         sql("insert into pipelines.pipelines (id, name, accepted_input_type) values ('$pipelineId', 'p', 'sample')")
