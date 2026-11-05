@@ -27,3 +27,11 @@ bml {
         ))
     }
 }
+
+val testClient by tasks.registering(Exec::class) {
+    dependsOn("bmlInstallClientDependencies", "bmlPrepareClient")
+    workingDir(projectDir)
+    commandLine(bml.nodeExecutable.get(), "--test", "src/test/profile-menu.test.mjs")
+}
+
+tasks.named("check") { dependsOn(testClient) }

@@ -85,13 +85,7 @@
         <security-password-panel :hasPassword="model.hasPassword"/>
       </if>
 
-      <if model.message != null>
-        <if model.authenticationInvalidated>
-          <toast-message :message="model.message" :failed="model.failed" :id="model.messageId" actionHref="/login" actionLabel="Sign in again" :actionSignOut="true"/>
-        <else>
-          <toast-message :message="model.message" :failed="model.failed" :id="model.messageId"/>
-        </if>
-      </if>
+      <toast-message preserveKey="account-security-notice" :message="model.message" :failed="model.failed" :id="model.messageId" :actionHref='if (model.authenticationInvalidated) "/login" else ""' :actionLabel='if (model.authenticationInvalidated) "Sign in again" else ""' :actionSignOut="model.authenticationInvalidated"/>
     </div>
   </island>
 </component>

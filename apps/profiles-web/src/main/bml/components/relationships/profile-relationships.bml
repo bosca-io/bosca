@@ -113,7 +113,7 @@
         </div>
       </if>
 
-      <if model.message != null><toast-message :message="model.message" :failed="model.failed" :id="model.messageId"/></if>
+      <toast-message preserveKey="relationships-notice" :message="model.message" :failed="model.failed" :id="model.messageId"/>
     </div>
   </island>
 </component>

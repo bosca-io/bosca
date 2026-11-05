@@ -1,1 +1,2 @@
 <import library="io.bosca:bml-design" />
+<import library="io.bosca:bml-auth-ui" />

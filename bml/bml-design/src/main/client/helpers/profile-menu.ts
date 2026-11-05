@@ -42,10 +42,10 @@ type Appearance = "light" | "dark";
 const preference = "git_ui_appearance";
 
 /** Read the same validated preference used by the server's initial document. */
-function savedAppearance(): Appearance {
+function savedAppearance(fallback: Appearance = "dark"): Appearance {
   const value = document.cookie.split(";").map(cookie => cookie.trim())
     .find(cookie => cookie.startsWith(`${preference}=`))?.slice(preference.length + 1);
-  return value === "light" ? "light" : "dark";
+  return value === "light" || value === "dark" ? value : fallback;
 }
 
 /** Apply consumer CSS immediately and retain the preference for subsequent server renders. */
@@ -68,8 +68,10 @@ function accountActions(ctx: ClientContext) {
   const slug = ctx.root.querySelector<HTMLElement>("[data-profile-heading] [data-profile-subtitle]");
   const error = ctx.root.querySelector<HTMLElement>("[data-profile-error]");
   if (!panel || !trigger || !appearance || !label || !lightIcon || !darkIcon || !signout || !name || !slug || !error) return;
+  const fallback = ctx.root.dataset.defaultAppearance === "light" ? "light" : "dark";
+  const showIdentity = ctx.root.hasAttribute("data-show-identity");
   const restoreAppearance = () => {
-    const value = savedAppearance();
+    const value = savedAppearance(fallback);
     setAppearance(value, false);
     label.textContent = value === "dark" ? "Light mode" : "Dark mode";
     lightIcon.hidden = value !== "dark";
@@ -77,7 +79,7 @@ function accountActions(ctx: ClientContext) {
     appearance.setAttribute("aria-label", value === "dark" ? "Switch to light mode" : "Switch to dark mode");
   };
   ctx.on(appearance, "click", () => {
-    setAppearance(savedAppearance() === "dark" ? "light" : "dark");
+    setAppearance(savedAppearance(fallback) === "dark" ? "light" : "dark");
     restoreAppearance();
   });
   ctx.on(window, "pageshow", restoreAppearance);
@@ -86,20 +88,25 @@ function accountActions(ctx: ClientContext) {
   signout.disabled = false;
   let profileLoaded = false, loadingProfile = false;
   const loadProfile = async () => {
-    if (!panel.open || profileLoaded || loadingProfile) return;
+    if ((!panel.open && !showIdentity) || profileLoaded || loadingProfile) return;
     loadingProfile = true;
     error.hidden = true;
     try {
       await profileHost.boscaAuthFlow?.ready;
       const auth = profileHost.boscaAuth;
       if (!auth) throw new Error("Authentication is not initialized.");
-      const principal = auth.currentUser ?? await auth.initialize(true);
+      const principal = auth.currentUser && auth.currentProfile ? auth.currentUser : await auth.initialize(true);
       if (!ctx.root.isConnected) return;
       if (!principal) throw new Error("Your profile could not be loaded.");
       const profile = auth.currentProfile;
       name.textContent = profile?.name || "Profile";
       slug.textContent = profile?.slug ? `@${profile.slug}` : "Signed in";
       trigger.setAttribute("aria-label", profile?.name ? `Profile: ${profile.name}` : "Profile");
+      if (showIdentity) {
+        const triggerLabel = trigger.querySelector<HTMLElement>("[data-popover-label]");
+        if (triggerLabel) triggerLabel.textContent = profile?.name || "Profile";
+        trigger.setAttribute("title", profile?.name ? `Profile: ${profile.name}` : "Profile");
+      }
       profileLoaded = true;
     } catch {
       if (ctx.root.isConnected) {

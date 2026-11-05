@@ -31,6 +31,26 @@ tasks.withType<Test>().configureEach {
     useJUnitPlatform()
 }
 
+tasks.test {
+    val fixtures = layout.buildDirectory.dir("test-fixtures")
+    systemProperty("profilesFixtures", fixtures.get().asFile.absolutePath)
+    outputs.dir(fixtures)
+}
+
+val typecheckClient by tasks.registering(Exec::class) {
+    dependsOn("bmlPrepareClient", "bmlInstallClientDependencies")
+    workingDir(projectDir)
+    commandLine(bml.nodeExecutable.get(), "../../bml/bml-runtime/node_modules/typescript/bin/tsc", "--noEmit")
+}
+
+val testClient by tasks.registering(Exec::class) {
+    dependsOn("test", "bmlPrepareClient")
+    workingDir(projectDir)
+    commandLine(bml.nodeExecutable.get(), "--test", "src/test/client/components.test.mjs")
+}
+
+tasks.named("check") { dependsOn(typecheckClient, testClient) }
+
 application {
     mainClass.set("bosca.profiles.web.MainKt")
 }

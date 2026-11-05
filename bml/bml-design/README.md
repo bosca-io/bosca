@@ -203,7 +203,7 @@ accessible disabled state. Its colors follow the enclosing palette.
 | `app-header` | Required `brand: String` and `href: String`; `product: String = ""` | Header with a brand link/mark and default navigation children. Extra attributes/classes target the header. A 224px sidebar becomes a wrapping header at 700px. Scoped client code reveals the active item in overflowing navigation on mount, resize and updates within the header. |
 | `app-shell` | No named props | Root div receives attributes/classes and projected app-header/content. Supplies the responsive Git shell layout and ambient gradients. Public shell-* classes style projected regions. |
 | `profile` | Required `name: String`; `subtitle: String = ""`; `avatar: String = ""`; `initials: String = ""`; `showAvatar: Boolean = true` | Identity display with a decorative image, initials or user icon. Text truncates within its available width. Root receives attributes/classes; no children. |
-| `profile-menu` | `label: String = "Profile"`; `name: String = "Profile"`; `subtitle: String = "Signed in"`; `icon: String = "users"`; `width: Int = 260`; `accountActions: Boolean = true`; `error: String = ""` | Root receives attributes/classes. Owns profile loading, appearance and sign-out through the shared auth client, with projected additional menu items. Shell layouts use an accessible icon trigger on small screens. |
+| `profile-menu` | `label: String = "Profile"`; `name: String = "Profile"`; `subtitle: String = "Signed in"`; `icon: String = "users"`; `width: Int = 260`; `accountActions: Boolean = true`; `showIdentity: Boolean = false`; `defaultAppearance: String = "dark"`; `error: String = ""` | Root receives attributes/classes. Owns profile loading, appearance and sign-out through the shared auth client, with projected additional menu items. Shell layouts use an accessible icon trigger on small screens. |
 | `workspace` | Required `label: String`; `framed: Boolean = false` | Labelled fill-height section with projected children and forwarded attributes/classes. Add a descendant `fullscreen-button` to expand it. |
 | `fullscreen-button` | `label: String = "Full screen"`; `exitLabel: String = "Exit full screen"` | Native icon button controls its nearest workspace, with forwarded attributes/classes. Enter/exit icons have accessible labels and tooltips; the 30×30px footprint stays fixed. Hidden until enhanced. |
 | `panel` | No named props | Native section with a surface, border, 20px padding and default children. Additional attributes/classes target the section. |
@@ -224,7 +224,7 @@ accessible disabled state. Its colors follow the enclosing palette.
 | `segmented-control` | Required `label: String`, `name: String`, `options: List<SegmentOption>` and `value: String`; `preserveKey: String = ""` | Radiogroup receives additional attributes/classes/events. Each SegmentOption supplies its stable value, label, decorative icon and disabled state. A hidden native input supplies the selected form value. Emits bubbling `segmentchange` after updating its native value. No child content. |
 | `view-tabs` | Required `label: String`, `tabs: List<ViewTab>` and `selected: String` | Tablist receives additional attributes/classes/events. Each ViewTab supplies a stable value, label and disabled state. Emits bubbling `viewchange` with the selected value as its string detail. The application owns panels, IDs, accessible relationships and visibility. No child content. |
 | `tabs` | Required `label: String` and `items: List<NavigationItem>`; `header: Boolean = false` | Native nav receives additional attributes/classes and default trailing action children. Destinations remain native anchors with `aria-current="page"` on the current item. The scoped helper fits links around the current destination and a `More` overflow disclosure. |
-| `select` | `name: String = ""`; `ref: String = "native"`; `placeholder: String = "Select…"`; `label: String = "Selection"`; `icon: String = ""`; `searchable`, `async`, `multiple`, `allowCustom`, `disabled`, `loading`, `required`: `Boolean = false`; `size: String = "md"`; `maxTags: Int = 3`; `minQuery: Int = 0`; `debounce: Int = 250` (milliseconds); `preserveKey: String = ""` | Additional attributes/classes target the native select. Default children are caller-owned options/optgroups. The helper enhances it with a labelled combobox, listbox, optional search/pagination and selected tags; native values remain the form submission contract. |
+| `select` | `name: String = ""`; `ref: String = "native"`; `placeholder: String = "Select…"`; `label: String = "Selection"`; `icon: String = ""`; `searchable`, `async`, `multiple`, `inlineSearch`, `allowCustom`, `disabled`, `loading`, `required`: `Boolean = false`; `size: String = "md"`; `maxTags: Int = 3`; `minQuery: Int = 0`; `debounce: Int = 250` (milliseconds); `preserveKey: String = ""` | Additional attributes/classes target the native select. Default children are caller-owned options/optgroups. The helper enhances it with a labelled combobox, listbox, optional search/pagination and selected tags; native values remain the form submission contract. |
 | `tree` | Required `label: String`; `heading: String = ""`; `local: Boolean = false`; `embedded: Boolean = false`; `preserveKey: String = ""` | Section receives additional attributes/classes and contains a labelled tree with default item children. `local` manages disclosure of already-rendered rows; otherwise caller actions own folder loading. |
 | `tree-item` | Required `path: String` and `label: String`; `href: String = ""`; `directory`, `expanded`, `selected`, `wrap`: `Boolean = false`; `depth: Int = 0` | Flat ARIA tree item. Additional attributes/classes target its native directory button or native file anchor; declarative actions bind to the item row. Paths identify hierarchy, depth controls indentation/ARIA level, and selected file links use `aria-current="page"`. No child content. |
 | `time` | Required `value: String`; `relative`, `ago`, `inheritTypography`: `Boolean = false`; `format: String = ""` | Native time receives additional attributes/classes, its original value as datetime/title and an English server-rendered label. No child content. Use `html:time` for a native timestamp after importing this component. |
@@ -283,7 +283,8 @@ Dialog triggers open a native modal, focus the first available field, and contai
 Escape, backdrop clicks, the close control and projected cancel controls dismiss it. Focus returns
 to the trigger, or to `returnFocus` within the nearest island when supplied. A rising `forceOpen`
 or a new nonempty `openRequest` opens it; a rising `completed` closes it once. A request remains
-consumer state: issue a new request to reopen after dismissal. Forms and failed-submit drafts belong
+consumer state: issue a new request to reopen after dismissal. User dismissal emits the bubbling `dialogdismiss` event so applications can clear a pending
+open request through a declarative handler. Completion-driven closing does not emit this event. Forms and failed-submit drafts belong
 to the application. The `/overlays` fixture shows an error response retaining submitted values and
 reopening through `forceOpen`, plus a preserved dialog whose server-owned request/completion
 attributes update while its client-owned draft DOM stays intact through `data-bml-preserve`.
@@ -429,7 +430,9 @@ Keyboard arrows, Home/End, Enter and non-searchable Space choose enabled options
 focus and Tab leaves the popup, with access to page buttons when present. Native required validation
 focuses the trigger and marks it invalid. Selection emits one bubbling native `change` event.
 The scrollable listbox also accepts direct keyboard focus and exposes its active option while open.
-Multiple choices retain repeated native form values, show up to `maxTags` removable tags and a
+`inlineSearch` on a searchable multiple select places the tags and editable query inside one input surface.
+Picking an option clears the query and retains selection order; arbitrary custom values still require
+`allowCustom`. Multiple choices retain repeated native form values, show up to `maxTags` removable tags and a
 remaining count, and support Backspace removal when the query is empty. Disabled optgroups remain
 disabled. `loading` disables enhanced interaction while retaining native submission values.
 Native form resets refresh the displayed selection, including after a retained-root action patch.
@@ -677,6 +680,10 @@ custom-only actions, as in the standalone catalog examples. The menu supports no
 right-click, ContextMenu, Shift+F10, arrows, Home/End and Escape with focus restoration. Without
 scripts it remains native details; account actions stay disabled. The normal popover preservation
 contract applies to updates.
+
+`<profile-menu showIdentity defaultAppearance="light" />` also shows the current identity in
+the trigger and uses light appearance when no preference is saved. These options use the
+component's own lifecycle; consumers do not call a mount function.
 
 ## Read-only source
 

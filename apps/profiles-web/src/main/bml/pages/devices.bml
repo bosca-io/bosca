@@ -63,7 +63,7 @@
                 </div>
               </if>
             </if>
-            <if model.message != null><toast-message :message="model.message" :failed="model.failed" :id="model.messageId"/></if>
+            <toast-message preserveKey="devices-notice" :message="model.message" :failed="model.failed" :id="model.messageId"/>
           </section>
         </div>
       </island>

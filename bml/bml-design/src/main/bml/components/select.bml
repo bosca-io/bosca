@@ -7,6 +7,7 @@
   <prop name="searchable" type="Boolean" default="false" />
   <prop name="async" type="Boolean" default="false" />
   <prop name="multiple" type="Boolean" default="false" />
+  <prop name="inlineSearch" type="Boolean" default="false" />
   <prop name="allowCustom" type="Boolean" default="false" />
   <prop name="disabled" type="Boolean" default="false" />
   <prop name="loading" type="Boolean" default="false" />
@@ -26,6 +27,7 @@
     :data-name="name"
     :data-searchable="searchable"
     :data-async="async"
+    :data-inline-search="inlineSearch && multiple && searchable"
     :data-allow-custom="allowCustom"
     :data-loading="loading"
     :data-placeholder="placeholder"
@@ -66,8 +68,12 @@
         </span>
       </html:button>
       <div ref="tags" class="select-tags" hidden></div>
+      <if inlineSearch && multiple && searchable>
+        <html:input ref="query" class="select-query select-inline-query" type="search" role="combobox" aria-autocomplete="list" aria-expanded="false" :aria-label='"Search " + label.lowercase()' :placeholder="placeholder" autocomplete="off"/>
+      </if>
     </div>
     <div ref="popup" class="select-popup" popover="manual" hidden>
+      <if !(inlineSearch && multiple && searchable)>
       <html:input
         ref="query"
         class="select-query"
@@ -78,6 +84,7 @@
         :aria-label='"Search " + label.lowercase()'
         autocomplete="off"
       />
+      </if>
       <ul ref="options" class="select-options" role="listbox" :tabindex='if (searchable) -1 else 0' :aria-label="label"></ul>
       <div class="select-status-row">
         <span class="select-progress">
@@ -300,6 +307,27 @@
       color: var(--fg-3);
       font-size: 12px;
     }
+    .select-widget[data-inline-search] .select-control:not([hidden]) {
+      display:flex; flex-wrap:wrap; align-items:center; gap:4px;
+      min-height:var(--control-height-md); padding:4px 6px;
+      border:1px solid var(--control-border,var(--line-2)); border-radius:var(--r-sm);
+      background:var(--control-bg,var(--bg-2));
+    }
+    .select-widget[data-inline-search] .select-control:focus-within {
+      border-color:var(--accent); outline:var(--focus-width) solid var(--accent); outline-offset:var(--focus-offset);
+    }
+    .select-widget[data-inline-search] .select-control:has([aria-invalid="true"]) { border-color:var(--err); }
+    .select-widget[data-inline-search] .select-tags:not([hidden]) { display:contents; }
+    .select-widget[data-inline-search] .select-inline-query {
+      order:1; flex:1 1 120px; min-width:100px; width:auto; height:24px; padding:0 4px;
+      margin:0; border:0; border-radius:0; background:transparent; color:var(--fg-1); outline:none; font:inherit;
+    }
+    .select-widget[data-inline-search] .select-trigger {
+      order:2; flex:none; width:24px; height:24px; padding:0; justify-content:center;
+      border:0; border-radius:var(--r-sm); background:transparent;
+    }
+    .select-widget[data-inline-search] .select-trigger:focus-visible { outline:none; }
+    .select-widget[data-inline-search] .select-selection { display:none; }
     .select-tags {
       display: flex;
       flex-wrap: wrap;
