@@ -75,6 +75,7 @@ ksp {
 
 // The lifecycle test runs the same CLI runtime used by the container.
 tasks.test {
+    testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     dependsOn(":cli:installDist")
     inputs.dir(rootProject.layout.projectDirectory.dir("cli/build/install/bosca"))
     inputs.files(providers.environmentVariable("KIT_RUNTIME_CLI")).optional()

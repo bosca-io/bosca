@@ -150,6 +150,9 @@ class PipelineRunStateController(
     fun input(source: PipelineRun): JsonElement? = source.input
 
     @Field
+    fun output(source: PipelineRun): JsonElement? = source.output
+
+    @Field
     fun createdAt(source: PipelineRun): bosca.serialization.OffsetDateTime = source.createdAt
 
     @Field

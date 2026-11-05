@@ -83,7 +83,6 @@ class KitRuntimeLifecycleIntegrationTest {
             Files.writeString(metadata, """{"name":"$name","version":"$version"}""")
         }
         val fixture = Path.of("runtime/tests/fake_adapter.mjs").toAbsolutePath()
-        val port = ServerSocket(0).use { it.localPort }
         val postgres = SharedPostgreSQLContainer().withReuse(true)
         postgres.start()
         val pool = ConnectionPool(ConnectionFactoryImpl(ConnectionConfig(postgres.jdbcUrl, postgres.username,
@@ -97,7 +96,7 @@ class KitRuntimeLifecycleIntegrationTest {
         coEvery { any<KitRuntimeJob>().enqueue() } returns mockk(relaxed = true)
         val sessionId = UUID.random()
         val principalId = UUID.random()
-        val config = KitHarnessConfiguration("kit", "http://127.0.0.1:$port", "https://bosca.invalid/graphql", authenticationMethod = null, idleSeconds = 900, scopes = listOf("content:view", "git:read"),
+        val config = KitHarnessConfiguration("kit", "http://127.0.0.1:{job}", "https://bosca.invalid/graphql", authenticationMethod = null, idleSeconds = 900, scopes = listOf("content:view", "git:read"),
             image = "runtime@sha256:" + "a".repeat(64), imageId = "sha256:" + "b".repeat(64), versions = RuntimeVersions(cliVersion, descriptor.getValue("adapter").jsonPrimitive.content.substringAfterLast('@'),
                 descriptor.getValue("harness").jsonPrimitive.content.substringAfterLast('@'), descriptor.getValue("statePolicy").jsonPrimitive.content),
             mcpExecutables = mapOf("fixture" to listOf(node, Path.of("runtime/tests/fake_mcp.mjs").toAbsolutePath().toString())),
@@ -287,6 +286,7 @@ class KitRuntimeLifecycleIntegrationTest {
             val request = firstArg<KubernetesJobRequest>()
             val env = json.parseToJsonElement(Base64.getDecoder().decode(requireNotNull(request.secrets).ciphertext).decodeToString()).jsonObject
             launches++
+            val port = ServerSocket(0).use { it.localPort }
             val builder = ProcessBuilder(runtimeCli.toString(), "harness", "serve", "--host", "127.0.0.1", "--port", port.toString(), "--root", root.toString())
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.INHERIT)
             builder.environment().putAll(request.environment)
@@ -312,7 +312,7 @@ class KitRuntimeLifecycleIntegrationTest {
             }
             val id = UUID.random()
             executions[id] = KubernetesJobExecution(id, request.profile, request.idempotencyKey,
-                status = KubernetesJobExecutionStatus.RUNNING, namespace = "kit", jobName = "kit-$launches",
+                status = KubernetesJobExecutionStatus.RUNNING, namespace = "kit", jobName = port.toString(),
                 image = observedImage, imageId = observedImageId,
                 createdAt = OffsetDateTime.now().minusSeconds(startupRemainingSeconds?.let { config.startupSeconds - it } ?: 0))
             id
