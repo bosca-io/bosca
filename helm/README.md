@@ -212,8 +212,12 @@ Supply the existing database/storage/auth environment and initialization Secret,
 and pre-create the Atlas
 PostgreSQL credential Secret (`pg-creds-bosca-atlas-server` by default), as with the
 other server charts. Atlas must use the same database, storage, JWT, realm and
-`PIPELINE_SECRET_KEY` as the main server and runner. The umbrella defaults Atlas's
-embedded workers/listeners/scheduler off because the platform runner already owns
+`PIPELINE_SECRET_KEY` as the main server and runner. Its `SECURITY_ENCRYPTION_KEY`
+is read from `secrets.cfg.secretName` / `secrets.cfg.key` (defaults: `cfg` / `secret`)
+and must also match the main server and runner. The services umbrella reuses the
+existing Secret; standalone installs can set `secrets.cfg.create: false` to reuse
+it or supply its value through `secrets.cfg.value` when creating it. The umbrella
+defaults Atlas's embedded workers/listeners/scheduler off because the platform runner already owns
 them. A standalone chart defaults to embedded workers; `runner.enabled`,
 `runner.queues`, `runner.concurrency`, `runner.listeners` and `runner.scheduler`
 select that responsibility.
