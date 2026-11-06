@@ -113,6 +113,11 @@ secrets:
     secretName: meilisearch-master-key
     key: MEILI_MASTER_KEY
     value: ''
+  cfg:
+    create: true
+    secretName: cfg
+    key: secret
+    value: ''
   s3:
     create: true
     secretName: s3

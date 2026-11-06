@@ -117,6 +117,13 @@ spec:
                   name: {{ . }}
                   key: {{ $.Values.secrets.meilisearch.key }}
             {{- end }}
+            {{- with .Values.secrets.cfg.secretName }}
+            - name: SECURITY_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.cfg.key }}
+            {{- end }}
             {{- with .Values.secrets.s3.secretName }}
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
