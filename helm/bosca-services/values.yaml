@@ -394,6 +394,7 @@ bosca-atlas-server:
     database: {create: false}
     nats: {create: false}
     jwt: {create: false}
+    cfg: {create: false}
     meilisearch: {create: false}
     s3: {create: false}
     url: {create: false}

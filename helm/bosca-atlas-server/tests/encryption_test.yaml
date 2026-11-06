@@ -1,0 +1,62 @@
+suite: Atlas encryption key wiring
+templates:
+  - templates/deployment.yaml
+  - templates/configmap-appconfig.yaml
+  - templates/secret.yaml
+set:
+  global.domain: example.com
+  secrets.database.create: false
+  secrets.nats.create: false
+  secrets.jwt.create: false
+  secrets.meilisearch.create: false
+  secrets.s3.create: false
+  secrets.url.create: false
+tests:
+  - it: supplies the shared encryption key to Atlas
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SECURITY_ENCRYPTION_KEY
+            valueFrom:
+              secretKeyRef:
+                name: cfg
+                key: secret
+  - it: references a custom externally managed encryption key
+    template: templates/deployment.yaml
+    set:
+      secrets.cfg.create: false
+      secrets.cfg.secretName: shared-encryption
+      secrets.cfg.key: encryption-key
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SECURITY_ENCRYPTION_KEY
+            valueFrom:
+              secretKeyRef:
+                name: shared-encryption
+                key: encryption-key
+  - it: creates the configured encryption Secret for standalone installs
+    template: templates/secret.yaml
+    set:
+      secrets.cfg.secretName: shared-encryption
+      secrets.cfg.key: encryption-key
+      secrets.cfg.value: test-encryption-key
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: shared-encryption
+      - equal:
+          path: stringData.encryption-key
+          value: test-encryption-key
+  - it: does not create an externally managed encryption Secret
+    template: templates/secret.yaml
+    set:
+      secrets.cfg.create: false
+    asserts:
+      - hasDocuments:
+          count: 0
