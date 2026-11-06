@@ -3,6 +3,7 @@ import gql from 'graphql-tag'
 import type { Metadata, Profile } from '~/types/graphql'
 import type { OverflowMenuItem } from '@bosca/ui'
 import { getWorkflowState } from '~/utils/workflowStatus'
+import { localDayKey, pageForDay } from '~/utils/guideCalendar'
 
 const route = useRoute()
 const router = useRouter()
@@ -186,7 +187,7 @@ const profile = computed<Profile>(() => {
 })
 
 const guide = computed(() => (guideMetadata.value as Record<string, unknown> | undefined)?.guide as Record<string, unknown> | null ?? null)
-const steps = computed<Array<{ id: string; metadata: Record<string, unknown>; [key: string]: unknown }>>(() => (guide.value?.steps as Array<{ id: string; metadata: Record<string, unknown>; [key: string]: unknown }>) ?? [])
+const steps = computed<Array<{ id: string; date?: string | null; metadata: Record<string, unknown>; [key: string]: unknown }>>(() => (guide.value?.steps as Array<{ id: string; date?: string | null; metadata: Record<string, unknown>; [key: string]: unknown }>) ?? [])
 const guideType = computed(() => (guide.value?.type as string) ?? 'LINEAR')
 const isCalendar = computed(() => guideType.value === 'CALENDAR' || guideType.value === 'CALENDAR_PROGRESS')
 const templateSteps = computed(() => {
@@ -291,10 +292,20 @@ function onStepsWheel(e: WheelEvent) {
   }
 }
 
+const preview = usePreviewableUrl()
+
 onMounted(() => {
   updateStepScrollState()
   window.addEventListener('resize', updateStepScrollState)
-  loadPersonas(); loadFeatures()
+  loadPersonas(); loadFeatures(); preview.load()
+  // Editors open calendar guides to work on the current entry, so land on
+  // today's step (or the latest earlier one) instead of the introduction.
+  // Runs client-side only: "today" must come from the user's clock, not the
+  // server's.
+  if (isCalendar.value && currentPage.value === 1) {
+    const page = pageForDay(steps.value, localDayKey())
+    if (page !== 1) currentPage.value = page
+  }
 })
 
 onBeforeUnmount(() => {
@@ -377,6 +388,15 @@ async function onUnpublish() {
     toast.success('Unpublished')
     await refreshAll()
   } catch { toast.error('Failed to unpublish') }
+}
+
+// Previews open the guide itself — the public site routes guides by their
+// slug and decides which step to show, so step pages don't get their own
+// preview target.
+function onPreview() {
+  const m = guideMetadata.value
+  if (!m) return
+  preview.openPreview({ id: m.id, slug: m.slug, languageTag: m.languageTag })
 }
 
 async function onAddStep() {
@@ -670,6 +690,12 @@ async function onOverflowAction(id: string) {
             :accent="accent"
             :disabled="!activeMetadata?.ready"
             @click="onPublish">Publish</Button>
+          <Button
+            v-if="preview.canPreview.value && guideMetadata"
+            size="sm"
+            icon="eye"
+            :accent="accent"
+            @click="onPreview">Preview</Button>
           <MetadataLanguageMenu
             v-if="guideMetadata"
             :metadata-id="guideMetadata.id"
@@ -691,6 +717,12 @@ async function onOverflowAction(id: string) {
 
     <!-- Guide navigation -->
     <div v-if="guideMetadata" class="guide-nav">
+      <GuideCalendarNav
+        v-if="isCalendar"
+        :steps="steps"
+        :current-page="currentPage"
+        @select="currentPage = $event"
+      />
       <button
         v-if="hasStepOverflow"
         class="guide-nav-action"
