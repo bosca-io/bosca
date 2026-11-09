@@ -65,6 +65,22 @@ describe('usePreviewableUrl', () => {
     expect(url).toBe('https://example.com///abc')
   })
 
+  it('substitutes the viewed guide step', async () => {
+    stubConfig('https://example.com/preview?slug={slug}&step={step}')
+    const preview = usePreviewableUrl()
+    await preview.load()
+    const url = preview.buildPreviewUrl({ id: 'abc', slug: 'daily-2026', step: 638 })
+    expect(url).toBe('https://example.com/preview?slug=daily-2026&step=638')
+  })
+
+  it('leaves the step empty outside a guide step', async () => {
+    stubConfig('https://example.com/preview?slug={slug}&step={step}')
+    const preview = usePreviewableUrl()
+    await preview.load()
+    expect(preview.buildPreviewUrl({ id: 'abc', slug: 'my-doc' })).toBe('https://example.com/preview?slug=my-doc&step=')
+    expect(preview.buildPreviewUrl({ id: 'abc', slug: 'my-guide', step: null })).toBe('https://example.com/preview?slug=my-guide&step=')
+  })
+
   it('openPreview opens the resolved url in a new tab', async () => {
     stubConfig('https://example.com/{slug}')
     const preview = usePreviewableUrl()
