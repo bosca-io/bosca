@@ -96,6 +96,7 @@ class SwarmAtlasRoutingTest {
                     if (source == "CaddyDisabled") {
                         for ((host, path, status) in listOf(
                             Triple("atlas", "/login", 404), Triple("atlas", "/owner/project.git/info/refs", 404),
+                            Triple("atlas", "/system/security/passkeys", 404),
                             Triple("atlas", "/v2/ns/pkg/manifests/latest", 404),
                             Triple("git", "/owner/project.git/info/refs", 404),
                             Triple("artifacts", "/v2/ns/pkg/manifests/latest", 404), Triple("atlas", "/graphql", 200),
@@ -121,7 +122,15 @@ class SwarmAtlasRoutingTest {
                         }
                     }
                     val id = "382b5ae6-f5f4-47b7-8216-fa76e707e588"
-                    listOf("/", "/login", "/repositories/$id", "/artifacts/repositories/upload", "/artifacts/settings/repositories/$id",
+                    val pageRoutes = listOf("server/atlas-ui", "git/git-ui", "artifacts/artifacts-ui", "admin-support/system-ui").flatMap { component ->
+                        Files.walk(workspace.resolve("$component/src/main/bml/pages")).use { pages ->
+                            pages.filter { it.toString().endsWith(".bml") }.map { file ->
+                                requireNotNull(Regex("route=\"([^\"]+)\"").find(Files.readString(file))).groupValues[1]
+                                    .replace("{id}", id)
+                            }.toList()
+                        }
+                    }
+                    (pageRoutes + listOf("/", "/login", "/repositories/$id", "/artifacts/repositories/upload", "/artifacts/settings/repositories/$id",
                         "/artifacts/runs/$id", "/_bml/app.css", "/favicon.svg",
                         "/_bml/content/design-${"a".repeat(64)}.css",
                         "/_bml/content/app-${"b".repeat(64)}.js",
@@ -134,14 +143,15 @@ class SwarmAtlasRoutingTest {
                         "/_bml/js/deploy/${"d".repeat(64)}/libraries/${"a".repeat(64)}/chunks/chunk-ABCDEFGH.js",
                         "/_bml/libraries/${"a".repeat(64)}/styles/design.css",
                         "/_bml/libraries/${"a".repeat(64)}/chunks/chunk-ABCDEFGH.js",
-                        "/_bml/libraries/${"a".repeat(64)}/fonts/geist-latin.woff2").forEach { request("atlas", it, "ui") }
+                        "/_bml/libraries/${"a".repeat(64)}/fonts/geist-latin.woff2")).distinct().forEach { request("atlas", it, "ui") }
                     val payload = "atlas-file-payload".repeat(4096)
                     request("atlas", "/_bml/action?target=save", "ui", payload = payload)
                     request("atlas", "/_artifacts/raw/ns/pkg/build/file%20name.zip?checksum=true", "ui", payload = payload)
                     for (host in listOf("atlas", "git")) {
                         listOf("/graphql", "/graphqlws", "/oauth2/google/callback?code=fixture", "/api/webhooks/github/$id",
                             "/owner/project.git/info/refs?service=git-upload-pack", "/artifacts/project.git/info/refs",
-                            "/owner/project.git/info/lfs/objects/batch", "/owner/project/raw/main/logo.png")
+                            "/owner/project.git/info/lfs/objects/batch", "/owner/project/raw/main/logo.png",
+                            "/system/project.git/info/refs", "/system/project/raw/main/readme.md")
                             .forEach { path ->
                                 val gitRequest = host == "git" || Regex(gitBackendPathPattern()).matches(java.net.URI(path).path)
                                 request(host, path, if (split && gitRequest) "git" else "api")

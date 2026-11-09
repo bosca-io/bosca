@@ -111,6 +111,7 @@ tasks.test {
         rootProject.fileTree("git/git-ui/src/main/bml/pages"),
         rootProject.fileTree("artifacts/artifacts-ui/src/main/bml/pages"),
         rootProject.fileTree("server/atlas-ui/src/main/bml/pages"),
+        rootProject.fileTree("admin-support/system-ui/src/main/bml/pages"),
     ).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files(rootProject.fileTree(".bosca/pipelines") { include("*.yaml") })
         .withPathSensitivity(PathSensitivity.RELATIVE)
