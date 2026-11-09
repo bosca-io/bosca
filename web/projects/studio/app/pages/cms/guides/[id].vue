@@ -261,10 +261,10 @@ watch(currentPage, (page) => {
 })
 
 // When the step row overflows and scrolls, keep the active step button visible.
-// The landing jump (onMounted) is instant rather than animated, and puts the
-// previous step at the strip's left edge so the landing step sits near the
-// start with the steps after it in view. Clicking a step in the strip only
-// nudges it into view.
+// Jumps — landing on today (onMounted) or picking a day from the calendar —
+// are instant rather than animated, and put the previous step at the strip's
+// left edge so the chosen step sits near the start with the steps after it in
+// view. Clicking a step in the strip only nudges it into view.
 let anchorNextStep = false
 
 function anchorActiveStep() {
@@ -282,6 +282,10 @@ function anchorActiveStep() {
 
 /** Jumps to a page and anchors it in the strip (see above). */
 function jumpToPage(page: number) {
+  if (page === currentPage.value) {
+    anchorActiveStep()
+    return
+  }
   anchorNextStep = true
   currentPage.value = page
 }
@@ -767,7 +771,7 @@ async function onOverflowAction(id: string) {
         v-if="isCalendar"
         :steps="steps"
         :current-page="currentPage"
-        @select="currentPage = $event"
+        @select="jumpToPage"
       />
       <button
         v-if="hasStepOverflow"
