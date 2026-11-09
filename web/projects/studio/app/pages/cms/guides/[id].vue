@@ -390,13 +390,13 @@ async function onUnpublish() {
   } catch { toast.error('Failed to unpublish') }
 }
 
-// Previews open the guide itself — the public site routes guides by their
-// slug and decides which step to show, so step pages don't get their own
-// preview target.
+// Previews open the guide by its slug, plus the step on screen (`{step}` in
+// preview.url) so a site can show that step — e.g. a calendar guide's day.
+// The introduction page sends no step.
 function onPreview() {
   const m = guideMetadata.value
   if (!m) return
-  preview.openPreview({ id: m.id, slug: m.slug, languageTag: m.languageTag })
+  preview.openPreview({ id: m.id, slug: m.slug, languageTag: m.languageTag, step: activeStep.value?.id })
 }
 
 async function onAddStep() {
