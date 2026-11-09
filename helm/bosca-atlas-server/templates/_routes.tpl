@@ -25,6 +25,13 @@ Only UI routes match: .git transport and raw paths remain on the API fallback. *
 {{- $routes = append $routes (printf "^/artifacts/settings/repositories/%s/?$" $uuid) -}}
 {{- $routes = append $routes (printf "^/artifacts/runs/%s/?$" $uuid) -}}
 {{- $routes = append $routes "^/_artifacts(/.*)?$" -}}
+{{- $routes = append $routes "^/system/(postgres|nats|meilisearch|search|utilities|backups|config|storage|artifacts|jobs|packages)/?$" -}}
+{{- $routes = append $routes "^/system/scheduler/?$" -}}
+{{- $routes = append $routes "^/system/security/(principals|groups|personas|tokens|passkeys)/?$" -}}
+{{- range list "scheduler" "security/principals" "security/personas" "security/tokens" -}}
+  {{- $routes = append $routes (printf "^/system/%s/%s/?$" . $uuid) -}}
+{{- end -}}
+{{- $routes = append $routes "^/system/integrations(/(federation|hubspot|mux|push|bible|email|sendgrid|mailgun|smtp))?/?$" -}}
 {{- toYaml $routes -}}
 {{- end -}}
 

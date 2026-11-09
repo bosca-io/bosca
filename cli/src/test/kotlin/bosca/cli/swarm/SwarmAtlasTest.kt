@@ -103,16 +103,18 @@ class SwarmAtlasTest {
     fun `every imported BML page has an ingress match without swallowing clone URLs`() {
         val pattern = Regex(atlasUiPathPattern())
         val workspace = Path.of("..").toAbsolutePath()
-        listOf("git/git-ui", "artifacts/artifacts-ui", "server/atlas-ui").forEach { component ->
-            Files.list(workspace.resolve("$component/src/main/bml/pages")).use { pages ->
+        listOf("git/git-ui", "artifacts/artifacts-ui", "server/atlas-ui", "admin-support/system-ui").forEach { component ->
+            Files.walk(workspace.resolve("$component/src/main/bml/pages")).use { pages ->
                 pages.filter { it.toString().endsWith(".bml") }.forEach { file ->
                     val route = requireNotNull(Regex("route=\"([^\"]+)\"").find(Files.readString(file))).groupValues[1]
                         .replace("{id}", "382b5ae6-f5f4-47b7-8216-fa76e707e588")
                     assertTrue(pattern.matches(route), route)
+                    if (route != "/") assertTrue(pattern.matches("$route/"), "$route/")
                 }
             }
         }
-        listOf("/artifacts/project.git/info/refs", "/raw/project.git/git-upload-pack", "/v2/", "/graphql", "/oauth2/google/callback")
+        listOf("/artifacts/project.git/info/refs", "/raw/project.git/git-upload-pack", "/v2/", "/graphql", "/oauth2/google/callback",
+            "/system/project.git/info/refs", "/system/project/raw/main/readme.md")
             .forEach { assertFalse(pattern.matches(it), it) }
         listOf("deployments/local/Caddyfile", "deployments/bosca-compose/config/nginx.conf.template").forEach {
             assertTrue(Files.readString(workspace.resolve(it)).contains(atlasUiPathPattern()), it)
