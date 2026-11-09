@@ -218,6 +218,18 @@ const activeMetadata = computed<Metadata | null>(() => {
   return (stepResult.value?.content?.metadata as Metadata) ?? null
 })
 
+// Calendar guides open on the editor's "today", which only the browser knows
+// (see onMounted). Hold the editor back until that landing step has loaded,
+// so the introduction's editor isn't built — and its collaboration session
+// opened — only to be torn down a moment later.
+const landingReady = ref(!isCalendar.value)
+watch(
+  [() => (stepResult.value?.content?.metadata as Metadata | undefined)?.id, stepStatus],
+  ([id, status]) => {
+    if (!landingReady.value && (id === stepId.value || status === 'error')) landingReady.value = true
+  },
+)
+
 const activeWorkflow = computed(() => (activeMetadata.value as Metadata & { workflow?: Record<string, unknown> | null })?.workflow ?? null)
 const wfState = computed(() => getWorkflowState(activeWorkflow.value))
 const canPublish = computed(() => wfState.value !== 'published' && !activeWorkflow.value?.pending)
@@ -304,8 +316,12 @@ onMounted(() => {
   // server's.
   if (isCalendar.value && currentPage.value === 1) {
     const page = pageForDay(steps.value, localDayKey())
-    if (page !== 1) currentPage.value = page
+    if (page !== 1) {
+      currentPage.value = page
+      return
+    }
   }
+  landingReady.value = true
 })
 
 onBeforeUnmount(() => {
@@ -805,7 +821,7 @@ async function onOverflowAction(id: string) {
 
     <!-- Content editor — keyed by metadata ID so it fully remounts on navigation -->
     <GuideContentEditor
-      v-if="activeMetadata"
+      v-if="activeMetadata && landingReady"
       ref="contentEditorRef"
       :key="activeMetadata.id"
       :metadata="activeMetadata"
