@@ -6,6 +6,11 @@ internal fun atlasUiPathPattern(): String {
     return listOf(
         gitUiPathPattern().removePrefix("^(").removeSuffix(")$"),
         "/favicon[.]svg",
+        "/system/(postgres|nats|meilisearch|search|utilities|backups|config|storage|artifacts|jobs|packages)/?",
+        "/system/scheduler(/$id)?/?",
+        "/system/security/(principals|groups|personas|tokens|passkeys)/?",
+        "/system/security/(principals|personas|tokens)/$id/?",
+        "/system/integrations(/(federation|hubspot|mux|push|bible|email|sendgrid|mailgun|smtp))?/?",
         "/artifacts/namespaces(/$id)?/?",
         "/artifacts/repositories(/($id|upload))?/?",
         "/artifacts/settings/permissions/?",

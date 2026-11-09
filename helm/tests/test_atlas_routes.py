@@ -52,7 +52,7 @@ class AtlasRoutesTest(unittest.TestCase):
                 self.assertEqual(8094, self.rule(atlas, "/graphql")["backendRefs"][0]["port"])
                 self.assertEqual({"name": "atlas-ui" if ui else "test-bosca-atlas-server", "port": 8095},
                                  self.rule(atlas, "/repositories")["backendRefs"][0])
-                for path in CONTENT_ASSETS:
+                for path in CONTENT_ASSETS + ["/system/security/passkeys", "/system/integrations/hubspot"]:
                     self.assertEqual({"name": "atlas-ui" if ui else "test-bosca-atlas-server", "port": 8095},
                                      self.rule(atlas, path)["backendRefs"][0], path)
                 for host in ("atlas.example.com", "git.example.com"):
@@ -74,13 +74,16 @@ class AtlasRoutesTest(unittest.TestCase):
 
     def test_every_page_and_transport_routes_to_the_right_listener(self):
         rules = self.routes()["atlas.example.com"]
-        for component in ("git/git-ui", "artifacts/artifacts-ui", "server/atlas-ui"):
+        for component in ("git/git-ui", "artifacts/artifacts-ui", "server/atlas-ui", "admin-support/system-ui"):
             import re
-            for source in (ROOT.parent / component / "src/main/bml/pages").glob("*.bml"):
+            for source in (ROOT.parent / component / "src/main/bml/pages").rglob("*.bml"):
                 path = re.search(r'route="([^"]+)"', source.read_text())[1].replace("{id}", ID)
                 self.assertEqual(8095, self.rule(rules, path)["backendRefs"][0]["port"], path)
+                if path != "/":
+                    self.assertEqual(8095, self.rule(rules, path + "/")["backendRefs"][0]["port"], path)
         for path in ("/graphql", "/graphqlws", "/oauth2/google/callback", "/v2/", "/raw/ns/pkg/build/file.zip",
-                     "/owner/project.git/git-upload-pack", "/artifacts/project.git/info/refs", f"/repositories/{ID}/raw/main/logo.png"):
+                     "/owner/project.git/git-upload-pack", "/artifacts/project.git/info/refs", f"/repositories/{ID}/raw/main/logo.png",
+                     "/system/project.git/info/refs", "/system/project/raw/main/readme.md"):
             self.assertEqual(8094, self.rule(rules, path)["backendRefs"][0]["port"], path)
         for path in ("/_bml/action", "/_git/subscriptions", "/_artifacts/raw/ns/pkg/build/file.zip", "/favicon.svg",
                      f"/_bml/libraries/{'a' * 64}/styles/design.css",
