@@ -261,8 +261,38 @@ watch(currentPage, (page) => {
 })
 
 // When the step row overflows and scrolls, keep the active step button visible.
+// The landing jump (onMounted) is instant rather than animated, and puts the
+// previous step at the strip's left edge so the landing step sits near the
+// start with the steps after it in view. Clicking a step in the strip only
+// nudges it into view.
+let anchorNextStep = false
+
+function anchorActiveStep() {
+  const strip = navPagesRef.value
+  const active = strip?.querySelector<HTMLElement>('.guide-nav-btn.active')
+  if (!strip || !active) return
+  const anchor = (active.previousElementSibling as HTMLElement | null) ?? active
+  // 'instant' overrides the strip's CSS `scroll-behavior: smooth`, which
+  // would otherwise animate even a direct scroll position change.
+  strip.scrollTo({
+    left: strip.scrollLeft + anchor.getBoundingClientRect().left - strip.getBoundingClientRect().left,
+    behavior: 'instant',
+  })
+}
+
+/** Jumps to a page and anchors it in the strip (see above). */
+function jumpToPage(page: number) {
+  anchorNextStep = true
+  currentPage.value = page
+}
+
 watch(currentPage, async () => {
   await nextTick()
+  if (anchorNextStep) {
+    anchorNextStep = false
+    anchorActiveStep()
+    return
+  }
   navPagesRef.value
     ?.querySelector<HTMLElement>('.guide-nav-btn.active')
     ?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
@@ -317,7 +347,7 @@ onMounted(() => {
   if (isCalendar.value && currentPage.value === 1) {
     const page = pageForDay(steps.value, localDayKey())
     if (page !== 1) {
-      currentPage.value = page
+      jumpToPage(page)
       return
     }
   }
