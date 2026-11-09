@@ -217,15 +217,7 @@ class BmlLibraryDevelopmentTest {
             val executor = Executors.newVirtualThreadPerTaskExecutor()
             readers = executor
             fun nextToken(previous: String? = null): String = executor.submit<String> {
-                var found: String? = null
-                while (found == null) {
-                    val line = requireNotNull(reader.readLine()) { "Reload stream closed unexpectedly" }
-                    if (line.startsWith("data:")) {
-                        val value = line.removePrefix("data:").trim()
-                        if (previous == null || value != previous) found = value
-                    }
-                }
-                found
+                readReloadToken(reader, previous)
             }.get(10, TimeUnit.SECONDS)
             val firstToken = nextToken()
             rebuild { model.writeText(model.readText().replace("library-one", "library-two")) }
