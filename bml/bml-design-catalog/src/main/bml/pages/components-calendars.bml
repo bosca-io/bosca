@@ -1,0 +1,57 @@
+<page route="/components/calendars">
+  <catalog-document title="Calendar views" description="Calendar component APIs and authoring." current="/components">
+    <reference-entry name="calendar-view"
+      :api='"current: String (required)\nevents: List<bosca.design.model.CalendarEvent> = emptyList()\ncalendarColors: Map<String, String> = emptyMap()\nlabel: String = \"Calendar\"\nreadOnly: Boolean = false\npreserveKey: String = \"\"\nview: String = \"month\""'
+      contract="Additional attributes reach the calendar root. Supply a stable, unique preserveKey to retain the calendar and its scroll position during application updates. Supply typed occurrences and calendar colors. calendarselectday and calendarnewevent supply day; calendarselectslot supplies day and hour; calendarselectevent supplies event; calendarmoveevent supplies eventId, startsAt and endsAt. The application loads and saves data."
+      keyboard="Tab reaches dates, events, overflow and hourly slots. Alt with arrow keys moves editable events; Shift with Alt and Up/Down resizes. Escape cancels dragging. Without scripts the event list remains readable. End timestamps are exclusive."
+      css="--calendar-height sets the scroll viewport; shared palette, border, radius, font and focus tokens style the view."
+      :snippet='"<calendar-view current=\"2026-11-05\" :events=\"occurrences\" label=\"Team calendar\" />"'>
+      <calendar-view current="2026-11-05" :events='bosca.design.catalog.CatalogCalendar("reference").events' label="Reference calendar" readOnly />
+      <a class="catalog-link" href="/calendars">Working examples in both palettes</a>
+    </reference-entry>
+    <reference-entry name="calendar-month-view"
+      :api='"current: String (required)\nevents: List<bosca.design.model.CalendarEvent> = emptyList()\ncalendarColors: Map<String, String> = emptyMap()\nlabel: String = \"Calendar\"\nreadOnly: Boolean = false\npreserveKey: String = \"\""'
+      contract="Additional attributes reach the calendar root. Supply a stable, unique preserveKey to retain the calendar and its scroll position during application updates. Supply typed occurrences and calendar colors. calendarselectday and calendarnewevent supply day; calendarselectslot supplies day and hour; calendarselectevent supplies event; calendarmoveevent supplies eventId, startsAt and endsAt. The application loads and saves data."
+      keyboard="Tab reaches dates, events, overflow and hourly slots. Alt with arrow keys moves editable events; Shift with Alt and Up/Down resizes. Escape cancels dragging. Without scripts the event list remains readable. End timestamps are exclusive."
+      css="--calendar-height sets the scroll viewport; shared palette, border, radius, font and focus tokens style the view."
+      :snippet='"<calendar-month-view current=\"2026-11-05\" :events=\"occurrences\" label=\"Team calendar\" />"'>
+      <calendar-month-view current="2026-11-05" :events='bosca.design.catalog.CatalogCalendar("reference").events' label="Reference calendar" readOnly />
+      <a class="catalog-link" href="/calendars">Working examples in both palettes</a>
+    </reference-entry>
+    <reference-entry name="calendar-week-view"
+      :api='"current: String (required)\nevents: List<bosca.design.model.CalendarEvent> = emptyList()\ncalendarColors: Map<String, String> = emptyMap()\nlabel: String = \"Calendar\"\nreadOnly: Boolean = false\npreserveKey: String = \"\""'
+      contract="Additional attributes reach the calendar root. Supply a stable, unique preserveKey to retain the calendar and its scroll position during application updates. Supply typed occurrences and calendar colors. calendarselectday and calendarnewevent supply day; calendarselectslot supplies day and hour; calendarselectevent supplies event; calendarmoveevent supplies eventId, startsAt and endsAt. The application loads and saves data."
+      keyboard="Tab reaches dates, events, overflow and hourly slots. Alt with arrow keys moves editable events; Shift with Alt and Up/Down resizes. Escape cancels dragging. Without scripts the event list remains readable. End timestamps are exclusive."
+      css="--calendar-height sets the scroll viewport; shared palette, border, radius, font and focus tokens style the view."
+      :snippet='"<calendar-week-view current=\"2026-11-05\" :events=\"occurrences\" label=\"Team calendar\" />"'>
+      <calendar-week-view current="2026-11-05" :events='bosca.design.catalog.CatalogCalendar("reference").events' label="Reference calendar" readOnly />
+      <a class="catalog-link" href="/calendars">Working examples in both palettes</a>
+    </reference-entry>
+    <reference-entry name="calendar-day-view"
+      :api='"current: String (required)\nevents: List<bosca.design.model.CalendarEvent> = emptyList()\ncalendarColors: Map<String, String> = emptyMap()\nlabel: String = \"Calendar\"\nreadOnly: Boolean = false\npreserveKey: String = \"\""'
+      contract="Additional attributes reach the calendar root. Supply a stable, unique preserveKey to retain the calendar and its scroll position during application updates. Supply typed occurrences and calendar colors. calendarselectday and calendarnewevent supply day; calendarselectslot supplies day and hour; calendarselectevent supplies event; calendarmoveevent supplies eventId, startsAt and endsAt. The application loads and saves data."
+      keyboard="Tab reaches dates, events, overflow and hourly slots. Alt with arrow keys moves editable events; Shift with Alt and Up/Down resizes. Escape cancels dragging. Without scripts the event list remains readable. End timestamps are exclusive."
+      css="--calendar-height sets the scroll viewport; shared palette, border, radius, font and focus tokens style the view."
+      :snippet='"<calendar-day-view current=\"2026-11-05\" :events=\"occurrences\" label=\"Team calendar\" />"'>
+      <calendar-day-view current="2026-11-05" :events='bosca.design.catalog.CatalogCalendar("reference").events' label="Reference calendar" readOnly />
+      <a class="catalog-link" href="/calendars">Working examples in both palettes</a>
+    </reference-entry>
+
+    <reference-entry name="calendar-sidebar"
+      :api='"calendars: List<bosca.design.model.CalendarDefinition> (required)\nvisibleIds: Set<String> (required)\nlabel: String = \"Calendars\"\ncanAdd: Boolean = true"'
+      contract="Applications supply calendars and visible IDs. calendartoggle and calendaredit bubble calendarId; calendaradd requests a new calendar. Consumers save changes through their own services."
+      keyboard="Native toggle and edit buttons support keyboard input; aria-pressed announces visibility."
+      css="Shared palette, control, typography and focus tokens. Sidebar wraps in narrow containers."
+      :snippet='"<calendar-sidebar :calendars=\"calendars\" :visibleIds=\"visible\" />"'>
+      <calendar-sidebar :calendars='bosca.design.catalog.CatalogCalendar("reference").calendars' :visibleIds='setOf("work")' />
+    </reference-entry>
+    <reference-entry name="calendar-event-fields"
+      :api='"value: bosca.design.model.CalendarEvent (required)\ncalendars: List<bosca.design.model.CalendarDefinition> (required)\nparticipantOptions: List<bosca.design.model.CalendarParticipant> = emptyList()\nreadOnly: Boolean = false"'
+      contract="Place inside an application form/dialog. Native fields submit title, calendarId, description, location, kind, startsAt, endsAt, timeZone, participantIds and rrule. participantIds is JSON array text. The application owns validation, recurrence expansion, edit/delete scope and persistence."
+      keyboard="Native labelled fields and shared participant/weekday selects retain standard keyboard operation. Readonly fields remain readable. Dates are local; timed transport values carry an explicit offset."
+      css="Shared field, control, palette and typography tokens."
+      :snippet='"<calendar-event-fields :value=\"draft\" :calendars=\"calendars\" :participantOptions=\"people\" />"'>
+      <calendar-event-fields :value='bosca.design.catalog.CatalogCalendar("reference").events.first()' :calendars='bosca.design.catalog.CatalogCalendar("reference").calendars' readOnly />
+    </reference-entry>
+  </catalog-document>
+</page>

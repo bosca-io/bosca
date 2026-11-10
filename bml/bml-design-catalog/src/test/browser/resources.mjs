@@ -5,7 +5,7 @@ import { join } from 'node:path';
 /** Inspect actual cold-page downloads, including shared chunks and dynamically selected grammars. */
 export async function checkResources({ navigate, evaluate, until, call, artifacts, mode }) {
   const engines = {
-    chart: { root: '[data-bml-chart]', ready: 'data-chart-ready', js: 'chartjs', css: '[data-bml-chart]' },
+    chart: { root: '[data-bml-chart]', ready: 'data-chart-ready', js: '_echarts_instance_', css: '[data-bml-chart]' },
     flow: { root: '[data-bml-flow-editor]', ready: 'data-flow-ready', js: 'vue-flow__node', css: '.vue-flow__node' },
     grid: { root: '[data-bml-dashboard-grid]', ready: 'data-grid-ready', js: 'data-grid-ready', css: '[data-bml-dashboard-grid]' },
     document: { root: '[data-bml-document-editor]', ready: 'data-document-ready', js: 'ProseMirror', css: '.tiptap' },

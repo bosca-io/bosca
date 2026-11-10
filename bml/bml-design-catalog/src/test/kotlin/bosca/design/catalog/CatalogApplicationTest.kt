@@ -34,6 +34,27 @@ class CatalogApplicationTest {
     private val classpath = System.getProperty("catalog.classpath")
 
     @Test
+    fun `calendar engines support editing recurrence and touch input`() {
+        withServer(false) { base, _ ->
+            runBrowser(base, false, "engines", 120, System.getProperty("catalog.calendarEngines"))
+        }
+    }
+
+    @Test
+    fun `calendar workflow edits deletes repeats filters and recovers rejected saves`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--calendar-workflow", 90)
+        }
+    }
+
+    @Test
+    fun `calendar views dispatch application actions across palettes and widths`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--calendars", 60)
+        }
+    }
+
+    @Test
     fun `code editor submits native values and retains drafts options and reset`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--code-editor", 60)
@@ -136,9 +157,9 @@ class CatalogApplicationTest {
                 scripts.forEach { visit(URI(base).resolve(it.replace("&amp;", "&"))) }
                 val source = modules.values.joinToString("\n")
                 assertEquals(path in listOf("/flows", "/components/visualization"), "data-flow-ready" in source, "$path VueFlow adapter")
-                assertEquals(path in listOf("/charts", "/components/visualization"), "data-chart-ready" in source, "$path Chart.js adapter")
+                assertEquals(path in listOf("/charts", "/components/visualization"), "data-chart-ready" in source, "$path ECharts adapter")
                 assertEquals(path in listOf("/flows", "/components/visualization"), "vue-flow__node" in source, "$path VueFlow engine")
-                assertEquals(path in listOf("/charts", "/components/visualization"), "chartjs" in source, "$path Chart.js engine")
+                assertEquals(path in listOf("/charts", "/components/visualization"), "_echarts_instance_" in source, "$path ECharts engine")
                 if (path == "/charts") {
                     for (palette in listOf("Dark", "Light"))
                         assertTrue(Regex("""<caption\b[^>]*>$palette palette visits</caption>""").containsMatchIn(html), html)
@@ -152,6 +173,13 @@ class CatalogApplicationTest {
     fun `flows and charts retain independent state and native values`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--visualizations", 90)
+        }
+    }
+
+    @Test
+    fun `data maps retain geographic viewports and accessible region actions`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--maps", 90)
         }
     }
 

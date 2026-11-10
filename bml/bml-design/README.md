@@ -232,7 +232,7 @@ accessible disabled state. Its colors follow the enclosing palette.
 | `code-editor` | Required `name: String`; `value: String = ""`; `language`, `path`: `String = ""`; `line: Int = 0`; `wrapped: Boolean = true`; `bare`, `fill`: `Boolean = false`; `label: String = "Code editor"`; `readOnly`, `disabled`: `Boolean = false`; `preserveKey: String = ""` | CodeMirror field with native form text, undo/redo, search, reset and tag-owned setup/cleanup. Additional attributes target the root. `--code-height` controls its surface height. |
 | `json-editor` | Required `name: String`; `value: JsonElement = JsonObject(emptyMap())`; `text: String? = null`; `label: String = "JSON editor"`; `mode: String = "tree"` (`tree`, `text`, `table`); `mainMenuBar`, `navigationBar`, `statusBar`, `askToFormat`: `Boolean = true`; `readOnly: Boolean = false`; `disabled: Boolean = false`; `error: String = ""`; `preserveKey: String = ""` | Structured editor with a native textarea form value and escaped no-script fallback. Additional attributes/classes target its labelled group. Syntax and caller feedback appear in a live status. No child content. |
 | `flow-editor` | Required `id`, `label`: `String`; `name: String = "graph"`; `value: FlowGraph = FlowGraph()`; `readOnly`, `disabled`: `Boolean = false`; `error`, `preserveKey`: `String = ""` | VueFlow canvas with native JSON form value, named ports, selection/connection/change events, view controls and text outline. Additional attributes/classes reach the root; default children follow the outline. |
-| `chart` | Required `id`, `label`: `String`; required `config: ChartConfiguration`; `loading: Boolean = false`; `error`, `preserveKey`: `String = ""` | Kotlin Chart.js configuration, CSS palette defaults, responsive named canvas and server-rendered data table. Additional attributes/classes reach the root; default children follow the table. |
+| `chart` | Required `id`, `label`: `String`; required `config: ChartConfiguration`; `maps: Map<String, JsonObject> = emptyMap()`; `loading: Boolean = false`; `error`, `preserveKey`: `String = ""` | Native ECharts options, CSS palette defaults, responsive named canvas and server-rendered data table. Additional attributes/classes reach the root; default children follow the table. |
 | `dashboard-grid` | Required `id`, `label`: `String`; `name: String = "layout"`; `value: List<DashboardLayoutItem> = emptyList()`; `lockedIds: Set<String> = emptySet()`; `columns: Int = 12`; `cellHeight: Int = 60`; `stackBelow: Int = 480`; `readOnly`, `disabled`: `Boolean = false`; `error`, `preserveKey`: `String = ""` | Studio-style dashboard geometry, native JSON form value, pointer/keyboard movement and resizing, locked widgets and narrow-container stacking. Direct default children are dashboard items; extra attributes reach the root. |
 | `dashboard-item` | Required `itemId`, `label`: `String` | Named widget and layout handles. Attributes reach the section; default children remain ordinary BML content in a scrolling body. |
 | `document-editor` | Required `id`, `label`: `String`; `name: String = "document"`; `value: JsonObject = emptyDocument()` (ProseMirror content); `document: bosca.content.metadata.model.Document? = null`; `readOnly`, `disabled`, `required`: `Boolean = false`; `error`, `hint`, `preserveKey`: `String = ""`; `placeholder: String = "Start writing…"` | TipTap rich text with a native JSON form value. Additional attributes/classes reach the labelled root. The application owns forms, validation and persistence. No child content. |
@@ -916,7 +916,7 @@ Build and validate the binary and original source archive from the workspace roo
 ## Structured component inputs
 
 Complex inputs are Kotlin objects. Presentation models live in `bosca.design.model`:
-`FlowGraph`, `FlowNode`, `FlowEdge`, `FlowPosition`, `FlowViewport`, `DashboardLayoutItem`, `ChartConfiguration`, `ChartData` and `ChartDataset`.
+`FlowGraph`, `FlowNode`, `FlowEdge`, `FlowPosition`, `FlowViewport`, `DashboardLayoutItem` and `ChartConfiguration`.
 Rich documents accept a `bosca.content.metadata.model.Document` through `document`, or a Kotlin
 `JsonObject` with the ProseMirror shape through `value`; arbitrary JSON values use
 `JsonElement`. These open trees preserve application-specific nodes, attributes and values.
@@ -925,31 +925,13 @@ JSON text; decode submissions with Kotlin serialization, for example
 `Json.decodeFromString(FlowGraph.serializer(), form.graph)` and
 `Json.decodeFromString(ListSerializer(DashboardLayoutItem.serializer()), form.layout)`.
 Ordinary models use generated Kotlin serializers, including when nested in application state.
-Only chart-point and flow-marker unions need custom serialization for their native JSON shapes.
+Flow-marker unions use custom serialization for their native JSON shapes.
 Applications retain form validation and persistence.
 
-```kotlin
-val chartConfig = ChartConfiguration(
-    type = ChartType.BAR,
-    data = ChartData(
-        labels = listOf("Mon", "Tue"),
-        datasets = listOf(ChartDataset("Visits", listOf(12, 18))),
-    ),
-    options = ChartOptions(
-        plugins = ChartPlugins(legend = ChartLegend(position = ChartLegendPosition.BOTTOM)),
-        scales = mapOf("y" to ChartScale(beginAtZero = true, title = ChartTitle("Visits"))),
-    ),
-)
-```
-
-Chart labels can use `JsonArray` for numeric or multiline labels. Dataset data uses `List<ChartValue>`:
-`ChartValue.Number`, `Scatter`, `Bubble` and `Gap` represent ordinary points, x/y points, x/y/r points
-and missing values. Numeric collections have a convenience constructor. `ChartValue.Custom` keeps
-application data for custom parsing keys and ranges. Common dataset styling is typed, including
-colors, borders, point radius, stack and axis IDs. `ChartOptions`, `ChartPlugins`, `ChartLegend`,
-`ChartTooltip`, `ChartScale`, `ChartTitle`, `ChartTicks` and `ChartGrid` cover common nested settings.
-Supported engine settings are ordinary model properties. Application node values belong in the
-explicit `FlowNodeData.payload` JSON object. Dashboard values are ordinary lists of geometry objects;
+`ChartConfiguration` wraps a `JsonObject` of native ECharts options. Use Kotlin's `buildJsonObject`
+and `buildJsonArray` builders for `series`, axes, legends and other settings; see the chart example below.
+Native options retain application-defined point values and nested settings through state serialization.
+Application node values belong in the explicit `FlowNodeData.payload` JSON object. Dashboard values are ordinary lists of geometry objects;
 widget data stays in the application. JSON editor `value` is structured;
 its optional `text` accepts a raw editable draft, including malformed or empty text, and takes
 priority when non-null. Return invalid submitted text there rather than encoding it as a JSON string.
@@ -1111,7 +1093,7 @@ visible. The server still validates submitted layouts according to the applicati
 Colors use ordinary CSS. `--dashboard-gap` defaults to 16px, `--dashboard-item-padding` to 16px,
 `--dashboard-item-bg` to `--bg-1`, and `--dashboard-chart-height` to 260px for charts placed directly
 in a widget. Widget bodies scroll within their assigned height. `/dashboards` demonstrates independent
-dark/light dashboards, retained note input, a real Chart.js widget, locked content and local save
+dark/light dashboards, retained note input, a real ECharts widget, locked content and local save
 rejection; `/components/visualization` documents both tags.
 
 ## Flows and charts
@@ -1151,30 +1133,159 @@ VueFlow store. Without scripts its labelled JSON textarea remains available.
 Invalid graph structure reveals that field and blocks native form submission; supplying a valid
 replacement restores the canvas and form validation immediately.
 
-`chart` uses [Chart.js](https://www.chartjs.org/) directly. Supply a Kotlin `ChartConfiguration` with `type`,
-`ChartData`, `ChartDataset` values and optional structured Chart.js `options`. Bar, line, scatter, bubble, pie,
-doughnut, radar and polarArea charts are supported, including mixed dataset types, stacking and
-custom axes. Numeric and object points retain their values. Category and linear axes use the
-built-in scales. The component does not bundle a date adapter for time axes.
+`chart` uses [Apache ECharts](https://echarts.apache.org/) with native options. Supply a
+`ChartConfiguration(buildJsonObject { ... })`; the object is passed directly to ECharts, without
+an extra `option` envelope. Use native `series`, `xAxis`, `yAxis`, `legend`, `tooltip`, `radar`,
+`dataset` and other ECharts settings. No JavaScript callbacks or executable strings are evaluated.
+
+```kotlin
+val chartConfig = ChartConfiguration(buildJsonObject {
+    putJsonObject("xAxis") {
+        put("type", "category")
+        putJsonArray("data") { add("Mon"); add("Tue") }
+    }
+    putJsonObject("yAxis") { put("type", "value") }
+    putJsonArray("series") {
+        add(buildJsonObject {
+            put("type", "bar"); put("name", "Visits")
+            putJsonArray("data") { add(4); add(7) }
+        })
+    }
+})
+```
 
 ```html
 <chart id="daily-visits" label="Daily visits" :config="analytics.chartConfig"
        :loading="analytics.loading" :error="analytics.error" preserveKey="daily-visits" />
 ```
 
-The component resolves CSS colors, including `oklch()` and `color-mix()`, and typography into instance-local Chart.js options; explicit
-dataset colors and axis/legend options take priority. Container resizing and appearance changes
-refresh the canvas without changing the application data. `--chart-height` controls the dedicated
-responsive container. Reduced-motion preferences disable animation. Chart options are Kotlin `ChartOptions` objects with typed settings; callbacks or plugins supplied as executable strings are not evaluated.
+CSS colors, including `oklch()` and `color-mix()`, and typography provide instance-local theme
+defaults. Explicit ECharts colors and settings take priority. Container resizing and appearance
+changes refresh the retained chart. `--chart-height` controls its responsive container. Reduced
+motion disables animation; animation otherwise defaults to off. Tooltips use the canvas rich-text
+renderer.
 
-A named canvas is accompanied by View data, a server-rendered table that remains readable without
-scripts. Point actions provide keyboard access to the same `chartselect` event as canvas clicks:
-`{datasetIndex,index,label,value}`. Applications can use that event for drill-down or toast feedback.
-Loading, empty data and errors retain the chart footprint. Changed data updates the retained chart;
-changed type replaces the Chart.js instance on the same canvas. Unmount destroys the instance and
-its listeners. Queries, result mapping, pagination and data transport belong to the consuming app.
+A named drawing surface is accompanied by View data, a server-rendered table of inline `series.data`
+that remains readable without scripts. Object points use `name` and `value`; arrays retain their
+coordinates. Dataset transforms execute in ECharts; supply inline series data when a server-readable
+table is required. Point actions provide keyboard access to the same `chartselect` event as drawing
+clicks: `{datasetIndex,index,label,value}`. `datasetIndex` identifies the native ECharts series index.
+Applications own drill-down and feedback. Loading, empty data and errors retain the chart footprint.
+Changed options replace the configuration on the retained ECharts instance, removing obsolete series
+and axes. Unmount disposes the instance and its listeners. Queries, result mapping, pagination and
+data transport belong to the consuming app.
+
+For a geographic data map, pass named GeoJSON FeatureCollections through `maps`. Native
+`series.map` and `geo.map` refer to those names; the component registers the boundaries and isolates
+aliases between chart instances. The application owns geometry loading and region values. Names in
+`series.data` match feature `properties.name`, or the native `nameProperty`/`nameMap` settings.
+
+```kotlin
+val mapConfig = ChartConfiguration(buildJsonObject {
+    putJsonObject("visualMap") { put("min", 0); put("max", 100) }
+    putJsonArray("series") { add(buildJsonObject {
+        put("type", "map"); put("map", "regions"); put("roam", true); put("selectedMode", "single")
+        putJsonArray("data") { add(buildJsonObject { put("name", "North"); put("value", 42) }) }
+    }) }
+})
+```
+
+```html
+<chart id="regional-visits" label="Visits by region" :config="mapConfig"
+       :maps='mapOf("regions" to regionBoundaries)' preserveKey="regional-visits" />
+```
+
+Map controls provide Zoom in, Zoom out and Reset map. On the focused drawing surface, arrow keys
+pan, plus/minus zoom and Home resets; these controls honor native `roam` restrictions. Native pointer
+dragging and wheel zoom work as configured. Table actions also select the corresponding map region.
+Region clicks emit `chartselect` with the same named value. Unrelated surrounding updates retain
+the map viewport. An empty map series still displays its boundaries; missing geometry produces
+component feedback and can be replaced without remounting. ECharts retains registered boundary
+resources for the page lifetime and reuses identical geometry across charts and remounts.
+The catalog's map example bundles Natural Earth country boundaries and illustrative values.
 
 Dependency notices ship in `META-INF/licenses/bml-design/flow-editor.txt` and `chart.txt`. These engines
 are reached only by pages using their components; a consuming application needs no VueFlow, Vue
-or Chart.js npm installation. `/flows`, `/charts` and `/components/visualization` in the catalog show
+or ECharts npm installation. `/flows`, `/charts` and `/components/visualization` in the catalog show
 both palettes, states and public authoring.
+
+
+## Calendar views
+
+`calendar-month-view`, `calendar-week-view`, and `calendar-day-view` provide Studio's
+Monday-first month grid and 24-hour week/day grids. `calendar-view` accepts the same
+props plus `view="month|week|day"` for applications with a view picker.
+
+```html
+<calendar-week-view current="2026-11-05" :events="occurrences"
+  :calendarColors='mapOf("work" to "#268e71")' label="Team calendar" preserveKey="team-calendar" />
+```
+
+Supply `List<bosca.design.model.CalendarEvent>` with unique occurrence IDs, titles,
+ISO start/end timestamps, optional `allDay`, `calendarId`, and `editable` values.
+End timestamps are exclusive. `current` accepts a date (`YYYY-MM-DD`) or timestamp;
+week views resolve its Monday. Display uses the browser's local timezone. Applications
+expand recurring events, filter visible calendars, load ranges and save changes.
+Events are read-only unless `editable=true`; the view's `readOnly` prop disables moving and resizing.
+Supply a stable, unique `preserveKey` to retain the calendar across server actions, including
+its vertical and horizontal scroll position. Change the key to intentionally reset the view.
+Set `--calendar-height` to control the scroll viewport. Narrow week/month grids scroll
+horizontally. Without JavaScript, a readable event list remains available.
+
+Bubbling custom events expose these `detail` values:
+
+| Event | Detail |
+| --- | --- |
+| `calendarselectday` | `{ day: "YYYY-MM-DD" }`, including month overflow buttons |
+| `calendarnewevent` | `{ day }`, from a month day’s plus button or double-click |
+| `calendarselectslot` | `{ day, hour }` |
+| `calendarselectevent` | `{ event }` |
+| `calendarmoveevent` | `{ eventId, startsAt, endsAt }`, UTC timestamps for timed events; dates for all-day events |
+
+Handle them in the consuming component's scoped script with `ctx.on`, then use
+`ctx.dispatch` with the application's generated server action. Moves request a save;
+the application returns updated occurrences after accepting the change. Dragging previews the destination directly in the calendar and keeps
+the duration; the time grids snap to 15 minutes and provide bottom resize handles with live height previews.
+Escape cancels dragging. Keyboard users focus an editable event and press Alt with
+Left/Right to move a day or Up/Down to move 15 minutes; Shift with Alt and Up/Down
+resizes. The catalog's `/calendars` page demonstrates navigation, an application-owned event creation form, and application actions
+in independent light and dark examples.
+
+`calendar-sidebar` receives `List<CalendarDefinition>` and `visibleIds: Set<String>`.
+Its native toggle buttons emit `calendartoggle`, edit buttons emit `calendaredit`
+(both carry `{calendarId}`), and Add emits `calendaradd`. Applications own calendar
+creation, editing, deletion, authorization and filtering of the displayed occurrences.
+
+`calendar-event-fields` renders an application's `CalendarEvent` draft inside its
+own form and dialog. Supply `calendars` and optional `participantOptions`. It includes
+title, calendar, description, location, all-day dates, participants, recurrence frequency,
+interval, weekdays and count/until. The recurrence controls are hidden and disabled for
+all-day events. RRULE is an internal hidden form value; existing rules are retained when
+the controls are hidden. Native form values are
+`title`, `calendarId`, `description`, `location`, `kind`, `startsAt`, `endsAt`, `timeZone`,
+`participantIds` (JSON array text), and `rrule`. Visible `startLocal`/`endLocal` fields
+use browser-local dates; timed transport values have an explicit offset. Existing
+instants in an ambiguous DST hour are retained when the local field is unchanged.
+All-day ends are exclusive dates. `readOnly` keeps details readable without editing.
+Applications expand recurrence and choose how edits/deletions affect an occurrence,
+following occurrences, or an entire series. The catalog demonstrates those operations
+using local example state and ical4j; the design library has no backend dependency.
+
+For asynchronous moves and resizes, register the save promise synchronously:
+
+```typescript
+ctx.on<CustomEvent<{
+  eventId: string; startsAt: string; endsAt: string;
+  waitUntil(promise: Promise<unknown>): void;
+}>>(ctx.root, "calendarmoveevent", event => {
+  event.detail.waitUntil(ctx.dispatch(events.move(
+    event.detail.eventId, event.detail.startsAt, event.detail.endsAt
+  )));
+});
+```
+
+The preview remains until saving completes. Rejection restores the supplied occurrence,
+announces the error, emits `calendarerror` with `{eventId,message}`, and enables retry.
+All-day move requests carry `YYYY-MM-DD` dates; timed requests carry UTC timestamps.
+All-day keyboard movement/resizing uses whole days. Multi-day timed events are clipped
+per day and expose a resize handle on their final segment.

@@ -169,8 +169,9 @@ browser data internally. Native submitted form fields remain JSON text and are d
 receiving application action. JSON editor invalid/empty drafts use its separate nullable `text`
 prop; structured values do not use serialized string literals.
 
-Common chart options now use `ChartOptions` and nested Kotlin models; point collections use
-`ChartValue` objects, with numeric collection constructors for ordinary series. Flow card data,
+Chart configuration now uses `ChartConfiguration(JsonObject)` with native Apache ECharts options.
+Replace Chart.js `data.datasets` with ECharts `series`, move category labels to `xAxis.data`, and
+use native `legend`, `tooltip` and axis options. Numeric, named and coordinate points go in `series.data`. Flow card data,
 ports, sides, edge styling and markers have Kotlin models. Simple presentation choices use string
 attributes (for example `size="sm"`, `tone="success"` and `placement="bottom"`).
 Use shared `bosca.documents` nodes/marks through `documentValue(document)` when authoring known
