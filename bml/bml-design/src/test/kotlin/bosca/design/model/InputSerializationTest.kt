@@ -22,11 +22,8 @@ class InputSerializationTest {
         assertEquals(0.0, node.getValue("position").jsonObject.getValue("x").jsonPrimitive.double)
         assertEquals(0.0, node.getValue("position").jsonObject.getValue("y").jsonPrimitive.double)
         assertEquals(JsonObject(emptyMap()), node["data"])
-        assertEquals(Json.parseToJsonElement("""{"type":"bar","data":{"labels":[],"datasets":[]},"options":{"scales":{}}}"""),
-            Json.encodeToJsonElement(ChartConfiguration.serializer(), ChartConfiguration(ChartType.BAR)))
-        assertEquals(Json.parseToJsonElement("""{"data":[]}"""),
-            Json.encodeToJsonElement(ChartDataset.serializer(), ChartDataset()))
-        assertEquals(JsonPrimitive(true), Json.encodeToJsonElement(ChartTitle.serializer(), ChartTitle("Count")).jsonObject["display"])
+        assertEquals(JsonObject(emptyMap()),
+            Json.encodeToJsonElement(ChartConfiguration.serializer(), ChartConfiguration(JsonObject(emptyMap()))))
         assertEquals(JsonArray(emptyList()), Json.encodeToJsonElement(ListSerializer(DashboardLayoutItem.serializer()), emptyList()))
     }
 
@@ -54,10 +51,10 @@ class InputSerializationTest {
         val state = SavedWidgets(
             FlowGraph(nodes = listOf(FlowNode("start", data = FlowNodeData(payload = buildJsonObject { put("enabled", true) }))),
                 edges = listOf(FlowEdge("loop", "start", "start", markerEnd = FlowMarker.Arrow())), viewport = FlowViewport()),
-            ChartConfiguration(ChartType.LINE, ChartData(datasets = listOf(ChartDataset(data = listOf(
-                ChartValue.Number(2.0), ChartValue.Gap, ChartValue.Custom(JsonPrimitive("2026-10-25")),
-            )))), ChartOptions(plugins = ChartPlugins(legend = ChartLegend(display = false)),
-                scales = mapOf("y" to ChartScale(max = 20.0)))),
+            ChartConfiguration(Json.parseToJsonElement("""{
+                "series":[{"type":"line","data":[2,null,{"name":"Day","value":3}]}],
+                "legend":{"show":false},"yAxis":{"max":20}
+            }""").jsonObject),
             listOf(DashboardLayoutItem("chart", 0, 0, 8, 6)),
         )
         val native = Json.encodeToJsonElement(SavedWidgets.serializer(), state).jsonObject
@@ -65,21 +62,9 @@ class InputSerializationTest {
         assertEquals(Json.encodeToJsonElement(ChartConfiguration.serializer(), state.chart), native["chart"])
         assertEquals(Json.parseToJsonElement("""[{"id":"chart","x":0,"y":0,"w":8,"h":6}]"""), native["layout"])
         val chart = native.getValue("chart").jsonObject
-        assertEquals(Json.parseToJsonElement("""[2,null,"2026-10-25"]"""),
-            chart.getValue("data").jsonObject.getValue("datasets").jsonArray.single().jsonObject["data"])
+        assertEquals(Json.parseToJsonElement("""[2,null,{"name":"Day","value":3}]"""),
+            chart.getValue("series").jsonArray.single().jsonObject["data"])
         assertEquals(state, Json.decodeFromString(SavedWidgets.serializer(), native.toString()))
-    }
-
-    @Test
-    fun `custom chart points preserve attributes outside the built in coordinate shapes`() {
-        val source = Json.parseToJsonElement("""{"x":3,"y":5,"r":8,"note":"Keep this"}""")
-        val point = Json.decodeFromJsonElement(ChartValue.serializer(), source)
-        assertEquals(ChartValue.Custom(source), point)
-        assertEquals(source, Json.encodeToJsonElement(ChartValue.serializer(), point))
-        assertEquals(ChartValue.Scatter(3.0, 5.0),
-            Json.decodeFromString(ChartValue.serializer(), """{"x":3,"y":5}"""))
-        assertEquals(ChartValue.Bubble(3.0, 5.0, 8.0),
-            Json.decodeFromString(ChartValue.serializer(), """{"x":3,"y":5,"r":8}"""))
     }
 
     @Test
@@ -102,7 +87,6 @@ class InputSerializationTest {
         assertFailsWith<IllegalArgumentException> { Json.decodeFromString(FlowNodeData.serializer(), """{"outputs":{}}""") }
         assertFailsWith<IllegalArgumentException> { Json.decodeFromString(FlowMarker.serializer(), "42") }
         assertFailsWith<IllegalArgumentException> { Json.decodeFromString(ListSerializer(DashboardLayoutItem.serializer()), """{"items":[]}""") }
-        assertFailsWith<IllegalArgumentException> { Json.decodeFromString(ChartScale.serializer(), """{"beginAtZero":"invalid"}""") }
-        assertFailsWith<IllegalArgumentException> { Json.decodeFromString(ChartOptions.serializer(), """{"responisve":true}""") }
+        assertFailsWith<IllegalArgumentException> { Json.decodeFromString(ChartConfiguration.serializer(), "[]") }
     }
 }

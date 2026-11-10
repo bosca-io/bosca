@@ -3,15 +3,22 @@
   <prop name="label" type="String" required />
   <prop name="config" type="bosca.design.model.ChartConfiguration" required />
   <script server provides="encodedConfig">kotlinx.serialization.json.Json.encodeToString(bosca.design.model.ChartConfiguration.serializer(), config)</script>
+  <prop name="maps" type="Map<String, kotlinx.serialization.json.JsonObject>" default="emptyMap()" />
+  <script server provides="encodedMaps">kotlinx.serialization.json.JsonObject(maps).toString()</script>
   <prop name="loading" type="Boolean" default="false" />
   <prop name="error" type="String" default="" />
   <prop name="preserveKey" type="String" default="" />
   <script server provides="table">bosca.design.model.ChartTable.from(config)</script>
-  <div class="bosca-chart" data-bml-chart :data-chart-id="id" :data-config="encodedConfig" :data-loading="loading"
+  <div class="bosca-chart" data-bml-chart :data-chart-id="id" :data-config="encodedConfig" :data-maps="encodedMaps" :data-loading="loading"
        :data-error="error" :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" role="group" :aria-label="label" :aria-busy="loading.toString()" {...attrs}>
     <div class="chart-frame" ref="frame">
-      <canvas ref="canvas" :aria-label="label" role="img" :aria-describedby='id + "-data-label"' hidden />
+      <div class="chart-surface" ref="surface" :aria-label="label" role="img" :aria-describedby='id + "-data-label"' hidden></div>
       <p ref="state" role="status">{ if (loading) "Loading chart…" else if (error.isNotBlank()) error else if (table.error.isNotBlank()) table.error else if (table.points.isEmpty()) "No chart data." else "Chart data is available below." }</p>
+    </div>
+    <div class="chart-map-controls" ref="mapControls" role="group" aria-label="Map navigation" hidden>
+      <button size="sm" ref="mapZoomIn">Zoom in</button>
+      <button size="sm" ref="mapZoomOut">Zoom out</button>
+      <button size="sm" ref="mapReset">Reset map</button>
     </div>
     <details class="chart-data" :id='id + "-data"'>
       <summary :id='id + "-data-label"'>View data</summary>
@@ -33,8 +40,12 @@
   <style scoped>
     .bosca-chart { display: flex; flex-direction: column; gap: 16px; min-width: 0; color: var(--fg-1); font: 13px/1.5 var(--font-sans); }
     .chart-frame { position: relative; height: var(--chart-height, 280px); min-width: 0; background: var(--chart-bg, transparent); }
+    .chart-surface { width: 100%; height: 100%; }
     .chart-frame p { display: grid; place-items: center; box-sizing: border-box; height: 100%; margin: 0; padding: 16px; text-align: center; color: var(--fg-2); }
     .chart-frame [hidden], [data-chart-actions][hidden] { display: none; }
+    .chart-map-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chart-map-controls[hidden] { display: none; }
+    .chart-surface:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
     .chart-data { min-width: 0; }
     summary { cursor: pointer; padding: 4px 0; font-weight: 500; }
     summary:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }

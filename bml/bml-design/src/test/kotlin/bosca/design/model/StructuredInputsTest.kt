@@ -35,26 +35,16 @@ class StructuredInputsTest {
     }
 
     @Test
-    fun `Kotlin chart configuration produces native datasets options and accessible table values`() {
-        val config = ChartConfiguration(ChartType.BAR, ChartData(listOf("Mon", "Tue"), listOf(
-            ChartDataset("Visits", listOf(4, 7), stack = "total", borderColor = "#abcdef"),
-        )), options = ChartOptions(plugins = ChartPlugins(legend = ChartLegend(position = ChartLegendPosition.BOTTOM))))
-        val native = Json.encodeToJsonElement(ChartConfiguration.serializer(), config).jsonObject
-        assertEquals(JsonPrimitive("bar"), native["type"])
-        assertEquals(JsonPrimitive("total"), native.getValue("data").jsonObject.getValue("datasets").jsonArray.single().jsonObject["stack"])
-        assertEquals(Json.encodeToJsonElement(ChartOptions.serializer(), config.options), native["options"])
-        assertEquals(listOf("Mon", "Tue"), ChartTable.from(config).points.map { it.label })
-        assertEquals(listOf("4", "7"), ChartTable.from(config).points.map { it.value })
-        assertEquals(config, Json.decodeFromString(ChartConfiguration.serializer(), Json.encodeToString(ChartConfiguration.serializer(), config)))
-    }
-
-    @Test
-    fun `object chart points and JSON strings remain structured data`() {
-        val points = listOf(ChartValue.Bubble(1.0, 4.0, 8.0), ChartValue.Gap)
-        val config = ChartConfiguration(ChartType.BUBBLE, ChartData(datasets = listOf(ChartDataset("Sizes", points))))
-        assertEquals(Json.parseToJsonElement("""[{"x":1,"y":4,"r":8},null]"""), Json.encodeToJsonElement(ChartConfiguration.serializer(), config).jsonObject.getValue("data").jsonObject.getValue("datasets").jsonArray.single().jsonObject["data"])
-        val document = emptyDocument()
-        assertEquals("doc", document.getValue("type").jsonPrimitive.content)
-        assertEquals(JsonObject(mapOf("type" to JsonPrimitive("paragraph"))), document.getValue("content").jsonArray.single())
+    fun `native ECharts configuration preserves multiple axes and mixed series`() {
+        val option = Json.parseToJsonElement("""{
+            "xAxis":[{"data":["Mon","Tue"]},{"data":["A"]}],"yAxis":{"type":"value"},
+            "series":[{"type":"bar","name":"Visits","data":[4,7]},
+                {"type":"line","name":"Other","xAxisIndex":1,"data":[12]}]
+        }""").jsonObject
+        val config = ChartConfiguration(option)
+        assertEquals(option, Json.encodeToJsonElement(ChartConfiguration.serializer(), config))
+        assertEquals(listOf("Mon", "Tue", "A"), ChartTable.from(config).points.map { it.label })
+        assertEquals(listOf(0, 0, 1), ChartTable.from(config).points.map { it.dataset })
+        assertEquals(config, Json.decodeFromString(ChartConfiguration.serializer(), option.toString()))
     }
 }

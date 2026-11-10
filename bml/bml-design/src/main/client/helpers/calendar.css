@@ -1,0 +1,39 @@
+[data-bml-calendar] { min-width: 0; color: var(--fg-1); font: 13px/1.5 var(--font-sans); }
+[data-bml-calendar] .calendar-body { height: var(--calendar-height, 650px); overflow: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
+[data-bml-calendar] .calendar-grid { display: grid; min-width: 560px; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+[data-bml-calendar] .calendar-month .calendar-grid { height: 100%; min-height: 758px; grid-template-rows: 38px repeat(6, minmax(0, 1fr)); }
+[data-bml-calendar] .calendar-week .calendar-grid { grid-template-columns: 60px repeat(7, minmax(0, 1fr)); }
+[data-bml-calendar] .calendar-day .calendar-grid { min-width: 240px; grid-template-columns: 60px minmax(0, 1fr); }
+[data-bml-calendar] .calendar-heading { position: sticky; top: 0; z-index: 10; min-height: 38px; box-sizing: border-box; padding: 8px; text-align: center; background: var(--bg-1); border-bottom: 1px solid var(--line); color: var(--fg-2); }
+[data-bml-calendar] [data-today], [data-bml-calendar] [aria-current="date"] { color: var(--accent); font-weight: 700; }
+[data-bml-calendar] .calendar-cell { position: relative; display: flex; flex-direction: column; gap: 2px; min-height: 0; min-width: 0; overflow: hidden; box-sizing: border-box; padding: 4px 6px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+[data-bml-calendar] .calendar-cell[data-other] .calendar-date { color: var(--fg-3); }
+[data-bml-calendar] button { font: inherit; cursor: pointer; }
+[data-bml-calendar] button:focus-visible { outline: var(--focus-width, 2px) solid var(--accent); outline-offset: -2px; z-index: 6; }
+[data-bml-calendar] .calendar-date, [data-bml-calendar] .calendar-more { background: transparent; color: var(--fg-2); border: 0; text-align: right; padding: 2px 4px; }
+[data-bml-calendar] .calendar-more { font-size: 11px; text-align: left; }
+[data-bml-calendar] .calendar-event { --calendar-color: var(--accent); display: block; box-sizing: border-box; width: 100%; min-height: 20px; padding: 2px 4px; border: 0; border-left: 3px solid var(--calendar-color); border-radius: 3px; background: color-mix(in srgb, var(--calendar-color) 12%, var(--bg-0)); color: var(--fg-1); font-size: 11px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-bml-calendar] .calendar-event[data-editable] { touch-action: none; user-select: none; cursor: grab; }
+[data-bml-calendar] .calendar-event:hover { background: color-mix(in srgb, var(--calendar-color) 22%, var(--bg-0)); }
+[data-bml-calendar] .calendar-allday, [data-bml-calendar] .calendar-allday-label { position: sticky; top: 38px; z-index: 9; background: var(--bg-1); padding: 3px; border-bottom: 1px solid var(--line); min-height: 28px; }
+[data-bml-calendar] .calendar-allday-label { font-size: 10px; color: var(--fg-3); }
+[data-bml-calendar] .calendar-column { position: relative; border-left: 1px solid var(--line); }
+[data-bml-calendar] .calendar-hour, [data-bml-calendar] .calendar-slot { box-sizing: border-box; height: 48px; }
+[data-bml-calendar] .calendar-hour { padding: 2px 8px; text-align: right; color: var(--fg-3); font-size: 10px; }
+[data-bml-calendar] .calendar-slot { display: block; width: 100%; padding: 0; background: transparent; border: 0; border-bottom: 1px solid var(--line); }
+[data-bml-calendar] .calendar-slot:hover { background: var(--bg-1); }
+[data-bml-calendar] .calendar-timed { position: absolute; left: 2px; width: calc(100% - 4px); z-index: 5; white-space: normal; }
+[data-bml-calendar] .calendar-resize { position: absolute; bottom: 0; left: 0; right: 0; height: 8px; cursor: ns-resize; }
+[data-bml-calendar] .calendar-dragging { z-index: 20; cursor: grabbing; outline: 2px solid var(--accent); outline-offset: -2px; pointer-events: none; }
+[data-bml-calendar] .calendar-status { min-height: 1.5em; margin: 4px 0; color: var(--fg-2); font-size: 12px; }
+
+[data-bml-calendar] .calendar-add { position: absolute; top: 4px; left: 6px; width: 24px; height: 24px; padding: 0; background: transparent; color: var(--fg-2); border: 0; border-radius: var(--r-sm); font-size: 18px; }
+[data-bml-calendar] .calendar-add:hover { background: var(--bg-2); color: var(--accent); }
+
+[data-bml-calendar] .calendar-drag-source { visibility: hidden; }
+[data-bml-calendar] .calendar-drop-target { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+[data-bml-calendar] .calendar-month .calendar-date { box-sizing: border-box; height: 22px; flex: 0 0 22px; }
+[data-bml-calendar] .calendar-month .calendar-event { height: 20px; min-height: 20px; flex: 0 0 20px; line-height: 16px; }
+[data-bml-calendar] .calendar-month .calendar-more { box-sizing: border-box; height: 18px; flex: 0 0 18px; line-height: 14px; }
+[data-bml-calendar] .calendar-month .calendar-dragging { position: absolute; left: 6px; right: 6px; bottom: 28px; width: calc(100% - 12px); }

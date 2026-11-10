@@ -262,3 +262,6 @@ code { font-family: var(--font-mono); }
 .reference-app-shell [data-bml-app-shell] { height: 320px; }
 
 .catalog-json-compact { --json-height:76px; --json-min-height:76px; }
+
+.catalog-calendar-layout { display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 16px; min-width: 0; }
+@media(max-width:900px) { .catalog-calendar-layout { grid-template-columns:minmax(0,1fr); } }

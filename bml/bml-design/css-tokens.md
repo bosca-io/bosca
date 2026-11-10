@@ -166,11 +166,11 @@ editing through real BML rendering and actions in production and development.
 | `--chart-bg` | `transparent` | Canvas backing surface |
 | `--chart-fg` | inherited text color | Axis and legend text |
 | `--chart-grid` | `--line` | Grid strokes |
-| `--chart-series-1` … `--chart-series-6` | `--accent`, `--ok`, `--warn`, `--info`, `--err`, `--fg-2` | Dataset colors, cycling after six series |
+| `--chart-series-1` … `--chart-series-6` | `--accent`, `--ok`, `--warn`, `--info`, `--err`, `--fg-2` | Series colors, cycling after six series |
 
 These inherit per instance. Flow nodes use the shared typography, borders, status colors and focus
-indicator. Chart.js canvas options resolve inherited CSS on mount, appearance changes and updates.
-Explicit Chart.js dataset colors and axis/legend settings take priority over CSS defaults.
+indicator. ECharts canvas options resolve inherited CSS on mount, appearance changes and updates.
+Explicit ECharts series colors and axis/legend settings take priority over CSS defaults.
 
 ## Dashboard widgets
 

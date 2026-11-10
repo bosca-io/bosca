@@ -95,6 +95,14 @@
         </div>
       </card>
     </div>
+    <card title="Calendar views"><div class="catalog-stack"><p class="catalog-description">Month, week and day calendars with application-owned events.</p><ul class="reference-index">
+      <li><a href="/components/calendars#ref-calendar-sidebar" data-export-link="calendar-sidebar"><code>calendar-sidebar</code></a></li>
+      <li><a href="/components/calendars#ref-calendar-event-fields" data-export-link="calendar-event-fields"><code>calendar-event-fields</code></a></li>
+      <li><a href="/components/calendars#ref-calendar-view" data-export-link="calendar-view"><code>calendar-view</code></a></li>
+      <li><a href="/components/calendars#ref-calendar-month-view" data-export-link="calendar-month-view"><code>calendar-month-view</code></a></li>
+      <li><a href="/components/calendars#ref-calendar-week-view" data-export-link="calendar-week-view"><code>calendar-week-view</code></a></li>
+      <li><a href="/components/calendars#ref-calendar-day-view" data-export-link="calendar-day-view"><code>calendar-day-view</code></a></li>
+    </ul></div></card>
     <card title="Dashboards, flows and charts"><div class="catalog-stack"><p class="catalog-description">Dashboard layouts, diagrams and analytics visualization.</p><ul class="reference-index">
       <li><a href="/components/visualization#ref-dashboard-grid" data-export-link="dashboard-grid"><code>dashboard-grid</code></a></li>
       <li><a href="/components/visualization#ref-dashboard-item" data-export-link="dashboard-item"><code>dashboard-item</code></a></li>

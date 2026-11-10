@@ -1,0 +1,87 @@
+<component tag="calendar-example">
+  <prop name="id" type="String" required />
+  <script server provides="calendar" scope="server-session">bosca.design.catalog.CatalogCalendar(id)</script>
+  <island name="calendar" :key="id">
+    <card :title='calendar.id + " calendar"'>
+      <div class="catalog-stack" :data-catalog-calendar="calendar.id" :data-calendar-editor-open="calendar.createOpen" :data-calendar-manager-open="calendar.calendarOpen">
+        <div class="example-actions">
+          <button primary icon="plus" @click="calendar.newEvent" data-calendar-add>New event</button>
+          <button @click="calendar.today">Today</button>
+          <button @click="calendar.navigate(-1)">Previous</button><button @click="calendar.navigate(1)">Next</button>
+          <for kind in listOf("month", "week", "day")><button :aria-pressed='(calendar.view == kind).toString()' @click="calendar.chooseView(kind)">{ kind }</button></for>
+        </div>
+        <p>{ calendar.current }</p>
+        <div class="catalog-calendar-layout">
+          <calendar-sidebar :data-bml-preserve='"calendar-list-" + calendar.id + "-" + calendar.calendars.hashCode()' :label='calendar.id + " calendars"' :calendars="calendar.calendars" :visibleIds="calendar.visibleIds" />
+          <calendar-view :preserveKey='"calendar-" + calendar.id' :view="calendar.view" :current="calendar.current" :events="calendar.occurrences()" :calendarColors="calendar.colors" :label='calendar.id + " example calendar"' />
+        </div>
+        <switch label="Reject event moves" :checked="calendar.rejectMoves" @change="calendar.toggleRejection" data-calendar-reject />
+        <p role="status">{ calendar.notice }</p>
+        <dialog :title='if (calendar.editing) "Edit event" else "New event"' triggerLabel="New event" :showTrigger="false"
+                :openRequest='if (calendar.createOpen) calendar.createRequest.toString() else ""'
+                :completed="calendar.createCompleted" data-calendar-create>
+          <form :id='"calendar-event-form-" + calendar.id' class="modal-form" @submit="calendar.create(form.title, form.startsAt, form.endsAt, form.calendarId, form.description, form.location, form.kind, form.participantIds, form.rrule, form.timeZone, form.scope)">
+            <form-body padded class="modal-fields">
+              <calendar-event-fields :value="calendar.draft" :calendars="calendar.calendars" :participantOptions="calendar.people" :readOnly="calendar.editing && !calendar.draft.editable" />
+              <if calendar.editing && calendar.recurring && !calendar.draft.allDay>
+                <field label="Apply changes to"><select name="scope" label="Apply changes to" value="this"><option value="this">This occurrence</option><option value="following">This and following</option><option value="all">Entire series</option></select></field>
+              <else><html:input type="hidden" name="scope" value="this" /></if>
+              <if calendar.createError.isNotBlank()><alert tone="error" compact>{ calendar.createError }</alert></if>
+            </form-body>
+          </form>
+          <form-actions bordered align="between" class="modal-footer calendar-event-footer" data-calendar-event-actions>
+          <if calendar.editing && calendar.draft.editable>
+            <confirm-dialog title="Delete event?" description="Choose which occurrences to delete, then confirm." triggerLabel="Delete event" :triggerIconOnly="false" :completed="calendar.deleteCompleted" data-calendar-delete>
+              <form class="modal-form" @submit="calendar.remove(form.scope)">
+                <form-body padded><field label="Delete"><select name="scope" label="Delete" value="this"><option value="this">This occurrence</option><option value="following">This and following</option><option value="all">Entire series</option></select></field></form-body>
+                <form-actions bordered><button data-dialog-close>Cancel</button><button type="submit" primary>Confirm delete</button></form-actions>
+              </form>
+            </confirm-dialog>
+          <else><span></span></if>
+            <div class="example-actions">
+              <button data-dialog-close>Cancel</button>
+              <button type="submit" :form='"calendar-event-form-" + calendar.id' primary>{ if (calendar.editing) "Save event" else "Add event" }</button>
+            </div>
+          </form-actions>
+        </dialog>
+        <dialog title="Calendar" triggerLabel="Calendar" :showTrigger="false" :openRequest='if (calendar.calendarOpen) calendar.calendarRequest.toString() else ""' :completed="calendar.calendarCompleted" data-calendar-edit-dialog>
+          <form :id='"calendar-settings-form-" + calendar.id' class="modal-form" @submit="calendar.saveCalendar(form.name, form.color, form.description)">
+            <form-body padded class="modal-fields">
+              <field label="Name"><input name="name" :value="calendar.calendarDraft.name" required /></field>
+              <field label="Color"><input name="color" type="color" :value="calendar.calendarDraft.color" required /></field>
+              <field label="Description"><input name="description" multiline :value="calendar.calendarDraft.description" /></field>
+              <if calendar.calendarError.isNotBlank()><alert>{ calendar.calendarError }</alert></if>
+            </form-body>
+          </form>
+          <form-actions bordered align="between" class="modal-footer calendar-event-footer">
+          <if calendar.calendarDraft.id.isNotBlank()>
+            <confirm-dialog title="Delete calendar?" description="The calendar and its example events will be removed." triggerLabel="Delete calendar" :triggerIconOnly="false" :completed="calendar.calendarCompleted" data-calendar-delete-calendar>
+              <form @submit="calendar.removeCalendar"><form-actions bordered><button data-dialog-close>Cancel</button><button type="submit" primary>Confirm delete calendar</button></form-actions></form>
+            </confirm-dialog>
+          <else><span></span></if>
+            <div class="example-actions"><button data-dialog-close>Cancel</button><button type="submit" :form='"calendar-settings-form-" + calendar.id' primary>Save calendar</button></div>
+          </form-actions>
+        </dialog>
+      </div>
+    </card>
+  </island>
+  <style scoped>
+    .calendar-event-footer.modal-footer { justify-content:space-between; align-items:center; }
+    .calendar-event-footer > .example-actions { display:flex; flex-wrap:wrap; gap:8px; margin-left:auto; }
+  </style>
+  <script client scoped>
+    ctx.on<CustomEvent>(ctx.root, "dialogdismiss", event => {
+      const target = event.target as Element;
+      if (target.hasAttribute("data-calendar-create")) ctx.dispatch(calendar.dismissEditor());
+      else if (target.hasAttribute("data-calendar-edit-dialog")) ctx.dispatch(calendar.dismissCalendar());
+    });
+    ctx.on<CustomEvent<{day: string}>>(ctx.root, "calendarselectday", event => ctx.dispatch(calendar.select(event.detail.day)));
+    ctx.on<CustomEvent<{event: {id: string}}>>(ctx.root, "calendarselectevent", event => ctx.dispatch(calendar.selected(event.detail.event.id)));
+    ctx.on<CustomEvent<{day: string; hour: number}>>(ctx.root, "calendarselectslot", event => ctx.dispatch(calendar.slot(event.detail.day, event.detail.hour)));
+    ctx.on<CustomEvent<{day: string}>>(ctx.root, "calendarnewevent", event => ctx.dispatch(calendar.slot(event.detail.day, 9)));
+    ctx.on<CustomEvent<{eventId: string; startsAt: string; endsAt: string; waitUntil(promise: Promise<unknown>): void}>>(ctx.root, "calendarmoveevent", event => event.detail.waitUntil(ctx.dispatch(calendar.move(event.detail.eventId, event.detail.startsAt, event.detail.endsAt))));
+    ctx.on<CustomEvent<{calendarId: string}>>(ctx.root, "calendartoggle", event => ctx.dispatch(calendar.toggleCalendar(event.detail.calendarId)));
+    ctx.on<CustomEvent<{calendarId: string}>>(ctx.root, "calendaredit", event => ctx.dispatch(calendar.editCalendar(event.detail.calendarId)));
+    ctx.on<CustomEvent>(ctx.root, "calendaradd", () => ctx.dispatch(calendar.newCalendar()));
+  </script>
+</component>
