@@ -25,6 +25,7 @@ const templatesGql = gql`
       }
       documentTemplates {
         all {
+          defaultAttributes
           metadata {
             id
             version
@@ -66,11 +67,26 @@ interface TemplateInfo {
   attributes: Record<string, unknown> | null
 }
 
+interface DocumentTemplateEntry {
+  defaultAttributes: Record<string, unknown> | null
+  metadata: TemplateInfo | null
+}
+
 interface GuideTemplateEntry {
   steps: Array<{
     metadata: { id: string } | null
     modules: Array<{ metadata: { id: string } | null }>
   }>
+}
+
+// Platform modules seed their own document templates and stamp a `type` on
+// them: WorkOps uses "WorkOps Spec" / "WorkOps Requirement" (workops migration
+// V34) and Feeds uses "Feed Item" (feeds migration V4). Those documents are
+// created by their module, not from the CMS. Template IDs can differ between
+// environments, so match on the type.
+function isSystemTemplate(entry: DocumentTemplateEntry): boolean {
+  const type = entry.defaultAttributes?.type
+  return typeof type === 'string' && (type.startsWith('WorkOps ') || type === 'Feed Item')
 }
 
 // Templates a guide uses for its steps or modules. Step documents are created
@@ -98,15 +114,14 @@ onMounted(async () => {
     const result = await gqlQuery<{
       content: {
         collections: { root: { id: string } }
-        documentTemplates: {
-          all: Array<{ metadata: TemplateInfo | null }>
-        }
+        documentTemplates: { all: DocumentTemplateEntry[] }
         guideTemplates: { all: GuideTemplateEntry[] }
       }
     }>(templatesGql)
     rootCollectionId.value = result.content.collections.root.id
     const stepIds = guideStepTemplateIds(result.content.guideTemplates.all)
     templates.value = result.content.documentTemplates.all
+      .filter(t => !isSystemTemplate(t))
       .map(t => t.metadata)
       .filter((m): m is TemplateInfo => m != null)
       .filter(m => m.attributes?.['template.type.sub'] === undefined)

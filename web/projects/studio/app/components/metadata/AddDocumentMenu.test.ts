@@ -21,11 +21,14 @@ const templatesResponse = {
     collections: { root: { id: 'root-collection-id' } },
     documentTemplates: {
       all: [
-        { metadata: { id: 'tpl-article', version: 3, name: 'Article', attributes: null } },
-        { metadata: { id: 'tpl-sub', version: 1, name: 'Sub Template', attributes: { 'template.type.sub': 'x' } } },
-        { metadata: { id: 'tpl-class', version: 1, name: 'Class', attributes: { 'template.type': 'Document' } } },
-        { metadata: { id: 'tpl-module', version: 1, name: 'Module', attributes: null } },
-        { metadata: null },
+        { defaultAttributes: null, metadata: { id: 'tpl-article', version: 3, name: 'Article', attributes: null } },
+        { defaultAttributes: null, metadata: { id: 'tpl-sub', version: 1, name: 'Sub Template', attributes: { 'template.type.sub': 'x' } } },
+        { defaultAttributes: null, metadata: { id: 'tpl-class', version: 1, name: 'Class', attributes: { 'template.type': 'Document' } } },
+        { defaultAttributes: null, metadata: { id: 'tpl-module', version: 1, name: 'Module', attributes: null } },
+        { defaultAttributes: { type: 'WorkOps Spec' }, metadata: { id: 'tpl-spec', version: 1, name: 'Spec Document Template', attributes: {} } },
+        { defaultAttributes: { type: 'WorkOps Requirement' }, metadata: { id: 'tpl-req', version: 1, name: 'Requirement Document Template', attributes: {} } },
+        { defaultAttributes: { type: 'Feed Item' }, metadata: { id: 'tpl-feed', version: 1, name: 'Feed Item Template', attributes: {} } },
+        { defaultAttributes: null, metadata: null },
       ],
     },
     guideTemplates: {
@@ -66,7 +69,7 @@ beforeEach(() => {
 })
 
 describe('AddDocumentMenu', () => {
-  it('lists top-level templates, excluding sub-templates and guide steps', async () => {
+  it('lists top-level templates, excluding sub-templates, guide steps and system templates', async () => {
     const wrapper = mountMenu()
     await flushPromises()
     await wrapper.find('.trigger').trigger('click')
