@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
 import type { GlassTableColumn, SelectOption , OverflowMenuItem  } from '@bosca/ui'
+import { sortFacetsByTemplateOrder, templateOrderByType } from '~/utils/templateOrder'
 
 const { accent } = useCurrentSubsystem()
 const { useAsyncQuery, query: gqlQuery, mutation: gqlMutation } = useGraphQL()
@@ -73,7 +74,35 @@ async function loadFacets() {
   }
 }
 
-onMounted(() => loadFacets())
+// Tabs follow the template order set on Settings → Templates; types with no
+// ordered template follow, most-used first.
+const typeOrder = ref<Map<string, number>>(new Map())
+
+const templateOrderGql = gql`
+  query GetGuideTemplateOrder {
+    content { guideTemplates { all { defaultAttributes metadata { name attributes } } } }
+  }
+`
+
+async function loadTypeOrder() {
+  try {
+    const result = await gqlQuery<{
+      content: { guideTemplates: { all: Array<{ defaultAttributes: Record<string, unknown> | null; metadata: { name: string; attributes: Record<string, unknown> | null } | null }> } }
+    }>(templateOrderGql)
+    typeOrder.value = templateOrderByType(
+      result.content.guideTemplates.all
+        .filter(t => t.metadata != null)
+        .map(t => ({ name: t.metadata!.name, attributes: t.metadata!.attributes, defaultAttributes: t.defaultAttributes })),
+    )
+  } catch (e) {
+    console.error('Failed to load template order', e)
+  }
+}
+
+onMounted(() => {
+  loadFacets()
+  loadTypeOrder()
+})
 
 // ── Tabs from type facets ────────────────────────────────────────────────────
 const activeTab = ref('All')
@@ -84,7 +113,7 @@ function formatTypeName(raw: string): string {
 }
 
 const tabs = computed(() => {
-  const facetTabs = typeFacets.value.map(f => formatTypeName(f.value))
+  const facetTabs = sortFacetsByTemplateOrder(typeFacets.value, typeOrder.value).map(f => formatTypeName(f.value))
   return ['All', ...facetTabs]
 })
 

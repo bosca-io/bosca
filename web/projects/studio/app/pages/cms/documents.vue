@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
 import type { GlassTableColumn, SelectOption , OverflowMenuItem  } from '@bosca/ui'
+import { sortFacetsByTemplateOrder, templateOrderByType } from '~/utils/templateOrder'
 
 const { accent } = useCurrentSubsystem()
 const { useAsyncQuery, useSubscription, query: gqlQuery, mutation: gqlMutation } = useGraphQL()
@@ -14,7 +15,7 @@ const activeTab = ref('All')
 const typeFacets = ref<Array<{ value: string; count: number }>>([])
 
 const tabs = computed(() => {
-  const facetTabs = typeFacets.value.map(f => formatTypeName(f.value))
+  const facetTabs = sortFacetsByTemplateOrder(typeFacets.value, typeOrder.value).map(f => formatTypeName(f.value))
   return ['All', ...facetTabs]
 })
 
@@ -91,7 +92,35 @@ async function loadFacets() {
   }
 }
 
-onMounted(() => loadFacets())
+// Tabs follow the template order set on Settings → Templates; types with no
+// ordered template follow, most-used first.
+const typeOrder = ref<Map<string, number>>(new Map())
+
+const templateOrderGql = gql`
+  query GetDocumentTemplateOrder {
+    content { documentTemplates { all { defaultAttributes metadata { name attributes } } } }
+  }
+`
+
+async function loadTypeOrder() {
+  try {
+    const result = await gqlQuery<{
+      content: { documentTemplates: { all: Array<{ defaultAttributes: Record<string, unknown> | null; metadata: { name: string; attributes: Record<string, unknown> | null } | null }> } }
+    }>(templateOrderGql)
+    typeOrder.value = templateOrderByType(
+      result.content.documentTemplates.all
+        .filter(t => t.metadata != null)
+        .map(t => ({ name: t.metadata!.name, attributes: t.metadata!.attributes, defaultAttributes: t.defaultAttributes })),
+    )
+  } catch (e) {
+    console.error('Failed to load template order', e)
+  }
+}
+
+onMounted(() => {
+  loadFacets()
+  loadTypeOrder()
+})
 watch(facetFilter, () => loadFacets())
 
 const searchQuery = ref('')
