@@ -2,11 +2,12 @@
   <prop name="id" type="String" required />
   <prop name="title" type="String" required />
   <script server provides="chart" scope="server-session">bosca.design.catalog.CatalogChart(id)</script>
-  <card :title="title"><island name="chart" :key="id"><div class="catalog-stack" :data-catalog-chart="chart.id">
-    <if chart.visible><chart :id='"chart-" + chart.id' :label="chart.label" :config="chart.config" :loading="chart.loading"
+  <card :title="title"><island name="chart" :key="id"><div class="catalog-stack" :data-catalog-chart="chart.id" :data-chart-kind="chart.type">
+    <if chart.visible><chart :id='"chart-" + chart.id' :label="chart.label" :config="chart.config" :maps="chart.maps" :loading="chart.loading"
       :error='if (chart.failed) "This example could not load its data." else ""' :preserveKey='"chart-" + chart.id' /></if>
+    <if chart.type == "map"><p class="catalog-description">Example visits by country. Drag to pan, scroll to zoom, or use the map controls. Boundaries: <a href="https://www.naturalearthdata.com/">Natural Earth</a>.</p></if>
     <form class="example-form" @submit="chart.chooseType(form.chartType)"><field label="Chart type"><select name="chartType" label="Chart type" :value="chart.type">
-      <for kind in bosca.design.catalog.CatalogChart.types><option :value="kind">{ kind }</option></for>
+      <for kind in bosca.design.catalog.CatalogChart.types><option :value="kind" :selected="kind == chart.type">{ kind }</option></for>
     </select></field><div class="example-actions"><button type="submit" size="sm">Apply type</button><button size="sm" @click="chart.replace" data-chart-replace>Replace data</button></div></form>
     <details data-example-states><disclosure-heading>Example states</disclosure-heading><div class="catalog-stack visualization-states">
       <switch label="Loading" :checked="chart.loading" @change="chart.toggleLoading" data-chart-loading />

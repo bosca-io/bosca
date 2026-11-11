@@ -1,16 +1,9 @@
 package bosca.design.model
 
-import kotlinx.serialization.EncodeDefault
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
-/** Chart.js configuration with typed settings. */
-@OptIn(ExperimentalSerializationApi::class)
+/** Native Apache ECharts options, serialized as the option object without an extra envelope. */
+@JvmInline
 @Serializable
-data class ChartConfiguration(
-    val type: ChartType,
-    @EncodeDefault
-    val data: ChartData = ChartData(),
-    @EncodeDefault
-    val options: ChartOptions = ChartOptions(),
-)
+value class ChartConfiguration(val option: JsonObject)

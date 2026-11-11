@@ -1,5 +1,5 @@
 <page route="/components/visualization">
-  <catalog-document title="Dashboards, flows and charts" description="Dashboard layouts, VueFlow diagrams and Chart.js analytics components." current="/components">
+  <catalog-document title="Dashboards, flows and charts" description="Dashboard layouts, VueFlow diagrams and ECharts analytics components." current="/components">
     <nav class="reference-jumps" aria-label="On this page"><a href="#ref-dashboard-grid">dashboard-grid</a><a href="#ref-dashboard-item">dashboard-item</a><a href="#ref-flow-editor">flow-editor</a><a href="#ref-chart">chart</a></nav>
     <reference-entry name="dashboard-grid"
       :api='"id: String (required)\nlabel: String (required)\nname: String = \"layout\"\nvalue: List<bosca.design.model.DashboardLayoutItem> = emptyList()\ncolumns: Int = 12\ncellHeight: Int = 60\nstackBelow: Int = 480\nlockedIds: Set<String> = emptySet()\nreadOnly: Boolean = false\ndisabled: Boolean = false\nerror: String = \"\"\npreserveKey: String = \"\""'
@@ -28,10 +28,10 @@
       <a class="catalog-link" href="/flows">Working examples in both palettes</a>
     </reference-entry>
     <reference-entry name="chart"
-      :api='"id: String (required)\nlabel: String (required)\nconfig: bosca.design.model.ChartConfiguration (required)\nloading: Boolean = false\nerror: String = \"\"\npreserveKey: String = \"\""'
-      :contract='"Root receives additional attributes/classes and default children below the table. config is a Kotlin ChartConfiguration with ChartData, ChartDataset and structured Chart.js options. chartselect supplies {datasetIndex,index,label,value} for canvas clicks and keyboard table actions. The application owns queries, result mapping and drill-down."'
-      :keyboard='"The canvas has a name and an expandable server-rendered table supplies the same values without scripts. Tab reaches View data and each point action. Loading and errors reserve the chart footprint. Reduced motion disables animation. Built-in chart types include bar, line, scatter, bubble, pie, doughnut, radar and polarArea."'
-      :css='"--chart-height, --chart-bg, --chart-fg, --chart-grid, --chart-series-1 through --chart-series-6, shared palette and --font-sans. Explicit dataset colors take priority."'
+      :api='"id: String (required)\nlabel: String (required)\nconfig: bosca.design.model.ChartConfiguration (required)\nmaps: Map<String, kotlinx.serialization.json.JsonObject> = emptyMap()\nloading: Boolean = false\nerror: String = \"\"\npreserveKey: String = \"\""'
+      :contract='"Root receives additional attributes/classes and default children below the table. config is a Kotlin ChartConfiguration wrapping a native ECharts option object. maps provides named GeoJSON FeatureCollections for native map/geo references. chartselect supplies {datasetIndex,index,label,value} for canvas clicks and keyboard table actions. The application owns queries, result mapping and drill-down."'
+      :keyboard='"The canvas has a name and an expandable server-rendered table supplies the same values without scripts. Tab reaches View data and each point action. Loading and errors reserve the chart footprint. Reduced motion disables animation. Built-in chart types include bar, line, scatter, pie, radar, heatmap, funnel and gauge, plus bubble, doughnut and polar-area variants and geographic data maps. Map controls zoom/reset; focused map arrow keys pan, plus/minus zoom, and Home resets. Native roam settings govern navigation."'
+      :css='"--chart-height, --chart-bg, --chart-fg, --chart-grid, --chart-series-1 through --chart-series-6, shared palette and --font-sans. Explicit series colors take priority."'
       :snippet='"<chart id=\"visits\" label=\"Daily visits\" :config=\"chartConfig\" preserveKey=\"visits\" />"'>
       <chart id="reference-chart" label="Reference visits" :config='bosca.design.catalog.CatalogChart.configuration("line")' />
       <a class="catalog-link" href="/charts">Working examples in both palettes</a>

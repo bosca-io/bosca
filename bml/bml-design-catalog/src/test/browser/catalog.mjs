@@ -32,11 +32,14 @@ import { checkDocuments } from './documents.mjs';
 import { checkSourcePolish } from './source-polish.mjs';
 import { checkWorkspaces } from './workspaces.mjs';
 import { checkShell } from './shell-checks.mjs';
+import { checkMaps } from './maps.mjs';
 import { checkVisualizations } from './visualizations.mjs';
 import { checkDashboards } from './dashboards.mjs';
 import { driverDiagnostics } from './driver-diagnostics.mjs';
 import { checkResources } from './resources.mjs';
 import { checkCodeEditor } from './code-editor.mjs';
+import { checkCalendarWorkflow } from './calendar-workflow.mjs';
+import { checkCalendars } from './calendars.mjs';
 import { checkFileDrops } from './file-drop.mjs';
 
 const base = process.argv[2];
@@ -163,10 +166,16 @@ try {
     await checkSurfaces({navigate,evaluate,until,call,key:value=>keyboard.press(value),artifacts,mode});
   } else if(process.argv[4]==='--feedback') {
     await checkFeedback({navigate,evaluate,until,call,artifacts,mode});
+  } else if(process.argv[4]==='--calendar-workflow') {
+    await checkCalendarWorkflow({navigate,evaluate,until,call,key,artifacts,mode});
+  } else if(process.argv[4]==='--calendars') {
+    await checkCalendars({navigate,evaluate,until,call,key,artifacts,mode});
   } else if(process.argv[4]==='--dashboards') {
     await checkDashboards({navigate,evaluate,until,call,key,artifacts,mode});
   } else if(process.argv[4]==='--dashboard-accessibility') {
     await checkAccessibility({navigate,evaluate,until,call,artifacts,mode,paths:['/dashboards','/components/visualization'],reportName:'dashboard-accessibility'});
+  } else if(process.argv[4]==='--maps') {
+    await checkMaps({navigate,evaluate,until,call,key,artifacts,mode});
   } else if(process.argv[4]==='--visualizations') {
     await checkVisualizations({navigate,evaluate,until,call,key,artifacts,mode});
   } else if(process.argv[4]==='--visualization-accessibility') {

@@ -184,7 +184,7 @@ comment form values, native Tab stops for every rendered file link and server ti
 Timestamp tests cover English UTC/default, custom offset formats, relative past/future/older dates,
 escaped invalid values and invalid-pattern errors. Desktop and phone screenshots cover this page.
 
-The `/widgets` page consumes TipTap documents, VueFlow graphs and a Chart.js chart projected into
+The `/widgets` page consumes TipTap documents, VueFlow graphs and a ECharts chart projected into
 a dashboard grid. One application-owned form saves document, graph and layout JSON together.
 Workspace, source-free Maven and native browser runs cover both palettes at 1440px/390px, real
 document input and graph movement, desktop grid movement, narrow stacking without coordinate

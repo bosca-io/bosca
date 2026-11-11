@@ -17,6 +17,7 @@ dependencies {
     implementation(project(":bml:bml-server"))
     implementation(project(":bml:bml-annotations"))
     implementation(project(":bosca-core:core-graalvm"))
+    implementation(libs.ical4j)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
     runtimeOnly(libs.logback.classic)
@@ -103,6 +104,7 @@ tasks.withType<Test>().configureEach {
         "catalog.java" to javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath,
         "catalog.node" to bml.nodeExecutable.get(),
         "catalog.browser" to layout.projectDirectory.file("src/test/browser/catalog.mjs").asFile.absolutePath,
+        "catalog.calendarEngines" to layout.projectDirectory.file("src/test/browser/calendar-engines.mjs").asFile.absolutePath,
         "catalog.firefoxBrowser" to layout.projectDirectory.file("src/test/browser/firefox-tree.mjs").asFile.absolutePath,
     )
     doFirst { systemProperties(runtimeProperties) }
@@ -110,7 +112,8 @@ tasks.withType<Test>().configureEach {
 
 val firefoxTreeTest = "bosca.design.catalog.CatalogApplicationTest.Firefox trees retain native keyboard navigation"
 val nativeCatalogTest = "bosca.design.catalog.CatalogApplicationTest.native executable serves production resources and interactions without a workspace"
-tasks.test { filter { excludeTestsMatching(firefoxTreeTest); excludeTestsMatching(nativeCatalogTest) } }
+val calendarEnginesTest = "bosca.design.catalog.CatalogApplicationTest.calendar engines support editing recurrence and touch input"
+tasks.test { filter { excludeTestsMatching(firefoxTreeTest); excludeTestsMatching(nativeCatalogTest); excludeTestsMatching(calendarEnginesTest) } }
 
 tasks.register<Test>("nativeCatalogTest") {
     group = "verification"
@@ -135,6 +138,7 @@ tasks.register<Test>("browserTest") {
         includeTestsMatching("bosca.design.catalog.CatalogApplicationTest")
         excludeTestsMatching(firefoxTreeTest)
         excludeTestsMatching(nativeCatalogTest)
+        excludeTestsMatching(calendarEnginesTest)
     }
 }
 
@@ -165,3 +169,19 @@ val typecheckClient by tasks.registering(Exec::class) {
 }
 
 tasks.check { dependsOn(typecheckClient) }
+
+val prepareCalendarBrowsers by tasks.registering(Exec::class) {
+    group = "verification"
+    dependsOn("prepareTestBrowser")
+    workingDir(projectDir)
+    commandLine(bml.nodeExecutable.get(), "node_modules/playwright-core/cli.js", "install", "firefox", "webkit")
+}
+
+tasks.register<Test>("calendarEngineTest") {
+    group = "verification"
+    description = "Qualify calendar editing and input in Chromium, Firefox and WebKit."
+    dependsOn(prepareCalendarBrowsers)
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching(calendarEnginesTest) }
+}

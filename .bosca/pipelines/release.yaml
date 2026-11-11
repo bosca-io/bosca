@@ -8,6 +8,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  CI: "true"
   GRADLE_OPTS: "-Xmx4g -XX:+UseG1GC"
 
 jobs:
@@ -50,13 +51,15 @@ jobs:
           npm config set @bosca:registry "$registry/npm/" --location=user
       - name: Start Shared Test Resources
         run: ./gradlew --no-daemon -Pbosca.ios.enabled=false testResourcesUp
+      - name: Fetch Bible Test Resources
+        run: bash scripts/ci/prepare-bible-test-resources.sh
       - name: Install BML Bundler Dependencies
         # The BML client bundlers do a bare `import "esbuild"` resolved from the
         # bml-runtime checkout's node_modules, which is git-ignored — without
         # this, the client bundle tasks fail with ERR_MODULE_NOT_FOUND.
         run: cd bml/bml-runtime && npm ci --no-audit --no-fund
-      - name: Check BML npm Packages
-        run: node --test scripts/release/bml-packages.test.mjs
+      - name: Check CI Scripts and BML npm Packages
+        run: node --test scripts/release/bml-packages.test.mjs scripts/ci/prepare-bible-test-resources.test.mjs
       - name: Install BML Test Browser
         working-directory: bml/bml-design-catalog
         run: |
@@ -70,7 +73,7 @@ jobs:
         run: ./gradlew --no-daemon -Pbosca.ios.enabled=false --parallel --max-workers=8 -Pbml.browser.workers=4 testBmlBrowser
       - name: Run JVM Tests
         run: >-
-          ./gradlew --no-daemon -Pbosca.ios.enabled=false --max-workers=8 test
+          ./gradlew --no-daemon -Pbosca.ios.enabled=false -Patlas.test.forks=2 --max-workers=8 test
           -x :bml:bml-server:chunkCacheBrowserTest
           -x :notifications-web:test
           -x :bml:examples:design-library:test
