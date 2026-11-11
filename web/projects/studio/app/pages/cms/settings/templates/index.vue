@@ -230,6 +230,17 @@ async function handleCreate() {
             :accent="accent"
             @click="showCreate = true">New Template</Button>
         </template>
+        <template v-if="canReorder" #tab-actions>
+          <Button
+            primary
+            size="sm"
+            :accent="accent"
+            :disabled="!isDirty || saving"
+            @click="handleSave"
+          >
+            {{ saving ? 'Saving…' : 'Save Changes' }}
+          </Button>
+        </template>
       </PageHeader>
     </template>
 
@@ -258,18 +269,6 @@ async function handleCreate() {
         </GlassTable>
       </div>
     </SectionCard>
-
-    <div v-if="canReorder" class="actions-bar">
-      <Button
-        primary
-        size="sm"
-        :accent="accent"
-        :disabled="!isDirty || saving"
-        @click="handleSave"
-      >
-        {{ saving ? 'Saving…' : 'Save Changes' }}
-      </Button>
-    </div>
 
     <Modal
       v-if="showCreate"
@@ -318,9 +317,4 @@ async function handleCreate() {
 .template-drag-handle:hover { background: var(--bg-3); }
 .template-drag-handle:active { cursor: grabbing; }
 .templates-table-wrap :deep(.gt-row--ghost) { opacity: 0.4; }
-.actions-bar {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
-}
 </style>
