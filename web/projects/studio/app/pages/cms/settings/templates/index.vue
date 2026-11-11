@@ -60,8 +60,10 @@ const allTemplates = computed<TemplateRow[]>(() => [
 
 // ── Type tabs + drag-and-drop order ─────────────────────────────────────────
 // Order is per template type, so rows can only be dragged on a single-type
-// tab. Each template's position is saved in its `sort` attribute; the New
-// Document and New Guide menus list templates in that order.
+// tab. Dragging only rearranges the list; Save Changes writes each template's
+// position to its `sort` attribute. Switching tabs drops unsaved changes.
+// The New Document and New Guide menus and the Documents/Guides filter tabs
+// follow this order.
 const TYPE_TABS = ['All', 'Document', 'Data', 'Guide', 'Collection']
 const activeTab = ref('All')
 const canReorder = computed(() => activeTab.value !== 'All')
@@ -69,33 +71,45 @@ const canReorder = computed(() => activeTab.value !== 'All')
 // Local mirror of the visible rows. SortableJS moves DOM nodes directly, so the
 // table renders from this list and we splice it on drop to keep Vue in step;
 // every server response replaces it. Same approach as the collection Items tab.
+const savedRows = computed(() => activeTab.value === 'All'
+  ? allTemplates.value
+  : allTemplates.value.filter(t => t.type === activeTab.value))
+
 const rows = ref<TemplateRow[]>([])
-watch([allTemplates, activeTab], () => {
-  rows.value = activeTab.value === 'All'
-    ? [...allTemplates.value]
-    : allTemplates.value.filter(t => t.type === activeTab.value)
+watch(savedRows, (saved) => {
+  rows.value = [...saved]
 }, { immediate: true })
+
+const isDirty = computed(() =>
+  canReorder.value && rows.value.some((row, i) => row.id !== savedRows.value[i]?.id))
+const saving = ref(false)
 
 const tableEl = ref<HTMLElement | null>(null)
 let sortable: Sortable | null = null
 
-async function applyReorder(oldIndex: number, newIndex: number) {
+function applyReorder(oldIndex: number, newIndex: number) {
   if (oldIndex === newIndex) return
   const list = rows.value
   const moved = list[oldIndex]
   if (!moved) return
   list.splice(oldIndex, 1)
   list.splice(newIndex, 0, moved)
+}
+
+async function handleSave() {
+  saving.value = true
   try {
     // Number every row in this tab so the whole visible order is saved,
     // including templates that had no position yet.
-    for (const [position, row] of list.entries()) {
+    for (const [position, row] of rows.value.entries()) {
       if (templateSortValue(row) === position) continue
       await gqlMutation(setTemplateSortGql, { id: row.id, attributes: { [TEMPLATE_SORT_ATTRIBUTE]: position } })
     }
+    toast.success('Template order saved')
   } catch (e) {
-    toast.error((e instanceof Error && e.message) || 'Failed to reorder templates')
+    toast.error((e instanceof Error && e.message) || 'Failed to save template order')
   } finally {
+    saving.value = false
     await refresh()
   }
 }
@@ -111,13 +125,13 @@ watch([tableEl, canReorder, rows], () => {
     handle: '.template-drag-handle',
     animation: 150,
     ghostClass: 'gt-row--ghost',
-    onEnd: async (evt) => {
+    onEnd: (evt) => {
       // The table's header row shares the container, so use the
       // draggable-only indices (they count rows, not the header).
       const oldIndex = evt.oldDraggableIndex
       const newIndex = evt.newDraggableIndex
       if (oldIndex === undefined || newIndex === undefined) return
-      await applyReorder(oldIndex, newIndex)
+      applyReorder(oldIndex, newIndex)
     },
   })
 }, { flush: 'post' })
@@ -245,6 +259,18 @@ async function handleCreate() {
       </div>
     </SectionCard>
 
+    <div v-if="canReorder" class="actions-bar">
+      <Button
+        primary
+        size="sm"
+        :accent="accent"
+        :disabled="!isDirty || saving"
+        @click="handleSave"
+      >
+        {{ saving ? 'Saving…' : 'Save Changes' }}
+      </Button>
+    </div>
+
     <Modal
       v-if="showCreate"
       title="New Template"
@@ -292,4 +318,9 @@ async function handleCreate() {
 .template-drag-handle:hover { background: var(--bg-3); }
 .template-drag-handle:active { cursor: grabbing; }
 .templates-table-wrap :deep(.gt-row--ghost) { opacity: 0.4; }
+.actions-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
 </style>
