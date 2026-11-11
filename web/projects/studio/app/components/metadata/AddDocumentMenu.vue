@@ -33,6 +33,14 @@ const templatesGql = gql`
           }
         }
       }
+      guideTemplates {
+        all {
+          steps {
+            metadata { id }
+            modules { metadata { id } }
+          }
+        }
+      }
     }
   }
 `
@@ -58,6 +66,28 @@ interface TemplateInfo {
   attributes: Record<string, unknown> | null
 }
 
+interface GuideTemplateEntry {
+  steps: Array<{
+    metadata: { id: string } | null
+    modules: Array<{ metadata: { id: string } | null }>
+  }>
+}
+
+// Templates a guide uses for its steps or modules. Step documents are created
+// inside their guide, so they don't belong in the top-level New Document menu.
+function guideStepTemplateIds(guides: GuideTemplateEntry[]): Set<string> {
+  const ids = new Set<string>()
+  for (const guide of guides) {
+    for (const step of guide.steps) {
+      if (step.metadata) ids.add(step.metadata.id)
+      for (const mod of step.modules) {
+        if (mod.metadata) ids.add(mod.metadata.id)
+      }
+    }
+  }
+  return ids
+}
+
 const templates = ref<TemplateInfo[]>([])
 const rootCollectionId = ref<string>('')
 const templatesLoading = ref(true)
@@ -71,13 +101,16 @@ onMounted(async () => {
         documentTemplates: {
           all: Array<{ metadata: TemplateInfo | null }>
         }
+        guideTemplates: { all: GuideTemplateEntry[] }
       }
     }>(templatesGql)
     rootCollectionId.value = result.content.collections.root.id
+    const stepIds = guideStepTemplateIds(result.content.guideTemplates.all)
     templates.value = result.content.documentTemplates.all
       .map(t => t.metadata)
       .filter((m): m is TemplateInfo => m != null)
       .filter(m => m.attributes?.['template.type.sub'] === undefined)
+      .filter(m => !stepIds.has(m.id))
       .sort((a, b) => a.name.localeCompare(b.name))
   } catch (e) {
     console.error('Failed to load document templates', e)

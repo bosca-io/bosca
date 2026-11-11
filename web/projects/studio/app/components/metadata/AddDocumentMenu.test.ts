@@ -23,7 +23,19 @@ const templatesResponse = {
       all: [
         { metadata: { id: 'tpl-article', version: 3, name: 'Article', attributes: null } },
         { metadata: { id: 'tpl-sub', version: 1, name: 'Sub Template', attributes: { 'template.type.sub': 'x' } } },
+        { metadata: { id: 'tpl-class', version: 1, name: 'Class', attributes: { 'template.type': 'Document' } } },
+        { metadata: { id: 'tpl-module', version: 1, name: 'Module', attributes: null } },
         { metadata: null },
+      ],
+    },
+    guideTemplates: {
+      all: [
+        {
+          steps: [
+            { metadata: { id: 'tpl-class' }, modules: [{ metadata: { id: 'tpl-module' } }] },
+            { metadata: null, modules: [] },
+          ],
+        },
       ],
     },
   },
@@ -54,7 +66,7 @@ beforeEach(() => {
 })
 
 describe('AddDocumentMenu', () => {
-  it('lists top-level templates, excluding sub-templates', async () => {
+  it('lists top-level templates, excluding sub-templates and guide steps', async () => {
     const wrapper = mountMenu()
     await flushPromises()
     await wrapper.find('.trigger').trigger('click')
