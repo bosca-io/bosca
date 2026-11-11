@@ -24,6 +24,10 @@ for translation in kjv asv; do
         curl --config - --fail --silent --show-error --location \
             --connect-timeout 30 --max-time 120 \
             "${BIBLE_RAW_ARTIFACTS%/}/$translation.zip" --output "$temporary"
+    if ! unzip -tqq "$temporary"; then
+        printf 'Registry response for %s is not a valid ZIP bundle\n' "$translation" >&2
+        exit 1
+    fi
     mv "$temporary" "$destination/$translation.zip"
     temporary=""
 done

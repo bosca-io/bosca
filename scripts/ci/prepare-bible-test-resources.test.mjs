@@ -7,7 +7,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-async function fixture(t, status = 200) {
+// Stored ZIP with metadata.xml, USX_1/styles.xml and USX_1/GEN.usx.
+const bundle = Buffer.from('UEsDBBQAAAAAAAAAIVxPxc8cDgAAAA4AAAAMAAAAbWV0YWRhdGEueG1sPERCTE1ldGFkYXRhLz5QSwMEFAAAAAAAAAAhXJh3Ke0JAAAACQAAABAAAABVU1hfMS9zdHlsZXMueG1sPHN0eWxlcy8+UEsDBBQAAAAAAAAAIVyWGl0DBgAAAAYAAAANAAAAVVNYXzEvR0VOLnVzeDx1c3gvPlBLAQIUAxQAAAAAAAAAIVxPxc8cDgAAAA4AAAAMAAAAAAAAAAAAAACAAQAAAABtZXRhZGF0YS54bWxQSwECFAMUAAAAAAAAACFcmHcp7QkAAAAJAAAAEAAAAAAAAAAAAAAAgAE4AAAAVVNYXzEvc3R5bGVzLnhtbFBLAQIUAxQAAAAAAAAAIVyWGl0DBgAAAAYAAAANAAAAAAAAAAAAAACAAW8AAABVU1hfMS9HRU4udXN4UEsFBgAAAAADAAMAswAAAKAAAAAAAA==', 'base64');
+
+async function fixture(t, status = 200, body = bundle) {
   const root = await mkdtemp(join(tmpdir(), 'bosca-ci-bundles-'));
   const scripts = join(root, 'scripts/ci');
   await mkdir(scripts, { recursive: true });
@@ -17,7 +20,7 @@ async function fixture(t, status = 200) {
   const server = createServer((request, response) => {
     requests.push({ url: request.url, authorization: request.headers.authorization });
     response.writeHead(request.headers.authorization === 'Bearer fixture-token' ? status : 401);
-    response.end(`bundle:${request.url}`);
+    response.end(body);
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -46,7 +49,7 @@ test('fetches both bundles using registry authentication', async t => {
   assert.equal(result.code, 0, result.output);
   for (const name of ['kjv', 'asv']) {
     const path = `/raw/bibles/bibles/0.0.1/${name}.zip`;
-    assert.equal(await readFile(join(f.destination, `${name}.zip`), 'utf8'), `bundle:${path}`);
+    assert.deepEqual(await readFile(join(f.destination, `${name}.zip`)), bundle);
     assert.ok(f.requests.some(r => r.url === path && r.authorization === 'Bearer fixture-token'));
   }
   assert.deepEqual((await readdir(f.destination)).sort(), ['asv.zip', 'kjv.zip']);
@@ -69,6 +72,17 @@ test('uses the configured registry for the pinned Bible test bundles', async t =
   assert.deepEqual(f.requests.map(r => r.url), [
     '/raw/bibles/bibles/0.0.1/kjv.zip', '/raw/bibles/bibles/0.0.1/asv.zip',
   ]);
+});
+
+test('rejects HTTP-success HTML without replacing a valid bundle', async t => {
+  const f = await fixture(t, 200, '<html><title>Studio</title></html>');
+  await mkdir(f.destination, { recursive: true });
+  await writeFile(join(f.destination, 'kjv.zip'), bundle);
+  const result = await f.run();
+  assert.notEqual(result.code, 0);
+  assert.match(result.output, /not a valid ZIP bundle/);
+  assert.deepEqual(await readFile(join(f.destination, 'kjv.zip')), bundle);
+  assert.deepEqual(await readdir(f.destination), ['kjv.zip']);
 });
 
 test('requires a registry or bundle URL and a token before fetching', async t => {
