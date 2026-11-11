@@ -177,6 +177,19 @@ describe('PageHeader tab overflow', () => {
     expect(w.emitted('tab')).toEqual([['D']])
   })
 
+  it('renders tab actions at the right end of the tab row', () => {
+    const w = mountHeader({ tabs: ['A', 'B'] }, { 'tab-actions': '<button class="save-btn">Save</button>' })
+    expect(w.find('.tabs .tab-actions .save-btn').exists()).toBe(true)
+  })
+
+  it('leaves room for tab actions when fitting tabs', async () => {
+    restore = stubSizes(300, 80)
+    const without = mountHeader({ tabs: ['A', 'B', 'C', 'D', 'E'] })
+    const withActions = mountHeader({ tabs: ['A', 'B', 'C', 'D', 'E'] }, { 'tab-actions': '<button>Save</button>' })
+    await nextTick()
+    expect(withActions.findAll('button.tab').length).toBeLessThan(without.findAll('button.tab').length)
+  })
+
   it('recomputes when the tabs change', async () => {
     restore = stubSizes(300, 80)
     const w = mountHeader({ tabs: ['A', 'B', 'C', 'D', 'E'] })
