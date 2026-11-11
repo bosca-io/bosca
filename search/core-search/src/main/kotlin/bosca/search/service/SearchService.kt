@@ -50,7 +50,10 @@ interface SearchService : Service {
 
     /**
      * Indexes a single JSON document into the specified index. If a document with the
-     * same primary key already exists, it will be replaced.
+     * same primary key already exists, it will be replaced. Documents matching the target
+     * index configuration’s type exclusions are omitted and any existing entry is deleted.
+     * Omitted type fields are resolved from the stored document for exclusion checks;
+     * accepted documents still replace the full document.
      *
      * @param system the target index storage system
      * @param document the JSON document to index
@@ -59,7 +62,10 @@ interface SearchService : Service {
 
     /**
      * Indexes a batch of JSON documents into the specified index. Documents whose primary
-     * keys already exist will be replaced.
+     * keys already exist will be replaced. Documents matching the target index configuration’s
+     * type exclusions are omitted and any existing entry is deleted. Omitted type fields are
+     * resolved from the stored document for exclusion checks; accepted documents still replace
+     * the full document.
      *
      * @param system the target index storage system
      * @param document the list of JSON documents to index
@@ -71,7 +77,9 @@ interface SearchService : Service {
      * Each document must contain its `id`. Supplied top-level fields replace those fields;
      * omitted fields are preserved. Arrays and objects are replaced as whole values.
      * A missing document is created from the supplied fields, so callers must include its
-     * full content when creating it. An empty batch does nothing.
+     * full content when creating it. An empty batch does nothing. Type exclusions on the target
+     * index are evaluated against existing fields merged with the patch; excluded updates delete
+     * any existing entry instead.
      *
      * @param system the target index storage system
      * @param documents the document fields to add or update
