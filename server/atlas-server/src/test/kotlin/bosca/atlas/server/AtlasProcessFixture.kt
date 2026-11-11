@@ -54,7 +54,10 @@ internal class AtlasProcessFixture(
         require(storageType in template)
         val config = File(directory, "$name.yaml")
         val passkeyOrigins = "    - \"\${WEBAUTHN_EXTRA_ORIGIN:}\""
-        config.writeText(template.replace(passkeyOrigins, "    - \"$ui\"\n    - \"${flags["WEBAUTHN_EXTRA_ORIGIN"].orEmpty()}\"").replace(storageType,
+        // Requests have completed before fixture teardown; no deployment drain window is needed.
+        config.writeText(template.replace("\n  server:\n", "\n  server:\n    drain-timeout-ms: 0\n")
+            .replace("\n    server:\n", "\n    server:\n      drain-timeout-ms: 0\n")
+            .replace(passkeyOrigins, "    - \"$ui\"\n    - \"${flags["WEBAUTHN_EXTRA_ORIGIN"].orEmpty()}\"").replace(storageType,
             "    type: fs\n    basePath: ${JsonPrimitive(File(directory, "storage").absolutePath)}")
             .replace("cookie-prefixes: []", "cookie-prefixes:\n    - prefix: _atlas_test\n      domains: [localhost]") +
             "\ninitialization:\n  password:\n    admin: atlas-admin-password\n    sa: atlas-sa-password\n")
