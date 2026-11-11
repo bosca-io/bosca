@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
 import type { OverflowMenuItem } from '@bosca/ui'
+import { compareTemplatesByOrder } from '~/utils/templateOrder'
 
 withDefaults(defineProps<{
   accent?: string
@@ -24,6 +25,7 @@ const templatesGql = gql`
             id
             version
             name
+            attributes
           }
         }
       }
@@ -52,6 +54,7 @@ interface TemplateInfo {
   id: string
   version: number
   name: string
+  attributes: Record<string, unknown> | null
 }
 
 const templates = ref<TemplateInfo[]>([])
@@ -70,7 +73,7 @@ onMounted(async () => {
     templates.value = result.content.guideTemplates.all
       .map(t => t.metadata)
       .filter((m): m is TemplateInfo => m != null)
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort(compareTemplatesByOrder)
   } catch (e) {
     console.error('Failed to load guide templates', e)
   } finally {

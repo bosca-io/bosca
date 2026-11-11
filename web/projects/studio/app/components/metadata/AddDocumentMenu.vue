@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
 import type { OverflowMenuItem } from '@bosca/ui'
+import { compareTemplatesByOrder } from '~/utils/templateOrder'
 
 withDefaults(defineProps<{
   accent?: string
@@ -126,7 +127,7 @@ onMounted(async () => {
       .filter((m): m is TemplateInfo => m != null)
       .filter(m => m.attributes?.['template.type.sub'] === undefined)
       .filter(m => !stepIds.has(m.id))
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort(compareTemplatesByOrder)
   } catch (e) {
     console.error('Failed to load document templates', e)
   } finally {

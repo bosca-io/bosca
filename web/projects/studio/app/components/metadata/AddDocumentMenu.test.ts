@@ -77,6 +77,25 @@ describe('AddDocumentMenu', () => {
     expect(labels).toEqual(['Article'])
   })
 
+  it('lists templates in their saved order, then unordered ones A–Z', async () => {
+    const tpl = (name: string, sort?: number) => ({
+      defaultAttributes: null,
+      metadata: { id: `tpl-${name}`, version: 1, name, attributes: sort === undefined ? null : { sort } },
+    })
+    query.mockResolvedValue({
+      content: {
+        collections: { root: { id: 'root-collection-id' } },
+        documentTemplates: { all: [tpl('Zeta'), tpl('Article', 1), tpl('Alpha'), tpl('Talk', 0), tpl('Video', 2)] },
+        guideTemplates: { all: [] },
+      },
+    })
+    const wrapper = mountMenu()
+    await flushPromises()
+    await wrapper.find('.trigger').trigger('click')
+    const labels = wrapper.findAll('.overflow-item').map(b => b.text())
+    expect(labels).toEqual(['Talk', 'Article', 'Video', 'Alpha', 'Zeta'])
+  })
+
   it('creates a document from the selected template and navigates to the editor', async () => {
     mutation.mockResolvedValue({ content: { metadata: { addDocument: { id: 'new-doc-id' } } } })
     const wrapper = mountMenu()
