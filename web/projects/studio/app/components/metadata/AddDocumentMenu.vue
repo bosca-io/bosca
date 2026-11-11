@@ -2,6 +2,7 @@
 import gql from 'graphql-tag'
 import type { OverflowMenuItem } from '@bosca/ui'
 import { compareTemplatesByOrder } from '~/utils/templateOrder'
+import { isSystemDocumentType } from '~/utils/systemDocumentTypes'
 
 withDefaults(defineProps<{
   accent?: string
@@ -80,14 +81,9 @@ interface GuideTemplateEntry {
   }>
 }
 
-// Platform modules seed their own document templates and stamp a `type` on
-// them: WorkOps uses "WorkOps Spec" / "WorkOps Requirement" (workops migration
-// V34) and Feeds uses "Feed Item" (feeds migration V4). Those documents are
-// created by their module, not from the CMS. Template IDs can differ between
-// environments, so match on the type.
+// WorkOps and Feeds templates: their documents are created by those modules.
 function isSystemTemplate(entry: DocumentTemplateEntry): boolean {
-  const type = entry.defaultAttributes?.type
-  return typeof type === 'string' && (type.startsWith('WorkOps ') || type === 'Feed Item')
+  return isSystemDocumentType(entry.defaultAttributes?.type)
 }
 
 // Templates a guide uses for its steps or modules. Step documents are created

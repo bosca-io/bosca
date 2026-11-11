@@ -2,6 +2,7 @@
 import gql from 'graphql-tag'
 import type { GlassTableColumn, SelectOption , OverflowMenuItem  } from '@bosca/ui'
 import { sortFacetsByTemplateOrder, templateOrderByType } from '~/utils/templateOrder'
+import { isSystemDocumentType } from '~/utils/systemDocumentTypes'
 
 const { accent } = useCurrentSubsystem()
 const { useAsyncQuery, useSubscription, query: gqlQuery, mutation: gqlMutation } = useGraphQL()
@@ -15,7 +16,10 @@ const activeTab = ref('All')
 const typeFacets = ref<Array<{ value: string; count: number }>>([])
 
 const tabs = computed(() => {
-  const facetTabs = sortFacetsByTemplateOrder(typeFacets.value, typeOrder.value).map(f => formatTypeName(f.value))
+  // WorkOps and Feed Item documents are managed by their modules, so they
+  // get no filter tab here (same rule as the New Document menu).
+  const cmsFacets = typeFacets.value.filter(f => !isSystemDocumentType(f.value))
+  const facetTabs = sortFacetsByTemplateOrder(cmsFacets, typeOrder.value).map(f => formatTypeName(f.value))
   return ['All', ...facetTabs]
 })
 
