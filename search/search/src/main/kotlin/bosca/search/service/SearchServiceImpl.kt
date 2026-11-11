@@ -128,8 +128,12 @@ class SearchServiceImpl(
     }
 
     override suspend fun index(system: IndexStorageSystem, document: List<JsonElement>) {
+        if (document.isEmpty()) return
         val (_, configuration) = getConfiguration(system.id, system.name)
-        val task = client.addDocuments(meilisearchConfiguration.indexUid(configuration.name), json.encodeToString(document), "id")
+        val indexUid = meilisearchConfiguration.indexUid(configuration.name)
+        val included = includedDocuments(indexUid, configuration, document)
+        if (included.isEmpty()) return
+        val task = client.addDocuments(indexUid, json.encodeToString(included), "id")
         client.waitForTask(task.taskUid)
         clearSearchCache()
     }
@@ -137,9 +141,33 @@ class SearchServiceImpl(
     override suspend fun update(system: IndexStorageSystem, documents: List<JsonElement>) {
         if (documents.isEmpty()) return
         val (_, configuration) = getConfiguration(system.id, system.name)
-        val task = client.updateDocuments(meilisearchConfiguration.indexUid(configuration.name), json.encodeToString(documents), "id")
+        val indexUid = meilisearchConfiguration.indexUid(configuration.name)
+        val included = includedDocuments(indexUid, configuration, documents)
+        if (included.isEmpty()) return
+        val task = client.updateDocuments(indexUid, json.encodeToString(included), "id")
         client.waitForTask(task.taskUid)
         clearSearchCache()
+    }
+
+    private suspend fun includedDocuments(
+        indexUid: String,
+        configuration: IndexConfiguration,
+        documents: List<JsonElement>,
+    ): List<JsonElement> {
+        if (configuration.excludeTypes.isEmpty() && configuration.excludeContentTypePrefix.isEmpty()) return documents
+        return documents.filter { document ->
+            val fields = document as? JsonObject
+            val id = (fields?.get("id") as? JsonPrimitive)?.contentOrNull
+            val existing = id?.let { client.getDocument(indexUid, it, listOf("type", "_type", "contentType")) }
+                ?.let { json.parseToJsonElement(it) as? JsonObject }
+            val excluded = configuration.excludes(if (existing != null) JsonObject(existing + fields) else document)
+            if (excluded && existing != null) {
+                val task = client.deleteDocument(indexUid, id)
+                client.waitForTask(task.taskUid)
+                clearSearchCache()
+            }
+            !excluded
+        }
     }
 
     override suspend fun fetch(system: IndexStorageSystem, id: String): JsonElement? =
