@@ -157,6 +157,10 @@ class SearchServiceImpl(
         if (configuration.excludeTypes.isEmpty() && configuration.excludeContentTypePrefix.isEmpty()) return documents
         return documents.filter { document ->
             val fields = document as? JsonObject
+            val needsStoredFields =
+                (configuration.excludeTypes.isNotEmpty() && (fields?.containsKey("type") != true || !fields.containsKey("_type"))) ||
+                (configuration.excludeContentTypePrefix.isNotEmpty() && fields?.containsKey("contentType") != true)
+            if (!needsStoredFields && !configuration.excludes(document)) return@filter true
             val id = (fields?.get("id") as? JsonPrimitive)?.contentOrNull
             val existing = id?.let { client.getDocument(indexUid, it, listOf("type", "_type", "contentType")) }
                 ?.let { json.parseToJsonElement(it) as? JsonObject }

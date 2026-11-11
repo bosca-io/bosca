@@ -30,11 +30,14 @@ import bosca.storage.model.StorageSystem
 import bosca.storage.model.StorageSystemType
 import bosca.storage.service.StorageSystemService
 import bosca.test.resources.SharedMeilisearchContainer
+import io.mockk.coVerify
+import io.mockk.spyk
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -84,7 +87,7 @@ class IndexDocumentNodeIntegrationTest {
         val logicalIndexUid = "test"
         indexUid = meili.indexUid("sitea_$logicalIndexUid")
         runBlocking {
-            client = MeilisearchClient(url = meili.url, apiKey = meili.apiKey, json = json)
+            client = spyk(MeilisearchClient(url = meili.url, apiKey = meili.apiKey, json = json))
             // Create the index and make contentId filterable so the replace/removal deleteByFilter works.
             client.waitForTask(client.createIndex(indexUid, "id").taskUid)
             client.waitForTask(client.updateFilterableAttributes(indexUid, listOf("contentId", "_type")).taskUid)
@@ -381,6 +384,34 @@ class IndexDocumentNodeIntegrationTest {
                 assertEquals(original, searchService.fetch(system, "item"))
                 searchService.delete(system, "item")
             }
+        }
+    }
+
+    @Test
+    fun `complete allowed batches skip stored document lookups for active exclusion rules`() = runBlocking {
+        withRequestCache {
+            for ((types, prefixes) in listOf(
+                emptySet<String>() to listOf("image/"),
+                setOf("episode", "profile") to emptyList(),
+                setOf("episode", "profile") to listOf("image/"),
+            )) {
+                indexConfiguration = indexConfiguration.copy(excludeTypes = types, excludeContentTypePrefix = prefixes)
+                val documents = (1..100).map { number -> buildJsonObject {
+                    put("id", "document$number")
+                    if (types.isNotEmpty()) {
+                        put("type", JsonNull)
+                        put("_type", "metadata")
+                    }
+                    if (prefixes.isNotEmpty()) put("contentType", "text/plain")
+                    put("name", "original")
+                } }
+                searchService.index(system, documents)
+                val updates = documents.map { document -> JsonObject(document.jsonObject + ("name" to kotlinx.serialization.json.JsonPrimitive("changed"))) }
+                searchService.update(system, updates)
+            }
+
+            coVerify(exactly = 0) { client.getDocument(any(), any(), any()) }
+            assertEquals("changed", searchService.fetch(system, "document1")?.jsonObject?.get("name")?.jsonPrimitive?.content)
         }
     }
 
