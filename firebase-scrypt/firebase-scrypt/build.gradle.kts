@@ -1,6 +1,7 @@
 import gobley.gradle.GobleyHost
 import gobley.gradle.Variant
 import gobley.gradle.cargo.dsl.*
+import gobley.gradle.cargo.tasks.CargoBuildTask
 import gobley.gradle.rust.CrateType
 import gobley.gradle.rust.targets.RustJvmTarget
 import org.gradle.jvm.tasks.Jar
@@ -40,6 +41,13 @@ cargo {
         jvmPublishingVariant = Variant.Release
     }
     packageDirectory = layout.projectDirectory.dir("src/main/rust")
+}
+
+afterEvaluate {
+    tasks.withType<CargoBuildTask>().configureEach {
+        // JVM consumers load the cdylib through JNA; static-linker definitions are for Kotlin/Native.
+        if (target.get() is RustJvmTarget) nativeStaticLibsDefFile.unset()
+    }
 }
 
 // Gobley exposes the JVM native library as a local runtime-only classifier JAR. File
