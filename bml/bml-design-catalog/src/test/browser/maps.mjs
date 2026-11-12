@@ -36,6 +36,8 @@ export async function checkMaps({navigate,evaluate,until:poll,call,key,artifacts
     await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:center.x+30,y:center.y+10,button:'left',clickCount:1});
     await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:1,y:1});
     await until(`${canvas}.toDataURL()!==window.mapInitial`);
+    // Rich-text tooltips remain painted until ECharts' mouseout hideDelay expires.
+    await evaluate(`new Promise(resolve=>setTimeout(()=>requestAnimationFrame(()=>requestAnimationFrame(resolve)),JSON.parse(${root}.dataset.config).tooltip?.hideDelay??100))`);
     await evaluate(`window.mapViewport=${canvas}.toDataURL();${example}.querySelector('[data-example-states]').open=true;${example}.querySelector('[data-chart-refresh]').click()`);
     await until(`document.querySelector('[data-chart-toast=${id}]')?.matches(':popover-open')`);
     assert.ok(await evaluate(`${root}===window.mapRoot&&${canvas}===window.mapCanvas&&${canvas}.toDataURL()===window.mapViewport`),'Surrounding updates retain the geographic viewport');
@@ -51,6 +53,8 @@ export async function checkMaps({navigate,evaluate,until:poll,call,key,artifacts
     const point=await evaluate(`(()=>{const c=${canvas},r=c.getBoundingClientRect(),p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;for(let y=25;y<c.height-65;y++)for(let x=15;x<c.width-15;x++){const i=(y*c.width+x)*4;if(p[i+2]>p[i]+35&&p[i+2]>p[i+1]+10&&p[i+3]===255){let inside=true;for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){const j=((y+dy)*c.width+x+dx)*4;if(p[j+2]<=p[j]+35||p[j+2]<=p[j+1]+10||p[j+3]!==255)inside=false;}if(inside)return {x:r.x+(x+.5)*r.width/c.width,y:r.y+(y+.5)*r.height/c.height};}}throw new Error('No colored geographic region');})()`);
     await call('Input.dispatchMouseEvent',{type:'mouseMoved',...point});
     await call('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',clickCount:1});
+    // A surrounding island update must retain the map paths throughout a native click.
+    await evaluate(`${example}.dispatchEvent(new CustomEvent('bml:update',{bubbles:true,detail:{target:${example},added:[],retained:[${root}]}}));new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
     await call('Input.dispatchMouseEvent',{type:'mouseReleased',...point,button:'left',clickCount:1});
     await until(`window.regionSelection`);
     assert.ok(await evaluate(`Number.isFinite(window.regionSelection.value)`),JSON.stringify(await evaluate(`window.regionSelection`)));

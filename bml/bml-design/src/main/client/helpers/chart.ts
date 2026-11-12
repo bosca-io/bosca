@@ -69,6 +69,10 @@ export function mountChart(ctx: ClientContext) {
     ctx.root.dispatchEvent(new CustomEvent("chartselect", { bubbles: true, detail }));
   };
   const destroy = () => { chart?.dispose(); chart = undefined; };
+  const resizeChart = () => {
+    // ECharts redraws map paths on resize, replacing targets of active pointer gestures.
+    if (chart && (chart.getWidth() !== surface.clientWidth || chart.getHeight() !== surface.clientHeight)) chart.resize();
+  };
   const sync = () => {
     if (disposed) return;
     const raw = ctx.root.dataset.config ?? "{}", rawMaps = ctx.root.dataset.maps ?? "{}", busy = ctx.root.hasAttribute("data-loading"), error = ctx.root.dataset.error ?? "";
@@ -92,7 +96,7 @@ export function mountChart(ctx: ClientContext) {
       const colors = ["--accent", "--ok", "--warn", "--info", "--err", "--fg-2"].map((fallback, i) => resolveColor(token(`--chart-series-${i + 1}`, token(fallback, fg))));
       const area = resolveColor(token("--bg-2", "#242a35"));
       const nextPalette = JSON.stringify([fg, grid, area, font, colors, motion.matches]);
-      if (raw === previous && rawMaps === previousMaps && nextPalette === palette && chart) { surface.hidden = false; state.hidden = true; chart.resize(); return; }
+      if (raw === previous && rawMaps === previousMaps && nextPalette === palette && chart) { surface.hidden = false; state.hidden = true; resizeChart(); return; }
       const mapped = bindChartMaps(option, JSON.parse(rawMaps));
       navigation = mapNavigation(mapped);
       const controls = ctx.ref<HTMLElement>("mapControls");
