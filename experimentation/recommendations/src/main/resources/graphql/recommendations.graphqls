@@ -474,6 +474,9 @@ type RecommendationContexts {
 
 "Administrator context mutations and artifact-authorized training export reports."
 type RecommendationContextsMutation {
+    "Report an unrecoverable serving candidate failure. Requires administrator or matching artifact push permissions."
+    modelServingPrepared(version: Long!, selectionRevision: Long!, endpoint: String!): Boolean!
+    modelServingFailed(version: Long!, selectionRevision: Long!, failure: String!): Boolean!
     "Recompute content assignments for all saved contexts without starting model training. Requires administrator access."
     recompute: Boolean!
     "Train a new model using this context's saved settings. Requires administrator access."

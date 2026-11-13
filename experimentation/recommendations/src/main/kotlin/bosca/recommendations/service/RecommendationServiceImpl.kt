@@ -87,6 +87,7 @@ class RecommendationServiceImpl(
 
     private fun configuration(model: RecommendationContextModel): TfServingConfiguration =
         tfServingConfiguration.copy(
+            url = tfServingConfiguration.contextModelUrl(model.version),
             modelName = model.personalizedModelName,
             contentModelName = model.contentModelName,
             modelVersion = model.version,

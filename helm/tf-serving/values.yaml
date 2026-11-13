@@ -35,6 +35,22 @@ service:
 # How quickly the serving script notices a changed exact-version manifest written by the loader.
 configPollIntervalSeconds: 5
 
+# Model initialization completes before the serving port opens. Selection changes
+# also restart the child server, so the liveness window covers every reload.
+# Readiness removes the pod from service while the port is unavailable.
+livenessProbe:
+  tcpSocket:
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 20
+  failureThreshold: 30
+
+readinessProbe:
+  tcpSocket:
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
 # The two recommender models TF Serving loads, each served at /v1/models/<name> from
 # <modelBasePath>/<name>/. Names MUST match the trainer's artifact names and the recommendation strategy's
 # TfServingConfiguration (modelName = "recommender-personalized", contentModelName = "recommender-content").
@@ -42,6 +58,16 @@ models:
   - recommender-content
   - recommender-personalized
 modelBasePath: /models
+
+# Install a ServingModelProfile instead of the polling Deployment. The Kubernetes
+# controller discovers exports and creates a ServingModel, Pod and Service per generation.
+provisioning:
+  enabled: false
+  serviceNamePrefix: tf-serving-model-
+  maxCandidates: 1
+  drainSeconds: 120
+  failureGraceSeconds: 600
+  startupTimeoutSeconds: 1800
 
 # Model loader sidecar. Polls bosca-server for newly trained models and writes
 # them into the shared model volume, where the TF Serving container loads

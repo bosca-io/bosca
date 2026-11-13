@@ -1,3 +1,4 @@
+{{- if not .Values.provisioning.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,3 +13,5 @@ data:
   # so it stays identical to the compose stacks' copy.
   serve.sh: |
 {{ .Files.Get "files/serve.sh" | indent 4 }}
+
+{{- end }}

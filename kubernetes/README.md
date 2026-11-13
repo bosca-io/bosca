@@ -119,3 +119,76 @@ The CRD and profiles are installed by the
 `bosca-kubernetes-controller` Helm chart through its
 `jobProfiles` value. The CRD's full resource name is
 `jobprofiles.kubernetes.bosca.io`.
+
+## Controller-managed serving models
+
+`ServingModelController` runs a separate reconciliation loop from Kubernetes Job dispatch. It discovers
+exported recommendation generations through Bosca's artifact-authorized GraphQL API. A namespace-scoped
+`ServingModelProfile` supplies the source URL and token Secret, native pod template, candidate capacity,
+and drain interval. The `tf-serving` chart renders this profile when `provisioning.enabled` is true.
+
+The controller creates a `ServingModel` for the active generation and each selected candidate. Each
+instance captures its exact artifact versions and pod settings, and owns a Pod, static model ConfigMap,
+and private Service. It does not create a Deployment or Kubernetes Job. The init container downloads
+all exports before the serving container starts. Profile edits affect new instances; a loaded instance
+keeps its captured template. A terminated or deleted Pod is recreated from that template.
+
+The controller keeps active generations running while candidates download or initialize. `maxCandidates`
+bounds additional Pods across the profile; draining Pods count toward that capacity. Other candidates
+remain Pending. ServingModel status records Pending, Downloading, Loading, Ready, Active, Draining, or
+Failed, together with the endpoint and the observed Pod message. Kubernetes retries container failures
+with its normal backoff; a failed candidate never replaces the active version. After an observed failure,
+`failureGraceSeconds` (default 600) allows recovery. If the candidate remains unready, the controller
+reports a terminal failure to recommendations and removes the candidate to release capacity.
+`startupTimeoutSeconds` (default 1800) also bounds candidate startup when no container failure is
+reported, including a stalled download, unschedulable Pod, or model that never becomes ready. Waiting
+for candidate capacity does not consume this deadline. A new selection revision resets the deadline;
+Pod recreation does not. Failure reports carry the observed selection revision, so a delayed report
+cannot clear a newer request for the same version. A completed
+rollback target remains in history, and a later explicit activation clears its previous serving failure.
+
+Serving preparation and failure reporting use `controlTokenSecretName` / `controlTokenSecretKey`, separately from the read-only
+discovery token. The credential must have administrator access or artifact push permissions for both
+matching exports. The TF Serving chart uses its configured `loader.secrets.boscaToken` reference for this
+credential. If reporting fails, the controller preserves resources and retries rather than losing the failure.
+
+The recommendation activation job checks the candidate's exact content and personalized status endpoints
+before the existing selection service changes the active version. For a version-specific endpoint, the
+controller records the selection revision on the ServingModel, then reports
+`modelServingPrepared` with its endpoint and queues validation. The runner accepts that claim only for
+its configured endpoint. Initial export jobs do not activate a provisioned version before this claim.
+Completed jobs for obsolete selections or already-active versions exit without polling. Configure
+`RECOMMENDATIONS_CONTEXT_MODEL_URL_TEMPLATE` on both server and runner to match the profile's Service
+prefix, namespace and port, for example `http://tf-serving-model-{version}.models.svc:8501`. Predictions
+and validation resolve the same endpoint. Requests retain their selected version and endpoint, so changing
+the active version does not redirect in-flight calls to another generation.
+
+Reconciliation and activation share a renewed distributed lifecycle lock, including exact-version
+validation and the selection update. Controller and runner must use the same configured distributed lock
+backend. Reconciliation reads selection only after acquiring the lock and uses one Pod snapshot for
+capacity and readiness checks. Recording a new selection revision changes the ServingModel resource
+version before activation can be queued; a delayed retirement request carrying an
+older resource version fails even if its former lock holder's HTTP write completes after lease loss.
+The controller also deletes terminal Pods conditionally, so a delayed delete cannot remove a replacement
+Pod with the same name. Overlapping controller replicas share candidate capacity.
+
+Unselected instances drain for `drainSeconds` before ownership garbage collection removes their resources.
+Discovery or authorization failures preserve existing resources. Stable Kubernetes names and owner UIDs
+allow reconciliation after controller restarts, and prevent adopting unrelated resources with the same name.
+Deleting a profile explicitly deletes its owned instances. Artifact retention remains owned by recommendations.
+
+The controller chart installs `servingmodelprofiles.kubernetes.bosca.io` and
+`servingmodels.kubernetes.bosca.io`. Its `servingModelProfiles` value also accepts native profile specs.
+The existing registered-cluster credentials need permissions for these resources, Pods, Services,
+ConfigMaps and the discovery token Secret. The controller chart's existing default role covers them.
+
+The lifecycle integration test uses a real isolated Kubernetes API. Set `SERVING_MODEL_TEST_KUBECONFIG`
+to an isolated cluster with `node:22-alpine` available, then run from the workspace root:
+
+```bash
+./gradlew :kubernetes:kubernetes-controller:test --tests 'bosca.kubernetes.controller.models.*'
+```
+
+The test installs the two CRDs and creates a temporary namespace. Use a test cluster: the CRDs remain
+installed after the namespace is removed. The model-loader suite separately exercises real TensorFlow
+Serving in Docker when `TF_SERVING_EXPORT_PYTHON` points to an interpreter with TensorFlow installed.

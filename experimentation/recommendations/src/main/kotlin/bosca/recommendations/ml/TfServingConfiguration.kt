@@ -29,4 +29,12 @@ data class TfServingConfiguration(
     val timeoutSeconds: Int = 10,
     /** Exact content export selected alongside a context's personalized export. Null uses latest. */
     val contentModelVersion: Long? = null,
-)
+    /** Version-specific Service URL; `{version}` is replaced with the immutable context generation. */
+    val contextModelUrlTemplate: String? = null,
+) {
+    /** Resolves the endpoint shared by validation and prediction for one context generation. */
+    fun contextModelUrl(version: Long): String = contextModelUrlTemplate?.takeIf { it.isNotBlank() }?.let {
+        require("{version}" in it) { "Context model URL template must contain {version}" }
+        it.replace("{version}", version.toString())
+    } ?: url
+}

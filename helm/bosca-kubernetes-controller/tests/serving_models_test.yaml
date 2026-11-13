@@ -1,0 +1,34 @@
+suite: ServingModel profiles
+templates:
+  - templates/servingmodelprofiles.yaml
+tests:
+  - it: creates no serving profiles by default
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: passes native profile settings through
+    set:
+      servingModelProfiles:
+        - name: recommendations
+          namespace: models
+          spec:
+            boscaUrl: http://bosca:8080
+            tokenSecretName: model-pull
+            serviceNamePrefix: model-
+            maxCandidates: 1
+            podTemplate:
+              spec:
+                nodeSelector:
+                  workload: models
+    asserts:
+      - isKind:
+          of: ServingModelProfile
+      - equal:
+          path: metadata.namespace
+          value: models
+      - equal:
+          path: spec.maxCandidates
+          value: 1
+      - equal:
+          path: spec.podTemplate.spec.nodeSelector.workload
+          value: models

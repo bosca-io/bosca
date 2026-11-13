@@ -9,6 +9,16 @@ import kotlin.test.assertNull
 class TfServingConfigurationTest {
 
     @Test
+    fun `context generations resolve separate endpoints while local configuration uses the shared endpoint`() {
+        val config = TfServingConfiguration(contextModelUrlTemplate = "http://serving-{version}.models.svc:8501")
+        assertEquals("http://serving-42.models.svc:8501", config.contextModelUrl(42))
+        assertEquals("http://serving-41.models.svc:8501", config.contextModelUrl(41))
+        assertEquals("local", TfServingConfiguration(url = "local").contextModelUrl(42))
+        assertEquals("local", TfServingConfiguration(url = "local", contextModelUrlTemplate = "").contextModelUrl(42))
+        assertFailsWith<IllegalArgumentException> { TfServingConfiguration(contextModelUrlTemplate = "missing").contextModelUrl(42) }
+    }
+
+    @Test
     fun `each parameter defaults independently and copy preserves the rest`() {
         // Single-arg constructions exercise each property's default-parameter branch independently.
         assertEquals("u", TfServingConfiguration(url = "u").url)
@@ -22,7 +32,8 @@ class TfServingConfigurationTest {
     @Test
     fun `serializer round-trips a full value and decodes an empty object to defaults`() {
         val json = Json { ignoreUnknownKeys = true }
-        val full = TfServingConfiguration(url = "u", modelName = "m", contentModelName = "c", modelVersion = 2L, timeoutSeconds = 8)
+        val full = TfServingConfiguration(url = "u", modelName = "m", contentModelName = "c", modelVersion = 2L, timeoutSeconds = 8,
+            contentModelVersion = 2L, contextModelUrlTemplate = "http://serving-{version}")
         val encoded = json.encodeToString(TfServingConfiguration.serializer(), full)
         assertEquals(full, json.decodeFromString(TfServingConfiguration.serializer(), encoded))
         // An empty object exercises the "field absent → use default" branch of every property.

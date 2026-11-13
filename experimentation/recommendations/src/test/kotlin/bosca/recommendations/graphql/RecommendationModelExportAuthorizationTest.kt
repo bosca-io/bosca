@@ -44,6 +44,41 @@ class RecommendationModelExportAuthorizationTest {
         authentication(ScopedAuthenticatedPrincipal(Principal(), groups, scopes, allowedGroups, 119))
 
     @Test
+    fun `serving failure reports require write permissions for every matching export`() = runTest {
+        coEvery { service.getModel(12) } returns model.copy(personalized = true)
+        coEvery { service.failServingModel(12, 3, "init failed") } returns true
+        val content = "artifacts:ml:model/${model.contentModelName}:12:push"
+        val personalized = "artifacts:ml:model/${model.personalizedModelName}:12:push"
+        assertFailsWith<java.lang.SecurityException> { controller.modelServingFailed(token(listOf("artifacts:pull")), 12, 3, "init failed") }
+        assertFailsWith<java.lang.SecurityException> { controller.modelServingFailed(token(listOf(content)), 12, 3, "init failed") }
+        assertTrue(controller.modelServingFailed(token(listOf(content, personalized)), 12, 3, "init failed"))
+        coVerify(exactly = 1) { service.failServingModel(12, 3, "init failed") }
+        coEvery { service.getModel(12) } returns model
+        assertTrue(controller.modelServingFailed(token(listOf(content)), 12, 3, "init failed"))
+        assertTrue(controller.modelServingFailed(authentication(AuthenticatedPrincipal(Principal(), listOf(admin))), 12, 3, "init failed"))
+        assertTrue(controller.modelServingFailed(token(null, listOf(admin)), 12, 3, "init failed"))
+        coEvery { service.getModel(12) } returns null
+        assertFailsWith<NoSuchElementException> { controller.modelServingFailed(token(listOf(content)), 12, 3, "init failed") }
+        assertFailsWith<bosca.security.service.SecurityException> { controller.modelServingFailed(authentication(null), 12, 3, "init failed") }
+    }
+
+    @Test
+    fun `serving preparation requires write permission for every export and forwards the claim`() = runTest {
+        coEvery { service.getModel(12) } returns model.copy(personalized = true)
+        coEvery { service.prepareServingModel(12, 9, "http://serving-12.models.svc:8501") } returns true
+        val content = "artifacts:ml:model/${model.contentModelName}:12:push"
+        val personalized = "artifacts:ml:model/${model.personalizedModelName}:12:push"
+        assertFailsWith<java.lang.SecurityException> {
+            controller.modelServingPrepared(token(listOf("artifacts:pull")), 12, 9, "http://serving-12.models.svc:8501")
+        }
+        assertFailsWith<java.lang.SecurityException> {
+            controller.modelServingPrepared(token(listOf(content)), 12, 9, "http://serving-12.models.svc:8501")
+        }
+        assertTrue(controller.modelServingPrepared(token(listOf(content, personalized)), 12, 9, "http://serving-12.models.svc:8501"))
+        coVerify(exactly = 1) { service.prepareServingModel(12, 9, "http://serving-12.models.svc:8501") }
+    }
+
+    @Test
     fun `existing ML artifact scopes report exports without administrator membership`() = runTest {
         coEvery { service.getModel(12) } returns model
         assertTrue(controller.modelExported(token(listOf("artifacts:pull", "artifacts:push")), 12, true))

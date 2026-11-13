@@ -20,3 +20,20 @@ are reported at WARNING level, including when an entire selected model repositor
 
 Run loader tests with `uv run pytest`. In a composition workspace, these also exercise the real
 serving scripts with a small test process to verify replacement ordering and rollback.
+
+## Fixed-version pods
+
+Set `MODEL_VERSIONS_JSON` to a nonempty JSON object mapping artifact names to positive integer
+versions, and `MODELS_ROOT` to the shared model volume. The loader downloads only those exports
+and exits. A missing artifact or incomplete download fails the process; it never selects a newer
+version or queries Bosca's changing model selections. Completed downloads are reused on init retries.
+
+Artifact requests use `ML_LOADER_CONNECT_TIMEOUT_SECONDS` (default 30) and
+`ML_LOADER_READ_TIMEOUT_SECONDS` (default 600). The read timeout measures inactivity between bytes,
+so a large download can continue while it makes progress. Set these through `loader.extraEnv` in the
+chart. A timeout fails the init attempt, closes the response, and removes the partial archive.
+
+The TF Serving chart's `provisioning.enabled` mode supplies an init-container template to the
+ServingModel controller. Each ServingModel starts TF Serving with a static exact-version config after
+all downloads finish. There is no polling loader sidecar. See the
+[chart deployment instructions](../../../helm/README.md#controller-managed-tensorflow-serving).

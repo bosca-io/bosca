@@ -19,6 +19,41 @@ For an existing deployment, use its current release names, namespaces and values
 files. Chart versions follow the selected Git release tag. Update any version
 constraints that still select the former independent `0.1.x` chart releases.
 
+## Controller-managed TensorFlow Serving
+
+Enable `provisioning.enabled` in the `tf-serving` chart to install a `ServingModelProfile`. The Kubernetes
+controller discovers exported generations and maintains separate ServingModel resources, Pods and
+version-specific Services. The chart supplies resource, scheduling, security, artifact and health-check
+settings through the profile's native pod template. This mode creates no polling Deployment or shared Service.
+
+Publish matched controller, model-loader, server and runner images from this revision before enabling
+this mode. Earlier loader images do not support init downloads, and earlier controller images do not
+reconcile ServingModels. Deployment-owned values must select the updated images.
+
+For migration from a running polling deployment:
+
+1. Install the new controller image and both ServingModel CRDs. When upgrading an existing Helm release,
+   apply the new CRD files from `helm/bosca-kubernetes-controller/crds/` explicitly; Helm does not upgrade CRDs.
+2. Install the profile as a separate `tf-serving` chart release with a distinct `fullnameOverride`,
+   `provisioning.enabled: true`, and deployment-owned resources and credentials. Keep persistence disabled:
+   every version gets its own per-Pod storage. The profile defaults to one candidate and a 120-second drain.
+   Configure `loader.secrets.boscaToken` with administrator or matching artifact push permissions for terminal
+   serving claims and failure reports; the artifacts pull token remains read-only. `provisioning.failureGraceSeconds` defaults
+   to 600 seconds after an observed candidate failure. Use the same distributed lock backend on controller
+   and runner. Before queuing activation, the controller claims the selection revision on the ServingModel
+   so delayed retirement deletes fail their Kubernetes resource-version precondition.
+3. Wait for the current active generation's ServingModel and exact model status endpoints to become ready.
+4. Configure `RECOMMENDATIONS_CONTEXT_MODEL_URL_TEMPLATE` on both server and runner to match the profile,
+   for example `http://tf-serving-model-{version}.models.svc:8501` for namespace `models` and the default prefix.
+   Roll out these applications after the active version's endpoint is available.
+5. Retire the old polling deployment after its consumers have moved. Keep it if global legacy models still
+   use its shared endpoint. Subsequent context activations validate their own candidate endpoint and switch
+   the active version without restarting another version's Pod.
+
+Plan capacity for the active models plus `provisioning.maxCandidates` additional Pods. Candidates wait if
+this capacity is occupied by another candidate or a draining version. Failed discovery preserves loaded
+instances. See the [controller lifecycle](../kubernetes/README.md#controller-managed-serving-models) for details.
+
 ## Container memory and heap sizing
 
 Set memory requests, memory limits and `maxRAMPercentage` in your deployment's

@@ -6,7 +6,11 @@ import os
 import tarfile
 import tempfile
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import requests
 
 from bosca_storage import (
     CONTENT_MODEL_NAME,
@@ -102,6 +106,55 @@ class TestArtifactsModelClient(unittest.TestCase):
 
     def test_distinct_model_names(self):
         self.assertNotEqual(CONTENT_MODEL_NAME, PERSONALIZED_MODEL_NAME)
+
+    def test_configurable_timeouts_are_applied_to_discovery_and_downloads(self):
+        with patch.dict(os.environ, {"ML_LOADER_CONNECT_TIMEOUT_SECONDS": "5", "ML_LOADER_READ_TIMEOUT_SECONDS": "90"}):
+            client = ArtifactsModelClient("http://artifacts", "model")
+        client.session = MagicMock()
+        client.session.get.return_value.status_code = 404
+        self.assertEqual(client.get_versions("content"), [])
+        self.assertEqual(client.session.get.call_args.kwargs["timeout"], (5., 90.))
+        client.session.get.return_value.close.assert_called_once()
+        client.session.get.side_effect = requests.ConnectTimeout("unreachable")
+        with self.assertRaises(requests.ConnectTimeout):
+            client.download_model("content", 3, "/unused")
+        self.assertEqual(client.session.get.call_args.kwargs["timeout"], (5., 90.))
+
+    def test_stalled_download_times_out_closes_response_and_removes_partial_archive(self):
+        release = threading.Event()
+
+        class StalledDownload(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Length", "1000")
+                self.end_headers()
+                self.wfile.flush()
+                release.wait(10)
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), StalledDownload)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        client = ArtifactsModelClient(f"http://127.0.0.1:{server.server_port}", "model")
+        client.request_timeout = (1., .1)
+        original_tempfile = tempfile.NamedTemporaryFile
+        try:
+            with tempfile.TemporaryDirectory() as scratch, tempfile.TemporaryDirectory() as output:
+                with patch("bosca_storage.tempfile.NamedTemporaryFile", side_effect=lambda **kwargs: original_tempfile(dir=scratch, **kwargs)):
+                    with patch.object(requests.Response, "close", autospec=True, side_effect=requests.Response.close) as close:
+                        with self.assertRaises(requests.RequestException):
+                            client.download_model("content", 3, output)
+                        close.assert_called_once()
+                self.assertEqual([], os.listdir(scratch))
+                self.assertEqual([], os.listdir(output))
+        finally:
+            release.set()
+            client.session.close()
+            server.shutdown()
+            server.server_close()
+            thread.join(5)
 
 
 if __name__ == "__main__":
