@@ -9,7 +9,7 @@ import kotlinx.serialization.json.JsonElement
 @Repository
 interface CollectionTemplateRepository {
 
-    @Query("select * from collection_templates")
+    @Query("select collection_templates.* from collection_templates inner join metadata on collection_templates.metadata_id = metadata.id where metadata.deleted = false")
     suspend fun getAll(): List<CollectionTemplate>
 
     @Query("select * from collection_templates where metadata_id = :metadataId")
