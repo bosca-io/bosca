@@ -26,6 +26,12 @@ const setNameGql = gql`
   }
 `
 
+const deleteTemplateGql = gql`
+  mutation DeleteTemplate($id: UUID!) {
+    content { metadata { delete(metadataId: $id) } }
+  }
+`
+
 interface TemplateMetadata {
   id: string
   name: string
@@ -89,11 +95,32 @@ const addAction = computed(() => {
 
 const overflowItems = computed(() => [
   { id: 'view-metadata', label: 'View Metadata', icon: 'link' },
+  { id: 'sep', label: '', separator: true },
+  { id: 'delete', label: 'Delete', icon: 'trash', danger: true },
 ])
+
+const deleteModalOpen = ref(false)
+const deleting = ref(false)
 
 function onOverflowSelect(id: string) {
   if (id === 'view-metadata' && metadata.value) {
     router.push(`/cms/metadata/${metadata.value.id}`)
+  } else if (id === 'delete') {
+    deleteModalOpen.value = true
+  }
+}
+
+async function onConfirmDelete() {
+  deleting.value = true
+  try {
+    await gqlMutation(deleteTemplateGql, { id: templateId.value })
+    toast.success('Template deleted')
+    deleteModalOpen.value = false
+    router.push('/cms/settings/templates')
+  } catch (e: unknown) {
+    toast.error(e instanceof Error ? e.message : 'Failed to delete template')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -238,6 +265,15 @@ function cancelEditName() {
       />
       <div v-else class="loading-state">Unknown template type: {{ contentType }}</div>
     </template>
+
+    <ConfirmModal
+      v-if="deleteModalOpen"
+      :title="`Delete '${metadata?.name}'?`"
+      subtitle="This will soft-delete the template. It can be restored later."
+      :loading="deleting"
+      @close="deleteModalOpen = false"
+      @confirm="onConfirmDelete"
+    />
   </PageShell>
 </template>
 
