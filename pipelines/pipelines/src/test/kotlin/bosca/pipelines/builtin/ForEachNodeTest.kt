@@ -94,6 +94,7 @@ class ForEachNodeTest {
 
     private class FakePipelineService(private val pipelines: Map<UUID, Pipeline>) : PipelineService {
         override suspend fun getAll(): List<Pipeline> = pipelines.values.toList()
+        override suspend fun getByNames(names: List<String>): List<Pipeline> = pipelines.values.filter { it.name in names }
         override suspend fun getBroken(): List<bosca.pipelines.model.BrokenPipeline> = emptyList()
         override suspend fun get(id: UUID): Pipeline? = pipelines[id]
         override suspend fun getByKey(key: String): Pipeline? = pipelines.values.firstOrNull { it.key == key }

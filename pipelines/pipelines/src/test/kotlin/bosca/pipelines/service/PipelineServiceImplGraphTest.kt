@@ -315,6 +315,36 @@ class PipelineServiceImplGraphTest {
         PipelineRecord(id = id, name = name, acceptedInputType = "JSON", triggered = triggered, key = key, api = api, graph = graphElement())
 
     @Test
+    fun `getByNames decodes only requested pipelines without enumerating unrelated graphs`() = runTest {
+        val repo = mockk<PipelineRepository>()
+        coEvery { repo.getByNames(listOf("artifact sync")) } returns listOf(record(name = "artifact sync"))
+        val found = service(repository = repo).getByNames(listOf("artifact sync"))
+        assertEquals(listOf("artifact sync"), found.map { it.name })
+        coVerify(exactly = 0) { repo.getAll() }
+    }
+
+    @Test
+    fun `getByNames skips an empty name list and returns missing names as empty`() = runTest {
+        val repo = mockk<PipelineRepository>()
+        val svc = service(repository = repo)
+        assertTrue(svc.getByNames(emptyList()).isEmpty())
+        coVerify(exactly = 0) { repo.getByNames(any()) }
+        coEvery { repo.getByNames(listOf("missing")) } returns emptyList()
+        assertTrue(svc.getByNames(listOf("missing")).isEmpty())
+    }
+
+    @Test
+    fun `getByNames propagates decoding failures for a requested graph`() = runTest {
+        val repo = mockk<PipelineRepository>()
+        coEvery { repo.getByNames(listOf("broken")) } returns listOf(record(name = "broken").copy(
+            graph = Json.parseToJsonElement("""{"nodes":[{"id":"compute","type":"recommendations.computeProfileSignals"}]}"""),
+        ))
+        assertFailsWith<kotlinx.serialization.SerializationException> {
+            service(repository = repo).getByNames(listOf("broken"))
+        }
+    }
+
+    @Test
     fun `decodeGraph round-trips the polymorphic node graph`() = runTest {
         val svc = service()
         val nodes = listOf(InputNode(id = "in", acceptedType = "JSON"), SvcTestNode(id = "t"), OutputNode(id = "out"))

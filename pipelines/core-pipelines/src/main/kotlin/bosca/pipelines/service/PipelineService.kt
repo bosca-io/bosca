@@ -23,6 +23,9 @@ interface PipelineService : PermissionService<Pipeline, UUID> {
 
     suspend fun getAll(): List<Pipeline>
 
+    /** Loads active pipelines with the given names, decoding only matching graphs. */
+    suspend fun getByNames(names: List<String>): List<Pipeline>
+
     /**
      * Pipelines whose stored graph no longer decodes (a renamed/removed node type, a module no longer
      * loaded, or corrupt data). These are absent from [getAll] and throw from [get], so this is the only
