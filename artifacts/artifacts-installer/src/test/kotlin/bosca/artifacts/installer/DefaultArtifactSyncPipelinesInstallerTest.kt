@@ -21,7 +21,12 @@ class DefaultArtifactSyncPipelinesInstallerTest {
     private fun setup(existing: List<Pipeline> = emptyList()): Pair<DefaultArtifactSyncPipelinesInstaller, MutableList<Pipeline>> {
         val captured = mutableListOf<Pipeline>()
         val service = mockk<PipelineService>()
-        coEvery { service.getAll() } returns existing
+        coEvery { service.getByNames(listOf(
+            DefaultArtifactSyncPipelinesInstaller.BODY_NAME,
+            DefaultArtifactSyncPipelinesInstaller.TRIGGER_NAME,
+            DefaultArtifactSyncPipelinesInstaller.PUBLICATION_BODY_NAME,
+            DefaultArtifactSyncPipelinesInstaller.PUBLICATION_TRIGGER_NAME,
+        )) } returns existing
         coEvery { service.graphAsJsonElement(capture(captured)) } returns JsonObject(emptyMap())
         coEvery { service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) } coAnswers {
             captured.last().copy(id = UUID.random())

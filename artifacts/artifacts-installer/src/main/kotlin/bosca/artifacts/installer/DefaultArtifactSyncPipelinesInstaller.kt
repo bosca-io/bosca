@@ -26,7 +26,8 @@ class DefaultArtifactSyncPipelinesInstaller(private val pipelines: PipelineServi
     override val version = "1.1.0"
 
     override suspend fun install(installation: PackageInstallation, version: PackageInstallationVersion) {
-        val existing = pipelines.getAll().associateBy { it.name }
+        val existing = pipelines.getByNames(listOf(BODY_NAME, TRIGGER_NAME, PUBLICATION_BODY_NAME, PUBLICATION_TRIGGER_NAME))
+            .associateBy { it.name }
         val body = existing[BODY_NAME] ?: save(Pipeline(
             id = UUID.NIL, name = BODY_NAME,
             description = "Copy one selected Docker tag to its configured GHCR destination.",
