@@ -4,7 +4,7 @@ import gql from 'graphql-tag'
 const route = useRoute()
 const router = useRouter()
 const { accent } = useCurrentSubsystem()
-const { useAsyncQuery, mutation: gqlMutation } = useGraphQL()
+const { useAsyncQuery, query: gqlQuery, mutation: gqlMutation } = useGraphQL()
 const toast = useToast()
 
 const templateId = computed(() => route.params.id as string)
@@ -23,6 +23,12 @@ const metadataQuery = gql`
 const setNameGql = gql`
   mutation SetTemplateName($id: UUID!, $name: String!) {
     content { metadata { setMetadataName(id: $id, name: $name) { id name } } }
+  }
+`
+
+const templateUsageGql = gql`
+  query GetTemplateUsage($id: UUID!) {
+    content { metadata(id: $id) { id templateUsage { items collections templates total } } }
   }
 `
 
@@ -99,14 +105,49 @@ const overflowItems = computed(() => [
   { id: 'delete', label: 'Delete', icon: 'trash', danger: true },
 ])
 
+interface TemplateUsage { items: number; collections: number; templates: number; total: number }
+
 const deleteModalOpen = ref(false)
 const deleting = ref(false)
+const checkingUsage = ref(false)
+// Set when the template can't be deleted: either content still uses it, or
+// the usage check itself failed (usage is then null).
+const blockedUsage = ref<{ usage: TemplateUsage | null } | null>(null)
+
+function plural(count: number, one: string, many: string) {
+  return `${count} ${count === 1 ? one : many}`
+}
+
+const blockedMessage = computed(() => {
+  const usage = blockedUsage.value?.usage
+  if (!usage) return 'Studio couldn\'t check whether any content uses this template, so it can\'t be deleted right now.'
+  const parts: string[] = []
+  if (usage.items) parts.push(plural(usage.items, 'content item', 'content items'))
+  if (usage.collections) parts.push(plural(usage.collections, 'collection', 'collections'))
+  if (usage.templates) parts.push(plural(usage.templates, 'guide template', 'guide templates'))
+  return `This template is used by ${parts.join(', ')}. Delete that content or move it to another template first.`
+})
+
+async function startDelete() {
+  checkingUsage.value = true
+  try {
+    const result = await gqlQuery<{ content: { metadata: { templateUsage: TemplateUsage | null } | null } }>(templateUsageGql, { id: templateId.value })
+    const usage = result.content.metadata?.templateUsage ?? null
+    if (!usage) blockedUsage.value = { usage: null }
+    else if (usage.total > 0) blockedUsage.value = { usage }
+    else deleteModalOpen.value = true
+  } catch {
+    blockedUsage.value = { usage: null }
+  } finally {
+    checkingUsage.value = false
+  }
+}
 
 function onOverflowSelect(id: string) {
   if (id === 'view-metadata' && metadata.value) {
     router.push(`/cms/metadata/${metadata.value.id}`)
-  } else if (id === 'delete') {
-    deleteModalOpen.value = true
+  } else if (id === 'delete' && !checkingUsage.value) {
+    startDelete()
   }
 }
 
@@ -269,11 +310,24 @@ function cancelEditName() {
     <ConfirmModal
       v-if="deleteModalOpen"
       :title="`Delete '${metadata?.name}'?`"
-      subtitle="This will soft-delete the template. It can be restored later."
+      subtitle="No content uses this template. Deleting it is permanent and can't be undone."
       :loading="deleting"
       @close="deleteModalOpen = false"
       @confirm="onConfirmDelete"
     />
+
+    <Modal
+      v-if="blockedUsage"
+      :title="`Can't delete '${metadata?.name}'`"
+      icon="trash"
+      :accent="accent"
+      @close="blockedUsage = null">
+      <p class="modal-text">{{ blockedMessage }}</p>
+      <template #footer>
+        <span style="flex: 1" />
+        <Button size="sm" @click="blockedUsage = null">Close</Button>
+      </template>
+    </Modal>
   </PageShell>
 </template>
 
@@ -319,6 +373,8 @@ function cancelEditName() {
   color: var(--fg-3);
   font-size: 13px;
 }
+
+.modal-text { color: var(--fg-2); margin: 0; font-size: 13px; }
 
 .guide-tabs {
   display: flex;
