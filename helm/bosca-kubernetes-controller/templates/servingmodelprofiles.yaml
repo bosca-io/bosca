@@ -1,0 +1,14 @@
+{{- range $profile := .Values.servingModelProfiles }}
+{{- if or (not (hasKey $profile "enabled")) $profile.enabled }}
+---
+apiVersion: kubernetes.bosca.io/v1alpha1
+kind: ServingModelProfile
+metadata:
+  name: {{ required "servingModelProfiles[].name is required" $profile.name | quote }}
+  namespace: {{ $profile.namespace | default $.Release.Namespace | quote }}
+  labels:
+    {{- include "bosca-common.labels" $ | nindent 4 }}
+spec:
+  {{- required (printf "servingModelProfiles[%s].spec is required" $profile.name) $profile.spec | toYaml | nindent 2 }}
+{{- end }}
+{{- end }}

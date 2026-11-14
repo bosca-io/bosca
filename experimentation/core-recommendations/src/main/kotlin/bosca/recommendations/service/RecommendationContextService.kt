@@ -63,6 +63,12 @@ interface RecommendationContextService : Service {
     /** Records a terminal failure without changing the active version. */
     suspend fun failModel(version: Long, failure: String)
 
+    /** Records failure only for the observed selection intent; never fails or deselects the active model. */
+    suspend fun failServingModel(version: Long, selectionRevision: Long, failure: String): Boolean
+
+    /** Queues validation after the controller claims the version endpoint for the observed selection intent. */
+    suspend fun prepareServingModel(version: Long, selectionRevision: Long, endpoint: String): Boolean
+
     /** Selects a retained model as a new administrator intent, superseding older jobs. */
     suspend fun activateModel(contextId: UUID, version: Long): RecommendationContextModel
 

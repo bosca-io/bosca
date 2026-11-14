@@ -5,6 +5,35 @@ templates:
   # both in the suite to resolve the cross-template reference.
   - configmap.yaml
 tests:
+  - it: allows ten minutes for initial loading and later model replacements
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.tcpSocket.port
+          value: http
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.periodSeconds
+          value: 20
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.failureThreshold
+          value: 30
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.periodSeconds
+          value: 10
+
+  - it: permits deployment-specific probe timing
+    template: deployment.yaml
+    set:
+      livenessProbe.failureThreshold: 45
+      readinessProbe.timeoutSeconds: 5
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.failureThreshold
+          value: 45
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.timeoutSeconds
+          value: 5
+
   - it: permits context-only and empty-volume bootstrap without a legacy model
     template: deployment.yaml
     asserts:

@@ -57,6 +57,9 @@ appConfig:
 # topology spread constraints, runtime classes, volumes, and accelerator
 # resources pass through unchanged.
 jobProfiles: []
+
+# Native ServingModelProfile specs; the tf-serving chart can also supply a profile.
+servingModelProfiles: []
 #  - name: android
 #    namespace: bosca
 #    spec:

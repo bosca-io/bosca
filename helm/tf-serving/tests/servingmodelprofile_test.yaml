@@ -1,0 +1,65 @@
+suite: Controller-managed serving models
+templates:
+  - servingmodelprofile.yaml
+  - deployment.yaml
+  - configmap.yaml
+  - service.yaml
+tests:
+  - it: renders a native ServingModelProfile with init downloads and no polling sidecar
+    template: servingmodelprofile.yaml
+    set:
+      provisioning.enabled: true
+      resources.limits.memory: 6Gi
+      nodeSelector.workload: models
+    asserts:
+      - isKind:
+          of: ServingModelProfile
+      - equal:
+          path: spec.maxCandidates
+          value: 1
+      - equal:
+          path: spec.startupTimeoutSeconds
+          value: 1800
+      - equal:
+          path: spec.failureGraceSeconds
+          value: 600
+      - equal:
+          path: spec.controlTokenSecretKey
+          value: bosca_token
+      - equal:
+          path: spec.podTemplate.spec.nodeSelector.workload
+          value: models
+      - equal:
+          path: spec.podTemplate.spec.containers[0].resources.limits.memory
+          value: 6Gi
+      - equal:
+          path: spec.podTemplate.spec.initContainers[0].name
+          value: download-models
+      - lengthEqual:
+          path: spec.podTemplate.spec.containers
+          count: 1
+      - equal:
+          path: spec.podTemplate.spec.containers[0].command[0]
+          value: tensorflow_model_server
+  - it: does not create a deployment in controller mode
+    template: deployment.yaml
+    set:
+      provisioning.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: does not create a shared service in controller mode
+    template: service.yaml
+    set:
+      provisioning.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: rejects a shared persistent claim across model pods
+    template: servingmodelprofile.yaml
+    set:
+      provisioning.enabled: true
+      persistence.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: ServingModel provisioning requires per-Pod storage; disable persistence

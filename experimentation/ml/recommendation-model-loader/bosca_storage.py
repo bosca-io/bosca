@@ -29,6 +29,12 @@ class ArtifactsModelClient:
         """
         self.artifacts_url = artifacts_url.rstrip("/")
         self.namespace = namespace
+        self.request_timeout = (
+            float(os.environ.get("ML_LOADER_CONNECT_TIMEOUT_SECONDS", "30")),
+            float(os.environ.get("ML_LOADER_READ_TIMEOUT_SECONDS", "600")),
+        )
+        if any(timeout <= 0 for timeout in self.request_timeout):
+            raise ValueError("Model loader request timeouts must be positive")
         self.session = requests.Session()
         if api_token:
             self.session.headers["Authorization"] = f"Bearer {api_token}"
@@ -36,13 +42,16 @@ class ArtifactsModelClient:
     def get_versions(self, model_name: str) -> list[int]:
         """Returns every numeric model version newest-first, or an empty list before the first push."""
         url = f"{self.artifacts_url}/ml/{self.namespace}/api/{model_name}"
-        response = self.session.get(url)
-        if response.status_code == 404:
-            return []
-        response.raise_for_status()
-        versions = response.json().get("versions", [])
-        numeric = [int(v["version"]) for v in versions if str(v.get("version", "")).isdigit()]
-        return sorted(set(numeric), reverse=True)
+        response = self.session.get(url, timeout=self.request_timeout)
+        try:
+            if response.status_code == 404:
+                return []
+            response.raise_for_status()
+            versions = response.json().get("versions", [])
+            numeric = [int(v["version"]) for v in versions if str(v.get("version", "")).isdigit()]
+            return sorted(set(numeric), reverse=True)
+        finally:
+            response.close()
 
     def get_latest_version(self, model_name: str) -> Optional[int]:
         """Returns the highest numeric version of ``model_name``, or None before the first push."""
@@ -60,15 +69,15 @@ class ArtifactsModelClient:
         url = f"{self.artifacts_url}/ml/{self.namespace}/{model_name}/{version}"
         log.info("Downloading model from %s", url)
 
-        response = self.session.get(url, stream=True)
-        response.raise_for_status()
-
-        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
-            for chunk in response.iter_content(chunk_size=8192):
-                tmp.write(chunk)
-            tmp_path = tmp.name
-
+        response = self.session.get(url, stream=True, timeout=self.request_timeout)
+        tmp_path = None
         try:
+            response.raise_for_status()
+            with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+                tmp_path = tmp.name
+                for chunk in response.iter_content(chunk_size=8192):
+                    tmp.write(chunk)
+
             os.makedirs(output_dir, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix=f".download-{version}-", dir=output_dir) as staging_dir:
                 with tarfile.open(tmp_path, "r:gz") as tar:
@@ -83,4 +92,5 @@ class ArtifactsModelClient:
             return output_dir
         finally:
             response.close()
-            os.unlink(tmp_path)
+            if tmp_path is not None:
+                os.unlink(tmp_path)

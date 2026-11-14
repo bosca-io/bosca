@@ -11,6 +11,7 @@ import bosca.initialization.InitializeModule
 import bosca.installer.model.PackageInstallations
 import bosca.kubernetes.controller.cluster.ClusterHealthProbe
 import bosca.kubernetes.controller.jobs.KubernetesJobController
+import bosca.kubernetes.controller.models.ServingModelController
 import bosca.routes.configureKubernetesControllerRoutes
 import bosca.security.routes.AuthenticationModule
 import bosca.server.BoscaApplication
@@ -71,4 +72,6 @@ suspend fun BoscaApplication.module() {
 
     log.info("starting Kubernetes Job controller")
     provideBlockingNoSuspend<KubernetesJobController>().start()
+    log.info("starting ServingModel controller")
+    provideBlockingNoSuspend<ServingModelController>().start()
 }

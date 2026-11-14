@@ -4,6 +4,8 @@ package bosca.recommendations.jobs
 
 import bosca.di.ProviderRegistry
 import bosca.di.provides
+import bosca.lock.DistributedLockFactory
+import bosca.lock.DistributedLock
 import bosca.recommendations.ml.TfServingConfiguration
 import bosca.recommendations.model.RecommendationContext
 import bosca.recommendations.model.RecommendationContextModel
@@ -40,18 +42,28 @@ class ActivateContextModelJobExecutorTest {
     @AfterTest
     fun clearRegistry() = ProviderRegistry.clear()
 
-    private fun setup(server: MockWebServer, selected: RecommendationContext = context, snapshot: RecommendationContextModel = model) {
+    private fun setup(server: MockWebServer, selected: RecommendationContext = context, snapshot: RecommendationContextModel = model,
+                      contextModelUrlTemplate: String? = null) {
         server.start()
         ProviderRegistry.clear()
         provides<Json>(singleton = true) { Json }
+        val locks = mockk<DistributedLockFactory>()
+        val lock = mockk<DistributedLock>()
+        coEvery { locks.create("kubernetes-serving-model-lifecycle") } returns lock
+        coEvery { lock.tryAcquire(any()) } returns true
+        coEvery { lock.renew(any()) } returns true
+        coEvery { lock.release() } returns true
+        provides<DistributedLockFactory>(singleton = true) { locks }
         provides<RecommendationContextService>(singleton = true) { service }
-        provides<TfServingConfiguration>(singleton = true) { TfServingConfiguration(url = server.url("/").toString()) }
+        provides<TfServingConfiguration>(singleton = true) {
+            TfServingConfiguration(url = server.url("/").toString(), contextModelUrlTemplate = contextModelUrlTemplate)
+        }
         coEvery { service.getModel(17) } returns snapshot
         coEvery { service.getById(context.id) } returns selected
     }
 
-    private suspend fun execute() {
-        val job = Job(definition = ActivateContextModelJob(17, 3), executor = ActivateContextModelJobExecutor::class)
+    private suspend fun execute(servingEndpoint: String? = null) {
+        val job = Job(definition = ActivateContextModelJob(17, 3, servingEndpoint), executor = ActivateContextModelJobExecutor::class)
         withContext(mockk<JobQueue>(relaxed = true).asCoroutineContext(job)) {
             val executor = ActivateContextModelJobExecutor()
             assertEquals("context-model-activation-17", executor.getLockId())
@@ -62,6 +74,111 @@ class ActivateContextModelJobExecutorTest {
     private fun status(version: Long = 17, state: String = "AVAILABLE", code: String = "OK") = MockResponse(
         body = """{"model_version_status":[{"version":"$version","state":"$state","status":{"error_code":"$code","error_message":"load error"}}]}""",
     )
+
+    @Test
+    fun `failed completed generations only retry when still active or explicitly requested`() = runBlocking {
+        val selections = listOf(
+            context.copy(activeModelVersion = 17),
+            context.copy(activeModelVersion = 16, requestedModelVersion = 17),
+            context.copy(requestedModelVersion = 17),
+            context.copy(activeModelVersion = 16, requestedModelVersion = 15),
+        )
+        for (selected in selections) MockWebServer().use { server ->
+            setup(server, selected = selected, snapshot = model.copy(status = RecommendationTrainingStatus.COMPLETED, failure = "previous failure"))
+            val retry = selected.activeModelVersion != 17L && selected.requestedModelVersion == 17L
+            if (retry) { server.enqueue(status()); server.enqueue(status()) }
+            execute()
+            assertEquals(if (retry) 2 else 0, server.requestCount)
+        }
+    }
+
+    @Test
+    fun `retired completed activations and already active models stop before availability polling`() = runBlocking {
+        for (selected in listOf(context.copy(selectionRevision = 4, activeModelVersion = 18), context.copy(activeModelVersion = 17), context.copy(activeModelVersion = 18))) {
+            MockWebServer().use { server ->
+                setup(server, selected = selected, snapshot = model.copy(status = RecommendationTrainingStatus.COMPLETED))
+                repeat(2) { execute() }
+                assertEquals(0, server.requestCount)
+            }
+        }
+        coVerify(exactly = 0) { service.completeModel(any()); service.activateLoadedModel(any(), any()) }
+    }
+
+    @Test
+    fun `versioned activation waits for a claim for its own endpoint`() = runBlocking {
+        MockWebServer().use { server ->
+            setup(server, contextModelUrlTemplate = "http://serving-{version}.models.svc:8501")
+            execute()
+            execute("http://different-17.models.svc:8501")
+            assertEquals(0, server.requestCount)
+            coVerify(exactly = 0) { service.completeModel(any()); service.activateLoadedModel(any(), any()) }
+        }
+        MockWebServer().use { server ->
+            setup(server, contextModelUrlTemplate = " ")
+            server.enqueue(status())
+            server.enqueue(status())
+            execute()
+            assertEquals(2, server.requestCount)
+        }
+    }
+
+    @Test
+    fun `selecting the active version clears its pending request without probing or waiting for a claim`() = runBlocking {
+        MockWebServer().use { server ->
+            setup(server, selected = context.copy(activeModelVersion = 17, requestedModelVersion = 17),
+                snapshot = model.copy(status = RecommendationTrainingStatus.COMPLETED),
+                contextModelUrlTemplate = "http://serving-{version}.models.svc:8501")
+            execute()
+            assertEquals(0, server.requestCount)
+            coVerify(exactly = 1) { service.activateLoadedModel(17, 3) }
+            coVerify(exactly = 0) { service.completeModel(any()) }
+        }
+    }
+
+    @Test
+    fun `reported serving failures stop superseded completed activation retries`() = runBlocking {
+        MockWebServer().use { server ->
+            setup(server, snapshot = model.copy(status = RecommendationTrainingStatus.COMPLETED, failure = "init failed"))
+            execute()
+            assertEquals(0, server.requestCount)
+            coVerify(exactly = 0) { service.completeModel(any()); service.activateLoadedModel(any(), any()) }
+        }
+    }
+
+    @Test
+    fun `activation waits while reconciliation owns the lifecycle lock`() = runBlocking {
+        MockWebServer().use { server ->
+            setup(server)
+            val factory = bosca.di.provide<DistributedLockFactory>()
+            val busy = mockk<DistributedLock>()
+            coEvery { factory.create(any()) } returns busy
+            coEvery { busy.tryAcquire(any()) } returns false
+            assertFailsWith<DelayException> { execute() }
+            assertEquals(0, server.requestCount)
+            coVerify(exactly = 0) { service.getModel(any()); service.completeModel(any()); service.activateLoadedModel(any(), any()) }
+        }
+    }
+
+    @Test
+    fun `candidate validation uses its own endpoint before changing the active version`() = runBlocking {
+        MockWebServer().use { candidate ->
+            MockWebServer().use { active ->
+                candidate.start()
+                setup(active, contextModelUrlTemplate = candidate.url("/generation-").toString() + "{version}")
+                candidate.enqueue(status())
+                candidate.enqueue(MockResponse(code = 503))
+                assertFailsWith<DelayException> { execute(candidate.url("/generation-17").toString()) }
+                coVerify(exactly = 0) { service.completeModel(any()); service.activateLoadedModel(any(), any()) }
+                candidate.enqueue(status())
+                candidate.enqueue(status())
+                execute(candidate.url("/generation-17/").toString())
+                assertEquals(0, active.requestCount)
+                assertEquals("/generation-17/v1/models/${model.contentModelName}/versions/17",
+                    candidate.takeRequest().url.encodedPath)
+                coVerifyOrder { service.completeModel(17); service.activateLoadedModel(17, 3) }
+            }
+        }
+    }
 
     @Test
     fun `both matching exports must load before completion and activation`() = runBlocking {
@@ -83,7 +200,7 @@ class ActivateContextModelJobExecutorTest {
             server.enqueue(status())
             server.enqueue(MockResponse(code = 404))
             assertFailsWith<DelayException> { execute() }
-            coVerify(exactly = 0) { service.completeModel(any()); service.activateLoadedModel(any(), any()); service.failModel(any(), any()) }
+            coVerify(exactly = 0) { service.completeModel(any()); service.activateLoadedModel(any(), any()); service.failServingModel(any(), any(), any()) }
         }
     }
 
@@ -113,7 +230,7 @@ class ActivateContextModelJobExecutorTest {
             setup(server)
             server.enqueue(status(state = "END", code = "INVALID_ARGUMENT"))
             assertFailsWith<FailException> { execute() }
-            coVerify { service.failModel(17, "load error") }
+            coVerify { service.failServingModel(17, 3, "load error") }
             coVerify(exactly = 0) { service.completeModel(any()); service.activateLoadedModel(any(), any()) }
         }
     }
@@ -171,7 +288,7 @@ class ActivateContextModelJobExecutorTest {
                 server.enqueue(response)
                 assertFailsWith<DelayException> { execute() }
             }
-            coVerify(exactly = 0) { service.completeModel(any()); service.activateLoadedModel(any(), any()); service.failModel(any(), any()) }
+            coVerify(exactly = 0) { service.completeModel(any()); service.activateLoadedModel(any(), any()); service.failServingModel(any(), any(), any()) }
             server.enqueue(status(code = "0"))
             execute()
             coVerify { service.completeModel(17); service.activateLoadedModel(17, 3) }
@@ -184,10 +301,10 @@ class ActivateContextModelJobExecutorTest {
             setup(server, snapshot = model.copy(personalized = false))
             server.enqueue(MockResponse(body = """{"model_version_status":[{"version":"17","status":{"error_code":"INTERNAL"}}]}"""))
             assertFailsWith<FailException> { execute() }
-            coVerify { service.failModel(17, "Model load failed: INTERNAL") }
+            coVerify { service.failServingModel(17, 3, "Model load failed: INTERNAL") }
             server.enqueue(MockResponse(body = "invalid JSON"))
             assertFailsWith<IllegalArgumentException> { execute() }
-            coVerify(exactly = 2) { service.failModel(17, any()) }
+            coVerify(exactly = 2) { service.failServingModel(17, 3, any()) }
         }
     }
 }

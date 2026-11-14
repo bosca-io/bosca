@@ -26,6 +26,7 @@ Usage:
 """
 
 import argparse
+import json
 import logging
 import os
 import re
@@ -271,6 +272,24 @@ def build_specs(args) -> list[ModelSpec]:
     ]
 
 
+def load_fixed_models(client: ArtifactsModelClient, root: str, versions: dict[str, int]) -> None:
+    """Download an explicit model set once; fail the init container if any exact export is unavailable."""
+    if not isinstance(versions, dict) or not versions:
+        raise ValueError("Fixed model versions must be a nonempty object")
+    for name, version in versions.items():
+        if not isinstance(name, str) or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]*", name):
+            raise ValueError("Invalid fixed model name")
+        if isinstance(version, bool) or not isinstance(version, int) or version <= 0:
+            raise ValueError("Fixed model versions must be positive integers")
+    for name, version in versions.items():
+        directory = os.path.join(root, name)
+        if not os.path.isfile(os.path.join(directory, str(version), "saved_model.pb")):
+            client.download_model(name, version, directory)
+        if not os.path.isfile(os.path.join(directory, str(version), "saved_model.pb")):
+            raise RuntimeError(f"Model {name}@{version} is missing saved_model.pb after download")
+        log.info("Fixed model ready: %s@%d", name, version)
+
+
 def main():
     parser = argparse.ArgumentParser(description="TF Serving model loader for the Bosca artifacts server")
     parser.add_argument(
@@ -290,7 +309,18 @@ def main():
     parser.add_argument("--poll-interval", type=int, default=int(os.environ.get("POLL_INTERVAL", "60")))
     parser.add_argument("--bosca-url", default=os.environ.get("BOSCA_URL"))
     parser.add_argument("--bosca-api-token", default=os.environ.get("BOSCA_API_TOKEN"))
+    parser.add_argument("--model-versions-json", default=os.environ.get("MODEL_VERSIONS_JSON"),
+                        help="Download this exact model-name/version object once, then exit")
+    parser.add_argument("--models-root", default=os.environ.get("MODELS_ROOT", "/models"))
     args = parser.parse_args()
+
+    if args.model_versions_json is not None:
+        load_fixed_models(
+            ArtifactsModelClient(args.artifacts_url, args.artifacts_namespace, args.api_token),
+            args.models_root,
+            json.loads(args.model_versions_json),
+        )
+        return
 
     run_poll_loop(
         artifacts_url=args.artifacts_url,

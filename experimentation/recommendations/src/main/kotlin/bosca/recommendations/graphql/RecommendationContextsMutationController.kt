@@ -85,6 +85,30 @@ class RecommendationContextsMutationController(
     }
 
     @Field
+    suspend fun modelServingFailed(authentication: AuthenticationContext, version: Long, selectionRevision: Long, failure: String): Boolean {
+        verifyModelWrite(authentication, version)
+        return contextService.failServingModel(version, selectionRevision, failure)
+    }
+
+    @Field
+    suspend fun modelServingPrepared(authentication: AuthenticationContext, version: Long, selectionRevision: Long, endpoint: String): Boolean {
+        verifyModelWrite(authentication, version)
+        return contextService.prepareServingModel(version, selectionRevision, endpoint)
+    }
+
+    private suspend fun verifyModelWrite(authentication: AuthenticationContext, version: Long) {
+        if (authentication.principal() !is ScopedAuthenticatedPrincipal || groupEvaluator.hasAdminGroup(authentication)) {
+            groupEvaluator.verifyHasAdminGroup(authentication)
+        } else {
+            val model = contextService.getModel(version) ?: throw NoSuchElementException("Recommendation model not found")
+            artifactPermissionEvaluator.verify(authentication, "ml", "model", model.contentModelName, version.toString(), ArtifactAction.PUSH)
+            if (model.personalized) artifactPermissionEvaluator.verify(
+                authentication, "ml", "model", model.personalizedModelName, version.toString(), ArtifactAction.PUSH,
+            )
+        }
+    }
+
+    @Field
     suspend fun deleteModel(authentication: AuthenticationContext, contextId: UUID, version: Long): Boolean {
         groupEvaluator.verifyHasAdminGroup(authentication)
         contextService.deleteModel(contextId, version)

@@ -117,6 +117,14 @@ interface RecommendationContextRepository {
     """)
     suspend fun failModel(version: Long, failure: String)
 
+    /** Cancels only the failed candidate's pending selection. */
+    @Query("update recommendations.contexts set requested_model_version = null where id = :id and requested_model_version = :version")
+    suspend fun clearRequestedModel(id: UUID, version: Long)
+
+    /** Makes a new explicit retry independent of its earlier serving failure. */
+    @Query("update recommendations.context_models set failure = null where version = :version")
+    suspend fun clearServingFailure(version: Long)
+
     /** Selects only the model whose activation intent is still current. */
     @Query("""
         update recommendations.contexts set active_model_version = :version, requested_model_version = null

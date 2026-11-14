@@ -1,3 +1,4 @@
+{{- if not .Values.provisioning.enabled }}
 {{- if and .Values.persistence.enabled .Values.persistence.create (not .Values.persistence.existingClaim) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -14,4 +15,6 @@ spec:
   resources:
     requests:
       storage: {{ .Values.persistence.size }}
+{{- end }}
+
 {{- end }}

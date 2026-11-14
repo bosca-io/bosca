@@ -163,6 +163,7 @@ embedding:
 # TensorFlow Serving endpoint for recommendation models; the default matches the code default.
 recommendations:
   tfServing:
+    contextModelUrlTemplate: "${RECOMMENDATIONS_CONTEXT_MODEL_URL_TEMPLATE:}"
     url: "$RECOMMENDATIONS_TF_SERVING_URL:http://tf-serving:8501"
 
 kubernetes:

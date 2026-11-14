@@ -28,6 +28,7 @@ import bosca.recommendations.createProfileAttributeSignalsPrerequisites
 import bosca.recommendations.model.RecommendationCollectionFilterInput
 import bosca.recommendations.model.RecommendationContentFilterInput
 import bosca.recommendations.model.RecommendationContext
+import bosca.recommendations.model.RecommendationContextModel
 import bosca.recommendations.model.RecommendationContextInput
 import bosca.recommendations.model.RecommendationMetadataFilterInput
 import bosca.recommendations.model.RecommendationWeightsInput
@@ -131,6 +132,122 @@ class RecommendationContextServiceImplIntegrationTest {
                 withContext(NonCancellable) { manager.release() }
             }
         }
+    }
+
+    @Test
+    fun `terminal serving failures release candidates without failing the active model and permit explicit retries`() = withDb {
+        val context = service.add(RecommendationContextInput(type = "serving-failures", name = "Serving failures"))
+        suspend fun completed(): RecommendationContextModel {
+            val model = service.trainModel(context.id)
+            service.startModel(model.version)
+            service.exportModel(model.version, true)
+            service.completeModel(model.version)
+            return requireNotNull(service.getModel(model.version))
+        }
+        val first = completed()
+        assertFalse(service.failServingModel(first.version, first.selectionRevision, "stale failure"))
+        val candidate = service.trainModel(context.id)
+        service.startModel(candidate.version)
+        service.exportModel(candidate.version, true)
+        assertTrue(service.failServingModel(candidate.version, candidate.selectionRevision, "missing artifact"))
+        assertEquals(RecommendationTrainingStatus.FAILED, service.getModel(candidate.version)?.status)
+        assertEquals(first.version, service.getById(context.id)?.activeModelVersion)
+        assertFalse(service.failServingModel(candidate.version, candidate.selectionRevision, "duplicate report"))
+        val active = completed()
+        service.activateModel(context.id, first.version)
+        assertFalse(service.failServingModel(candidate.version, candidate.selectionRevision, "unrelated retry"))
+        assertTrue(service.failServingModel(first.version, requireNotNull(service.getById(context.id)).selectionRevision, "rollback init failed"))
+        assertEquals(RecommendationTrainingStatus.COMPLETED, service.getModel(first.version)?.status)
+        assertEquals("rollback init failed", service.getModel(first.version)?.failure)
+        assertNull(service.getById(context.id)?.requestedModelVersion)
+        assertEquals(active.version, service.getById(context.id)?.activeModelVersion)
+        service.activateModel(context.id, first.version)
+        assertNull(service.getModel(first.version)?.failure)
+        assertEquals(first.version, service.getById(context.id)?.requestedModelVersion)
+        assertFailsWith<NoSuchElementException> { service.failServingModel(Long.MAX_VALUE, 0, "unknown") }
+        val repository = RecommendationContextRepositoryImpl()
+        val deleted = object : RecommendationContextRepository by repository {
+            override suspend fun lock(id: UUID): RecommendationContext? = null
+        }
+        assertFalse(RecommendationContextServiceImpl(deleted, classifier).failServingModel(first.version, first.selectionRevision, "deleted"))
+        val empty = service.add(RecommendationContextInput(type = "serving-first-failure", name = "First failure"))
+        val cold = service.trainModel(empty.id)
+        service.startModel(cold.version)
+        service.exportModel(cold.version, false)
+        assertTrue(service.failServingModel(cold.version, cold.selectionRevision, "first version failed"))
+    }
+
+    @Test
+    fun `delayed failure reports cannot cancel a newer retry of the same version`() = withDb {
+        val context = service.add(RecommendationContextInput(type = "stale-serving-failure", name = "Retry"))
+        suspend fun completed(): RecommendationContextModel {
+            val model = service.trainModel(context.id)
+            service.startModel(model.version)
+            service.exportModel(model.version, false)
+            service.completeModel(model.version)
+            return model
+        }
+        val retained = completed()
+        val active = completed()
+        service.activateModel(context.id, retained.version)
+        val oldRevision = requireNotNull(service.getById(context.id)).selectionRevision
+        service.activateModel(context.id, retained.version)
+        val newRevision = requireNotNull(service.getById(context.id)).selectionRevision
+        assertTrue(newRevision > oldRevision)
+        assertFalse(service.failServingModel(retained.version, oldRevision, "delayed failure"))
+        assertEquals(retained.version, service.getById(context.id)?.requestedModelVersion)
+        assertNull(service.getModel(retained.version)?.failure)
+        assertEquals(active.version, service.getById(context.id)?.activeModelVersion)
+        assertTrue(service.failServingModel(retained.version, newRevision, "current failure"))
+        assertNull(service.getById(context.id)?.requestedModelVersion)
+        assertEquals("current failure", service.getModel(retained.version)?.failure)
+        val running = service.trainModel(context.id)
+        service.startModel(running.version)
+        service.exportModel(running.version, false)
+        assertFalse(service.failServingModel(running.version, running.selectionRevision + 1, "wrong revision"))
+        assertEquals(RecommendationTrainingStatus.RUNNING, service.getModel(running.version)?.status)
+    }
+
+    @Test
+    fun `controller claims queue activation only for eligible exports or the current retained selection`() = withDb {
+        val context = service.add(RecommendationContextInput(type = "serving-claims", name = "Claims"))
+        val first = service.trainModel(context.id)
+        val endpoint = "http://serving-${first.version}.models.svc:8501"
+        assertFalse(service.prepareServingModel(first.version, first.selectionRevision, endpoint))
+        service.startModel(first.version)
+        assertFalse(service.prepareServingModel(first.version, first.selectionRevision, endpoint))
+        service.exportModel(first.version, false)
+        assertFalse(service.prepareServingModel(first.version, first.selectionRevision + 1, endpoint))
+        assertTrue(service.prepareServingModel(first.version, first.selectionRevision, endpoint))
+        coVerify { jobQueue.enqueue(match {
+            it.getDefinition() == Json.encodeToJsonElement(
+                bosca.recommendations.jobs.ActivateContextModelJob.serializer(),
+                bosca.recommendations.jobs.ActivateContextModelJob(first.version, first.selectionRevision, endpoint),
+            )
+        }) }
+        service.completeModel(first.version)
+        assertFalse(service.prepareServingModel(first.version, first.selectionRevision, endpoint))
+        val second = service.trainModel(context.id)
+        service.startModel(second.version)
+        service.exportModel(second.version, false)
+        service.completeModel(second.version)
+        assertFalse(service.prepareServingModel(first.version, first.selectionRevision, endpoint))
+        service.activateModel(context.id, first.version)
+        val selection = requireNotNull(service.getById(context.id)).selectionRevision
+        assertFalse(service.prepareServingModel(first.version, first.selectionRevision, endpoint))
+        assertTrue(service.prepareServingModel(first.version, selection, endpoint))
+        assertFailsWith<IllegalArgumentException> { service.prepareServingModel(first.version, selection, " ") }
+        assertFailsWith<NoSuchElementException> { service.prepareServingModel(Long.MAX_VALUE, selection, endpoint) }
+        val repository = RecommendationContextRepositoryImpl()
+        val deleted = object : RecommendationContextRepository by repository {
+            override suspend fun lock(id: UUID): RecommendationContext? = null
+        }
+        assertFalse(RecommendationContextServiceImpl(deleted, classifier).prepareServingModel(first.version, selection, endpoint))
+        val failed = service.trainModel(context.id)
+        service.startModel(failed.version)
+        service.exportModel(failed.version, false)
+        service.failModel(failed.version, "failed")
+        assertFalse(service.prepareServingModel(failed.version, failed.selectionRevision, endpoint))
     }
 
     @Test

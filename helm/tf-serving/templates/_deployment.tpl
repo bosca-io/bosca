@@ -1,0 +1,223 @@
+{{- define "tf-serving.deployment" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bosca-common.fullname" . }}
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit | default 1 }}
+  {{- with .Values.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "bosca-common.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/serving-config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "bosca-common.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "bosca-common.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "bosca-common.podSecurityContext" . | nindent 8 }}
+      # Guarantee the model base path exists before TF Serving's first poll. On a fresh volume nothing has
+      # been trained yet, and the loader sidecar (which creates the dir) starts concurrently with — not
+      # before — the serving container. Without the directory TF Serving logs "Could not find base path"
+      # and, depending on image version, can exit, which restart/backoff turns into a crash loop. An
+      # empty-but-present base path instead yields the benign "no servable versions yet" state: the pod
+      # stays up, readiness gates on the serving port, and bosca-server falls back to heuristics. The serving
+      # container mounts `models` read-only, so the directory must be created here (read-write).
+      initContainers:
+        {{- if .Values.provisioning.enabled }}
+        - name: download-models
+          image: {{ include "bosca-common.boscaImage" (dict "image" .Values.loader.image "global" .Values.global) }}
+          imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.loader.image }}
+          env:
+            - name: MODEL_VERSIONS_JSON
+              value: "{}"
+            - name: MODELS_ROOT
+              value: {{ .Values.modelBasePath | quote }}
+            - name: ARTIFACTS_URL
+              value: {{ .Values.loader.artifactsUrl | quote }}
+            - name: ARTIFACTS_NAMESPACE
+              value: {{ .Values.loader.artifactsNamespace | default "model" | quote }}
+            {{- if .Values.loader.secrets.artifactsToken.enabled }}
+            - name: ARTIFACTS_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.loader.secrets.artifactsToken.name }}
+                  key: {{ .Values.loader.secrets.artifactsToken.key }}
+            {{- end }}
+            {{- range $k, $v := .Values.loader.extraEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.loader.resources | nindent 12 }}
+          volumeMounts:
+            - name: models
+              mountPath: {{ .Values.modelBasePath }}
+        {{- else }}
+        - name: ensure-model-path
+          image: {{ include "bosca-common.image" (merge (dict "tag" (default .Chart.AppVersion .Values.image.tag)) .Values.image) }}
+          imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.image }}
+          command:
+            - sh
+            - -c
+            - mkdir -p{{- range .Values.models }} {{ $.Values.modelBasePath }}/{{ . }}{{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: models
+              mountPath: {{ .Values.modelBasePath }}
+        {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ include "bosca-common.image" (merge (dict "tag" (default .Chart.AppVersion .Values.image.tag)) .Values.image) }}
+          imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.image }}
+          # serve.sh (from the config ConfigMap) generates the model config listing only models that have a
+          # version, and replaces the server process when selection changes. Required because tf-serving
+          # will NOT start while a configured model has zero versions — and the personalized model is empty
+          # until trained. Overriding the entrypoint bypasses the image's default single-version wiring.
+          command:
+            {{- if .Values.provisioning.enabled }}
+            - tensorflow_model_server
+            - --port={{ .Values.service.grpcPort }}
+            - --rest_api_port={{ .Values.service.port }}
+            - --model_config_file=/config/models.config
+            - --model_config_file_poll_wait_seconds=0
+            - --file_system_poll_wait_seconds=0
+            - --num_load_threads=1
+            {{- else }}
+            - /bin/bash
+            - /config/serve.sh
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+              protocol: TCP
+          envFrom:
+            {{- range .Values.envFromConfigMaps }}
+            - configMapRef:
+                name: {{ . }}
+            {{- end }}
+          env:
+            - name: MODELS_ROOT
+              value: {{ .Values.modelBasePath | quote }}
+            - name: MODEL_NAMES
+              value: {{ join " " .Values.models | quote }}
+            - name: REST_PORT
+              value: {{ .Values.service.port | quote }}
+            - name: GRPC_PORT
+              value: {{ .Values.service.grpcPort | quote }}
+            - name: POLL_WAIT_SECONDS
+              value: {{ .Values.configPollIntervalSeconds | default 5 | quote }}
+            {{- range $k, $v := .Values.extraEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          # Make the serving API reachable even before a context model is loaded. Bosca's
+          # activation job checks the exact required versions before changing the active model.
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: models
+              mountPath: {{ .Values.modelBasePath }}
+              readOnly: true
+            - name: model-config
+              mountPath: /config
+              readOnly: true
+        {{- if and .Values.loader.enabled (not .Values.provisioning.enabled) }}
+        # Model loader sidecar: polls the artifacts server and writes new model
+        # versions into the shared `models` volume (read-write), which the TF Serving
+        # container above serves (read-only). Co-located in this
+        # pod so the volume never needs to be ReadWriteMany.
+        - name: loader
+          image: {{ include "bosca-common.boscaImage" (dict "image" .Values.loader.image "global" .Values.global) }}
+          imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.loader.image }}
+          envFrom:
+            {{- range .Values.envFromConfigMaps }}
+            - configMapRef:
+                name: {{ . }}
+            {{- end }}
+          env:
+            - name: ARTIFACTS_URL
+              value: {{ .Values.loader.artifactsUrl | quote }}
+            - name: ARTIFACTS_NAMESPACE
+              value: {{ .Values.loader.artifactsNamespace | default "model" | quote }}
+            - name: CONTENT_MODEL_DIR
+              value: {{ .Values.loader.contentModelDir | quote }}
+            - name: PERSONALIZED_MODEL_DIR
+              value: {{ .Values.loader.personalizedModelDir | quote }}
+            - name: POLL_INTERVAL
+              value: {{ .Values.loader.pollIntervalSeconds | quote }}
+            - name: BOSCA_URL
+              value: {{ .Values.loader.boscaUrl | quote }}
+            {{- if .Values.loader.secrets.boscaToken.enabled }}
+            - name: BOSCA_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.loader.secrets.boscaToken.name }}
+                  key: {{ .Values.loader.secrets.boscaToken.key }}
+            {{- end }}
+            {{- if .Values.loader.secrets.artifactsToken.enabled }}
+            - name: ARTIFACTS_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.loader.secrets.artifactsToken.name }}
+                  key: {{ .Values.loader.secrets.artifactsToken.key }}
+            {{- end }}
+            {{- range $k, $v := .Values.loader.extraEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.loader.resources | nindent 12 }}
+          volumeMounts:
+            - name: models
+              mountPath: {{ .Values.modelBasePath }}
+        {{- end }}
+      volumes:
+        - name: models
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (printf "%s-models" (include "bosca-common.fullname" .)) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: model-config
+          configMap:
+            name: {{ printf "%s-config" (include "bosca-common.fullname" .) }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end -}}

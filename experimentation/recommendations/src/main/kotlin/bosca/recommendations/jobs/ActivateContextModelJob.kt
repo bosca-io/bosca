@@ -5,4 +5,9 @@ import kotlinx.serialization.Serializable
 
 /** Waits for exact exported versions to load before changing the selected context model. */
 @Serializable
-data class ActivateContextModelJob(val version: Long, val selectionRevision: Long) : IJobDefinition
+data class ActivateContextModelJob(
+    val version: Long,
+    val selectionRevision: Long,
+    /** Version endpoint whose ServingModel was claimed before this job was queued. */
+    val servingEndpoint: String? = null,
+) : IJobDefinition
