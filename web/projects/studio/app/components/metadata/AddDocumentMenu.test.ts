@@ -21,9 +21,24 @@ const templatesResponse = {
     collections: { root: { id: 'root-collection-id' } },
     documentTemplates: {
       all: [
-        { metadata: { id: 'tpl-article', version: 3, name: 'Article', attributes: null } },
-        { metadata: { id: 'tpl-sub', version: 1, name: 'Sub Template', attributes: { 'template.type.sub': 'x' } } },
-        { metadata: null },
+        { defaultAttributes: null, metadata: { id: 'tpl-article', version: 3, name: 'Article', attributes: null } },
+        { defaultAttributes: null, metadata: { id: 'tpl-sub', version: 1, name: 'Sub Template', attributes: { 'template.type.sub': 'x' } } },
+        { defaultAttributes: null, metadata: { id: 'tpl-class', version: 1, name: 'Class', attributes: { 'template.type': 'Document' } } },
+        { defaultAttributes: null, metadata: { id: 'tpl-module', version: 1, name: 'Module', attributes: null } },
+        { defaultAttributes: { type: 'WorkOps Spec' }, metadata: { id: 'tpl-spec', version: 1, name: 'Spec Document Template', attributes: {} } },
+        { defaultAttributes: { type: 'WorkOps Requirement' }, metadata: { id: 'tpl-req', version: 1, name: 'Requirement Document Template', attributes: {} } },
+        { defaultAttributes: { type: 'Feed Item' }, metadata: { id: 'tpl-feed', version: 1, name: 'Feed Item Template', attributes: {} } },
+        { defaultAttributes: null, metadata: null },
+      ],
+    },
+    guideTemplates: {
+      all: [
+        {
+          steps: [
+            { metadata: { id: 'tpl-class' }, modules: [{ metadata: { id: 'tpl-module' } }] },
+            { metadata: null, modules: [] },
+          ],
+        },
       ],
     },
   },
@@ -54,12 +69,31 @@ beforeEach(() => {
 })
 
 describe('AddDocumentMenu', () => {
-  it('lists top-level templates, excluding sub-templates', async () => {
+  it('lists top-level templates, excluding sub-templates, guide steps and system templates', async () => {
     const wrapper = mountMenu()
     await flushPromises()
     await wrapper.find('.trigger').trigger('click')
     const labels = wrapper.findAll('.overflow-item').map(b => b.text())
     expect(labels).toEqual(['Article'])
+  })
+
+  it('lists templates in their saved order, then unordered ones A–Z', async () => {
+    const tpl = (name: string, sort?: number) => ({
+      defaultAttributes: null,
+      metadata: { id: `tpl-${name}`, version: 1, name, attributes: sort === undefined ? null : { sort } },
+    })
+    query.mockResolvedValue({
+      content: {
+        collections: { root: { id: 'root-collection-id' } },
+        documentTemplates: { all: [tpl('Zeta'), tpl('Article', 1), tpl('Alpha'), tpl('Talk', 0), tpl('Video', 2)] },
+        guideTemplates: { all: [] },
+      },
+    })
+    const wrapper = mountMenu()
+    await flushPromises()
+    await wrapper.find('.trigger').trigger('click')
+    const labels = wrapper.findAll('.overflow-item').map(b => b.text())
+    expect(labels).toEqual(['Talk', 'Article', 'Video', 'Alpha', 'Zeta'])
   })
 
   it('creates a document from the selected template and navigates to the editor', async () => {

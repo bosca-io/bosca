@@ -100,6 +100,7 @@ application {
 tasks.named<JavaExec>("run") { outputs.upToDateWhen { false } }
 
 tasks.test {
+    maxParallelForks = providers.gradleProperty("atlas.test.forks").getOrElse("1").toInt()
     val serverClasspath = sourceSets.main.get().runtimeClasspath
     val testClasspath = sourceSets.test.get().runtimeClasspath
     doFirst {

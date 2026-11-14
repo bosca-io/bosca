@@ -7,24 +7,57 @@ import bosca.pubsub.PubSubService
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertTrue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AgentGitPushListenerTest {
 
     private val pubSubService = mockk<PubSubService>(relaxed = true)
     private val agentGitSyncService = mockk<AgentGitSyncService>(relaxed = true)
 
-    private fun newListener(): AgentGitPushListener {
-        // PubSub subscribe is wired by the init block; emit nothing so the loop sits idle
-        // while the test drives `handle` directly.
+    private fun TestScope.newListener(): AgentGitPushListener {
+        // Keep the subscription open and let the test scope cancel it during teardown.
         coEvery {
             pubSubService.subscribe("bosca.git.push", PushEvent.serializer())
-        } returns emptyFlow()
-        return AgentGitPushListener(pubSubService, agentGitSyncService)
+        } returns flow { awaitCancellation() }
+        return AgentGitPushListener(pubSubService, agentGitSyncService, backgroundScope)
+    }
+
+    @Test
+    fun `idle subscription stays open without resubscribing`() = runTest {
+        newListener()
+        runCurrent()
+        runCurrent()
+
+        coVerify(exactly = 1) { pubSubService.subscribe("bosca.git.push", PushEvent.serializer()) }
+    }
+
+    @Test
+    fun `owning scope cancels the subscription at teardown`() {
+        var cancelled = false
+        runTest {
+            coEvery {
+                pubSubService.subscribe("bosca.git.push", PushEvent.serializer())
+            } returns flow {
+                try {
+                    awaitCancellation()
+                } finally {
+                    cancelled = true
+                }
+            }
+            AgentGitPushListener(pubSubService, agentGitSyncService, backgroundScope)
+            runCurrent()
+        }
+        assertTrue(cancelled)
     }
 
     @Test

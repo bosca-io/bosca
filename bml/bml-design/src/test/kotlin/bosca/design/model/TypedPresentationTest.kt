@@ -9,29 +9,19 @@ import kotlin.test.*
 
 class TypedPresentationTest {
     @Test
-    fun `nested chart options produce native settings and preserve custom points`() {
-        val points = listOf(ChartValue.Number(4.0), ChartValue.Gap, ChartValue.Scatter(1.0, 2.0),
-            ChartValue.Bubble(3.0, 5.0, 8.0),
-            ChartValue.Custom(buildJsonObject { put("date", "2026-10-25"); put("amount", 12) }))
-        val chart = ChartConfiguration(ChartType.BUBBLE, ChartData(datasets = listOf(ChartDataset("Visits", points,
-            borderColor = "#123456", borderWidth = 2.0, pointRadius = 3.0, type = ChartType.LINE))), ChartOptions(
-            animation = false, plugins = ChartPlugins(
-                legend = ChartLegend(position = ChartLegendPosition.BOTTOM, labels = ChartLegendLabels(color = "#123456")),
-                tooltip = ChartTooltip(enabled = true, mode = ChartInteractionMode.INDEX),
-            ), scales = mapOf("y" to ChartScale(beginAtZero = true, title = ChartTitle("Visits"),
-                ticks = ChartTicks(stepSize = 2.0), grid = ChartGrid(display = false))),
-        ))
-        val native = Json.encodeToJsonElement(ChartConfiguration.serializer(), chart).jsonObject
-        val options = native.getValue("options").jsonObject
-        assertEquals(JsonPrimitive("bottom"), options.getValue("plugins").jsonObject.getValue("legend").jsonObject["position"])
-        assertEquals(JsonPrimitive("index"), options.getValue("plugins").jsonObject.getValue("tooltip").jsonObject["mode"])
-        assertEquals(JsonPrimitive("Visits"), options.getValue("scales").jsonObject.getValue("y").jsonObject.getValue("title").jsonObject["text"])
-        assertFalse("extra" in options || "extra" in options.getValue("plugins").jsonObject)
-        assertEquals(Json.parseToJsonElement("""[4,null,{"x":1,"y":2},{"x":3,"y":5,"r":8},{"date":"2026-10-25","amount":12}]"""), native.getValue("data").jsonObject.getValue("datasets").jsonArray.single().jsonObject["data"])
-        assertEquals(JsonPrimitive("line"), native.getValue("data").jsonObject.getValue("datasets").jsonArray.single().jsonObject["type"])
-        assertEquals(chart, Json.decodeFromString(ChartConfiguration.serializer(), Json.encodeToString(ChartConfiguration.serializer(), chart)))
-        assertFailsWith<IllegalArgumentException> { ChartValue.Number(Double.NaN) }
-        assertFailsWith<IllegalArgumentException> { ChartValue.Bubble(1.0, 2.0, -1.0) }
+    fun `native ECharts options retain nested settings and custom values`() {
+        val option = Json.parseToJsonElement("""{
+            "legend":{"bottom":0},"tooltip":{"trigger":"axis"},
+            "xAxis":{"type":"category","data":["Mon","Tue"]},"yAxis":{"type":"value","max":20},
+            "series":[{"type":"bar","stack":"total","itemStyle":{"color":"#123456"},
+                "data":[4,null,{"name":"Custom","value":[3,5],"note":"retained"}]}]
+        }""").jsonObject
+        val chart = ChartConfiguration(option)
+        val native = Json.encodeToJsonElement(ChartConfiguration.serializer(), chart)
+        assertEquals(option, native)
+        assertEquals(chart, Json.decodeFromString(ChartConfiguration.serializer(), native.toString()))
+        assertEquals(listOf("Mon", "Tue", "Custom"), ChartTable.from(chart).points.map { it.label })
+        assertEquals(listOf("4", "No value", "3, 5"), ChartTable.from(chart).points.map { it.value })
     }
 
     @Test

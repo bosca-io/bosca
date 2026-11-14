@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-/** Real VueFlow gestures and Chart.js canvas rendering in ordinary BML consumers. */
+/** Real VueFlow gestures and ECharts canvas rendering in ordinary BML consumers. */
 export async function checkVisualizations({ navigate, evaluate, until: poll, call, key, artifacts, mode }) {
   const until = expression => poll(`Boolean(${expression})`), reports = [];
   for (const width of [1440, 390]) for (const id of ['dark', 'light']) {
@@ -149,30 +149,30 @@ export async function checkVisualizations({ navigate, evaluate, until: poll, cal
     const chartState = suffix => `${chartExample}.querySelector('[data-chart-${suffix}]')`;
     await evaluate('document.fonts.ready');
     await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
-    await evaluate(`window.chartRoot=${chart};window.chartCanvas=${chart}.querySelector('canvas');window.chartPixels=window.chartCanvas.toDataURL();${chartExample}.querySelector('[data-example-states]').open=true;${chartState('refresh')}.click()`);
+    await evaluate(`window.chartRoot=${chart};window.chartSurface=${chart}.querySelector('[data-bml-ref=surface]');window.chartCanvas=${chart}.querySelector('canvas');window.chartPixels=window.chartCanvas.toDataURL();${chartExample}.querySelector('[data-example-states]').open=true;${chartState('refresh')}.click()`);
     await until(`document.querySelector('[data-chart-toast=${id}]')?.matches(':popover-open')`);
     assert.ok(await evaluate(`${chart}===window.chartRoot&&${chart}.querySelector('canvas')===window.chartCanvas&&window.chartCanvas.toDataURL()===window.chartPixels`));
     await evaluate(`${chartState('replace')}.click()`); await until(`${chart}.querySelector('tbody').textContent.includes('12')`);
     assert.ok(await evaluate(`window.chartCanvas.toDataURL()!==window.chartPixels`));
     await evaluate(`${chart}.querySelector('details').open=true;${chart}.querySelector('[data-chart-dataset="0"][data-chart-index="2"]').focus()`);
     await key('Enter'); await until(`document.querySelector('[data-chart-toast=${id}] [role=status]')?.textContent.includes('point 3')`);
-    for (const type of ['line','scatter','bubble','pie','doughnut','radar','polarArea','bar']) {
+    for (const type of ['line','scatter','bubble','pie','doughnut','radar','polarArea','heatmap','funnel','gauge','map','bar']) {
       await evaluate(`${chartExample}.querySelector('select[name=chartType]').value=${JSON.stringify(type)};${chartExample}.querySelector('form').requestSubmit()`);
-      await until(`JSON.parse(${chart}.dataset.config).type===${JSON.stringify(type)}&&!${chart}.querySelector('canvas').hidden`);
-      assert.ok(await evaluate(`${chart}.querySelector('canvas').width>0&&${chart}.querySelector('canvas')===window.chartCanvas`));
+      await until(`${chartExample}.dataset.chartKind===${JSON.stringify(type)}&&!${chart}.querySelector('[data-bml-ref=surface]').hidden`);
+      assert.ok(await evaluate(`${chart}.querySelector('canvas').width>0&&${chart}.querySelector('[data-bml-ref=surface]')===window.chartSurface`));
       if (['line','radar'].includes(type)) {
         for (const color of ['oklch(65% 0.25 330)','color-mix(in srgb, #ff00ff 75%, #0000ff)']) {
           await evaluate(`${chart}.style.setProperty('--chart-series-1',${JSON.stringify(color)});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
-          assert.ok(await evaluate(`!${chart}.querySelector('canvas').hidden&&${chart}.querySelector('[data-bml-ref=state]').hidden`),
+          assert.ok(await evaluate(`!${chart}.querySelector('[data-bml-ref=surface]').hidden&&${chart}.querySelector('[data-bml-ref=state]').hidden`),
             `${type} renders a CSS ${color} palette without a color-conversion error`);
           assert.ok(await evaluate(`(() => {const c=${chart}.querySelector('canvas'),p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let matches=0;for(let i=0;i<p.length;i+=4)if(p[i]>80&&p[i+1]<80&&p[i+2]>100&&p[i+3]===255)matches++;return matches>20;})()`),
             'Modern CSS colors reach the rendered chart, including after a palette change');
         }
         await evaluate(`${chart}.style.setProperty('--chart-series-1','invalid-chart-color');new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
-        assert.ok(await evaluate(`${chart}.querySelector('canvas').hidden&&${chart}.querySelector('[data-bml-ref=state]').textContent.includes('Invalid chart color')`),
+        assert.ok(await evaluate(`${chart}.querySelector('[data-bml-ref=surface]').hidden&&${chart}.querySelector('[data-bml-ref=state]').textContent.includes('Invalid chart color')`),
           'An invalid CSS palette produces component feedback');
         await evaluate(`${chart}.style.removeProperty('--chart-series-1');new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
-        assert.ok(await evaluate(`!${chart}.querySelector('canvas').hidden&&${chart}.querySelectorAll('tbody tr').length===3`),
+        assert.ok(await evaluate(`!${chart}.querySelector('[data-bml-ref=surface]').hidden&&${chart}.querySelectorAll('tbody tr').length===JSON.parse(${chart}.dataset.config).series[0].data.length`),
           'Repairing a CSS palette restores both the chart and its accessible data table');
       }
     }
@@ -190,27 +190,32 @@ export async function checkVisualizations({ navigate, evaluate, until: poll, cal
     await evaluate(`window.chartThemeStyle=document.createElement('style');window.chartThemeStyle.textContent='.catalog-palette-${id}[data-theme=custom] {--chart-series-1:#00ffff}';document.head.append(window.chartThemeStyle);${chart}.closest('.catalog-palette-${id}').dataset.theme='custom'`);
     await until(`(() => {const c=${chart}.querySelector('canvas'),p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let count=0;for(let i=0;i<p.length;i+=4)if(p[i]===0&&p[i+1]===255&&p[i+2]===255&&p[i+3]===255)count++;return count>50;})()`);
     await evaluate(`window.chartThemeStyle.remove();${chart}.closest('.catalog-palette-${id}').removeAttribute('data-theme')`);
+    await evaluate(`${chart}.style.setProperty('--chart-height','340px');${chart}.style.maxWidth='310px'`);
+    await until(`(() => {const surface=${chart}.querySelector('[data-bml-ref=surface]'),canvas=surface.querySelector('canvas');return Math.abs(canvas.getBoundingClientRect().height-340)<1&&Math.abs(canvas.getBoundingClientRect().width-surface.clientWidth)<1;})()`);
+    await evaluate(`${chart}.style.removeProperty('--chart-height');${chart}.style.removeProperty('max-width')`);
+    await until(`${chart}.querySelector('canvas').getBoundingClientRect().height===280`);
     const height = await evaluate(`${chart}.querySelector('.chart-frame').getBoundingClientRect().height`);
-    await evaluate(`${chartState('loading')}.click()`); await until(`${chart}.getAttribute('aria-busy')==='true'&&${chart}.querySelector('canvas').hidden`);
+    await evaluate(`${chartState('loading')}.click()`); await until(`${chart}.getAttribute('aria-busy')==='true'&&${chart}.querySelector('[data-bml-ref=surface]').hidden`);
     assert.equal(await evaluate(`${chart}.querySelector('.chart-frame').getBoundingClientRect().height`), height);
-    await evaluate(`${chartState('loading')}.click()`); await until(`${chart}.getAttribute('aria-busy')==='false'&&!${chart}.querySelector('canvas').hidden`);
+    await evaluate(`${chartState('loading')}.click()`); await until(`${chart}.getAttribute('aria-busy')==='false'&&!${chart}.querySelector('[data-bml-ref=surface]').hidden`);
     await evaluate(`${chartState('failed')}.click()`); await until(`${chart}.querySelector('[data-bml-ref=state]').textContent.includes('could not load')`);
-    await evaluate(`${chartState('failed')}.click()`); await until(`!${chart}.querySelector('canvas').hidden`);
+    await evaluate(`${chartState('failed')}.click()`); await until(`!${chart}.querySelector('[data-bml-ref=surface]').hidden`);
     await evaluate(`${chartState('empty')}.click()`); await until(`${chart}.querySelector('[data-bml-ref=state]').textContent==='No chart data.'&&${chart}.querySelectorAll('tbody tr').length===0`);
-    await evaluate(`${chartState('empty')}.click()`); await until(`!${chart}.querySelector('canvas').hidden&&${chart}.querySelectorAll('tbody tr').length===3`);
+    await evaluate(`${chartState('empty')}.click()`); await until(`!${chart}.querySelector('[data-bml-ref=surface]').hidden&&${chart}.querySelectorAll('tbody tr').length===3`);
     for (let cycle=0;cycle<2;cycle++) {
-      await evaluate(`${chartState('visible')}.click()`); await until(`!${chartExample}.querySelector('[data-chart-ready]')`);
+      await evaluate(`window.detachedChartSurface=${chart}.querySelector('[data-bml-ref=surface]');${chartState('visible')}.click()`); await until(`!${chartExample}.querySelector('[data-chart-ready]')`);
+      assert.ok(await evaluate(`!window.detachedChartSurface.getAttribute('_echarts_instance_')&&!window.detachedChartSurface.querySelector('canvas')`), 'Unmount disposes the ECharts instance and drawing surface');
       await evaluate(`${chartState('visible')}.click()`); await until(`${chartExample}.querySelector('[data-chart-ready] canvas:not([hidden])')`);
     }
     assert.ok(await evaluate(`document.documentElement.scrollWidth<=innerWidth&&${chart}.querySelector('canvas').getBoundingClientRect().width<=${chart}.getBoundingClientRect().width+1`));
-    reports.push({ component:'chart', width, palette:id, types:8, cssColors:true, nativeSelection:true, replacement:true, disposal:true });
+    reports.push({ component:'chart', width, palette:id, types:12, cssColors:true, nativeSelection:true, replacement:true, disposal:true });
     const screenshot = await call('Page.captureScreenshot',{format:'png'});
     await writeFile(join(artifacts,`catalog-${mode}-charts-${width}-${id}.png`),Buffer.from(screenshot.data,'base64'));
   }
   await call('Network.clearBrowserCookies');
   await call('Emulation.setScriptExecutionDisabled',{value:true});
   await navigate('/charts');
-  assert.ok(await evaluate(`document.querySelectorAll('[data-bml-chart] tbody tr').length===6&&[...document.querySelectorAll('[data-bml-chart] canvas')].every(canvas=>canvas.hidden)`));
+  assert.ok(await evaluate(`document.querySelectorAll('[data-bml-chart] tbody tr').length===6&&[...document.querySelectorAll('[data-bml-chart] [data-bml-ref=surface]')].every(surface=>surface.hidden)`));
   await navigate('/flows');
   assert.ok(await evaluate(`[...document.querySelectorAll('[data-bml-flow-editor] textarea')].every(field=>!field.hidden&&JSON.parse(field.value).nodes.length===3)`));
   await call('Emulation.setScriptExecutionDisabled',{value:false});

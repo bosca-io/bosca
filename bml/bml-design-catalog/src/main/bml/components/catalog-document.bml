@@ -32,6 +32,7 @@
           <a href="/json" :aria-current='if (current == "/json") "page" else null'><icon name="code" />JSON</a>
           <a href="/flows" :aria-current='if (current == "/flows") "page" else null'><icon name="boxes" />Flows</a>
           <a href="/dashboards" :aria-current='if (current == "/dashboards") "page" else null'><icon name="list" />Dashboards</a>
+          <a href="/calendars" :aria-current='if (current == "/calendars") "page" else null'><icon name="list" />Calendars</a>
           <a href="/charts" :aria-current='if (current == "/charts") "page" else null'><icon name="list" />Charts</a>
           <a href="/documents" :aria-current='if (current == "/documents") "page" else null'><icon name="book-open" />Documents</a>
           <a href="/comments" :aria-current='if (current == "/comments") "page" else null'><icon name="message" />Comments</a>

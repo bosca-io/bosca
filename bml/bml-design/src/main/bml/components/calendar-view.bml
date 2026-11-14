@@ -1,0 +1,22 @@
+<component tag="calendar-view">
+  <prop name="current" type="String" required />
+  <prop name="events" type="List<bosca.design.model.CalendarEvent>" default="emptyList()" />
+  <prop name="calendarColors" type="Map<String, String>" default="emptyMap()" />
+  <prop name="label" type="String" default="Calendar" />
+  <prop name="readOnly" type="Boolean" default="false" />
+  <prop name="preserveKey" type="String" default="" />
+  <prop name="view" type="String" default="month" />
+  <script server provides="encodedEvents">kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(bosca.design.model.CalendarEvent.serializer()), events)</script>
+  <script server provides="encodedColors">kotlinx.serialization.json.JsonObject(calendarColors.mapValues { kotlinx.serialization.json.JsonPrimitive(it.value) }).toString()</script>
+  <div class="bosca-calendar" data-bml-calendar :data-current="current" :data-view="view" :data-events="encodedEvents" :data-colors="encodedColors" :data-readonly="readOnly" :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" role="group" :aria-label="label" {...attrs}>
+    <div ref="calendar">
+      <p>{ current }</p>
+      <ul><for event in events><li>{ event.title } · { event.startsAt } – { event.endsAt }</li></for></ul>
+    </div>
+    <p ref="status" class="calendar-status" role="status" aria-live="polite"></p>
+  </div>
+  <script client scoped>
+    import { mountCalendar } from "@client/helpers/calendar";
+    mountCalendar(ctx);
+  </script>
+</component>

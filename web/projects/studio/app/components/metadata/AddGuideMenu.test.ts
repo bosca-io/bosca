@@ -60,6 +60,26 @@ describe('AddGuideMenu', () => {
     expect(labels).toEqual(['Devotional'])
   })
 
+  it('lists guide templates in their saved order, then unordered ones A–Z', async () => {
+    query.mockResolvedValue({
+      content: {
+        guideTemplates: {
+          all: [
+            { metadata: { id: 'tpl-z', version: 1, name: 'Zeta', attributes: null } },
+            { metadata: { id: 'tpl-daily', version: 1, name: 'Daily Guide', attributes: { sort: 1 } } },
+            { metadata: { id: 'tpl-a', version: 1, name: 'Alpha', attributes: {} } },
+            { metadata: { id: 'tpl-study', version: 1, name: 'Study Guide', attributes: { sort: 0 } } },
+          ],
+        },
+      },
+    })
+    const wrapper = mountMenu()
+    await flushPromises()
+    await wrapper.find('.trigger').trigger('click')
+    const labels = wrapper.findAll('.overflow-item').map(b => b.text())
+    expect(labels).toEqual(['Study Guide', 'Daily Guide', 'Alpha', 'Zeta'])
+  })
+
   it('creates a guide from the selected template and navigates to the guide editor', async () => {
     mutation.mockResolvedValue({ content: { metadata: { addGuide: { id: 'new-guide-id' } } } })
     const wrapper = mountMenu()

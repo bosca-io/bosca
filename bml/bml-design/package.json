@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "codemirror": "6.0.2",
     "@codemirror/commands": "6.11.1",
     "@codemirror/lang-css": "6.3.1",
     "@codemirror/lang-go": "6.0.1",
@@ -39,7 +38,8 @@
     "@tiptap/pm": "2.27.3",
     "@tiptap/starter-kit": "2.27.3",
     "@vue-flow/core": "1.48.2",
-    "chart.js": "4.6.1",
+    "codemirror": "6.0.2",
+    "echarts": "6.1.0",
     "vanilla-jsoneditor": "3.13.0",
     "vue": "3.5.32"
   }

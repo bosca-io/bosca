@@ -22,9 +22,14 @@ class WidgetsState(val id: String) {
         DashboardLayoutItem("chart", 0, 0, 8, 6), DashboardLayoutItem("notes", 8, 0, 4, 6),
     )
         private set
-    val chart: ChartConfiguration = ChartConfiguration(ChartType.BAR,
-        ChartData(listOf("Monday", "Tuesday"), listOf(ChartDataset("Visits", listOf(12, 18)))),
-        ChartOptions(animation = false))
+    val chart: ChartConfiguration = ChartConfiguration(buildJsonObject {
+        put("animation", false)
+        putJsonObject("xAxis") { put("type", "category"); putJsonArray("data") { add("Monday"); add("Tuesday") } }
+        putJsonObject("yAxis") { put("type", "value") }
+        putJsonArray("series") { add(buildJsonObject {
+            put("type", "bar"); put("name", "Visits"); putJsonArray("data") { add(12); add(18) }
+        }) }
+    })
     var saves: Int = 0
         private set
     var updates: Int = 0

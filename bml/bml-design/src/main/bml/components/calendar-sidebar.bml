@@ -1,0 +1,45 @@
+<component tag="calendar-sidebar">
+  <prop name="calendars" type="List<bosca.design.model.CalendarDefinition>" required />
+  <prop name="visibleIds" type="Set<String>" required />
+  <prop name="label" type="String" default="Calendars" />
+  <prop name="canAdd" type="Boolean" default="true" />
+  <script server provides="encodedVisible">kotlinx.serialization.json.JsonArray(visibleIds.map { kotlinx.serialization.json.JsonPrimitive(it) }).toString()</script>
+  <aside class="calendar-sidebar" :data-visible="encodedVisible" :aria-label="label" {...attrs}>
+    <header><strong>{ label }</strong><if canAdd><icon-button icon="plus" label="Add calendar" data-calendar-add /></if></header>
+    <if calendars.isEmpty()><p>No calendars yet.</p></if>
+    <ul><for calendar in calendars><li>
+      <html:button type="button" class="calendar-toggle" :data-calendar-toggle="calendar.id" :aria-pressed="visibleIds.contains(calendar.id).toString()">
+        <span class="calendar-color" :data-color="calendar.color" aria-hidden="true"></span><span>{ calendar.name }</span>
+      </html:button>
+      <if calendar.editable><icon-button icon="edit" :label='"Edit " + calendar.name' :data-calendar-edit="calendar.id" /></if>
+    </li></for></ul>
+  </aside>
+  <style scoped>
+    .calendar-sidebar { min-width: 0; width: 190px; color: var(--fg-1); font: 13px/1.5 var(--font-sans); }
+    header, li { display: flex; align-items: center; gap: 8px; }
+    header { justify-content: space-between; padding: 4px 8px; }
+    ul { list-style: none; padding: 0; margin: 8px 0; } li { margin: 2px 0; }
+    .calendar-toggle { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+    .calendar-toggle:hover { background: var(--bg-2); } .calendar-toggle[aria-pressed="false"] { color: var(--fg-3); }
+    .calendar-toggle:focus-visible { outline: var(--focus-width, 2px) solid var(--accent); }
+    .calendar-color { width: 12px; height: 12px; flex: 0 0 12px; border: 2px solid var(--calendar-color, var(--accent)); border-radius: 3px; background: var(--calendar-color, var(--accent)); }
+    [aria-pressed="false"] .calendar-color { background: transparent; }
+    @media(max-width:700px) { .calendar-sidebar { width: 100%; } ul { display: flex; flex-wrap: wrap; } }
+  </style>
+  <script client scoped>
+    const sync = () => {
+      const visible = new Set<string>(JSON.parse(ctx.root.dataset.visible ?? "[]"));
+      ctx.root.querySelectorAll<HTMLElement>("[data-calendar-toggle]").forEach(node => node.setAttribute("aria-pressed",String(visible.has(node.dataset.calendarToggle ?? ""))));
+      ctx.root.querySelectorAll<HTMLElement>("[data-color]").forEach(node => { if (CSS.supports("color", node.dataset.color ?? "")) node.style.setProperty("--calendar-color", node.dataset.color ?? ""); });
+    };
+    ctx.on<MouseEvent>(ctx.root, "click", event => {
+      const target = (event.target as Element).closest<HTMLElement>("[data-calendar-toggle], [data-calendar-edit], [data-calendar-add]");
+      if (!target) return;
+      const name = target.hasAttribute("data-calendar-add") ? "calendaradd" : target.hasAttribute("data-calendar-edit") ? "calendaredit" : "calendartoggle";
+      ctx.root.dispatchEvent(new CustomEvent(name, {bubbles:true,detail:{calendarId:target.dataset.calendarToggle ?? target.dataset.calendarEdit}}));
+    });
+    ctx.onUpdate(sync);
+    ctx.on<CustomEvent<{target: Element}>>(document,"bml:update",event=>{if(event.detail.target.contains(ctx.root)) sync();});
+    sync();
+  </script>
+</component>

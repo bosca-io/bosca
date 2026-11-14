@@ -142,6 +142,9 @@ class PipelineServiceImpl(
         }
     }
 
+    override suspend fun getByNames(names: List<String>): List<Pipeline> =
+        if (names.isEmpty()) emptyList() else repository.getByNames(names).map { toPipeline(it) }
+
     override suspend fun getBroken(): List<BrokenPipeline> = repository.getAll().mapNotNull { record ->
         try {
             graphJson().decodeFromJsonElement(PipelineGraph.serializer(), record.graph)

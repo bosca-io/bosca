@@ -337,6 +337,27 @@ class PipelineDurableExecutionEndToEndTest {
     fun teardown() = ProviderRegistry.clear()
 
     @Test
+    fun `named pipeline lookup excludes unrelated unsupported graphs and deleted pipelines`() = withDb {
+        val supported = graphJson.encodeToJsonElement(PipelineGraph.serializer(), PipelineGraph(listOf(InputNode("input", acceptedType = "JSON"))))
+        transaction {
+            pipelineRepository.add(PipelineRecord(name = "artifact sync", acceptedInputType = "JSON", graph = supported))
+            val deleted = pipelineRepository.add(PipelineRecord(name = "deleted sync", acceptedInputType = "JSON", graph = supported))
+            pipelineRepository.softDelete(deleted.id)
+            pipelineRepository.add(PipelineRecord(
+                name = "profile signals", acceptedInputType = "JSON",
+                graph = json.parseToJsonElement("""{"nodes":[{"id":"compute","type":"recommendations.computeProfileSignals"}]}"""),
+            ))
+            pipelineRepository.add(PipelineRecord(
+                name = "prayer comment notification", acceptedInputType = "JSON",
+                graph = json.parseToJsonElement("""{"nodes":[{"id":"send","type":"prayer.notification.comment"}]}"""),
+            ))
+        }
+        val records = pipelineRepository.getByNames(listOf("artifact sync", "deleted sync", "missing"))
+        assertEquals(listOf("artifact sync"), records.map { it.name })
+        assertEquals("input", graphJson.decodeFromJsonElement(PipelineGraph.serializer(), records.single().graph).nodes.single().id)
+    }
+
+    @Test
     fun `scheduled run resumes through successive backing jobs on the real queue`() = scheduledBackingJobs(fail = false)
 
     @Test
@@ -1332,6 +1353,7 @@ class PipelineDurableExecutionEndToEndTest {
 
         override suspend fun get(id: UUID): Pipeline? = registry[id]
         override suspend fun getAll(): List<Pipeline> = error("unused")
+        override suspend fun getByNames(names: List<String>): List<Pipeline> = registry.values.filter { it.name in names }
         override suspend fun getBroken(): List<bosca.pipelines.model.BrokenPipeline> = emptyList()
         override suspend fun getByKey(key: String): Pipeline? = error("unused")
         override suspend fun acceptingInput(typeNames: Set<String>): List<Pipeline> = error("unused")

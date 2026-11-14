@@ -125,7 +125,7 @@ class BmlLibraryDeclarationsTest {
 
     private fun runner(project: File, vararg tasks: String): GradleRunner = GradleRunner.create()
         .withProjectDir(project).withPluginClasspath()
-        .withArguments(*tasks, "--configuration-cache", "--no-build-cache", "--max-workers=2", "--stacktrace")
+        .withArguments(*tasks, "--configuration-cache", "--no-build-cache", "--no-watch-fs", "--max-workers=2", "--stacktrace")
 
     private fun jsonString(value: String): String = groovy.json.JsonOutput.toJson(value)
 }

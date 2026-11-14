@@ -34,6 +34,9 @@ import kotlinx.serialization.json.Json
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * Branch coverage for [ReindexAllExecutor]: the storage-system resolution path,
@@ -90,6 +93,17 @@ class ReindexAllExecutorTest {
     )
 
     private fun branchRef(repoId: UUID, name: String) = DfsRef(repositoryId = repoId, name = name, objectId = "a".repeat(40))
+
+    @Test
+    fun `targeted storage survives generated job wiring`() = runTest {
+        val enqueuer = ReindexAllExecutorConfigurationEnqueuer()
+        val job = enqueuer.prepare(buildJsonObject {
+            put("storage", buildJsonObject { put("name", "git-code") })
+        })
+        val definition = json.decodeFromJsonElement(ReindexAllJob.serializer(), job.getDefinition())
+        assertEquals(IndexStorageSystem(name = "git-code"), definition.storage)
+        assertEquals("git", enqueuer.queueName)
+    }
 
     @Test
     fun `enqueues a repository reindex, clears file docs, and enqueues per-branch file jobs`() = runTest {

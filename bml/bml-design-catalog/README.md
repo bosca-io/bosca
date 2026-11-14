@@ -88,7 +88,8 @@ and Gateway routing without a cluster rollout. Native heap flags can be passed t
 | `/json` | Independent dark/light JSON drafts, retained engine state, pending/rejected saves, native reset, controlled options, a compact configuration field, and tree/text/table/empty/invalid/readonly/disabled variants |
 | `/flows` | Independent VueFlow graphs, named-port connections, native forms, retained viewports, read-only, rejection and reset |
 | `/dashboards` | Movable/resizable widgets, locked layouts, keyboard handles, native forms and responsive stacking |
-| `/charts` | Chart.js built-in types, CSS colors, responsive canvases, data tables and local selection toasts |
+| `/calendars` | Studio month, week and day views, navigation, event selection and local move actions in two palettes |
+| `/charts` | ECharts built-in types, CSS colors, responsive canvases, data tables and local selection toasts |
 | `/components/visualization` | Dashboard, flow and chart API references and authoring |
 | `/documents` | Independent TipTap documents, rich text formatting, native JSON form values, rejected saves, reset and readonly/disabled states |
 | `/source/languages` | Kotlin, TypeScript, JavaScript and BML syntax examples |
@@ -454,8 +455,8 @@ stays unchanged. Controlled pending-promise and busy-renderer probes verify this
 isolated Chrome instances. The debugger is enabled before acceptance so it can interrupt a busy V8
 evaluation; pause-event collection happens only after a failed renderer probe.
 
-Flow/chart acceptance runs actual VueFlow drags and keyboard connections plus all eight Chart.js
-built-in types, CSS series colors, controlled updates, native form rules, reset, repeated disposal,
+Flow/chart acceptance runs actual VueFlow drags and keyboard connections plus twelve ECharts
+examples, including bubble, doughnut and polar-area variants, CSS series colors, controlled updates, native form rules, reset, repeated disposal,
 independent dark/light roots and script-disabled alternatives at desktop/phone widths:
 
 ```sh
@@ -466,7 +467,7 @@ The full-document accessibility reports include visualization scans with expande
 controls and chart data tables.
 
 The `/dashboards` examples use `dashboard-grid` and `dashboard-item` with Studio's cell-coordinate
-model. Each palette contains a real Chart.js widget, a retained note input and a locked summary.
+model. Each palette contains a real ECharts widget, a retained note input and a locked summary.
 The application owns layout saving and rejection; completion feedback uses toasts. Compact handles
 support pointer gestures, keyboard movement/resizing and Escape cancellation. Narrow containers stack
 without rewriting desktop coordinates. Widget DOM and local content survive geometry and surrounding
@@ -507,3 +508,35 @@ links, pagination, progress and typed subsystem navigation as independent librar
 ```sh
 ./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.packaged catalog serves isolated examples assets and real browser actions'
 ```
+
+The calendar examples include reusable `calendar-sidebar` and `calendar-event-fields`
+controls, editable event details, deletion confirmation, participants, calendar management,
+all-day events, and recurring-event scopes (this occurrence, following, or all). State is
+local to the example session. The Reject event moves switch exercises restoration and retry.
+Run focused calendar model/browser tests from the workspace root with:
+
+```sh
+./gradlew :bml:bml-design:testClient :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogCalendarTest' --tests 'bosca.design.catalog.CatalogApplicationTest.calendar*'
+./gradlew :bml:bml-design-catalog:calendarEngineTest
+```
+
+The separate engine task installs the pinned Firefox/WebKit test builds and qualifies
+calendar editing and input alongside Chromium. WebKit qualification covers that engine,
+not the branded Safari application or physical iOS devices.
+
+### Geographic data maps
+
+Select `map` on `/charts` for a world choropleth with illustrative values in both palettes.
+Natural Earth boundaries are bundled in `src/main/resources/maps/world.geojson` with source and
+public-domain notes beside them. The application passes named GeoJSON through `chart.maps`;
+no external map service or runtime download is used. Pan, wheel zoom, keyboard controls, reset,
+region clicks and table actions all use the shared chart component. Registered maps use
+content-based names so two charts can supply different geometry under the same application alias.
+
+```sh
+./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.data maps*' --tests 'bosca.design.catalog.ChartTableTest'
+```
+
+Map browser checks cover desktop/phone widths, both palettes, development/production, pointer
+pan/wheel zoom, keyboard navigation, native region clicks, table selection, retained viewports,
+missing-geometry recovery, empty basemaps, loading, resizing, cleanup and axe accessibility.
