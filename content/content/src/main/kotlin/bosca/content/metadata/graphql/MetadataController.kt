@@ -22,6 +22,11 @@ import bosca.content.metadata.model.MetadataCacheKeyId
 import bosca.content.metadata.model.MetadataContent
 import bosca.content.metadata.model.Media
 import bosca.content.metadata.model.MetadataRelationship
+import bosca.content.metadata.model.TemplateUsage
+import bosca.content.metadata.model.isTemplateContentType
+import bosca.content.metadata.repository.TemplateUsageRepository
+import bosca.content.metadata.repository.getUsage
+import bosca.di.provide
 import bosca.content.metadata.service.CollectionTemplateService
 import bosca.content.metadata.service.DataService
 import bosca.content.metadata.service.DocumentService
@@ -153,6 +158,10 @@ class MetadataController(
 
     @Field
     fun deleted(metadata: Metadata) = metadata.deleted
+
+    @Field
+    suspend fun templateUsage(metadata: Metadata): TemplateUsage? =
+        if (isTemplateContentType(metadata.contentType)) provide<TemplateUsageRepository>().getUsage(metadata.id) else null
 
     @Field
     fun locked(metadata: Metadata) = metadata.locked

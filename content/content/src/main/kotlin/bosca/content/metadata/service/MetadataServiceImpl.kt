@@ -103,6 +103,10 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
+import bosca.content.metadata.model.isTemplateContentType
+import bosca.content.metadata.repository.TemplateUsageRepository
+import bosca.content.metadata.repository.getUsage
+import bosca.di.provide
 import org.slf4j.LoggerFactory
 
 @ServiceImplementation
@@ -1296,6 +1300,13 @@ class MetadataServiceImpl(
 
     override suspend fun markDeleted(id: UUID) {
         log.debug("markDeleted: {}", id)
+        val existing = getById(id)
+        if (existing != null && isTemplateContentType(existing.contentType)) {
+            val usage = provide<TemplateUsageRepository>().getUsage(id)
+            check(usage.total == 0) {
+                "Template '${existing.name}' is still used by ${usage.total} item(s) and can't be deleted"
+            }
+        }
         repository.markDeleted(id)
         removeFromCache(id)
         val metadata = getById(id) ?: error("missing metadata")

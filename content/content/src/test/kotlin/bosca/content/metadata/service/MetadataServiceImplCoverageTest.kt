@@ -84,6 +84,10 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.toJavaUuid
+import bosca.content.metadata.repository.getUsage
+import bosca.content.metadata.repository.TemplateUsageRepositoryImpl
+import bosca.content.metadata.repository.TemplateUsageRepository
+import bosca.content.metadata.model.TemplateUsage
 
 /**
  * End-to-end coverage for [MetadataServiceImpl] driving the real PostgreSQL-backed
@@ -147,6 +151,7 @@ class MetadataServiceImplCoverageTest {
         provides<Json>(singleton = true) { testJson }
         // importFromUrl enqueues an ImportUrlJob onto the "contentQueue"; a relaxed queue keeps it a no-op.
         provides<JobQueue>(name = "contentQueue", singleton = true) { jobQueue }
+        provides<TemplateUsageRepository>(singleton = true) { TemplateUsageRepositoryImpl() }
 
         coEvery { slugService.createSlug(any()) } answers { firstArg<String>().lowercase().replace(" ", "-") }
 
@@ -1039,6 +1044,92 @@ class MetadataServiceImplCoverageTest {
         val after = withRequest { service.getById(m.id) }
         assertNotNull(after)
         assertTrue(after.deleted)
+    }
+
+    // ── Template delete guard ────────────────────────────────────────────────
+
+    private suspend fun insertDocumentTemplate(): Metadata {
+        val t = insertMetadata(name = "Doc Template", contentType = "bosca/v-document-template")
+        rawExec("insert into document_templates (metadata_id, version, content) values ('${t.id}', ${t.version}, '{}')")
+        return t
+    }
+
+    private suspend fun insertDocumentUsing(template: Metadata): Metadata {
+        val d = insertMetadata(name = "Doc")
+        rawExec(
+            "insert into documents (metadata_id, version, template_metadata_id, template_metadata_version, title, content) " +
+                "values ('${d.id}', ${d.version}, '${template.id}', ${template.version}, 'Doc', '{}')"
+        )
+        return d
+    }
+
+    private suspend fun usage(id: UUID) = withRequest { TemplateUsageRepositoryImpl().getUsage(id) }
+
+    @Test
+    fun `markDeleted soft-deletes an unused template`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val t = insertDocumentTemplate()
+        assertEquals(0, usage(t.id).total)
+        withRequest { service.markDeleted(t.id) }
+        assertTrue(withRequest { service.getById(t.id) }!!.deleted)
+    }
+
+    @Test
+    fun `markDeleted refuses a document template that documents use`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val t = insertDocumentTemplate()
+        insertDocumentUsing(t)
+        insertDocumentUsing(t)
+        assertEquals(TemplateUsage(items = 2, collections = 0, templates = 0), usage(t.id))
+        val error = assertFailsWith<IllegalStateException> { withRequest { service.markDeleted(t.id) } }
+        assertTrue(error.message!!.contains("2 item(s)"))
+        assertFalse(withRequest { service.getById(t.id) }!!.deleted)
+    }
+
+    @Test
+    fun `template usage ignores soft-deleted content`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val t = insertDocumentTemplate()
+        val d = insertDocumentUsing(t)
+        withRequest { service.markDeleted(d.id) }
+        assertEquals(0, usage(t.id).total)
+        withRequest { service.markDeleted(t.id) }
+        assertTrue(withRequest { service.getById(t.id) }!!.deleted)
+    }
+
+    @Test
+    fun `markDeleted refuses a data template that data items use`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val t = insertMetadata(name = "Data Template", contentType = "bosca/v-data-template")
+        rawExec("insert into data_templates (metadata_id, version) values ('${t.id}', ${t.version})")
+        val item = insertMetadata(name = "Data")
+        rawExec(
+            "insert into data (metadata_id, version, template_metadata_id, template_metadata_version) " +
+                "values ('${item.id}', ${item.version}, '${t.id}', ${t.version})"
+        )
+        assertEquals(1, usage(t.id).items)
+        assertFailsWith<IllegalStateException> { withRequest { service.markDeleted(t.id) } }
+    }
+
+    @Test
+    fun `markDeleted refuses a collection template that collections use`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val t = insertMetadata(name = "Collection Template", contentType = "bosca/v-collection-template")
+        rawExec("insert into collection_templates (metadata_id, version) values ('${t.id}', ${t.version})")
+        rawExec(
+            "insert into collections (name, template_metadata_id, template_metadata_version) " +
+                "values ('Uses template', '${t.id}', ${t.version})"
+        )
+        assertEquals(TemplateUsage(items = 0, collections = 1, templates = 0), usage(t.id))
+        assertFailsWith<IllegalStateException> { withRequest { service.markDeleted(t.id) } }
+    }
+
+    @Test
+    fun `markDeleted refuses a document template used as a guide template step`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val step = insertDocumentTemplate()
+        val guideTemplate = insertMetadata(name = "Guide Template", contentType = "bosca/v-guide-template")
+        rawExec("insert into guide_templates (metadata_id, version, type) values ('${guideTemplate.id}', ${guideTemplate.version}, 'linear')")
+        rawExec(
+            "insert into guide_template_steps (metadata_id, version, template_metadata_id, template_metadata_version, sort) " +
+                "values ('${guideTemplate.id}', ${guideTemplate.version}, '${step.id}', ${step.version}, 0)"
+        )
+        assertEquals(TemplateUsage(items = 0, collections = 0, templates = 1), usage(step.id))
+        assertFailsWith<IllegalStateException> { withRequest { service.markDeleted(step.id) } }
     }
 
     @Test
