@@ -125,102 +125,117 @@ class ServingModelController(
             }
         }
         val pods = lease.blocking {
-            client.pods().inNamespace(profile.namespace).list().items.orEmpty().associateBy { it.metadata.name }
+            client.pods().inNamespace(profile.namespace).withLabel(SERVING_MODEL_LABEL).list().items.orEmpty()
+                .associateBy { it.metadata.name }
         }
         var occupied = models.count { model -> version(model) !in active && model.metadata.name in pods }
         for (model in models.sortedBy { version(it) }) {
-            val resources = ServingModelResources(model)
-            val activeModel = resources.version in active
-            // Foreground deletion keeps the capacity slot until owned Pods finish terminating.
-            // A newly requested instance with the same name is created after this one is gone.
-            if (model.metadata.deletionTimestamp != null) continue
-            if (resources.version !in desired) {
-                drain(client, profile, model, resources, lease)
-                continue
-            }
-            if (model.metadata.annotations.orEmpty().containsKey(DRAIN_SINCE)) {
-                model.metadata.annotations = model.metadata.annotations.orEmpty() - DRAIN_SINCE
-                model.metadata = lease.blocking { client.resource(model).update().metadata }
-            }
-            val existingPod = pods[resources.name]
-            if (existingPod == null && !activeModel && occupied >= profile.maxCandidates) {
-                status(client, model, "Pending", "Waiting for candidate capacity", resources.endpoint, lease)
-                continue
-            }
-            createOwned(client, resources.configMap(), resources.uid, lease)
-            createOwned(client, resources.service(), resources.uid, lease)
-            if (existingPod != null && !resources.owns(existingPod)) error("ServingModel Pod has another owner")
-            val pod = existingPod ?: createOwned(client, resources.pod(), resources.uid, lease).also {
-                if (!activeModel) occupied++
-            }
-            val ready = pod.metadata.deletionTimestamp == null &&
-                pod.status?.conditions.orEmpty().any { it.type == "Ready" && it.status == "True" }
-            val terminated = pod.status?.phase in listOf("Failed", "Succeeded")
-            val phase = when {
-                ready && activeModel -> "Active"
-                ready -> "Ready"
-                pod.metadata.deletionTimestamp != null -> "Pending"
-                terminated -> "Failed"
-                pod.status?.phase == "Pending" && pod.status?.conditions.orEmpty().none {
-                    it.type == "PodScheduled" && it.status == "True"
-                } -> "Pending"
-                pod.status?.initContainerStatuses.orEmpty().plus(pod.status?.containerStatuses.orEmpty()).any {
-                    it.state?.waiting?.reason in listOf("CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull") ||
-                        (it.state?.terminated?.exitCode?.let { code -> code != 0 } == true)
-                } -> "Failed"
-                pod.status?.initContainerStatuses.orEmpty().any { it.state?.terminated?.exitCode != 0 } -> "Downloading"
-                else -> "Loading"
-            }
-            var annotations = model.metadata.annotations.orEmpty()
-            val revision = revisions.getValue(resources.version).toString()
-            if (!activeModel && annotations[SELECTION_REVISION] != revision) {
-                annotations = annotations - FAILURE_SINCE - STARTUP_SINCE - PREPARED_REVISION +
-                    (SELECTION_REVISION to revision)
-            }
-            if (ready) {
-                annotations = annotations - FAILURE_SINCE - STARTUP_SINCE
-            } else if (!activeModel) {
-                if (STARTUP_SINCE !in annotations) annotations = annotations + (STARTUP_SINCE to now().toString())
-                if (phase == "Failed" && FAILURE_SINCE !in annotations) annotations = annotations + (FAILURE_SINCE to now().toString())
-            }
-            if (annotations != model.metadata.annotations.orEmpty()) {
-                model.metadata.annotations = annotations
-                model.metadata = lease.blocking { client.resource(model).update().metadata }
-            }
-            if (model.metadata.deletionTimestamp != null) continue
-            if (ready && !activeModel && annotations[PREPARED_REVISION] != revision) {
-                // Recording this selection revision fences deletes captured before the new intent.
-                // Notification follows that write and can be retried safely after a restart.
-                val controlToken = controlToken(client, profile, lease)
-                lease.ensureHeld()
-                if (discovery.prepareModel(profile, controlToken, resources.version, revisions.getValue(resources.version), resources.endpoint)) {
-                    model.metadata.annotations = annotations + (PREPARED_REVISION to revision)
+            try {
+                val resources = ServingModelResources(model)
+                val activeModel = resources.version in active
+                // Foreground deletion keeps the capacity slot until owned Pods finish terminating.
+                // A newly requested instance with the same name is created after this one is gone.
+                if (model.metadata.deletionTimestamp != null) continue
+                if (resources.version !in desired) {
+                    drain(client, profile, model, resources, lease)
+                    continue
+                }
+                if (model.metadata.annotations.orEmpty().containsKey(DRAIN_SINCE)) {
+                    model.metadata.annotations = model.metadata.annotations.orEmpty() - DRAIN_SINCE
                     model.metadata = lease.blocking { client.resource(model).update().metadata }
                 }
-            }
-            if (!ready && !activeModel) {
-                val failureSince = annotations[FAILURE_SINCE]?.let(Instant::parse)
-                val startupSince = annotations[STARTUP_SINCE]?.let(Instant::parse)
-                val startupExpired = startupSince != null && !now().isBefore(startupSince.plusSeconds(profile.startupTimeoutSeconds))
-                val failureExpired = failureSince != null && !now().isBefore(failureSince.plusSeconds(profile.failureGraceSeconds))
-                if (startupExpired || failureExpired) {
+                val existingPod = pods[resources.name]
+                if (existingPod == null && !activeModel && occupied >= profile.maxCandidates) {
+                    status(client, model, "Pending", "Waiting for candidate capacity", resources.endpoint, lease)
+                    continue
+                }
+                createOwned(client, resources.configMap(), resources.uid, lease)
+                createOwned(client, resources.service(), resources.uid, lease)
+                if (existingPod != null && !resources.owns(existingPod)) error("ServingModel Pod has another owner")
+                val pod = existingPod ?: createOwned(client, resources.pod(), resources.uid, lease).also {
+                    if (!activeModel) occupied++
+                }
+                val ready = pod.metadata.deletionTimestamp == null &&
+                    pod.status?.conditions.orEmpty().any { it.type == "Ready" && it.status == "True" }
+                val terminated = pod.status?.phase in listOf("Failed", "Succeeded")
+                val phase = when {
+                    ready && activeModel -> "Active"
+                    ready -> "Ready"
+                    pod.metadata.deletionTimestamp != null -> "Pending"
+                    terminated -> "Failed"
+                    pod.status?.phase == "Pending" && pod.status?.conditions.orEmpty().none {
+                        it.type == "PodScheduled" && it.status == "True"
+                    } -> "Pending"
+                    pod.status?.initContainerStatuses.orEmpty().plus(pod.status?.containerStatuses.orEmpty()).any {
+                        it.state?.waiting?.reason in listOf("CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull") ||
+                            (it.state?.terminated?.exitCode?.let { code -> code != 0 } == true)
+                    } -> "Failed"
+                    pod.status?.initContainerStatuses.orEmpty().any { it.state?.terminated?.exitCode != 0 } -> "Downloading"
+                    else -> "Loading"
+                }
+                var annotations = model.metadata.annotations.orEmpty()
+                val revision = revisions.getValue(resources.version).toString()
+                if (!activeModel && annotations[SELECTION_REVISION] != revision) {
+                    annotations = annotations - FAILURE_SINCE - STARTUP_SINCE - PREPARED_REVISION +
+                        (SELECTION_REVISION to revision)
+                }
+                if (ready) annotations = annotations - FAILURE_SINCE
+                if (activeModel) {
+                    annotations = annotations - STARTUP_SINCE
+                } else {
+                    // The startup deadline runs until activation, so a Ready candidate that is never activated
+                    // still reports a failure and releases its capacity.
+                    if (STARTUP_SINCE !in annotations) annotations = annotations + (STARTUP_SINCE to now().toString())
+                    if (phase == "Failed" && FAILURE_SINCE !in annotations) annotations = annotations + (FAILURE_SINCE to now().toString())
+                }
+                if (annotations != model.metadata.annotations.orEmpty()) {
+                    model.metadata.annotations = annotations
+                    model.metadata = lease.blocking { client.resource(model).update().metadata }
+                }
+                if (model.metadata.deletionTimestamp != null) continue
+                if (ready && !activeModel && annotations[PREPARED_REVISION] != revision) {
+                    // Recording this selection revision fences deletes captured before the new intent.
+                    // Notification follows that write and can be retried safely after a restart.
                     val controlToken = controlToken(client, profile, lease)
-                    val failure = if (startupExpired) "Serving candidate exceeded startupTimeoutSeconds (${profile.startupTimeoutSeconds})"
-                        else podMessage(pod).ifBlank { "Serving candidate did not recover" }
                     lease.ensureHeld()
-                    if (discovery.failModel(profile, controlToken, resources.version, revisions.getValue(resources.version), failure)) {
-                        status(client, model, "Failed", "Terminal serving failure reported", resources.endpoint, lease)
-                        deleteModel(client, model, lease)
-                        continue
+                    if (discovery.prepareModel(profile, controlToken, resources.version, revisions.getValue(resources.version), resources.endpoint)) {
+                        model.metadata.annotations = annotations + (PREPARED_REVISION to revision)
+                        model.metadata = lease.blocking { client.resource(model).update().metadata }
                     }
                 }
-            }
-            if (terminated) {
-                // Recreated Pods retain the candidate's startup and failure deadlines.
-                lease.blocking { client.resource(pod).lockResourceVersion().delete() }
-                status(client, model, "Pending", pod.status?.message ?: "Recreating terminated Pod", resources.endpoint, lease)
-            } else {
-                status(client, model, phase, podMessage(pod), resources.endpoint, lease)
+                if (!activeModel) {
+                    val failureSince = annotations[FAILURE_SINCE]?.let(Instant::parse)
+                    val startupSince = annotations[STARTUP_SINCE]?.let(Instant::parse)
+                    val startupExpired = startupSince != null && !now().isBefore(startupSince.plusSeconds(profile.startupTimeoutSeconds))
+                    val failureExpired = failureSince != null && !now().isBefore(failureSince.plusSeconds(profile.failureGraceSeconds))
+                    if (startupExpired || failureExpired) {
+                        val controlToken = controlToken(client, profile, lease)
+                        val failure = when {
+                            !startupExpired -> podMessage(pod).ifBlank { "Serving candidate did not recover" }
+                            ready -> "Serving candidate was not activated within startupTimeoutSeconds (${profile.startupTimeoutSeconds})"
+                            else -> "Serving candidate exceeded startupTimeoutSeconds (${profile.startupTimeoutSeconds})"
+                        }
+                        lease.ensureHeld()
+                        if (discovery.failModel(profile, controlToken, resources.version, revisions.getValue(resources.version), failure)) {
+                            status(client, model, "Failed", "Terminal serving failure reported", resources.endpoint, lease)
+                            deleteModel(client, model, lease)
+                            continue
+                        }
+                    }
+                }
+                if (terminated) {
+                    // Recreated Pods retain the candidate's startup and failure deadlines.
+                    lease.blocking { client.resource(pod).lockResourceVersion().delete() }
+                    status(client, model, "Pending", pod.status?.message ?: "Recreating terminated Pod", resources.endpoint, lease)
+                } else {
+                    status(client, model, phase, podMessage(pod), resources.endpoint, lease)
+                }
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Exception) {
+                // One model's failure must not block the profile's other contexts; a lost lease ends the cycle.
+                if (!lease.held) throw exception
+                log.warn("ServingModel {}/{} reconciliation failed", model.metadata.namespace, model.metadata.name, exception)
             }
         }
     }

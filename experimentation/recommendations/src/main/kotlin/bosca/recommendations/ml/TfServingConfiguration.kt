@@ -32,6 +32,9 @@ data class TfServingConfiguration(
     /** Version-specific Service URL; `{version}` is replaced with the immutable context generation. */
     val contextModelUrlTemplate: String? = null,
 ) {
+    /** Whether the Kubernetes controller provisions a version-specific endpoint for each context generation. */
+    val provisioned: Boolean get() = !contextModelUrlTemplate.isNullOrBlank()
+
     /** Resolves the endpoint shared by validation and prediction for one context generation. */
     fun contextModelUrl(version: Long): String = contextModelUrlTemplate?.takeIf { it.isNotBlank() }?.let {
         require("{version}" in it) { "Context model URL template must contain {version}" }

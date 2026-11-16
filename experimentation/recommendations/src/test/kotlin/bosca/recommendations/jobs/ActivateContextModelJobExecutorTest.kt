@@ -105,11 +105,17 @@ class ActivateContextModelJobExecutorTest {
     }
 
     @Test
-    fun `versioned activation waits for a claim for its own endpoint`() = runBlocking {
+    fun `versioned activation waits for a claim and fails a claim for another endpoint`() = runBlocking {
         MockWebServer().use { server ->
             setup(server, contextModelUrlTemplate = "http://serving-{version}.models.svc:8501")
             execute()
-            execute("http://different-17.models.svc:8501")
+            coVerify(exactly = 0) { service.failServingModel(any(), any(), any()) }
+            val failure = assertFailsWith<FailException> { execute("http://different-17.models.svc:8501") }
+            assertEquals(
+                "Claimed serving endpoint http://different-17.models.svc:8501 does not match configured endpoint http://serving-17.models.svc:8501",
+                failure.message,
+            )
+            coVerify(exactly = 1) { service.failServingModel(17, 3, failure.message ?: "") }
             assertEquals(0, server.requestCount)
             coVerify(exactly = 0) { service.completeModel(any()); service.activateLoadedModel(any(), any()) }
         }
@@ -146,16 +152,34 @@ class ActivateContextModelJobExecutorTest {
     }
 
     @Test
-    fun `activation waits while reconciliation owns the lifecycle lock`() = runBlocking {
+    fun `provisioned activation probes without the lifecycle lock and waits to record while reconciliation owns it`() = runBlocking {
+        MockWebServer().use { candidate ->
+            MockWebServer().use { active ->
+                candidate.start()
+                setup(active, contextModelUrlTemplate = candidate.url("/generation-").toString() + "{version}")
+                val factory = bosca.di.provide<DistributedLockFactory>()
+                val busy = mockk<DistributedLock>()
+                coEvery { factory.create(any()) } returns busy
+                coEvery { busy.tryAcquire(any()) } returns false
+                candidate.enqueue(status())
+                candidate.enqueue(status())
+                assertFailsWith<DelayException> { execute(candidate.url("/generation-17").toString()) }
+                assertEquals(2, candidate.requestCount)
+                coVerify(exactly = 0) { service.completeModel(any()); service.activateLoadedModel(any(), any()) }
+            }
+        }
+    }
+
+    @Test
+    fun `unprovisioned activation never takes the serving lifecycle lock`() = runBlocking {
         MockWebServer().use { server ->
             setup(server)
             val factory = bosca.di.provide<DistributedLockFactory>()
-            val busy = mockk<DistributedLock>()
-            coEvery { factory.create(any()) } returns busy
-            coEvery { busy.tryAcquire(any()) } returns false
-            assertFailsWith<DelayException> { execute() }
-            assertEquals(0, server.requestCount)
-            coVerify(exactly = 0) { service.getModel(any()); service.completeModel(any()); service.activateLoadedModel(any(), any()) }
+            server.enqueue(status())
+            server.enqueue(status())
+            execute()
+            coVerify(exactly = 0) { factory.create(any()) }
+            coVerifyOrder { service.completeModel(17); service.activateLoadedModel(17, 3) }
         }
     }
 

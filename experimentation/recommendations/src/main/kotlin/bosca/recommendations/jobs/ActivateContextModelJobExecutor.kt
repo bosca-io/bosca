@@ -3,7 +3,6 @@ package bosca.recommendations.jobs
 import bosca.di.provide
 import bosca.lock.DistributedLockFactory
 import bosca.kubernetes.service.withServingModelLock
-import bosca.kubernetes.service.ServingModelLease
 import bosca.queue.annotations.JobDefinition
 import bosca.recommendations.configuration.JobQueueNames
 import bosca.recommendations.ml.TfServingConfiguration
@@ -31,13 +30,9 @@ class ActivateContextModelJobExecutor : AbstractJobExecutor<ActivateContextModel
     override suspend fun getLockId(): String = "context-model-activation-${getJobDefinition().version}"
 
     override suspend fun execute() {
-        withServingModelLock(provide<DistributedLockFactory>()) { lease -> executeLocked(lease); true }
-            ?: throw DelayException(15.seconds)
-    }
-
-    private suspend fun executeLocked(lease: ServingModelLease) {
         val definition = getJobDefinition()
         val service = provide<RecommendationContextService>()
+        val config = provide<TfServingConfiguration>()
         val model = service.getModel(definition.version) ?: return
         if (model.status == RecommendationTrainingStatus.FAILED) return
         val context = service.getById(model.contextId) ?: return
@@ -45,44 +40,56 @@ class ActivateContextModelJobExecutor : AbstractJobExecutor<ActivateContextModel
             if (context.selectionRevision != definition.selectionRevision) return
             if (context.activeModelVersion == model.version) {
                 if (context.requestedModelVersion == model.version) {
-                    lease.ensureHeld()
-                    service.activateLoadedModel(model.version, definition.selectionRevision)
+                    record(config) { service.activateLoadedModel(model.version, definition.selectionRevision) }
                 }
                 return
             }
             if (context.requestedModelVersion != model.version) return
         }
-        val config = provide<TfServingConfiguration>()
         val endpoint = config.contextModelUrl(model.version)
-        // Provisioned endpoints must first be claimed by the controller in Kubernetes.
-        if (!config.contextModelUrlTemplate.isNullOrBlank() && definition.servingEndpoint?.trimEnd('/') != endpoint.trimEnd('/')) return
-        try {
-            if (!available(endpoint, model.contentModelName, model.version) ||
-                (model.personalized && !available(endpoint, model.personalizedModelName, model.version))) {
-                throw DelayException(15.seconds)
+        if (config.provisioned) {
+            // Provisioned endpoints must first be claimed by the controller in Kubernetes.
+            val claimed = definition.servingEndpoint ?: return
+            if (claimed.trimEnd('/') != endpoint.trimEnd('/')) {
+                val failure = "Claimed serving endpoint $claimed does not match configured endpoint $endpoint"
+                record(config) { service.failServingModel(model.version, definition.selectionRevision, failure) }
+                throw FailException(failure)
             }
-            lease.ensureHeld()
-            if (model.status == RecommendationTrainingStatus.RUNNING) service.completeModel(model.version)
-            if (context.selectionRevision == definition.selectionRevision) {
-                lease.ensureHeld()
-                service.activateLoadedModel(model.version, definition.selectionRevision)
-            }
+        }
+        val loaded = try {
+            available(endpoint, model.contentModelName, model.version) &&
+                (!model.personalized || available(endpoint, model.personalizedModelName, model.version))
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: IOException) {
             log.warn("Context model {} is awaiting serving availability", model.version, exception)
             throw DelayException(15.seconds)
         } catch (exception: FailException) {
-            lease.ensureHeld()
-            service.failServingModel(model.version, definition.selectionRevision, exception.message ?: "Model load failed")
-            throw exception
-        } catch (exception: DelayException) {
+            record(config) { service.failServingModel(model.version, definition.selectionRevision, exception.message ?: "Model load failed") }
             throw exception
         } catch (exception: Exception) {
-            lease.ensureHeld()
-            service.failServingModel(model.version, definition.selectionRevision, exception.message ?: "Model load validation failed")
+            record(config) {
+                service.failServingModel(model.version, definition.selectionRevision, exception.message ?: "Model load validation failed")
+            }
             throw exception
         }
+        if (!loaded) throw DelayException(15.seconds)
+        record(config) {
+            if (model.status == RecommendationTrainingStatus.RUNNING) service.completeModel(model.version)
+            if (context.selectionRevision == definition.selectionRevision) {
+                service.activateLoadedModel(model.version, definition.selectionRevision)
+            }
+        }
+    }
+
+    /**
+     * Provisioned selection changes are serialized with the serving-model controller. Availability probes
+     * stay outside the lock; the service writes re-check the selection revision under the context row lock.
+     */
+    private suspend fun record(config: TfServingConfiguration, block: suspend () -> Unit) {
+        if (!config.provisioned) return block()
+        withServingModelLock(provide<DistributedLockFactory>()) { lease -> lease.ensureHeld(); block() }
+            ?: throw DelayException(15.seconds)
     }
 
     private suspend fun available(baseUrl: String, name: String, version: Long): Boolean {

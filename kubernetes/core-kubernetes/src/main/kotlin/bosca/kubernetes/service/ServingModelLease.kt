@@ -11,6 +11,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 class ServingModelLease internal constructor(private val lock: DistributedLock) {
     private val valid = AtomicBoolean(true)
 
+    /** False once ownership was observed lost; no further lifecycle operation may proceed under this lease. */
+    val held: Boolean get() = valid.get()
+
     /** Renews ownership before acting on a previously read selection or resource. */
     suspend fun ensureHeld() {
         currentCoroutineContext().ensureActive()

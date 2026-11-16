@@ -49,7 +49,7 @@ class ServingModelLeaseLossTest {
             .withLabel(SERVING_PROFILE_LABEL, profile.uid).list().items } returns listOf(retired, active)
         val entered = CompletableDeferred<Unit>()
         val gate = CountDownLatch(1)
-        every { client.pods().inNamespace("test").list() } answers {
+        every { client.pods().inNamespace("test").withLabel(SERVING_MODEL_LABEL).list() } answers {
             entered.complete(Unit)
             while (true) {
                 try {

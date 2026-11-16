@@ -140,9 +140,10 @@ Failed, together with the endpoint and the observed Pod message. Kubernetes retr
 with its normal backoff; a failed candidate never replaces the active version. After an observed failure,
 `failureGraceSeconds` (default 600) allows recovery. If the candidate remains unready, the controller
 reports a terminal failure to recommendations and removes the candidate to release capacity.
-`startupTimeoutSeconds` (default 1800) also bounds candidate startup when no container failure is
-reported, including a stalled download, unschedulable Pod, or model that never becomes ready. Waiting
-for candidate capacity does not consume this deadline. A new selection revision resets the deadline;
+`startupTimeoutSeconds` (default 1800) also bounds the time until a candidate is activated when no
+container failure is reported, including a stalled download, unschedulable Pod, model that never becomes
+ready, or Ready candidate whose activation never completes. Waiting for candidate capacity does not
+consume this deadline. A new selection revision resets the deadline;
 Pod recreation does not. Failure reports carry the observed selection revision, so a delayed report
 cannot clear a newer request for the same version. A completed
 rollback target remains in history, and a later explicit activation clears its previous serving failure.
@@ -156,15 +157,18 @@ The recommendation activation job checks the candidate's exact content and perso
 before the existing selection service changes the active version. For a version-specific endpoint, the
 controller records the selection revision on the ServingModel, then reports
 `modelServingPrepared` with its endpoint and queues validation. The runner accepts that claim only for
-its configured endpoint. Initial export jobs do not activate a provisioned version before this claim.
+its configured endpoint; a claim for any other endpoint is recorded as a serving failure. Initial export
+jobs do not activate a provisioned version before this claim.
 Completed jobs for obsolete selections or already-active versions exit without polling. Configure
 `RECOMMENDATIONS_CONTEXT_MODEL_URL_TEMPLATE` on both server and runner to match the profile's Service
 prefix, namespace and port, for example `http://tf-serving-model-{version}.models.svc:8501`. Predictions
 and validation resolve the same endpoint. Requests retain their selected version and endpoint, so changing
 the active version does not redirect in-flight calls to another generation.
 
-Reconciliation and activation share a renewed distributed lifecycle lock, including exact-version
-validation and the selection update. Controller and runner must use the same configured distributed lock
+Reconciliation and provisioned activation share a renewed distributed lifecycle lock. Activation holds it
+only for the completion, selection and failure updates; exact-version validation runs before the lock is
+acquired, and each update re-checks the selection revision. Without a context model URL template the
+activation job does not take the lock. Controller and runner must use the same configured distributed lock
 backend. Reconciliation reads selection only after acquiring the lock and uses one Pod snapshot for
 capacity and readiness checks. Recording a new selection revision changes the ServingModel resource
 version before activation can be queued; a delayed retirement request carrying an

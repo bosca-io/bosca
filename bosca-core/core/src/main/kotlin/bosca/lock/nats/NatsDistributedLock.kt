@@ -2,9 +2,11 @@ package bosca.lock.nats
 
 import bosca.lock.DistributedLock
 import bosca.serialization.UUID
+import io.nats.client.JetStream
 import io.nats.client.JetStreamApiException
 import io.nats.client.KeyValue
 import io.nats.client.MessageTtl
+import io.nats.client.PublishOptions
 import io.nats.client.api.KeyValueOperation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -16,6 +18,7 @@ import kotlin.math.max
 
 class NatsDistributedLock(
     private val kv: KeyValue,
+    private val jetStream: JetStream,
     name: String,
 ) : DistributedLock {
 
@@ -27,11 +30,8 @@ class NatsDistributedLock(
         get() = System.currentTimeMillis() < expiresAt.get()
 
     override suspend fun tryAcquire(ttlMillis: Long): Boolean = withContext(Dispatchers.IO) {
-        // Rounded up to whole seconds: the key must never expire on the server while isHeld still
-        // reports the lock as ours.
-        val expires = MessageTtl.seconds(max(1L, (ttlMillis + 999) / 1000).toInt())
         try {
-            kv.create(key, token.toByteArray(), expires)
+            kv.create(key, token.toByteArray(), messageTtl(ttlMillis))
             expiresAt.set(System.currentTimeMillis() + ttlMillis)
             true
         } catch (e: JetStreamApiException) {
@@ -66,9 +66,17 @@ class NatsDistributedLock(
         try {
             val entry = kv.get(key) ?: return@withContext false
             if (entry.valueAsString != token) return@withContext false
-            // TODO: Update when NATS supports updating the TTL per key
+            // KeyValue.update cannot carry a per-message TTL, so the renewal publishes the same
+            // revision-guarded update directly; without the TTL the key would fall back to the bucket's.
             val renewed = try {
-                kv.update(key, token.toByteArray(), entry.revision)
+                jetStream.publish(
+                    "\$KV.${kv.bucketName}.$key",
+                    token.toByteArray(),
+                    PublishOptions.builder()
+                        .expectedLastSubjectSequence(entry.revision)
+                        .messageTtl(messageTtl(ttlMillis))
+                        .build(),
+                )
                 true
             } catch (e: JetStreamApiException) {
                 // Wrong last sequence: another renewal by this same holder (a caller's own check and
@@ -134,6 +142,9 @@ class NatsDistributedLock(
 
         /** The KV key for a lock [name]: KV keys may not contain ':' or '.'. Shared with forceRelease. */
         internal fun lockKey(name: String): String = name.replace(':', '-').replace('.', '-')
+
+        /** Rounded up to whole seconds: the key must never expire on the server while isHeld still reports it ours. */
+        private fun messageTtl(ttlMillis: Long): MessageTtl = MessageTtl.seconds(max(1L, (ttlMillis + 999) / 1000).toInt())
 
         /** JetStream's "wrong last sequence": the key is not at the revision a create or update expected. */
         private const val WRONG_LAST_SEQUENCE = 10071

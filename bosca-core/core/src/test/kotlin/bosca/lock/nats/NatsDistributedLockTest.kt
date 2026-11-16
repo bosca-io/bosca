@@ -1,9 +1,11 @@
 package bosca.lock.nats
 
 import io.mockk.*
+import io.nats.client.JetStream
 import io.nats.client.JetStreamApiException
 import io.nats.client.KeyValue
 import io.nats.client.MessageTtl
+import io.nats.client.PublishOptions
 import io.nats.client.api.KeyValueEntry
 import io.nats.client.api.KeyValueOperation
 import kotlinx.coroutines.test.runTest
@@ -11,13 +13,14 @@ import kotlin.test.*
 
 class NatsDistributedLockTest {
 
-    private val kv = mockk<KeyValue>()
+    private val kv = mockk<KeyValue> { every { bucketName } returns "locks" }
+    private val jetStream = mockk<JetStream>()
     private val lockName = "test-lock"
     private lateinit var lock: NatsDistributedLock
 
     @BeforeTest
     fun setup() {
-        lock = NatsDistributedLock(kv, lockName)
+        lock = NatsDistributedLock(kv, jetStream, lockName)
     }
 
     @Test
@@ -87,12 +90,16 @@ class NatsDistributedLockTest {
         every { entry.valueAsString } returns token
         every { entry.revision } returns 1L
         every { kv.get(lockName) } returns entry
-        every { kv.update(eq(lockName), any<ByteArray>(), eq(1L)) } returns 2L
+        every { jetStream.publish(eq("\$KV.locks.$lockName"), any<ByteArray>(), any<PublishOptions>()) } returns mockk()
 
-        val result = lock.renew(1000)
+        val result = lock.renew(1500)
 
         assertTrue(result)
-        verify { kv.update(eq(lockName), any<ByteArray>(), eq(1L)) }
+        verify {
+            jetStream.publish(eq("\$KV.locks.$lockName"), any<ByteArray>(), match<PublishOptions> {
+                it.expectedLastSubjectSequence == 1L && it.messageTtl == MessageTtl.seconds(2).ttlString
+            })
+        }
     }
 
     @Test
@@ -104,7 +111,7 @@ class NatsDistributedLockTest {
         val result = lock.renew(1000)
 
         assertFalse(result)
-        verify(exactly = 0) { kv.update(any<String>(), any<ByteArray>(), any<Long>()) }
+        verify(exactly = 0) { jetStream.publish(any<String>(), any<ByteArray>(), any<PublishOptions>()) }
     }
 
     @Test
@@ -119,13 +126,13 @@ class NatsDistributedLockTest {
         every { entry.valueAsString } returns token
         every { entry.revision } returns 1L
         every { kv.get(lockName) } returns entry
-        every { kv.update(eq(lockName), any<ByteArray>(), eq(1L)) } returns 2L
+        every { jetStream.publish(eq("\$KV.locks.$lockName"), any<ByteArray>(), any<PublishOptions>()) } returns mockk()
 
         val result = lock.renew(10_000)
 
         assertTrue(result)
         assertTrue(lock.isHeld)
-        verify { kv.update(eq(lockName), any<ByteArray>(), eq(1L)) }
+        verify { jetStream.publish(eq("\$KV.locks.$lockName"), any<ByteArray>(), any<PublishOptions>()) }
     }
 
     @Test
@@ -224,7 +231,7 @@ class NatsDistributedLockTest {
         every { entry.valueAsString } returns token
         every { entry.revision } returns 1L
         every { kv.get(lockName) } returns entry
-        every { kv.update(eq(lockName), any<ByteArray>(), eq(1L)) } returns 2L
+        every { jetStream.publish(eq("\$KV.locks.$lockName"), any<ByteArray>(), any<PublishOptions>()) } returns mockk()
 
         lock.renew(10_000)
 

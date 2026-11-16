@@ -20,7 +20,7 @@ class NatsDistributedLockFactoryTest {
 
     @Test
     fun factoryCreatesLock() = runTest {
-        val connection = mockk<Connection>()
+        val connection = mockk<Connection> { every { jetStream() } returns mockk() }
         val nats = NatsConnectionPool(connection)
         val kv = mockk<KeyValue>()
 
@@ -38,7 +38,7 @@ class NatsDistributedLockFactoryTest {
 
     @Test
     fun `force release covers present absent and failed entries`() = runTest {
-        val connection = mockk<Connection>()
+        val connection = mockk<Connection> { every { jetStream() } returns mockk() }
         val nats = NatsConnectionPool(connection)
         val kv = mockk<KeyValue>()
         val entry = mockk<KeyValueEntry>()
@@ -62,7 +62,7 @@ class NatsDistributedLockFactoryTest {
     @Test
     fun `factory creates a missing lock bucket and tolerates a concurrent creator`() = runTest {
         suspend fun createWithManagementFailure(fail: Boolean) {
-            val connection = mockk<Connection>()
+            val connection = mockk<Connection> { every { jetStream() } returns mockk() }
             val management = mockk<KeyValueManagement>(relaxed = true)
             val kv = mockk<KeyValue>()
             every { connection.keyValue("locks") } throws IllegalStateException("missing") andThen kv

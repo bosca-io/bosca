@@ -7,6 +7,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.testcontainers.containers.wait.strategy.Wait
 import kotlin.test.AfterTest
@@ -84,6 +86,20 @@ class NatsDistributedLockEndToEndTest {
         assertTrue(lock.renew(30_000))
         assertTrue(lock.isHeld)
         assertTrue(lock.release())
+    }
+
+    @Test
+    fun `renewed lock still expires on its own TTL rather than the bucket TTL`() = runBlocking {
+        val holder = factory.create("renewed-expiry-lock")
+        assertTrue(holder.tryAcquire(1_000))
+        assertTrue(holder.renew(1_000))
+
+        // A crashed holder never releases; the next caller must win once the renewed TTL lapses.
+        delay(3_000)
+
+        val next = factory.create("renewed-expiry-lock")
+        assertTrue(next.tryAcquire(30_000), "The renewal must keep the requested TTL")
+        assertTrue(next.release())
     }
 
     @Test

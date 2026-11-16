@@ -3,6 +3,8 @@ package bosca.lock.nats
 import bosca.lock.DistributedLock
 import bosca.lock.DistributedLockFactory
 import bosca.nats.NatsConnectionPool
+import io.nats.client.JetStream
+import io.nats.client.KeyValue
 import io.nats.client.api.KeyValueConfiguration
 import io.nats.client.api.StorageType
 import kotlinx.coroutines.Dispatchers
@@ -17,12 +19,12 @@ class NatsDistributedLockFactory(
 ) : DistributedLockFactory {
 
     private val kvMutex = Mutex()
-    private var kv: io.nats.client.KeyValue? = null
+    private var store: Pair<KeyValue, JetStream>? = null
 
-    private suspend fun getKv(): io.nats.client.KeyValue {
-        kv?.let { return it }
+    private suspend fun getStore(): Pair<KeyValue, JetStream> {
+        store?.let { return it }
         return kvMutex.withLock {
-            kv?.let { return@withLock it }
+            store?.let { return@withLock it }
             val k = withContext(Dispatchers.IO) {
                 val connection = nats.systemConnection()
                 try {
@@ -44,21 +46,22 @@ class NatsDistributedLockFactory(
                         // Ignore if already created by another instance
                     }
                     connection.keyValue("locks")
-                }
+                } to connection.jetStream()
             }
-            kv = k
+            store = k
             k
         }
     }
 
     override suspend fun create(name: String): DistributedLock {
-        return NatsDistributedLock(getKv(), name)
+        val (kv, jetStream) = getStore()
+        return NatsDistributedLock(kv, jetStream, name)
     }
 
     override suspend fun forceRelease(name: String): Boolean = withContext(Dispatchers.IO) {
         val key = NatsDistributedLock.lockKey(name)
         try {
-            val kv = getKv()
+            val kv = getStore().first
             val entry = kv.get(key)
             if (entry == null) return@withContext false
             kv.delete(key)
