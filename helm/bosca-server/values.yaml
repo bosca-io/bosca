@@ -83,6 +83,11 @@ startupProbe:
 # Application config template values — rendered into application.yaml ConfigMap.
 # These replace the [PLACEHOLDER] tokens from the CLI's template.
 appConfig:
+  # Use the same version endpoint template in server and runner for ServingModel provisioning.
+  # Environment defaults also support deployments that supply these through envFromConfigMaps.
+  tfServing:
+    url: "$RECOMMENDATIONS_TF_SERVING_URL:http://tf-serving:8501"
+    contextModelUrlTemplate: "${RECOMMENDATIONS_CONTEXT_MODEL_URL_TEMPLATE:}"
   domain: ""
   realm: ""
   # Additional host-only authentication cookie prefixes. `_bat` remains the default
@@ -112,7 +117,7 @@ appConfig:
   databaseUrl: ""
   databaseMaxConnections: 500
   # Fully qualified Trino events table used by experimentation and recommendation analytics queries.
-  # Override per deployment when its Iceberg namespace differs (for example warehouse.passion.events).
+  # Override per deployment when its Iceberg namespace differs (for example warehouse.custom.events).
   experimentationEventsTable: warehouse.bosca.events
   analyticsProcessorEnabled: false
   natsEnabled: true

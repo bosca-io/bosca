@@ -1,0 +1,43 @@
+suite: recommendation model serving configuration
+templates:
+  - templates/configmap-appconfig.yaml
+set:
+  global.domain: example.com
+  appConfig.domain: example.com
+tests:
+  - it: keeps the environment defaults in the chart-mounted application configuration
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'recommendations:\s*\n\s*tfServing:'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'contextModelUrlTemplate:.*\$\{RECOMMENDATIONS_CONTEXT_MODEL_URL_TEMPLATE:\}'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'url:.*\$RECOMMENDATIONS_TF_SERVING_URL:http://tf-serving:8501'
+  - it: passes a version endpoint template from Helm values without losing the other serving defaults
+    set:
+      appConfig.tfServing.contextModelUrlTemplate: http://tf-serving-model-{version}.models.svc:8501
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'contextModelUrlTemplate:.*http://tf-serving-model-\{version\}.models.svc:8501'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'url:.*\$RECOMMENDATIONS_TF_SERVING_URL:http://tf-serving:8501'
+  - it: supports the shared endpoint and other model settings through the same values map
+    set:
+      appConfig.tfServing.url: http://shared-models:8501
+      appConfig.tfServing.contextModelUrlTemplate: ""
+      appConfig.tfServing.timeoutSeconds: 20
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'url: http://shared-models:8501'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'contextModelUrlTemplate: ""'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'timeoutSeconds: 20'

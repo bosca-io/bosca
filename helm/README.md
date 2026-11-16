@@ -54,6 +54,51 @@ Plan capacity for the active models plus `provisioning.maxCandidates` additional
 this capacity is occupied by another candidate or a draining version. Failed discovery preserves loaded
 instances. See the [controller lifecycle](../kubernetes/README.md#controller-managed-serving-models) for details.
 
+Resource and scheduling overrides use the ordinary chart values. For `bosca-services`, put them under
+`tf-serving`; for a standalone `tf-serving` release, omit that outer key:
+
+```yaml
+tf-serving:
+  provisioning:
+    enabled: true
+    maxCandidates: 1
+  resources:
+    requests:
+      memory: 6Gi
+    limits:
+      memory: 6Gi
+  loader:
+    resources:
+      requests:
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+```
+
+These resources apply to each model Pod. `loader.resources` controls the download init container;
+`nodeSelector`, `affinity`, `tolerations`, `livenessProbe`, and `readinessProbe` pass into the same native
+pod template. A profile change affects newly created ServingModels. Existing instances retain their
+captured settings, so a Helm resource change does not restart the active model. For an existing polling
+installation, follow the separate-release migration above before enabling provisioning on its release.
+
+Configure the version endpoint in both application charts through Helm values. This example uses
+namespace `bosca` and the default `tf-serving-model-` Service prefix:
+
+```yaml
+bosca-server:
+  appConfig:
+    tfServing:
+      contextModelUrlTemplate: "http://tf-serving-model-{version}.bosca.svc:8501"
+bosca-runner:
+  appConfig:
+    tfServing:
+      contextModelUrlTemplate: "http://tf-serving-model-{version}.bosca.svc:8501"
+```
+
+The application charts retain the `RECOMMENDATIONS_CONTEXT_MODEL_URL_TEMPLATE` and
+`RECOMMENDATIONS_TF_SERVING_URL` environment defaults when these Helm fields are not overridden.
+`appConfig.tfServing` also accepts the other serving settings, such as `url` and `timeoutSeconds`.
+
 ## Container memory and heap sizing
 
 Set memory requests, memory limits and `maxRAMPercentage` in your deployment's

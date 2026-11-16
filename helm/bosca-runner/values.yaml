@@ -35,6 +35,11 @@ workers:
         memory: 2Gi
 
 appConfig:
+  # Use the same version endpoint template in server and runner for ServingModel provisioning.
+  # Environment defaults also support deployments that supply these through envFromConfigMaps.
+  tfServing:
+    url: "$RECOMMENDATIONS_TF_SERVING_URL:http://tf-serving:8501"
+    contextModelUrlTemplate: "${RECOMMENDATIONS_CONTEXT_MODEL_URL_TEMPLATE:}"
   # Includes FUMS enqueueing in this application's Analytics transform list.
   fumsTransformEnabled: false
   domain: ""

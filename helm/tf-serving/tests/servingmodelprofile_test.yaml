@@ -41,6 +41,39 @@ tests:
       - equal:
           path: spec.podTemplate.spec.containers[0].command[0]
           value: tensorflow_model_server
+  - it: passes resource and startup overrides to the serving and download containers
+    template: servingmodelprofile.yaml
+    set:
+      provisioning.enabled: true
+      provisioning.maxCandidates: 2
+      provisioning.startupTimeoutSeconds: 2400
+      resources.requests.memory: 6Gi
+      resources.limits.memory: 6Gi
+      loader.resources.requests.memory: 128Mi
+      loader.resources.limits.memory: 512Mi
+      livenessProbe.failureThreshold: 60
+    asserts:
+      - equal:
+          path: spec.maxCandidates
+          value: 2
+      - equal:
+          path: spec.startupTimeoutSeconds
+          value: 2400
+      - equal:
+          path: spec.podTemplate.spec.containers[0].resources.requests.memory
+          value: 6Gi
+      - equal:
+          path: spec.podTemplate.spec.containers[0].resources.limits.memory
+          value: 6Gi
+      - equal:
+          path: spec.podTemplate.spec.initContainers[0].resources.requests.memory
+          value: 128Mi
+      - equal:
+          path: spec.podTemplate.spec.initContainers[0].resources.limits.memory
+          value: 512Mi
+      - equal:
+          path: spec.podTemplate.spec.containers[0].livenessProbe.failureThreshold
+          value: 60
   - it: does not create a deployment in controller mode
     template: deployment.yaml
     set:
