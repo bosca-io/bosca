@@ -1,18 +1,30 @@
 <script lang="ts" setup>
 import gql from 'graphql-tag'
 
+interface FileAsset {
+  id: string
+  name: string
+  contentType: string
+  attributes: Record<string, unknown>
+}
+
 const props = defineProps<{
-  onSelected: (_item: { id: string; name: string; contentType: string }) => void
+  onSelected: (_item: FileAsset) => void
   searchFilter?: string | null
+  allowYouTube?: boolean
 }>()
 
 const emit = defineEmits<{ close: [] }>()
 
-const { query: gqlQuery } = useGraphQL()
+const { query: gqlQuery, mutation: gqlMutation } = useGraphQL()
+const language = useLanguage()
+const toast = useToast()
 const searchTerm = ref('')
-const results = ref<Array<{ id: string; name: string; slug: string; contentType: string }>>([])
+const results = ref<FileAsset[]>([])
 const loading = ref(false)
 const searchInputRef = ref<HTMLInputElement>()
+const youtubeInput = ref('')
+const addingYouTube = ref(false)
 
 const searchGql = gql`
   query SearchFileAssets($query: String!, $filter: String!, $limit: Int!, $offset: Int!) {
@@ -28,11 +40,26 @@ const searchGql = gql`
           metadata {
             id
             name
-            slug
+            attributes
             content { type }
           }
         }
         estimatedHits
+      }
+    }
+  }
+`
+
+const addYouTubeGql = gql`
+  mutation AddYouTubeVideo($metadata: MetadataInput!, $setReady: Boolean) {
+    content {
+      metadata {
+        add(metadata: $metadata, setReady: $setReady) {
+          id
+          name
+          attributes
+          content { type }
+        }
       }
     }
   }
@@ -45,13 +72,15 @@ watch(searchTerm, () => {
   searchTimeout = setTimeout(() => doSearch(), 300)
 })
 
+onUnmounted(() => clearTimeout(searchTimeout))
+
 onMounted(() => {
   doSearch()
   nextTick(() => searchInputRef.value?.focus?.())
 })
 
 interface FileSearchDocument {
-  metadata: { id: string; name: string; slug: string; content: { type: string } | null } | null
+  metadata: { id: string; name: string; attributes: Record<string, unknown> | null; content: { type: string } | null } | null
 }
 
 interface FileSearchResult {
@@ -76,8 +105,8 @@ async function doSearch() {
       .map((m) => ({
         id: m.id,
         name: m.name,
-        slug: m.slug,
         contentType: m.content?.type || '',
+        attributes: m.attributes ?? {},
       }))
   } catch (e) {
     console.error('Asset search failed', e)
@@ -87,13 +116,71 @@ async function doSearch() {
   }
 }
 
-function onSelect(item: { id: string; name: string; contentType: string }) {
-  props.onSelected({ id: item.id, name: item.name, contentType: item.contentType })
+function onSelect(item: FileAsset) {
+  props.onSelected(item)
   emit('close')
 }
 
+function extractYouTubeId(value: string): string | null {
+  const input = value.trim()
+  if (/^[\w-]{11}$/.test(input)) return input
+  try {
+    const url = new URL(input.includes('://') ? input : `https://${input}`)
+    const host = url.hostname.replace(/^www\./, '')
+    const path = url.pathname.split('/').filter(Boolean)
+    let id: string | null | undefined
+    if (host === 'youtu.be') {
+      id = path[0]
+    } else if (['youtube.com', 'm.youtube.com', 'youtube-nocookie.com'].includes(host)) {
+      if (path[0] === 'watch') {
+        id = url.searchParams.get('v')
+      } else if (['embed', 'shorts', 'live'].includes(path[0] ?? '')) {
+        id = path[1]
+      }
+    }
+    return id && /^[\w-]{11}$/.test(id) ? id : null
+  } catch {
+    return null
+  }
+}
+
+async function onAddYouTube() {
+  if (!props.allowYouTube || addingYouTube.value) return
+  const id = extractYouTubeId(youtubeInput.value)
+  if (!id) {
+    toast.error('Enter a valid YouTube URL or ID')
+    return
+  }
+  addingYouTube.value = true
+  try {
+    const result = await gqlMutation<{
+      content: { metadata: { add: FileSearchDocument['metadata'] } }
+    }>(addYouTubeGql, {
+      metadata: {
+        name: `YouTube Video (${id})`,
+        contentType: 'bosca/x-youtube-video',
+        languageTag: language.current.value?.tag || 'en',
+        attributes: { type: 'YouTube Video', 'youtube.id': id },
+      },
+      setReady: true,
+    })
+    const item = result?.content?.metadata?.add
+    if (!item) throw new Error('Unable to create YouTube metadata')
+    onSelect({
+      id: item.id,
+      name: item.name,
+      contentType: item.content?.type || '',
+      attributes: item.attributes ?? {},
+    })
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Unable to create YouTube metadata')
+  } finally {
+    addingYouTube.value = false
+  }
+}
+
 function assetIcon(contentType: string): string {
-  if (contentType.startsWith('video/')) return 'video'
+  if (contentType.startsWith('video/') || contentType === 'bosca/x-youtube-video') return 'video'
   if (contentType.startsWith('audio/')) return 'audio'
   if (contentType.startsWith('image/')) return 'image'
   return 'file'
@@ -117,6 +204,23 @@ function assetIcon(contentType: string): string {
           icon="search"
         />
       </div>
+
+      <form v-if="allowYouTube" class="youtube-form" @submit.prevent="onAddYouTube">
+        <TextInput
+          v-model="youtubeInput"
+          label="YouTube URL or ID"
+          placeholder="YouTube URL or ID"
+          :disabled="addingYouTube"
+        />
+        <Button
+          type="submit"
+          primary
+          :icon="addingYouTube ? 'spinner' : 'plus'"
+          :disabled="addingYouTube || !youtubeInput.trim()"
+        >
+          {{ addingYouTube ? 'Adding…' : 'Add YouTube Video' }}
+        </Button>
+      </form>
 
       <div v-if="loading" class="selector-loading">Searching…</div>
 
@@ -148,6 +252,18 @@ function assetIcon(contentType: string): string {
 }
 
 .search-bar { padding: 0; }
+
+.youtube-form {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.youtube-form :deep(.text-input-root) {
+  flex: 1;
+  min-width: 200px;
+}
 
 .selector-loading,
 .selector-empty {
