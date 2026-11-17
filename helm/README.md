@@ -209,7 +209,7 @@ bosca-server:
 ```
 
 `redisHost` names a Service in the release namespace. A Redis connection is rendered
-when any backend selects Redis. Backend defaults remain NATS; an empty
+when any backend selects Redis. Distributed locks default to Redis; the other backend defaults remain NATS; an empty
 `liveSessionsType` follows `pubsubType`. `natsEnabled` controls the NATS connection,
 monitoring configuration and token environment variable. Domain implementations
 that directly require NATS still need a NATS connection; these options only select
@@ -237,8 +237,11 @@ the object-store endpoint. Its retention only covers the archive prefix; the
 latest restore snapshot remains separate. All backup resources are rendered by
 the chart, without a post-renderer.
 
-When changing an existing deployment's lock backend, stop all consumers of the
-shared locks before starting them with the new configuration. NATS and Redis
+NATS distributed locking has been removed. Set `appConfig.distributedLockType: redis` in every
+application chart and configure the same Redis endpoint/database for services sharing locks.
+Remove any `DISTRIBUTED_LOCK_TYPE=nats` environment overrides. PostgreSQL locking is not implemented.
+When upgrading a deployment that used NATS locks, stop all consumers of the shared locks before
+starting them with the new images and configuration. NATS and Redis
 locks do not coordinate with each other during a rolling transition.
 
 ## Pipeline encryption key

@@ -260,6 +260,12 @@ class InstallerTest(unittest.TestCase):
                 self.assertEqual(git, "git" in services)
                 self.assertEqual(registry, "artifacts" in services)
                 self.assertEqual(ui, "atlas-ui" in services)
+                self.assertEqual("valkey/valkey:8-alpine", services["redis"]["image"])
+                self.assertEqual("service_healthy", services["server"]["depends_on"]["redis"]["condition"])
+                for config_name in ("server", "atlas", "git", "artifacts"):
+                    config = (directory / f"config/{config_name}.yaml").read_text()
+                    self.assertIn("distributedLock:\n  type: redis", config)
+                    self.assertIn("redis:\n  host: redis\n  port: 6379", config)
                 postgres_command = services["postgres"]["command"]
                 connection_limit = int(next(value.split("=", 1)[1] for value in postgres_command
                                             if value.startswith("max_connections=")))
@@ -324,7 +330,7 @@ class InstallerTest(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, result.stderr)
         services = json.loads(result.stdout)["services"]
-        self.assertEqual({"postgres", "nats", "meilisearch", "server", "atlas", "studio", "bml-message-server"}, set(services))
+        self.assertEqual({"postgres", "nats", "redis", "meilisearch", "server", "atlas", "studio", "bml-message-server"}, set(services))
         self.assertEqual("https://code.example.com", services["atlas"]["environment"]["GIT_URL"])
         self.assertEqual("https://atlas.example.com/oauth2/google/callback", services["atlas"]["environment"]["OAUTH2_GOOGLE_REDIRECT"])
         self.assertEqual("https://studio.example.com", services["server"]["environment"]["APP_URL"])
@@ -336,7 +342,7 @@ class InstallerTest(unittest.TestCase):
         self.assertEqual("18091", services["atlas"]["ports"][0]["published"])
         self.assertEqual("18093", services["atlas"]["ports"][1]["published"])
         self.assertEqual(8095, services["atlas"]["ports"][1]["target"])
-        self.assertEqual(2880 * 1024 * 1024, sum(int(service["mem_limit"]) for service in services.values()))
+        self.assertEqual(3008 * 1024 * 1024, sum(int(service["mem_limit"]) for service in services.values()))
         self.assertEqual('"' + services["server"]["environment"]["NATS_TOKEN"] + '"', services["nats"]["environment"]["NATS_TOKEN"])
         for service in services.values():
             for port in service.get("ports", []):

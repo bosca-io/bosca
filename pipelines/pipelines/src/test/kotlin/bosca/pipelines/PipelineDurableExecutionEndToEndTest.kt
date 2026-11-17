@@ -2,6 +2,7 @@
 
 package bosca.pipelines
 
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionPool
@@ -13,7 +14,6 @@ import bosca.cache.CacheManager
 import bosca.cache.RequestCacheSerializer
 import bosca.di.ProviderRegistry
 import bosca.di.provides
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.graphql.Batch
 import bosca.pipelines.configuration.PipelinesRuntimeConfiguration
 import bosca.pipelines.model.Pipeline
@@ -96,6 +96,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import bosca.test.resources.SharedPostgreSQLContainer
+import bosca.test.resources.SharedValkeyContainer
 import bosca.test.resources.SharedNatsContainer
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -364,12 +365,14 @@ class PipelineDurableExecutionEndToEndTest {
     fun `scheduled run leaves suspended state when backing work terminally fails`() = scheduledBackingJobs(fail = true)
 
     private fun scheduledBackingJobs(fail: Boolean) {
+        val lockRedis = SharedValkeyContainer()
         val nats = SharedNatsContainer()
         nats.start()
+        lockRedis.start()
         try {
             val natsPool = nats.newConnectionPool(1)
             val queue = NatsJobQueueFactory(
-                natsPool, json, NatsDistributedLockFactory(natsPool), null, emptyList(), processExpiredJobs = false,
+                natsPool, json, RedisDistributedLockFactory(lockRedis.newConnectionPool()), null, emptyList(), processExpiredJobs = false,
             ).create("scheduled-pipeline-${UUID.random()}")
             RegisterJobsConfiguration()
             provides<CacheManager> { mockk(relaxed = true) }
@@ -434,6 +437,7 @@ class PipelineDurableExecutionEndToEndTest {
             assertTrue(withResult { service.listActive(0, 50) }.none { it.id == run.id })
             assertEquals(expected, withResult { runLogRepository.listForPipeline(pipelineId, 0, 10) }.single().outcome)
         } finally {
+            lockRedis.stop()
             nats.stop()
         }
     }

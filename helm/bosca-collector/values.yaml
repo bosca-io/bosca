@@ -70,9 +70,9 @@ appConfig:
   counterType: nats
   # Empty follows pubsubType.
   liveSessionsType: ""
-  # Distributed cache and lock backends: nats or redis.
+  # Distributed cache backend: nats or redis. Distributed locks use redis.
   cacheType: nats
-  distributedLockType: nats
+  distributedLockType: redis
   # Redis Service in the release namespace, used when either backend is redis.
   redisHost: redis
   redisPort: 6379

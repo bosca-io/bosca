@@ -86,7 +86,7 @@ pubsub:
   type: nats
 
 distributedLock:
-  type: nats
+  type: redis
 
 scheduler:
   enabled: true

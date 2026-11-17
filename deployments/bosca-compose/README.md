@@ -2,7 +2,7 @@
 
 A portable installer for a small Bosca Atlas installation. It includes the
 API and its background workers, Atlas Git/artifacts server and UI, Studio, BML message templates,
-PostgreSQL with pgvector, NATS, and Meilisearch. Recommendations, embeddings, and
+PostgreSQL with pgvector, NATS, Valkey for distributed locks, and Meilisearch. Recommendations, embeddings, and
 analytics processing are disabled. Nginx and Certbot run on the host.
 
 The installer copies the package, generates private credentials, prepares storage
@@ -24,7 +24,7 @@ services and changes no host nginx configuration.
   `git.example.com` and `artifacts.example.com`.
 - Host nginx 1.25.1 or newer with HTTP/2 support and Certbot for public HTTPS.
 
-The default container limits total 2880 MiB; separate services add to that total.
+The default container limits total 3008 MiB; separate services add to that total.
 This is a small-server baseline, not a measured
 memory guarantee for arbitrary repositories or concurrent pushes. Leave memory for
 Docker, nginx, and the operating system, and test your workload before importing it.
@@ -142,6 +142,7 @@ Image registry and versions are configurable in `.env`:
 | `STUDIO_VERSION` | `6.28.4` |
 | `BML_MESSAGE_VERSION` | `6.23.0` |
 | `POSTGRES_IMAGE` | `pgvector/pgvector:pg18` |
+| `REDIS_IMAGE` | `valkey/valkey:8-alpine` |
 | `NATS_IMAGE` | `nats:2.12.15-alpine` |
 | `MEILISEARCH_IMAGE` | `getmeili/meilisearch:v1.39.0` |
 
@@ -267,6 +268,7 @@ in this package.
 | Meilisearch | 256 MiB | 64 MB indexing, one thread |
 | Studio | 256 MiB | 160 MiB Node old space |
 | BML message server | 256 MiB | 128 MiB native heap |
+| Valkey | 128 MiB | Distributed locks; no persistence |
 | NATS | 128 MiB | 64 MB JetStream memory store |
 
 ## Data, updates, and removal
@@ -315,3 +317,7 @@ The archive is reproducible and includes only the public files listed in
 `package-files.txt`. The CLI bundles that same list. It excludes `.env`, `.docker`,
 `data`, generated Compose and nginx files,
 installation metadata, test files, and output archives.
+
+Distributed locks use the `redis` service. When upgrading an installation that used NATS locks,
+stop all Bosca application services together, install matching images and updated configuration,
+then start the stack. NATS and Redis lock holders do not coordinate during a rolling transition.

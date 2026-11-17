@@ -67,7 +67,7 @@ appConfig:
   # Empty follows pubsubType.
   liveSessionsType: ""
   cacheType: nats
-  distributedLockType: nats
+  distributedLockType: redis
   redisHost: redis
   redisPort: 6379
   meilisearchHost: meilisearch

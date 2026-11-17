@@ -58,6 +58,17 @@ services:
       retries: 12
       start_period: 30s
 
+  redis:
+    <<: *service
+    image: ${REDIS_IMAGE:-valkey/valkey:8-alpine}
+    mem_limit: 128m
+    command: [valkey-server, --save, "", --appendonly, "no"]
+    healthcheck:
+      test: [CMD, valkey-cli, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   nats:
     <<: *service
     # Bosca's distributed counters require NATS 2.12 or newer.
@@ -141,6 +152,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       nats: {condition: service_healthy}
+      redis: {condition: service_healthy}
       meilisearch: {condition: service_healthy}
       bml-message-server: {condition: service_healthy}
     healthcheck:
