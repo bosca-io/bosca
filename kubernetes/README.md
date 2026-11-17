@@ -125,7 +125,9 @@ The CRD and profiles are installed by the
 `ServingModelController` runs a separate reconciliation loop from Kubernetes Job dispatch. It discovers
 exported recommendation generations through Bosca's artifact-authorized GraphQL API. A namespace-scoped
 `ServingModelProfile` supplies the source URL and token Secret, native pod template, candidate capacity,
-and drain interval. The `tf-serving` chart renders this profile when `provisioning.enabled` is true.
+and drain interval. The `tf-serving` chart renders this profile and its ServiceAccount only when
+`provisioning.enabled` is true; otherwise it renders no resources. In the `bosca-services` umbrella chart,
+use `tf-serving.provisioning.enabled`. TF Serving Pods are provisioned only by the controller.
 
 The controller creates a `ServingModel` for the active generation and each selected candidate. Each
 instance captures its exact artifact versions and pod settings, and owns a Pod, static model ConfigMap,

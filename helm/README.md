@@ -21,22 +21,28 @@ constraints that still select the former independent `0.1.x` chart releases.
 
 ## Controller-managed TensorFlow Serving
 
-Enable `provisioning.enabled` in the `tf-serving` chart to install a `ServingModelProfile`. The Kubernetes
-controller discovers exported generations and maintains separate ServingModel resources, Pods and
-version-specific Services. The chart supplies resource, scheduling, security, artifact and health-check
-settings through the profile's native pod template. This mode creates no polling Deployment or shared Service.
+TF Serving runs only through the Kubernetes controller. With `provisioning.enabled: false` (the default),
+the standalone chart creates no resources. With it enabled, the chart creates a `ServingModelProfile`
+and its ServiceAccount. The controller discovers exported generations and maintains separate
+ServingModel resources, Pods and version-specific Services. The chart supplies resource, scheduling,
+security, artifact and health-check settings through the profile's native pod template.
+
+In `bosca-services`, use `tf-serving.provisioning.enabled` to enable this chart. This is the only switch;
+the former `tf-serving.enabled` value no longer controls it. There is no shared TF Serving Deployment,
+polling sidecar, Service or PVC. Keep the controller running to provision and reconcile model instances.
 
 Publish matched controller, model-loader, server and runner images from this revision before enabling
-this mode. Earlier loader images do not support init downloads, and earlier controller images do not
+provisioning. Earlier loader images do not support init downloads, and earlier controller images do not
 reconcile ServingModels. Deployment-owned values must select the updated images.
 
-For migration from a running polling deployment:
+When upgrading an existing release, the new chart removes its old TF Serving Deployment and shared
+Service, including when provisioning is disabled. To move traffic before removing that deployment:
 
 1. Install the new controller image and both ServingModel CRDs. When upgrading an existing Helm release,
    apply the new CRD files from `helm/bosca-kubernetes-controller/crds/` explicitly; Helm does not upgrade CRDs.
 2. Install the profile as a separate `tf-serving` chart release with a distinct `fullnameOverride`,
-   `provisioning.enabled: true`, and deployment-owned resources and credentials. Keep persistence disabled:
-   every version gets its own per-Pod storage. The profile defaults to one candidate and a 120-second drain.
+   `provisioning.enabled: true`, and deployment-owned resources and credentials. Every version gets its own
+   per-Pod storage; shared PVCs are unsupported. The profile defaults to one candidate and a 120-second drain.
    Configure `loader.secrets.boscaToken` with administrator or matching artifact push permissions for terminal
    serving claims and failure reports; the artifacts pull token remains read-only. `provisioning.failureGraceSeconds` defaults
    to 600 seconds after an observed candidate failure. Use the same distributed lock backend on controller
@@ -46,9 +52,10 @@ For migration from a running polling deployment:
 4. Configure `RECOMMENDATIONS_CONTEXT_MODEL_URL_TEMPLATE` on both server and runner to match the profile,
    for example `http://tf-serving-model-{version}.models.svc:8501` for namespace `models` and the default prefix.
    Roll out these applications after the active version's endpoint is available.
-5. Retire the old polling deployment after its consumers have moved. Keep it if global legacy models still
-   use its shared endpoint. Subsequent context activations validate their own candidate endpoint and switch
-   the active version without restarting another version's Pod.
+5. After all consumers have moved, upgrade the original release to remove its old TF Serving resources.
+   If that release contains only TF Serving, it can instead be uninstalled. Keep the new profile release.
+   Subsequent context activations validate their own candidate endpoint and switch the active version
+   without restarting another version's Pod.
 
 Plan capacity for the active models plus `provisioning.maxCandidates` additional Pods. Candidates wait if
 this capacity is occupied by another candidate or a draining version. Failed discovery preserves loaded
@@ -79,7 +86,7 @@ These resources apply to each model Pod. `loader.resources` controls the downloa
 `nodeSelector`, `affinity`, `tolerations`, `livenessProbe`, and `readinessProbe` pass into the same native
 pod template. A profile change affects newly created ServingModels. Existing instances retain their
 captured settings, so a Helm resource change does not restart the active model. For an existing polling
-installation, follow the separate-release migration above before enabling provisioning on its release.
+installation, follow the separate-release migration above before upgrading its release.
 
 Configure the version endpoint in both application charts through Helm values. This example uses
 namespace `bosca` and the default `tf-serving-model-` Service prefix:
@@ -384,7 +391,7 @@ dependency. The same version identifies the HTTP Helm package and OCI tag;
 checked-in chart versions are only development defaults.
 
 Bosca application `appVersion` defaults and explicit Bosca image tags (including
-the model loader sidecar) also use the release tag. Bosca images are identified
+the model loader init container) also use the release tag. Bosca images are identified
 by their default `image.registry: ghcr.io/bosca-io/bosca`. Publish the image
 releases for that tag before deploying the charts. Deployment values can still
 override image tags. Upstream images such as TensorFlow Serving and Text

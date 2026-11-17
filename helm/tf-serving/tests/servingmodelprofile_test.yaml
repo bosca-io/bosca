@@ -1,9 +1,7 @@
 suite: Controller-managed serving models
 templates:
   - servingmodelprofile.yaml
-  - deployment.yaml
-  - configmap.yaml
-  - service.yaml
+  - serviceaccount.yaml
 tests:
   - it: renders a native ServingModelProfile with init downloads and no polling sidecar
     template: servingmodelprofile.yaml
@@ -41,6 +39,15 @@ tests:
       - equal:
           path: spec.podTemplate.spec.containers[0].command[0]
           value: tensorflow_model_server
+      - equal:
+          path: spec.podTemplate.spec.containers[0].livenessProbe.periodSeconds
+          value: 20
+      - equal:
+          path: spec.podTemplate.spec.containers[0].livenessProbe.failureThreshold
+          value: 30
+      - equal:
+          path: spec.podTemplate.spec.initContainers[0].image
+          value: ghcr.io/bosca-io/bosca/recommendation-model-loader:5.12.15
   - it: passes resource and startup overrides to the serving and download containers
     template: servingmodelprofile.yaml
     set:
@@ -74,20 +81,57 @@ tests:
       - equal:
           path: spec.podTemplate.spec.containers[0].livenessProbe.failureThreshold
           value: 60
-  - it: does not create a deployment in controller mode
-    template: deployment.yaml
+  - it: renders nothing by default
+    asserts:
+      - template: servingmodelprofile.yaml
+        hasDocuments:
+          count: 0
+      - template: serviceaccount.yaml
+        hasDocuments:
+          count: 0
+  - it: renders nothing when provisioning is explicitly disabled
+    set:
+      provisioning.enabled: false
+    asserts:
+      - template: servingmodelprofile.yaml
+        hasDocuments:
+          count: 0
+      - template: serviceaccount.yaml
+        hasDocuments:
+          count: 0
+  - it: creates a service account only for an enabled profile
+    template: serviceaccount.yaml
     set:
       provisioning.enabled: true
     asserts:
-      - hasDocuments:
-          count: 0
-  - it: does not create a shared service in controller mode
-    template: service.yaml
+      - isKind:
+          of: ServiceAccount
+  - it: permits an existing service account
+    template: serviceaccount.yaml
     set:
       provisioning.enabled: true
+      serviceAccount.create: false
+      serviceAccount.name: model-serving
     asserts:
       - hasDocuments:
           count: 0
+  - it: passes probe and security overrides directly into the pod template
+    template: servingmodelprofile.yaml
+    set:
+      provisioning.enabled: true
+      livenessProbe.failureThreshold: 45
+      readinessProbe.timeoutSeconds: 5
+      securityContext.runAsNonRoot: true
+    asserts:
+      - equal:
+          path: spec.podTemplate.spec.containers[0].livenessProbe.failureThreshold
+          value: 45
+      - equal:
+          path: spec.podTemplate.spec.containers[0].readinessProbe.timeoutSeconds
+          value: 5
+      - equal:
+          path: spec.podTemplate.spec.containers[0].securityContext.runAsNonRoot
+          value: true
   - it: rejects a shared persistent claim across model pods
     template: servingmodelprofile.yaml
     set:

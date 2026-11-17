@@ -1,6 +1,6 @@
 # Recommendation model loader
 
-The loader publishes one exact version per model to `.served-versions`. Global model pins take
+In local Compose installations, the polling loader publishes one exact version per model to `.served-versions`. Global model pins take
 precedence over the newest artifact. If multiple global pins or experiment versions are requested,
 the highest selected version is served and a warning identifies the conflicting selection.
 
@@ -33,7 +33,7 @@ Artifact requests use `ML_LOADER_CONNECT_TIMEOUT_SECONDS` (default 30) and
 so a large download can continue while it makes progress. Set these through `loader.extraEnv` in the
 chart. A timeout fails the init attempt, closes the response, and removes the partial archive.
 
-The TF Serving chart's `provisioning.enabled` mode supplies an init-container template to the
-ServingModel controller. Each ServingModel starts TF Serving with a static exact-version config after
+The TF Serving Helm chart supplies an init-container template to the ServingModel controller when
+`provisioning.enabled` is true. When disabled, the chart creates no resources. Each ServingModel starts TF Serving with a static exact-version config after
 all downloads finish. There is no polling loader sidecar. See the
 [chart deployment instructions](../../../helm/README.md#controller-managed-tensorflow-serving).

@@ -1,3 +1,0 @@
-{{- if not .Values.provisioning.enabled }}
-{{ include "tf-serving.deployment" . }}
-{{- end }}
