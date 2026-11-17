@@ -11,6 +11,7 @@ import bosca.server.config.ApplicationConfig
 import bosca.server.netty.NettyServerEngine
 import bosca.test.resources.SharedNatsContainer
 import bosca.test.resources.SharedPostgreSQLContainer
+import bosca.test.resources.SharedValkeyContainer
 import java.io.File
 import java.net.ServerSocket
 import java.net.URI
@@ -30,7 +31,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 
-/** Exercises the backend through a separate HTTP UI client with isolated PostgreSQL and NATS. */
+/** Exercises the backend through a separate HTTP UI client with isolated PostgreSQL, NATS, and Redis. */
 class GitServerIntegrationTest {
     private fun JsonElement.at(vararg fields: String): JsonElement =
         fields.fold(this) { value, field -> value.jsonObject.getValue(field) }
@@ -83,6 +84,7 @@ class GitServerIntegrationTest {
     private fun verify(cookiePrefix: String) {
         val postgres = SharedPostgreSQLContainer().withDatabaseName("git_http_ui")
         val nats = SharedNatsContainer()
+        val redis = SharedValkeyContainer()
         val directory = kotlin.io.path.createTempDirectory("git-http-ui").toFile()
         val storageDirectory = File(directory, "storage")
         var process: Process? = null
@@ -107,6 +109,7 @@ class GitServerIntegrationTest {
             }
             postgres.start()
             nats.start()
+            redis.start()
             val port = ServerSocket(0).use { it.localPort }
             apiPort = port
             val apiOrigin = "http://localhost:$port"
@@ -169,6 +172,11 @@ class GitServerIntegrationTest {
                                     "NATS_USERNAME" to nats.username,
                                     "NATS_PASSWORD" to nats.password,
                                     "NATS_TOKEN" to "",
+                                    "DISTRIBUTED_LOCK_TYPE" to "redis",
+                                    "REDIS_HOST" to redis.host,
+                                    "REDIS_PORT" to redis.firstMappedPort.toString(),
+                                    "REDIS_DATABASE" to redis.database.toString(),
+                                    "REDIS_NAMESPACE" to redis.namespace,
                                     "APP_URL" to origin,
                                     "GIT_URL" to apiOrigin,
                                     "GIT_UI_URL" to origin,
@@ -1372,7 +1380,11 @@ class GitServerIntegrationTest {
                     if (artifacts != null && uiLog.isFile) uiLog.copyTo(File(artifacts, "ui.log"), overwrite = true)
                 } finally {
                     try {
-                        nats.stop()
+                        try {
+                            redis.stop()
+                        } finally {
+                            nats.stop()
+                        }
                     } finally {
                         try {
                             postgres.stop()
