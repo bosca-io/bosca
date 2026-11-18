@@ -6,7 +6,7 @@ import bosca.db.ConnectionPool
 import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provides
-import bosca.lock.nats.NatsDistributedLockFactory
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.pubsub.Message
 import bosca.pubsub.PubSubService
 import bosca.scripting.configuration.JobQueueNames
@@ -45,6 +45,7 @@ import bosca.sharedqueue.jobs.listeners.NotifyJobStatusListener
 import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
 import bosca.storage.service.ObjectStorageService
 import bosca.test.resources.SharedNatsContainer
+import bosca.test.resources.SharedValkeyContainer
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -103,6 +104,7 @@ class RemoteScriptAuthorityIntegrationTest {
     private val notifications = MutableSharedFlow<JobStatusNotification>()
     private val objects = mutableMapOf<String, String>()
     private lateinit var container: SharedNatsContainer
+    private lateinit var lockRedis: SharedValkeyContainer
     private lateinit var queue: JobQueue
     private lateinit var remote: RemoteScriptExecutionServiceImpl
     private lateinit var executor: RemoteScriptExecutionJobExecutor
@@ -113,12 +115,14 @@ class RemoteScriptAuthorityIntegrationTest {
         ProviderRegistry.clear()
         container = SharedNatsContainer().withExposedPorts(4222).withCommand("-js").withReuse(true)
         container.start()
+        lockRedis = SharedValkeyContainer()
+        lockRedis.start()
         val pool = container.newConnectionPool(1)
         provides<CacheManager> { mockk(relaxed = true) }
         provides<RequestCacheSerializer> { mockk(relaxed = true) }
         provides<ConnectionPool> { mockk(relaxed = true) }
         provides { json }
-        queue = NatsJobQueueFactory(pool, json, NatsDistributedLockFactory(pool), null, emptyList(), processExpiredJobs = false)
+        queue = NatsJobQueueFactory(pool, json, RedisDistributedLockFactory(lockRedis.newConnectionPool()), null, emptyList(), processExpiredJobs = false)
             .create("script-auth-${UUID.random()}")
         provides<JobQueue>(name = JobQueueNames.scriptingJobQueue) { queue }
         provides { NotifyJobStatusListener(pubsub) }
@@ -152,6 +156,7 @@ class RemoteScriptAuthorityIntegrationTest {
     fun teardown() {
         ProviderRegistry.clear()
         if (::container.isInitialized) container.stop()
+        if (::lockRedis.isInitialized) lockRedis.stop()
     }
 
     private fun caller(scopes: List<String>? = listOf("scripts:execute")) = object : AuthenticationContext(null, null) {
