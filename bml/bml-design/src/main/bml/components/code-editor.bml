@@ -1,0 +1,36 @@
+<component tag="code-editor">
+  <prop name="name" type="String" required />
+  <prop name="value" type="String" default="" />
+  <prop name="language" type="String" default="" />
+  <prop name="path" type="String" default="" />
+  <prop name="line" type="Int" default="0" />
+  <prop name="wrapped" type="Boolean" default="true" />
+  <prop name="bare" type="Boolean" default="false" />
+  <prop name="fill" type="Boolean" default="false" />
+  <prop name="label" type="String" default="Code editor" />
+  <prop name="readOnly" type="Boolean" default="false" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <prop name="preserveKey" type="String" default="" />
+  <prop name="exitFocus" type="String" default="" />
+  <div :class='"code-input" + (if (bare) " bare-code-input" else "") + (if (fill) " fill-code-input" else "")' data-bml-code-editor :data-name="name" :data-value="value"
+       :data-language="language" :data-path="path" :data-line="line" :data-wrapped="wrapped" :data-label="label" :data-readonly="readOnly" :data-disabled="disabled"
+       :data-bml-preserve="preserveKey" :data-exit-focus="exitFocus" {...attrs}>
+    <textarea ref="value" :name="name" :aria-label="label" :readonly="readOnly" :disabled="disabled" spellcheck="false">{ value }</textarea>
+    <div ref="editor" class="editor-surface" />
+  </div>
+  <style scoped>
+    .code-input { min-width: 0; overflow: hidden; border: 1px solid var(--control-border, var(--line)); border-radius: var(--r-md); }
+    .code-input[hidden] { display: none; }
+    .editor-surface { height: var(--code-height, 300px); min-width: 0; }
+    .bare-code-input { border: 0; border-radius: 0; }
+    .fill-code-input { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+    .fill-code-input > .editor-surface { flex: 1; height: auto; min-height: 0; }
+    .editor-surface:empty { display: none; }
+    textarea { box-sizing: border-box; width: 100%; min-height: 240px; margin: 0; padding: 12px; border: 0; background: var(--bg-1); color: var(--fg-1); font: 13px/1.7 var(--font-mono); }
+    textarea[hidden] { display: none; }
+  </style>
+  <script client scoped>
+    import { mountCodeEditor } from "@client/helpers/code-editor";
+    mountCodeEditor(ctx);
+  </script>
+</component>

@@ -291,6 +291,19 @@ describe('BoscaAuth', () => {
   // -------------------------------------------------------------------------
 
   describe('signOut', () => {
+    it('clears an already-revoked session locally without another server call', async () => {
+      mockLogin.mockResolvedValueOnce(makeAuthResponse())
+      await auth.signInWithPassword('u', 'p')
+      const listener = vi.fn()
+      auth.on('signedOut', listener)
+      auth.clearSession()
+      expect(mockSignOut).not.toHaveBeenCalled()
+      expect(auth.token).toBeNull()
+      expect(auth.currentUser).toBeNull()
+      expect(auth.profiles).toEqual([])
+      expect(listener).toHaveBeenCalledOnce()
+    })
+
     it('calls the server signOut mutation with the current bearer token, then clears local state and emits event', async () => {
       mockLogin.mockResolvedValueOnce(makeAuthResponse())
       mockSignOut.mockResolvedValueOnce(undefined)
@@ -945,6 +958,7 @@ describe('BoscaAuth', () => {
       mockLogin.mockResolvedValueOnce(response)
 
       const result = await auth.signInWithPassword('u', 'p')
+      expect(result).toBe(response)
 
       expect(auth.profiles).toHaveLength(2)
       expect(auth.currentProfile?.id).toBe('pr-1')
@@ -1047,6 +1061,7 @@ describe('BoscaAuth', () => {
       })
 
       const result = await auth2.initialize(false)
+      expect(result).toBeNull()
 
       expect(mockGetPrincipal).not.toHaveBeenCalled()
       expect(mockGetProfiles).not.toHaveBeenCalled()
@@ -1061,6 +1076,7 @@ describe('BoscaAuth', () => {
       mockGetProfiles.mockRejectedValueOnce(new Error('Profile service down'))
 
       const result = await auth.signInWithPassword('u', 'p')
+      expect(result).toBe(response)
 
       // User should be authenticated even though profiles failed
       expect(auth.currentUser).not.toBeNull()

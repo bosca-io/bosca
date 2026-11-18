@@ -2,6 +2,7 @@
 
 package bosca.artifacts.service
 
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.artifacts.github.GitHubPublicationException
 import bosca.artifacts.github.GitHubReleaseClient
 import bosca.artifacts.github.GitHubReleaseTestServer
@@ -10,7 +11,6 @@ import bosca.artifacts.repository.*
 import bosca.db.*
 import bosca.di.*
 import bosca.lock.DistributedLockFactory
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.pubsub.PubSubService
 import bosca.pipelines.service.PipelineSecretService
 import bosca.pipelines.service.PipelineSecretServiceImpl
@@ -70,6 +70,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
+import bosca.test.resources.SharedValkeyContainer
 import bosca.test.resources.SharedNatsContainer
 import bosca.test.resources.SharedPostgreSQLContainer
 import java.io.ByteArrayInputStream
@@ -82,6 +83,7 @@ import mockwebserver3.RecordedRequest
 /** Production migrations, generated JDBC/DI and pipeline action, encrypted credentials and HTTP adapter. */
 class ArtifactPublicationIntegrationTest {
     private lateinit var postgres: SharedPostgreSQLContainer
+    private lateinit var lockRedis: SharedValkeyContainer
     private lateinit var nats: SharedNatsContainer
     private lateinit var pool: ConnectionPool
     private lateinit var remote: GitHubReleaseTestServer
@@ -111,6 +113,8 @@ class ArtifactPublicationIntegrationTest {
         ), key = "artifact-publication-test"))
         nats = SharedNatsContainer()
         nats.start()
+        lockRedis = SharedValkeyContainer()
+        lockRedis.start()
         val natsPool = nats.newConnectionPool(1)
         remote = GitHubReleaseTestServer()
         ProviderRegistry.register(NamespaceRepository::class, NamespaceRepositoryProvider(), true)
@@ -150,7 +154,7 @@ class ArtifactPublicationIntegrationTest {
         coEvery { storage.delete(any()) } coAnswers { objects.remove(firstArg<bosca.storage.service.ObjectPath>().toString()) }
         provides<ObjectStorageService>(singleton = true) { storage }
         provides<PubSubService>(singleton = true) { mockk(relaxed = true) }
-        val locks = NatsDistributedLockFactory(natsPool)
+        val locks = RedisDistributedLockFactory(lockRedis.newConnectionPool())
         provides<DistributedLockFactory>(singleton = true) { locks }
         provides<ArtifactPermissionEvaluator>(singleton = true) { mockk(relaxed = true) }
         provides<GitHubReleaseClient>(singleton = true) {
@@ -186,6 +190,7 @@ class ArtifactPublicationIntegrationTest {
         if (::remote.isInitialized) remote.close()
         if (::pool.isInitialized) pool.close()
         if (::postgres.isInitialized) postgres.stop()
+        if (::lockRedis.isInitialized) lockRedis.stop()
         if (::nats.isInitialized) nats.stop()
         ProviderRegistry.clear()
     }

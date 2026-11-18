@@ -18,6 +18,8 @@ import kotlin.time.Duration.Companion.milliseconds
  * [bosca.scripting.service.ScriptingGitPushListener] and
  * [bosca.analytics.service.AnalyticsGitPushListener]; the sync service
  * itself decides whether a particular push touches AGENT_PROJECT paths.
+ *
+ * @param scope owns the subscription coroutine; cancellation stops collection and retries.
  */
 class AgentGitPushListener(
     private val pubSubService: PubSubService,

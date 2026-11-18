@@ -1,0 +1,9 @@
+<page route="/system/security/tokens" requireAuth>
+  <contract>
+    interface SystemTokenOwnerSearch {
+        suspend fun search(query: String): List<Map<String, String>>
+    }
+  </contract>
+  <script server provides="page">bosca.system.ui.systemTokens()</script>
+  <system-layout title="API tokens" :admin="page.admin"><system-tokens :initial="page" /></system-layout>
+</page>

@@ -2,7 +2,7 @@
   <prop name="page" type="bosca.git.ui.PullListPage" required />
   <div class="pull-panel">
     <if page.baseHref.isBlank()>
-      <ui-tabs label="Pull request state" :items="page.tabs" header />
+      <tabs label="Pull request state" :items="page.tabs" header />
     <else>
       <div class="pr-toolbar">
         <nav class="pr-filters" aria-label="Pull request state">
@@ -14,7 +14,7 @@
       </div>
     </if>
     <if page.rows.isEmpty()>
-      <ui-empty-state
+      <empty-state
         icon="pull"
         :title='if (page.status == "ALL") "No pull requests" else "No " + page.status.lowercase() + " pull requests"'
         message="Try another repository or pull request state."
@@ -39,7 +39,7 @@
                 <code class="pull-branches">{ pull.source } → { pull.target }</code>
               </div>
             </div>
-            <span class="pull-time"><ui-time :value="pull.updated" relative ago inheritTypography /></span>
+            <span class="pull-time"><time :value="pull.updated" relative ago inheritTypography /></span>
           </a>
         </for>
       </div>
@@ -47,10 +47,10 @@
     <if page.offset != 0L || page.rows.size == 50>
       <nav class="pull-pagination" aria-label="Pull request pages">
         <if page.offset != 0L>
-          <ui-icon-link icon="arrow-left" label="Previous page" :href="page.href(offset = (page.offset - 50).coerceAtLeast(0))" />
+          <icon-link icon="arrow-left" label="Previous page" :href="page.href(offset = (page.offset - 50).coerceAtLeast(0))" />
         </if>
         <if page.rows.size == 50>
-          <ui-icon-link icon="arrow-right" label="Next page" :href="page.href(offset = page.offset + 50)" />
+          <icon-link icon="arrow-right" label="Next page" :href="page.href(offset = page.offset + 50)" />
         </if>
       </nav>
     </if>

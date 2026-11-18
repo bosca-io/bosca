@@ -30,11 +30,14 @@ import bosca.storage.model.StorageSystem
 import bosca.storage.model.StorageSystemType
 import bosca.storage.service.StorageSystemService
 import bosca.test.resources.SharedMeilisearchContainer
+import io.mockk.coVerify
+import io.mockk.spyk
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -71,6 +74,7 @@ class IndexDocumentNodeIntegrationTest {
     private lateinit var searchService: SearchService
 
     private lateinit var indexUid: String
+    private lateinit var indexConfiguration: IndexConfiguration
     private val json = Json { ignoreUnknownKeys = true }
     private val system = IndexStorageSystem(name = "Default Search Index")
     private val cacheManager = InMemoryCacheManager()
@@ -83,12 +87,13 @@ class IndexDocumentNodeIntegrationTest {
         val logicalIndexUid = "test"
         indexUid = meili.indexUid("sitea_$logicalIndexUid")
         runBlocking {
-            client = MeilisearchClient(url = meili.url, apiKey = meili.apiKey, json = json)
+            client = spyk(MeilisearchClient(url = meili.url, apiKey = meili.apiKey, json = json))
             // Create the index and make contentId filterable so the replace/removal deleteByFilter works.
             client.waitForTask(client.createIndex(indexUid, "id").taskUid)
             client.waitForTask(client.updateFilterableAttributes(indexUid, listOf("contentId", "_type")).taskUid)
 
             val storage = mockk<StorageSystemService>()
+            indexConfiguration = IndexConfiguration(name = logicalIndexUid, primaryKey = "id", filterable = listOf("contentId", "_type"))
             val storageSystem = StorageSystem(
                 id = UUID.random(),
                 name = "Default Search Index",
@@ -96,11 +101,18 @@ class IndexDocumentNodeIntegrationTest {
                 type = StorageSystemType.SEARCH,
                 configuration = json.encodeToJsonElement(
                     IndexConfiguration.serializer(),
-                    IndexConfiguration(name = logicalIndexUid, primaryKey = "id", filterable = listOf("contentId", "_type")),
+                    indexConfiguration,
                 ),
             )
-            coEvery { storage.getByName(any()) } returns storageSystem
-            coEvery { storage.get(any()) } returns storageSystem
+            coEvery { storage.getByName(any()) } answers {
+                val config = if (firstArg<String>() == "Unrestricted Search Index") {
+                    indexConfiguration.copy(name = "$logicalIndexUid-other", excludeTypes = emptySet(), excludeContentTypePrefix = emptyList())
+                } else indexConfiguration
+                storageSystem.copy(configuration = json.encodeToJsonElement(IndexConfiguration.serializer(), config))
+            }
+            coEvery { storage.get(any()) } answers {
+                storageSystem.copy(configuration = json.encodeToJsonElement(IndexConfiguration.serializer(), indexConfiguration))
+            }
 
             // SearchServiceImpl now caches search responses, so it needs a CacheManager at construction
             // and a request-cache context around index mutations (which evict the cache). Production gets
@@ -253,6 +265,153 @@ class IndexDocumentNodeIntegrationTest {
                 searchService.update(system, listOf(buildJsonObject { put("content", "missing id") }))
             }
             assertEquals("failed", failure.status)
+        }
+    }
+
+    @Test
+    fun `per index exclusions apply to batches pipelines and partial updates`() = runBlocking {
+        withRequestCache {
+            indexConfiguration = indexConfiguration.copy(
+                excludeTypes = setOf("episode", "profile"),
+                excludeContentTypePrefix = listOf("image/"),
+            )
+            fun document(id: String, fields: String = "", name: String = "original") = json.parseToJsonElement(
+                """{"id":"$id","name":"$name"$fields}"""
+            )
+            val allowed = document("allowed", """, "_type":"metadata", "type":"article", "contentType":"text/plain"""")
+            val custom = document("custom", """, "type":"episode"""")
+            val kind = document("kind", """, "_type":"profile"""")
+            val mime = document("mime", """, "contentType":"image/jpeg"""")
+            val untyped = document("untyped")
+            IndexDocumentNode(id = "n1").run(context, input(buildJsonArray {
+                listOf(allowed, custom, kind, mime, untyped).forEach { add(it) }
+            }))
+            assertEquals(allowed, searchService.fetch(system, "allowed"))
+            assertEquals(untyped, searchService.fetch(system, "untyped"))
+            for (id in listOf("custom", "kind", "mime")) assertNull(searchService.fetch(system, id))
+
+            // An entirely excluded batch is a no-op, including single-document pipeline writes.
+            IndexDocumentNode(id = "n2").run(context, input(custom))
+            assertNull(searchService.fetch(system, "custom"))
+            searchService.update(system, listOf(document("allowed", """, "type":"episode"""")))
+            assertNull(searchService.fetch(system, "allowed"))
+
+            // A separate index accepts the same documents while this one's exclusions remain active.
+            client.waitForTask(client.createIndex("$indexUid-other", "id").taskUid)
+            val unrestricted = IndexStorageSystem(name = "Unrestricted Search Index")
+            searchService.index(unrestricted, listOf(custom, kind, mime))
+            assertEquals(custom, searchService.fetch(unrestricted, "custom"))
+            assertEquals(kind, searchService.fetch(unrestricted, "kind"))
+            assertEquals(mime, searchService.fetch(unrestricted, "mime"))
+            assertNull(searchService.fetch(system, "custom"))
+
+            // The same documents are accepted when this index has no exclusions.
+            indexConfiguration = indexConfiguration.copy(excludeTypes = emptySet(), excludeContentTypePrefix = emptyList())
+            searchService.index(system, listOf(custom, kind, mime))
+            assertEquals(custom, searchService.fetch(system, "custom"))
+            assertEquals(kind, searchService.fetch(system, "kind"))
+            assertEquals(mime, searchService.fetch(system, "mime"))
+
+            // A patch that omits type fields must still honor the stored document's types.
+            indexConfiguration = indexConfiguration.copy(excludeTypes = setOf("episode", "profile"), excludeContentTypePrefix = listOf("image/"))
+            searchService.update(system, listOf(document("custom", name = "changed"), document("kind", name = "changed"), document("mime", name = "changed")))
+            assertNull(searchService.fetch(system, "custom"))
+            assertNull(searchService.fetch(system, "kind"))
+            assertNull(searchService.fetch(system, "mime"))
+            searchService.index(system, allowed)
+            val allowedPatch = document("allowed", name = "changed")
+            searchService.update(system, listOf(allowedPatch))
+            assertEquals(JsonObject(allowed.jsonObject + allowedPatch.jsonObject), searchService.fetch(system, "allowed"))
+        }
+    }
+
+    @Test
+    fun `index and update remove excluded documents and invalidate cached searches`() = runBlocking {
+        withRequestCache {
+            val originals = listOf(
+                buildJsonObject { put("id", "custom"); put("type", "episode"); put("name", "original") },
+                buildJsonObject { put("id", "kind"); put("_type", "profile"); put("name", "original") },
+                buildJsonObject { put("id", "mime"); put("contentType", "image/jpeg"); put("name", "original") },
+                buildJsonObject { put("id", "allowed"); put("type", "article"); put("name", "original") },
+            )
+            val incoming = originals.map { original -> buildJsonObject {
+                put("id", original.jsonObject.getValue("id"))
+                put("name", "changed")
+            } }
+            val query = SearchQuery(query = "", offset = 0, limit = 20, storageSystemName = system.name)
+            for (replace in listOf(true, false)) {
+                indexConfiguration = indexConfiguration.copy(excludeTypes = emptySet(), excludeContentTypePrefix = emptyList())
+                searchService.index(system, originals)
+                assertEquals(4, searchService.searchRaw(query).hits.size)
+                indexConfiguration = indexConfiguration.copy(
+                    excludeTypes = setOf("episode", "profile"),
+                    excludeContentTypePrefix = listOf("image/"),
+                )
+                if (replace) searchService.index(system, incoming) else searchService.update(system, incoming)
+                for (id in listOf("custom", "kind", "mime")) assertNull(searchService.fetch(system, id))
+                val expected = if (replace) incoming.last() else JsonObject(originals.last().jsonObject + incoming.last().jsonObject)
+                assertEquals(expected, searchService.fetch(system, "allowed"))
+                assertEquals(1, searchService.searchRaw(query).hits.size)
+            }
+        }
+    }
+
+    @Test
+    fun `type changes remove existing entries even when the entire batch is excluded`() = runBlocking {
+        withRequestCache {
+            indexConfiguration = indexConfiguration.copy(excludeTypes = setOf("episode"), excludeContentTypePrefix = listOf("image/"))
+            val query = SearchQuery(query = "", offset = 0, limit = 20, storageSystemName = system.name)
+            for (replace in listOf(true, false)) {
+                val original = buildJsonObject { put("id", "item"); put("type", "article"); put("contentType", "text/plain") }
+                searchService.index(system, original)
+                assertEquals(1, searchService.searchRaw(query).hits.size)
+                val excluded = buildJsonObject { put("id", "item"); put("type", "episode") }
+                if (replace) searchService.index(system, excluded) else searchService.update(system, listOf(excluded))
+                assertNull(searchService.fetch(system, "item"))
+                assertEquals(0, searchService.searchRaw(query).hits.size)
+
+                searchService.index(system, original)
+                val image = buildJsonObject { put("id", "item"); put("contentType", "image/jpeg") }
+                if (replace) searchService.index(system, image) else searchService.update(system, listOf(image))
+                assertNull(searchService.fetch(system, "item"))
+
+                // Explicit allowed types can replace stored excluded types.
+                val exclusions = indexConfiguration
+                indexConfiguration = indexConfiguration.copy(excludeTypes = emptySet(), excludeContentTypePrefix = emptyList())
+                searchService.index(system, excluded)
+                indexConfiguration = exclusions
+                if (replace) searchService.index(system, original) else searchService.update(system, listOf(original))
+                assertEquals(original, searchService.fetch(system, "item"))
+                searchService.delete(system, "item")
+            }
+        }
+    }
+
+    @Test
+    fun `complete allowed batches skip stored document lookups for active exclusion rules`() = runBlocking {
+        withRequestCache {
+            for ((types, prefixes) in listOf(
+                emptySet<String>() to listOf("image/"),
+                setOf("episode", "profile") to emptyList(),
+                setOf("episode", "profile") to listOf("image/"),
+            )) {
+                indexConfiguration = indexConfiguration.copy(excludeTypes = types, excludeContentTypePrefix = prefixes)
+                val documents = (1..100).map { number -> buildJsonObject {
+                    put("id", "document$number")
+                    if (types.isNotEmpty()) {
+                        put("type", JsonNull)
+                        put("_type", "metadata")
+                    }
+                    if (prefixes.isNotEmpty()) put("contentType", "text/plain")
+                    put("name", "original")
+                } }
+                searchService.index(system, documents)
+                val updates = documents.map { document -> JsonObject(document.jsonObject + ("name" to kotlinx.serialization.json.JsonPrimitive("changed"))) }
+                searchService.update(system, updates)
+            }
+
+            coVerify(exactly = 0) { client.getDocument(any(), any(), any()) }
+            assertEquals("changed", searchService.fetch(system, "document1")?.jsonObject?.get("name")?.jsonPrimitive?.content)
         }
     }
 

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: bml-design-catalog
+description: Bosca Design Library component catalog and interactive examples, served by a native BML executable
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"

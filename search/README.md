@@ -43,3 +43,29 @@ dependencies {
 ```
 
 Published `io.bosca:*` coordinates used by existing catalogs also resolve to these local projects in the root build.
+
+## Per-index type exclusions
+
+In Studio’s storage system settings, add exclusions to the search index’s configuration JSON
+alongside its existing `indexName`, `filterable`, and other settings:
+
+```json
+{
+  "indexName": "public",
+  "excludeTypes": ["episode", "profile"],
+  "excludeContentTypePrefix": ["image/", "video/"]
+}
+```
+
+`excludeTypes` matches either the document’s custom `type` or its `_type` kind
+(`metadata`, `collection`, or `profile`) exactly. `excludeContentTypePrefix` matches
+prefixes of `contentType`. All matches are case-sensitive. Both lists default to empty.
+These exclusions apply to writes to that index, including indexing jobs, pipeline document
+writes, and partial updates. Both indexing and partial updates use the stored type fields when
+they are omitted from the incoming document. Accepted indexing writes still replace the full document;
+accepted partial updates preserve omitted fields. An excluded write removes the existing entry, if present,
+and invalidates cached search results. Existing global transformation exclusions still apply.
+
+Saving exclusions does not remove existing documents. Reindex that storage system with deletion
+enabled for the affected document kinds to remove previously indexed entries. Explicit per-index
+exclusions also apply to the administration index if configured there.

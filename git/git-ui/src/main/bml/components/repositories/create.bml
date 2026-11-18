@@ -5,7 +5,7 @@
   </script>
   <island name="git-repository-create" :key="initial.owner.id">
     <div :data-next-href="model.nextHref">
-      <ui-dialog
+      <dialog
         title="New Repository"
         triggerLabel="New Repository"
         icon="folder"
@@ -19,19 +19,19 @@
         >
           <div class="modal-fields">
             <if model.message.isNotBlank()>
-              <ui-alert>{ model.message }</ui-alert>
+              <alert>{ model.message }</alert>
             </if>
-            <ui-field label="Name">
-              <ui-input
+            <field label="Name">
+              <input
                 name="name"
                 type="text"
                 placeholder="my-project"
                 :value="model.draft.name"
                 required
               />
-            </ui-field>
-            <ui-field label="Slug">
-              <ui-input
+            </field>
+            <field label="Slug">
+              <input
                 name="slug"
                 type="text"
                 placeholder="my-project"
@@ -39,23 +39,23 @@
                 :value="model.draft.slug"
                 required
               />
-            </ui-field>
-            <ui-field label="Description">
-              <ui-input
+            </field>
+            <field label="Description">
+              <input
                 name="description"
                 type="text"
                 placeholder="Optional description"
                 :value="model.draft.description"
               />
-            </ui-field>
+            </field>
             <git-owner-picker
               :allowAll="false"
               name="ownerId"
               :id="model.draft.ownerId.ifBlank { model.owner.id }"
               :label='if (model.owner.id == "all") "Choose an owner" else model.owner.label'
             />
-            <ui-field label="Visibility">
-              <ui-select name="visibility">
+            <field label="Visibility">
+              <select name="visibility">
                 <option value="PRIVATE" :selected='model.draft.visibility == "PRIVATE"'>
                   Private
                 </option>
@@ -65,10 +65,10 @@
                 <option value="PUBLIC" :selected='model.draft.visibility == "PUBLIC"'>
                   Public
                 </option>
-              </ui-select>
-            </ui-field>
-            <ui-field label="Content type">
-              <ui-select name="contentType">
+              </select>
+            </field>
+            <field label="Content type">
+              <select name="contentType">
                 <option value="GENERAL" :selected='model.draft.contentType == "GENERAL"'>
                   General
                 </option>
@@ -102,39 +102,39 @@
                 >
                   Pipeline project
                 </option>
-              </ui-select>
-            </ui-field>
-            <ui-field label="Default branch">
-              <ui-input name="branch" type="text" mono :value="model.draft.branch" required />
-            </ui-field>
-            <ui-switch name="readme" :checked="model.draft.readme" label="Initialize with README" />
+              </select>
+            </field>
+            <field label="Default branch">
+              <input name="branch" type="text" mono :value="model.draft.branch" required />
+            </field>
+            <switch name="readme" :checked="model.draft.readme" label="Initialize with README" />
             <details class="modal-options">
-              <ui-disclosure-heading>Initialization options</ui-disclosure-heading>
-              <ui-field label="Gitignore template">
-                <ui-select name="gitignore">
+              <disclosure-heading>Initialization options</disclosure-heading>
+              <field label="Gitignore template">
+                <select name="gitignore">
                   <option value="">None</option>
                   <option :selected='model.draft.gitignore == "Kotlin"'>Kotlin</option>
                   <option :selected='model.draft.gitignore == "Java"'>Java</option>
                   <option :selected='model.draft.gitignore == "Python"'>Python</option>
                   <option :selected='model.draft.gitignore == "Node"'>Node</option>
-                </ui-select>
-              </ui-field>
-              <ui-field label="License">
-                <ui-select name="license">
+                </select>
+              </field>
+              <field label="License">
+                <select name="license">
                   <option value="">None</option>
                   <option :selected='model.draft.license == "MIT"'>MIT</option>
                   <option :selected='model.draft.license == "Apache-2.0"'>Apache-2.0</option>
                   <option :selected='model.draft.license == "BSD-3-Clause"'>BSD-3-Clause</option>
-                </ui-select>
-              </ui-field>
+                </select>
+              </field>
             </details>
           </div>
           <footer class="modal-footer">
-            <ui-button type="button" ref="cancel">Cancel</ui-button>
-            <ui-button type="submit" primary>Create repository</ui-button>
+            <button type="button" ref="cancel">Cancel</button>
+            <button type="submit" primary>Create repository</button>
           </footer>
         </form>
-      </ui-dialog>
+      </dialog>
     </div>
   </island>
   <script client scoped>

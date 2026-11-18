@@ -173,6 +173,40 @@ class GraphQLClientFactoryTest {
     }
 
     @Test
+    fun `forwardPost preserves JSON auth origin status and cookies without following redirects`() {
+        var body = ""
+        var authorization: String? = null
+        var origin: String? = null
+        var method: String? = null
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/api/v1/security/passkeys/register/begin") { exchange ->
+            method = exchange.requestMethod
+            body = exchange.requestBody.readAllBytes().decodeToString()
+            authorization = exchange.requestHeaders.getFirst("Authorization")
+            origin = exchange.requestHeaders.getFirst("Origin")
+            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.responseHeaders.add("Set-Cookie", "session=updated; Path=/")
+            exchange.responseHeaders.add("Location", "https://unused.test/redirect")
+            val response = """{"stateKey":"one-use"}""".encodeToByteArray()
+            exchange.sendResponseHeaders(302, response.size.toLong())
+            exchange.responseBody.use { it.write(response) }
+        }
+        server.start()
+        try {
+            val factory = GraphQLClientFactory("http://127.0.0.1:${server.address.port}/graphql")
+            val response = runBlocking { factory.forwardPost("/api/v1/security/passkeys/register/begin", "{}", "account-token", "https://ui.test") }
+            assertEquals("POST", method)
+            assertEquals("{}", body)
+            assertEquals("Bearer account-token", authorization)
+            assertEquals("https://ui.test", origin)
+            assertEquals(302, response.status)
+            assertEquals("application/json", response.contentType)
+            assertEquals("""{"stateKey":"one-use"}""", response.body.decodeToString())
+            assertEquals(listOf("Set-Cookie" to "session=updated; Path=/"), response.headers)
+        } finally { server.stop(0) }
+    }
+
+    @Test
     fun `forward relays every upstream Set-Cookie header`() {
         var installationId: String? = null
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)

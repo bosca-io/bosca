@@ -1,0 +1,66 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: servingmodels.kubernetes.bosca.io
+spec:
+  group: kubernetes.bosca.io
+  scope: Namespaced
+  names:
+    plural: servingmodels
+    singular: servingmodel
+    kind: ServingModel
+    shortNames: [sm]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - {name: Version, type: integer, jsonPath: .spec.version}
+        - {name: Phase, type: string, jsonPath: .status.phase}
+        - {name: Endpoint, type: string, jsonPath: .status.endpoint}
+        - {name: Age, type: date, jsonPath: .metadata.creationTimestamp}
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [profileName, version, contextId, models, servicePort, modelBasePath, podTemplate]
+              properties:
+                profileName:
+                  type: string
+                  minLength: 1
+                  x-kubernetes-validations:
+                    - {rule: 'self == oldSelf', message: profileName is immutable}
+                contextId: {type: string, minLength: 1}
+                version:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  x-kubernetes-validations:
+                    - {rule: 'self == oldSelf', message: version is immutable}
+                models:
+                  type: object
+                  maxProperties: 32
+                  minProperties: 1
+                  additionalProperties: {type: integer, format: int64, minimum: 1}
+                  x-kubernetes-validations:
+                    - {rule: 'self == oldSelf', message: model versions are immutable}
+                servicePort: {type: integer, minimum: 1, maximum: 65535}
+                modelBasePath: {type: string}
+                podTemplate:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum: [Pending, Downloading, Loading, Ready, Active, Draining, Failed]
+                message: {type: string}
+                endpoint: {type: string}
+                observedGeneration: {type: integer, format: int64}
+                lastTransitionTime: {type: string, format: date-time}

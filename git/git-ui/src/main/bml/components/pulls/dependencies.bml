@@ -4,7 +4,7 @@
     bosca.git.ui.PullActionsModel(page)
   </script>
   <island name="git-pull-dependencies" :key="page.pull.id">
-    <section class="side-card dependencies" :data-next-href="model.nextHref">
+    <html:section class="side-card dependencies" :data-next-href="model.nextHref">
       <h2 class="side-card-title">Dependencies</h2>
       <if model.page.pull.dependencies.isEmpty()>
         <p class="side-empty">No dependencies</p>
@@ -18,7 +18,7 @@
               </a>
               <if model.page.canEdit && (model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT")>
                 <span class="side-row-remove">
-                  <ui-icon-button type="submit" size="xs" class="ghost" icon="close" :label='"Remove dependency #" + pull.number' />
+                  <icon-button type="submit" size="xs" class="ghost" icon="close" :label='"Remove dependency #" + pull.number' />
                 </span>
               </if>
             </form>
@@ -26,10 +26,10 @@
         </div>
       </if>
       <if model.failed && model.selectedAction == "remove-dependency">
-        <ui-alert>{ model.message }</ui-alert>
+        <alert>{ model.message }</alert>
       </if>
       <if model.page.canEdit && (model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT")>
-        <ui-dialog
+        <dialog
           title="Add dependency"
           triggerLabel="Add dependency"
           icon="link"
@@ -40,36 +40,36 @@
             <div class="modal-fields">
               <p class="detail-note">Select a pull request that needs to merge before this one.</p>
               <if model.message.isNotBlank()>
-                <ui-alert>{ model.message }</ui-alert>
+                <alert>{ model.message }</alert>
               </if>
-              <ui-field label="Pull request">
-                <ui-select searchable name="dependency" required>
+              <field label="Pull request">
+                <select searchable name="dependency" required>
                   <option value="">Choose a pull request</option>
                   <for pull in model.dependencyCandidates>
                     <option :value="pull.id">
                       { "#" + pull.number + " " + pull.title + " · " + model.page.repositoryLabel(pull.repository) + " · " + pull.status.lowercase() }
                     </option>
                   </for>
-                </ui-select>
-              </ui-field>
+                </select>
+              </field>
               <if model.dependencyCandidates.isEmpty()>
                 <p class="detail-note">No available pull requests on this page.</p>
               </if>
               <nav class="candidate-pages" aria-label="Dependency pages">
                 <if model.candidateOffset != 0L>
-                  <ui-icon-button icon="arrow-left" label="Previous page" @click="model.loadCandidates(model.candidateOffset - 50, ctx)" />
+                  <icon-button icon="arrow-left" label="Previous page" @click="model.loadCandidates(model.candidateOffset - 50, ctx)" />
                 </if>
                 <if model.candidateHasNext>
-                  <ui-icon-button icon="arrow-right" label="Next page" @click="model.loadCandidates(model.candidateOffset + 50, ctx)" />
+                  <icon-button icon="arrow-right" label="Next page" @click="model.loadCandidates(model.candidateOffset + 50, ctx)" />
                 </if>
               </nav>
             </div>
             <footer class="modal-footer">
-              <ui-button ref="cancel">Cancel</ui-button>
-              <ui-button type="submit" primary :disabled="model.dependencyCandidates.isEmpty()">Add dependency</ui-button>
+              <button ref="cancel">Cancel</button>
+              <button type="submit" primary :disabled="model.dependencyCandidates.isEmpty()">Add dependency</button>
             </footer>
           </form>
-        </ui-dialog>
+        </dialog>
       </if>
       <if model.page.pull.dependents.isNotEmpty()>
         <div class="side-divider"></div>
@@ -83,7 +83,7 @@
           </for>
         </div>
       </if>
-    </section>
+    </html:section>
   </island>
   <style scoped>
     .used-by {

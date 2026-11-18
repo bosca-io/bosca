@@ -33,6 +33,13 @@ Run these commands from the **workspace root**. `content` is part of the root Gr
 ./gradlew :content:bible-providers:test  # Provider adapters and configuration/source/cache tests
 ```
 
+The `:content:content:test` suite runs classes in up to four isolated JVMs, capped by Gradle's
+`--max-workers` limit. Each JVM keeps its own DI and MockK state; database fixtures lease separate
+databases from the shared test server. `ContentTestInfrastructure` migrates once per class and
+copies that pristine database before later test methods, preserving seed data and sequence values.
+Use `-Pbosca.content.testForks=1` for serial debugging or
+set another positive fork count within the worker budget.
+
 API.Bible chapter reads enqueue edition-wide cache cleanup on the content queue after the
 response is stored. The worker keeps the newest responses within 499 verses across
 configurations. This limit is eventual while jobs are pending; the worker evicts whole
@@ -115,6 +122,31 @@ not publish either item.
 ## Architecture
 
 The project follows a core/impl split where `core-*` modules define contracts (interfaces, models, annotations) and implementation modules provide PostgreSQL-backed repositories with GraphQL exposure. Content items move through states via a workflow engine with permission-gated transitions and job history tracking. Collections and metadata support supplementary attachments with source tracking. All content is language-tagged with localization as a first-class concern. The Bible compiler is a specialized module for parsing and compiling Bible text into the platform's content model.
+
+## Reading and editing labels
+
+Metadata and collections expose their freeform labels through the `labels` field:
+
+```graphql
+query ContentLabels($metadataId: UUID!, $collectionId: UUID!) {
+    content {
+        metadata(id: $metadataId) { labels }
+        collection(id: $collectionId) { labels }
+    }
+}
+```
+
+Use `setLabels` to replace labels without submitting a full content edit. Pass an
+empty list to clear them. Both mutations require edit permission on the item.
+
+```graphql
+mutation SetContentLabels($metadataId: UUID!, $collectionId: UUID!, $labels: [String!]!) {
+    content {
+        metadata { setLabels(metadataId: $metadataId, labels: $labels) }
+        collection { setLabels(id: $collectionId, labels: $labels) }
+    }
+}
+```
 
 ## Finding a guide from a step
 

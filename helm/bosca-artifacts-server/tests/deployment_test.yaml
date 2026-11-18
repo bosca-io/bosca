@@ -26,7 +26,7 @@ tests:
     template: templates/deployment.yaml
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[0]
+          path: spec.template.spec.containers[0].args[1]
           value: "-config=/app/config/application.yaml"
 
   - it: injects scrypt secrets

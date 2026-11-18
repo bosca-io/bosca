@@ -1,11 +1,44 @@
 import { build } from "esbuild"
+import { relativeBmlModuleImports } from "./module-urls.mjs"
 import { bundleLibraryAssets } from "./library.mjs"
-import { readdirSync, readFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { assetLoaders, publicCssUrls, validateCssOutputs } from "./css-assets.mjs"
+import { dependencyGraph, dependencyPlugin, installedPackageRoots, linkedDependencies } from "./dependencies.mjs"
+import { readdirSync, readFileSync, existsSync, mkdirSync, rmSync, writeFileSync, cpSync, realpathSync } from "node:fs"
+import { createHash } from "node:crypto"
+import { dirname, join, resolve, relative } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 function globalBootstrapPath() {
   return fileURLToPath(new URL("../src/identity-bootstrap.ts", import.meta.url))
+}
+
+async function applicationGraph(options) {
+  const scan = await build({ ...options, write: false, metafile: true })
+  const directory = options.absWorkingDir ?? process.cwd()
+  const inputs = (options.entryPoints ?? []).map((entry) => typeof entry === "string" ? entry : entry.in)
+  const roots = installedPackageRoots([directory, options.stdin?.resolveDir, ...inputs.map((it) => dirname(it)),
+    ...Object.keys(scan.metafile.inputs).map((input) => dirname(resolve(directory, input)))].filter(Boolean))
+  return dependencyGraph(scan.metafile, directory, roots)
+}
+
+async function buildApplication(options, linkedDir) {
+  const linked = linkedDependencies(linkedDir)
+  if (linked.modules.size === 0) return build(options)
+  const graph = await applicationGraph(options)
+  return build({ ...options, plugins: [...(options.plugins ?? []), dependencyPlugin(graph, linked.modules, linked.entries)] })
+}
+
+// Linker bridges contain only JSON-quoted side-effect imports. Inline those imports into the
+// virtual page so its selected library variant is independent of other pages in this build.
+function pageImports(entries, inDir, linked, shared) {
+  return entries.map((entry) => {
+    const source = readFileSync(join(inDir, `${entry}.ts`), "utf8")
+    const imports = source.trim().split(/\r?\n/).map(line => /^import ("(?:[^"\\]|\\["\\/bfnrt]|\\u[\da-fA-F]{4})*");?$/.exec(line))
+    if (imports.some(match => !match)) return `import ${JSON.stringify(`./${entry}`)}`
+    const paths = imports.map(match => resolve(inDir, JSON.parse(match[1])))
+    if (!paths.every(path => existsSync(path) && linked.entries.has(realpathSync(path)))) return `import ${JSON.stringify(`./${entry}`)}`
+    return paths.map(path => `import ${JSON.stringify(shared ? linked.entries.get(realpathSync(path)) : path)}`).join("\n")
+  }).join("\n")
 }
 
 /**
@@ -18,22 +51,22 @@ function globalBootstrapPath() {
  * runtime entry — needed when `@bosca/bml` isn't installed in node_modules (e.g. this monorepo,
  * where it's local source). Omit it when consumers have the package installed.
  *
- * @param {{ entryPoints: string[], outdir: string, minify?: boolean, runtime?: string }} options
+ * @param {{ entryPoints: string[], outdir: string, minify?: boolean, runtime?: string, splitting?: boolean, linkedDir?: string }} options
  */
-export async function bundleIslands({ entryPoints, outdir, minify = false, runtime }) {
-  return build({
+export async function bundleIslands({ entryPoints, outdir, minify = false, runtime, splitting = false, linkedDir }) {
+  return buildApplication({
     entryPoints,
     outdir,
     bundle: true,
     minify,
-    splitting: false,
+    splitting,
     format: "esm",
     platform: "browser",
     target: "es2020",
     sourcemap: !minify,
     logLevel: "silent",
     ...(runtime ? { alias: { "@bosca/bml": resolve(runtime) } } : {}),
-  })
+  }, linkedDir)
 }
 
 /** Mirrors `BmlProductionAssets.slug` in bml-server: `/lists/{id}` -> `lists-id`, `/` -> `index`. */
@@ -43,12 +76,12 @@ export function routeSlug(route) {
 }
 
 /**
- * Production bundling: ONE bundle per page — a synthesized entry importing the page's
- * client module plus every closure component's module, so a page downloads a single `<slug>.page.js`
- * (the runtime is inlined once per bundle). The page→module mapping comes from the compiler's
+ * Production bundling: one entry per page plus content-hashed shared ESM chunks. Each entry imports
+ * only its page's client module and closure components; common engines can be cached across pages.
+ * The page→module mapping comes from the compiler's
  * metrics manifest (`manifest.tsv`); output names use the same route-slug algorithm as
  * `BmlProductionAssets` in bml-server (uniqueness by sorted-route order with `-2`, `-3`… suffixes),
- * so server and build agree without a lookup file.
+ * and `bml-imports.json` maps those logical names to content-hashed output files.
  *
  * Production deliberately uses esbuild's syntax, whitespace, and identifier minifiers but does
  * not enable property mangling: generated contracts, DOM datasets, and public `window` properties
@@ -56,7 +89,7 @@ export function routeSlug(route) {
  * output so the original identifiers and sources are not shipped beside the optimized bundle.
  *
  * @param {{ manifestPath: string, inDir: string, outdir: string, runtime?: string }} options
- * @returns {Promise<string[]>} the bundle file names written
+ * @returns {Promise<string[]>} logical entry names indexed in bml-imports.json
  */
 export async function bundleProduction({ manifestPath, inDir, outdir, runtime }) {
   const lines = readFileSync(manifestPath, "utf8")
@@ -73,6 +106,8 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
   }
   const taken = new Set()
   const written = []
+  const pages = new Map()
+  const linked = linkedDependencies(inDir)
   for (const [index, [, , route, pageJs, , componentJs]] of lines.entries()) {
     const modules = []
     if (pageJs !== "-") modules.push(pageJs)
@@ -83,36 +118,67 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
     for (let n = 2; taken.has(slug); n++) slug = `${routeSlug(route)}-${n}`
     taken.add(slug)
     if (modules.length === 0) continue
-    const entries = modules
+    const orderedModules = [...modules.filter((m) => m.startsWith("BmlLibraries_")), ...modules.filter((m) => !m.startsWith("BmlLibraries_"))]
+    const entries = orderedModules
       .map((m) => m.replace(/\.js$/, ""))
       .filter((m) => existsSync(join(inDir, `${m}.ts`)))
-    const outfile = join(outdir, `${slug}.page.js`)
-    if (entries.length === 0) {
-      // The server links this page's bundle because the manifest names client modules; none of them
-      // produced TypeScript, so publish an empty module rather than leave the link returning 404.
-      mkdirSync(outdir, { recursive: true })
-      writeFileSync(outfile, "")
-      written.push(`${slug}.page.js`)
-      continue
+    let shared = false
+    if (linked.modules.size > 0) {
+      const graph = await applicationGraph({
+        absWorkingDir: resolve(inDir),
+        entryPoints: entries.map(entry => resolve(inDir, `${entry}.ts`)),
+        outdir: resolve(outdir), bundle: true, format: "esm", platform: "browser", target: "es2020", logLevel: "silent",
+        ...(runtime ? { alias: { "@bosca/bml": resolve(runtime) } } : {}),
+      })
+      shared = [...graph.values()].some(digest => linked.modules.has(digest))
     }
-    await build({
-      stdin: {
-        contents: entries.map((m) => `import "./${m}"`).join("\n"),
-        resolveDir: resolve(inDir),
-        sourcefile: `${slug}.entry.ts`,
-        loader: "ts",
-      },
-      outfile,
+    pages.set(`bml-page:${slug}`, pageImports(entries, inDir, linked, shared))
+    written.push(`${slug}.page.js`)
+  }
+  if (pages.size > 0) {
+    const result = await buildApplication({
+      absWorkingDir: resolve(inDir),
+      entryPoints: [...pages.keys()].map((key) => ({ in: key, out: `${key.slice(9)}.page` })),
+      outdir: resolve(outdir),
       bundle: true,
-      splitting: false,
+      splitting: true,
+      entryNames: "[name]-[hash]",
+      chunkNames: "chunks/[name]-[hash]",
       format: "esm",
       platform: "browser",
       target: "es2020",
+      metafile: true,
       ...productionOptimization,
       logLevel: "silent",
+      plugins: [{ name: "bml-page-entries", setup(builder) {
+        builder.onResolve({ filter: /^bml-page:/ }, (args) => ({ path: args.path, namespace: "bml-page" }))
+        builder.onLoad({ filter: /.*/, namespace: "bml-page" }, (args) => ({
+          contents: pages.get(args.path), resolveDir: resolve(inDir), loader: "ts",
+        }))
+      } }],
       ...(runtime ? { alias: { "@bosca/bml": resolve(runtime) } } : {}),
-    })
-    written.push(`${slug}.page.js`)
+    }, inDir)
+    // Application and library modules share one deployment root in the serving URL.
+    for (const path of Object.keys(result.metafile.outputs).filter(path => path.endsWith(".js"))) {
+      const file = resolve(inDir, path)
+      const modulePath = relative(resolve(outdir), file).replaceAll("\\", "/")
+      writeFileSync(file, relativeBmlModuleImports(readFileSync(file, "utf8"), modulePath))
+    }
+    // Metrics use the emitted graph, rather than treating a tiny entry as the whole page payload.
+    const outputs = result.metafile.outputs
+    const imports = {}
+    for (const name of written) {
+      const seen = new Set()
+      const visit = (path) => {
+        if (seen.has(path)) return
+        seen.add(path)
+        for (const child of outputs[path]?.imports ?? []) if (!child.external && child.kind === "import-statement") visit(child.path)
+      }
+      const entry = Object.keys(outputs).find((path) => outputs[path].entryPoint === `bml-page:bml-page:${name.slice(0, -8)}`)
+      if (entry) visit(entry)
+      imports[name] = entry ? [...seen].map((path) => relative(resolve(outdir), resolve(inDir, path)).replaceAll("\\", "/")) : [name]
+    }
+    writeFileSync(join(outdir, "bml-imports.json"), JSON.stringify(imports))
   }
   return written
 }
@@ -129,9 +195,10 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
 export async function bundleGlobalAssets({ inDir, outdir }) {
   if (!existsSync(inDir)) return []
   const sources = readdirSync(inDir)
-  const scripts = sources.filter((file) => /\.(?:js|ts)$/.test(file)).map((file) => join(inDir, file))
+  const scripts = sources.filter((file) => /\.(?:js|ts)$/.test(file) && !file.endsWith(".d.ts")).map((file) => join(inDir, file))
   const styles = sources.filter((file) => file.endsWith(".css")).map((file) => join(inDir, file))
   if (scripts.length === 0 && styles.length === 0) return []
+  const cssInputs = new Map()
   await Promise.all([
     scripts.length > 0 && build({
       entryPoints: scripts,
@@ -150,14 +217,57 @@ export async function bundleGlobalAssets({ inDir, outdir }) {
       entryPoints: styles,
       outdir,
       entryNames: "[name]",
-      // Keep public-root url()/@import references intact; BmlServer serves this CSS in memory,
-      // not esbuild's otherwise-emitted content-hashed dependency files.
-      bundle: false,
+      bundle: true,
+      loader: assetLoaders,
+      assetNames: "global/[name]-[hash]",
+      publicPath: "/_bml/",
+      plugins: [publicCssUrls, {
+        name: "bml-global-css-inputs",
+        setup(builder) {
+          builder.onLoad({ filter: /.*/, namespace: "file" }, ({ path, suffix }) => {
+            cssInputs.set(path + suffix, path)
+          })
+        },
+      }],
+      metafile: true,
       ...productionOptimization,
       logLevel: "silent",
+    }).then(result => {
+      validateCssOutputs(result)
+      const files = Object.keys(result.metafile.inputs).map(path => cssInputs.get(resolve(path))).filter(Boolean)
+      writeFileSync(join(outdir, "css-inputs.json"), JSON.stringify([...new Set(files.map(path => realpathSync(path)))].sort()))
     }),
   ])
   return readdirSync(outdir).filter((file) => /\.(?:css|js)$/.test(file)).sort()
+}
+
+/** Packages both client modes and indexes the exact application/library resource bytes. */
+export function packageApplicationAssets({ devDir, prodDir, resourcesDir, globalDir, outdir }) {
+  rmSync(outdir, { recursive: true, force: true })
+  mkdirSync(outdir, { recursive: true })
+  for (const [mode, source] of [["dev", devDir], ["prod", prodDir]]) {
+    if (source && existsSync(source)) cpSync(source, join(outdir, mode), { recursive: true })
+  }
+  if (globalDir && existsSync(join(globalDir, "global"))) {
+    cpSync(join(globalDir, "global"), join(outdir, "global"), { recursive: true })
+  }
+  const files = []
+  function inventory(root, directory = root) {
+    if (!root || !existsSync(directory)) return
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1)) {
+      const file = join(directory, entry.name)
+      if (entry.isDirectory()) inventory(root, file)
+      else if (entry.isFile()) files.push({
+        path: relative(root, file).replaceAll("\\", "/"),
+        digest: `sha256:${createHash("sha256").update(readFileSync(file)).digest("hex")}`,
+      })
+    }
+  }
+  inventory(outdir)
+  inventory(resourcesDir)
+  files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+  if (new Set(files.map((file) => file.path)).size !== files.length) throw new Error("Duplicate packaged BML asset path")
+  writeFileSync(join(outdir, "client-manifest.json"), JSON.stringify({ formatVersion: 1, files }, null, 2))
 }
 
 const productionOptimization = {
@@ -211,23 +321,27 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     process.exit(0)
   }
   const entryPoints = existsSync(inDir)
-    ? readdirSync(inDir).filter((f) => f.endsWith(".ts")).map((f) => join(inDir, f))
+    ? readdirSync(inDir).filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts")).map((f) => join(inDir, f))
     : []
   const jobs = []
   if (entryPoints.length > 0) {
-    jobs.push(bundleIslands({ entryPoints, outdir: outDir, runtime }))
+    jobs.push(bundleIslands({ entryPoints, outdir: outDir, runtime, splitting: true, linkedDir: inDir }))
   }
   // Production bundles follow the manifest, not the .ts inputs: a page whose declared client modules
-  // produced no TypeScript still needs its (empty) <slug>.page.js, because bml-server links it.
+  // produced no TypeScript still needs an indexed, content-hashed empty entry.
   if (manifest && prodOut && existsSync(manifest)) {
     jobs.push(bundleProduction({ manifestPath: manifest, inDir, outdir: prodOut, runtime }))
   }
   if (assetsIn && assetsOut) {
     jobs.push(bundleGlobalAssets({ inDir: assetsIn, outdir: assetsOut }))
   }
-  if (jobs.length === 0) process.exit(0)
   Promise.all(jobs).then(
-    () => process.exit(0),
+    () => {
+      const applicationOut = argOf("--application-out")
+      if (applicationOut) packageApplicationAssets({ devDir: outDir, prodDir: prodOut,
+        resourcesDir: argOf("--application-resources"), globalDir: assetsOut, outdir: applicationOut })
+      process.exit(0)
+    },
     (err) => {
       console.error(err)
       process.exit(1)

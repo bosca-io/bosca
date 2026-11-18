@@ -1,4 +1,5 @@
 import kotlinx.kover.gradle.plugin.dsl.KoverProjectExtension
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 
 plugins {
     id("org.jetbrains.kotlin.jvm") apply false
@@ -11,6 +12,10 @@ plugins {
 val publishVersion: String = System.getenv("PUBLISH_VERSION")?.removePrefix("v") ?: "0.0.1"
 
 allprojects {
+    tasks.withType<Test>().configureEach {
+        testLogging.exceptionFormat = TestExceptionFormat.FULL
+    }
+
     if (path == ":bml:bml-gradle" || path == ":bml:bml-ide") return@allprojects
 
     group = "io.bosca"

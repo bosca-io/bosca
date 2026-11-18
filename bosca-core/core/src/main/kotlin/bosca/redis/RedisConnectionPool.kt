@@ -29,6 +29,7 @@ class RedisConnectionPool private constructor(
     private val pool = GenericConnectionPool(
         factory = RedisPoolableConnectionFactory(client, uri, maxConnections),
         name = "redis-pool",
+        createTimeoutMs = uri.timeout.toMillis(),
     )
 
     constructor(host: String, port: Int, maxConnections: Int = 50) : this(

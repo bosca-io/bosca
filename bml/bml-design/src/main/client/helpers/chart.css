@@ -1,0 +1,5 @@
+[data-bml-chart] .chart-data table { width: 100%; border-collapse: collapse; text-align: left; color: inherit; font: inherit; }
+[data-bml-chart] .chart-data caption { padding: 12px 8px; text-align: left; color: var(--fg-2); font: inherit; font-weight: 600; }
+[data-bml-chart] .chart-data th, [data-bml-chart] .chart-data td { padding: 8px 12px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+[data-bml-chart] .chart-data td > button { min-height: var(--control-height-xs); padding: 2px 8px; border: 1px solid var(--control-border, var(--line)); border-radius: var(--r-sm); background: var(--bg-2); color: var(--fg-1); font: 12px/1.5 var(--font-sans); cursor: pointer; }
+[data-bml-chart] .chart-data td > button:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }

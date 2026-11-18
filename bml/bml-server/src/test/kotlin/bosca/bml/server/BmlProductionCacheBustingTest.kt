@@ -1,6 +1,12 @@
 package bosca.bml.server
 
 import bosca.bml.project.CompiledProject
+import bosca.bml.project.ContentDigest
+import bosca.bml.library.BmlApplicationAssets
+import bosca.bml.library.BmlAssetFile
+import bosca.bml.library.BmlClientManifest
+import bosca.bml.render.BmlBundledPage
+import kotlinx.serialization.json.Json
 import bosca.bml.render.BmlComponentInfo
 import bosca.bml.render.BmlPageRenderer
 import bosca.bml.render.RenderContext
@@ -17,9 +23,23 @@ import java.net.http.HttpResponse
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 class BmlProductionCacheBustingTest {
+
+    @Test
+    fun `page using only the global script versions its content addressed asset without an import map`() {
+        val page = client.send(
+            HttpRequest.newBuilder(URI.create("http://localhost:$port/plain")).GET().build(),
+            HttpResponse.BodyHandlers.ofString(),
+        )
+        assertEquals(200, page.statusCode())
+        assertFalse("type=\"importmap\"" in page.body(), page.body())
+        assertTrue(Regex("src=\"/_bml/content/app-[a-f0-9]{64}\\.js\\?_ts=[a-f0-9]+\"").containsMatchIn(page.body()), page.body())
+        assertFalse("src=\"/_bml/js/index.page.js" in page.body(), page.body())
+    }
 
     @Test
     fun `development server does not traverse client assets for a production token`() {
@@ -104,38 +124,124 @@ class BmlProductionCacheBustingTest {
     }
 
     @Test
-    fun `production page gives every generated css and js url one deployment token`() {
-        val html = client.send(
-            HttpRequest.newBuilder(URI.create("http://localhost:$port/")).GET().build(),
-            HttpResponse.BodyHandlers.ofString(),
-        ).body()
-        val tokens = Regex("/_bml/(?:app\\.(?:css|js)|(?:css|js)/index\\.page\\.(?:css|js))\\?_ts=([0-9a-f]+)")
-            .findAll(html)
-            .map { it.groupValues[1] }
-            .toList()
-        assertEquals(4, tokens.size, html)
-        assertEquals(1, tokens.distinct().size, html)
+    fun `composed host identities affect deployment tokens independently of classpath order`() {
+        val resources = java.nio.file.Files.createTempDirectory("bml-composed-build-ids").toFile()
+        try {
+            val embedded = resources.resolve("embedded/$BML_BUILD_ID_RESOURCE").apply {
+                parentFile.mkdirs(); writeText("2026-10-20T10:00:00Z\n")
+            }
+            val host = resources.resolve("host/$BML_BUILD_ID_RESOURCE").apply {
+                parentFile.mkdirs(); writeText("2026-10-21T10:00:00Z")
+            }
+            resources.resolve("blank/$BML_BUILD_ID_RESOURCE").apply { parentFile.mkdirs(); writeText(" \n") }
+            fun identity(vararg names: String) = java.net.URLClassLoader(
+                names.map { resources.resolve(it).toURI().toURL() }.toTypedArray(), null,
+            ).use { bmlBuildId(it) }
+            fun token(id: String) = bmlDeploymentCacheToken(CompiledProject("test", "1"), emptyList(), emptyList(), null, null, null, id)
+            val first = identity("host", "embedded", "blank")
+            assertEquals(embedded.readText().trim() + "\n" + host.readText(), first)
+            assertEquals(first, identity("embedded", "host", "blank"))
+            resources.resolve("merged/$BML_BUILD_ID_RESOURCE").apply {
+                parentFile.mkdirs(); writeText("${host.readText()}\n${embedded.readText()}\n${host.readText()}")
+            }
+            assertEquals(first, identity("merged"))
+            assertEquals(first, identity("merged", "embedded", "host"))
+            host.writeText("2026-10-22T10:00:00Z")
+            val changedHost = identity("embedded", "host")
+            assertNotEquals(token(first), token(changedHost))
+            embedded.writeText("2026-10-23T10:00:00Z")
+            assertNotEquals(token(changedHost), token(identity("embedded", "host")))
+            host.writeText(embedded.readText())
+            assertEquals(embedded.readText(), identity("host", "embedded"))
+            assertEquals("", identity("blank"))
+        } finally {
+            resources.deleteRecursively()
+        }
     }
 
     @Test
-    fun `production css and js use long-lived immutable caching`() {
-        for (path in listOf(
-            "/_bml/app.css",
-            "/_bml/css/index.page.css",
-            "/_bml/app.js",
-            "/_bml/js/index.page.js",
-        )) {
-            val response = client.send(
-                HttpRequest.newBuilder(URI.create("http://localhost:$port$path")).GET().build(),
-                HttpResponse.BodyHandlers.ofString(),
-            )
-            assertEquals(200, response.statusCode(), path)
-            assertEquals(
-                "public, max-age=31536000, immutable",
-                response.headers().firstValue("Cache-Control").orElse(null),
-                path,
-            )
+    fun `production page links and module imports share the deployment token`() {
+        val html = client.send(HttpRequest.newBuilder(URI("http://localhost:$port/")).GET().build(), HttpResponse.BodyHandlers.ofString()).body()
+        assertFalse("importmap" in html, html)
+        val token = checkNotNull(Regex("_ts=([a-f0-9]+)").find(html)).groupValues[1]
+        val urls = Regex("(?:href|src)=\"(/_bml/[^\"]+)\"").findAll(html).map { it.groupValues[1] }.toList()
+        assertEquals(4, urls.size, html)
+        for (url in urls) {
+            if (url.startsWith("/_bml/js/deploy/")) {
+                assertTrue(url.startsWith("/_bml/js/deploy/$token/"), url)
+                assertEquals(null, URI(url).rawQuery, url)
+            } else assertEquals("_ts=$token", URI(url).rawQuery, url)
+            val response = client.send(HttpRequest.newBuilder(URI("http://localhost:$port$url")).GET().build(), HttpResponse.BodyHandlers.ofString())
+            assertEquals(200, response.statusCode(), url)
+            assertEquals("public, max-age=31536000, immutable", response.headers().firstValue("Cache-Control").orElseThrow(), url)
         }
+    }
+
+    @Test
+    fun `stable production asset URLs revalidate without a matching deployment token`() {
+        for (path in listOf("/_bml/app.css", "/_bml/css/index.page.css", "/_bml/app.js")) {
+            for (query in listOf("", "?_ts=old-deployment")) {
+                val response = client.send(
+                    HttpRequest.newBuilder(URI.create("http://localhost:$port$path$query")).GET().build(),
+                    HttpResponse.BodyHandlers.ofString(),
+                )
+                assertEquals(200, response.statusCode(), path + query)
+                assertEquals(listOf("no-cache"), response.headers().allValues("Cache-Control"), path + query)
+                val etag = response.headers().firstValue("ETag").orElseThrow()
+                val conditional = client.send(
+                    HttpRequest.newBuilder(URI.create("http://localhost:$port$path$query"))
+                        .header("If-None-Match", etag).GET().build(),
+                    HttpResponse.BodyHandlers.ofString(),
+                )
+                assertEquals(304, conditional.statusCode(), path + query)
+                assertEquals(listOf("no-cache"), conditional.headers().allValues("Cache-Control"), path + query)
+            }
+        }
+    }
+
+    @Test
+    fun `library fonts and styles use immutable content URLs and validators match served bytes`() {
+        fun get(path: String, etag: String? = null): HttpResponse<String> = client.send(
+            HttpRequest.newBuilder(URI.create("http://localhost:$port$path")).apply {
+                etag?.let { header("If-None-Match", it) }
+            }.GET().build(), HttpResponse.BodyHandlers.ofString(),
+        )
+        val html = get("/plain").body()
+        val cssUrl = checkNotNull(Regex("href=\"([^\"]+design-[^\"]+\\.css(?:\\?[^\"]*)?)\"").find(html)).groupValues[1]
+        val css = get(cssUrl)
+        assertEquals(200, css.statusCode())
+        val fontUrl = checkNotNull(Regex("url\\(([^)]+)\\)").find(css.body())).groupValues[1]
+        assertFalse("_ts=" in fontUrl)
+        assertTrue(Regex("geist-[a-f0-9]{64}\\.woff2").containsMatchIn(fontUrl), fontUrl)
+        val font = get(fontUrl)
+        assertEquals(200, font.statusCode())
+        assertEquals("public, max-age=31536000, immutable", font.headers().firstValue("Cache-Control").orElseThrow())
+        assertEquals("no-cache", get("/_bml/libraries/design/geist.woff2").headers().firstValue("Cache-Control").orElseThrow())
+        val etag = css.headers().firstValue("ETag").orElseThrow()
+        assertEquals("\"${ContentDigest.sha256(css.body().toByteArray()).removePrefix("sha256:")}\"", etag)
+        assertEquals(304, get(cssUrl, etag).statusCode())
+    }
+
+    @Test
+    fun `global stylesheet dependencies resolve through immutable content URLs and plain URLs revalidate`() {
+        fun get(path: String) = client.send(
+            HttpRequest.newBuilder(URI("http://localhost:$port$path")).timeout(java.time.Duration.ofSeconds(10)).GET().build(),
+            HttpResponse.BodyHandlers.ofString(),
+        )
+        val html = get("/").body()
+        val cssUrl = checkNotNull(Regex("/_bml/content/app-[a-f0-9]{64}\\.css").find(html)).value
+        val css = get(cssUrl).body()
+        val fontUrl = checkNotNull(Regex("url\\(([^)]+)\\)").find(css)).groupValues[1]
+        assertTrue(fontUrl.startsWith("/_bml/content/site-"), css)
+        val font = get(fontUrl)
+        assertEquals(200, font.statusCode())
+        assertEquals("wOF2-site-font", font.body())
+        assertEquals("public, max-age=31536000, immutable", font.headers().firstValue("Cache-Control").orElseThrow())
+        val plain = get("/_bml/global/site.woff2")
+        assertEquals(200, plain.statusCode())
+        assertEquals("wOF2-site-font", plain.body())
+        assertEquals("no-cache", plain.headers().firstValue("Cache-Control").orElseThrow())
+        assertEquals(404, get("/_bml/global/missing.woff2").statusCode())
     }
 
     companion object {
@@ -149,7 +255,11 @@ class BmlProductionCacheBustingTest {
         fun boot() {
             port = ServerSocket(0).use { it.localPort }
             clientDir = java.nio.file.Files.createTempDirectory("bml-production-cache-test").toFile()
-                .also { it.resolve("index.page.js").writeText("console.log('page')") }
+                .also {
+                    it.resolve("index.page-ABCDEFGH.js").writeText("console.log('page')")
+                    it.resolve("bml-imports.json").writeText("""{"index.page.js":["index.page-ABCDEFGH.js","chunks/chunk-ABCDEFGH.js"]}""")
+                    it.resolve("chunks/chunk-ABCDEFGH.js").apply { parentFile.mkdirs() }.writeText("console.log('chunk')")
+                }
             val page = object : BmlPageRenderer {
                 override val route = "/"
                 override val clientModule = "Page.js"
@@ -158,7 +268,18 @@ class BmlProductionCacheBustingTest {
                     ctx.writer.markup("<html><head></head><body>production</body></html>")
                 }
             }
-            val plainPage = object : BmlPageRenderer {
+            val resources = mapOf(
+                "libraries/design/design.css" to "@font-face{font-family:Geist;src:url(/_bml/libraries/design/geist.woff2)}".toByteArray(),
+                "libraries/design/geist.woff2" to "wOF2-test-font".toByteArray(),
+                "global/site.woff2" to "wOF2-site-font".toByteArray(),
+            )
+            val manifest = Json.encodeToString(BmlClientManifest.serializer(), BmlClientManifest(
+                files = resources.map { (path, bytes) -> BmlAssetFile(path, ContentDigest.sha256(bytes)) },
+            )).toByteArray()
+            val plainPage = object : BmlPageRenderer, BmlBundledPage {
+                override val assets = BmlApplicationAssets("test", mapOf("/plain" to listOf("/_bml/libraries/design/design.css")), emptyMap()) {
+                    if (it == "test/client-manifest.json") manifest else resources[it.removePrefix("test/")]
+                }
                 override val route = "/plain"
                 override suspend fun render(ctx: RenderContext) {
                     ctx.writer.markup("<html><head></head><body>plain</body></html>")
@@ -170,7 +291,7 @@ class BmlProductionCacheBustingTest {
                 components = listOf(
                     BmlComponentInfo("badge", "badge", ".badge{}", emptyList(), clientModule = "Badge.js"),
                 ),
-                globalCss = "body{}",
+                globalCss = "body{} @font-face{font-family:Site;src:url(/_bml/global/site.woff2)}",
                 globalJs = "console.log('app')",
                 clientDir = clientDir,
                 port = port,

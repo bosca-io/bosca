@@ -1,0 +1,4 @@
+<page route="/system/security/principals/{id}" requireAuth>
+  <script server provides="page">bosca.system.ui.systemPrincipals()</script>
+  <system-layout title="Principals" :admin="page.admin"><system-principals :initial="page" /></system-layout>
+</page>

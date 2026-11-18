@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import kotlinx.serialization.Serializable
 import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.milliseconds
@@ -50,6 +51,7 @@ class GitCiModule : BoscaApplicationModule {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override suspend fun install(application: BoscaApplication) {
+        application.onShutdown { scope.cancel() }
         val pubSubService = provide<PubSubService>()
         subscribeForever("bosca.artifacts.version.published", ArtifactVersionPublished.serializer(), pubSubService) { msg ->
             log.debug(

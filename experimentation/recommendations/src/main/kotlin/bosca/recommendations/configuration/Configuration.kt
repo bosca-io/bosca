@@ -26,6 +26,7 @@ class Configuration {
     fun tfServingConfiguration(application: BoscaApplication) = with(application.environment.config) {
         val defaults = TfServingConfiguration()
         TfServingConfiguration(
+            contextModelUrlTemplate = propertyOrNull("recommendations.tfServing.contextModelUrlTemplate")?.getString(),
             url = propertyOrNull("recommendations.tfServing.url")?.getString() ?: defaults.url,
             modelName = propertyOrNull("recommendations.tfServing.modelName")?.getString() ?: defaults.modelName,
             contentModelName = propertyOrNull("recommendations.tfServing.contentModelName")?.getString()

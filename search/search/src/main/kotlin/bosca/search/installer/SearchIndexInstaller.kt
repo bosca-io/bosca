@@ -11,6 +11,8 @@ import bosca.storage.service.StorageSystemService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -60,7 +62,11 @@ class SearchIndexInstaller(
     )
 
     override suspend fun install(installation: PackageInstallation, version: PackageInstallationVersion) {
-        val systems = storageSystemService.getAll().associateBy { (it.configuration.takeIf { it != JsonNull } ?: JsonObject(emptyMap())).jsonObject.getValue("indexName").jsonPrimitive.content }
+        val systems = storageSystemService.getAll().filter { it.type == StorageSystemType.SEARCH }.mapNotNull { system ->
+            val name = ((system.configuration as? JsonObject)?.get("indexName") as? JsonPrimitive)?.contentOrNull
+                ?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            name to system
+        }.toMap()
         for (index in listOf(defaultSearchIndex, adminSearchIndex, profileSearchIndex)) {
             val indexName = index.configuration.takeIf { it != JsonNull }?.jsonObject?.getValue("indexName")?.jsonPrimitive?.content ?: ""
             val existing = systems[indexName]

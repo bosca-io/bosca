@@ -18,6 +18,8 @@ if (androidEnabled) {
     apply(plugin = "com.android.kotlin.multiplatform.library")
 }
 
+val iosEnabled = gradle.extra["iosEnabled"] as Boolean
+
 kotlin {
     applyDefaultHierarchyTemplate {
         common {
@@ -52,14 +54,16 @@ kotlin {
         binaries.executable()
     }
 
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64(),
-    ).forEach {
-        it.binaries.framework {
-            baseName = "BoscaCoreKit"
-            freeCompilerArgs += listOf("-Xbinary=bundleId=bosca.core.kit")
-            isStatic = true
+    if (iosEnabled) {
+        listOf(
+            iosArm64(),
+            iosSimulatorArm64(),
+        ).forEach {
+            it.binaries.framework {
+                baseName = "BoscaCoreKit"
+                freeCompilerArgs += listOf("-Xbinary=bundleId=bosca.core.kit")
+                isStatic = true
+            }
         }
     }
 
@@ -97,9 +101,11 @@ kotlin {
             }
         }
 
-        val iosMain by getting {
-            dependencies {
-                api(libs.ktor.client.darwin)
+        if (iosEnabled) {
+            val iosMain by getting {
+                dependencies {
+                    api(libs.ktor.client.darwin)
+                }
             }
         }
 
@@ -143,14 +149,16 @@ tasks.configureEach {
 }
 
 kotlin {
-    cocoapods {
-        version = "1.0"
-        ios.deploymentTarget = iosDeploymentTarget
+    if (iosEnabled) {
+        cocoapods {
+            version = "1.0"
+            ios.deploymentTarget = iosDeploymentTarget
 
-        // auth-shared is an API dependency. Kotlin/Native propagates its
-        // `-framework GoogleSignIn` linker option, but not the CocoaPods search
-        // path into this framework's final link, so declare the pod here too.
-        pod("GoogleSignIn")
+            // auth-shared is an API dependency. Kotlin/Native propagates its
+            // `-framework GoogleSignIn` linker option, but not the CocoaPods search
+            // path into this framework's final link, so declare the pod here too.
+            pod("GoogleSignIn")
+        }
     }
 }
 

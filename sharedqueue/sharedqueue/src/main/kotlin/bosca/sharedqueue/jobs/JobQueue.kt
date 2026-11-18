@@ -50,8 +50,13 @@ interface JobQueue : Queue<Job> {
 
     suspend fun markCancelled(id: UUID)
 
+    /**
+     * Reconciles recoverable queue state through [time]. NATS retries unconfirmed initial
+     * publications; JetStream owns redelivery of already-published jobs.
+     */
     suspend fun checkForExpiredJobs(time: Long = Clock.System.now().toEpochMilliseconds())
 
+    /** Explicitly redrives recoverable jobs, including published jobs whose delivery was lost. */
     suspend fun expireAllJobs()
 
     /**

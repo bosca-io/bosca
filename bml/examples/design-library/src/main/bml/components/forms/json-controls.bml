@@ -1,0 +1,29 @@
+<component tag="json-controls">
+  <prop name="id" type="String" required />
+  <script server provides="json" scope="server-session">bosca.design.example.JsonEditorState(id)</script>
+  <card :title='"JSON " + id'>
+    <island name="json" :key="id">
+      <div :data-json-owner="json.id">
+        <div class="actions">
+          <button @click="json.update" :data-json-update="json.id">Update { json.updates }</button>
+          <button @click="json.replace" :data-json-replace="json.id">Replace JSON</button>
+          <button @click="json.toggleMode" :data-json-mode="json.id">Toggle mode</button>
+          <button @click="json.toggleReadOnly" :data-json-readonly="json.id">Toggle readonly</button>
+          <button @click="json.toggleDisabled" :data-json-disabled="json.id">Toggle disabled</button>
+          <button @click="json.toggle" :data-json-toggle="json.id">Toggle editor</button>
+        </div>
+        <form @submit="json.save(form.settings)" :data-json-form="json.id">
+          <if json.mounted>
+            <json-editor name="settings" :value="json.value" :text="json.text" :label='"Settings " + json.id' :mode="json.mode" :readOnly="json.readOnly"
+                         :disabled="json.disabled" :error="json.error" :preserveKey='"json-" + json.id' :data-json="json.id" title="Application settings" class="json-example" />
+          </if>
+          <div class="actions">
+            <button type="submit" :data-json-save="json.id">Save { json.saves }</button>
+            <button type="reset" :data-json-reset="json.id">Reset JSON</button>
+          </div>
+          <output :data-json-saved="json.id">{ json.saved }</output>
+        </form>
+      </div>
+    </island>
+  </card>
+</component>

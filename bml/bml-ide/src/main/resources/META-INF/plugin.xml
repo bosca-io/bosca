@@ -86,6 +86,7 @@
         <completion.contributor
             language="BML"
             implementationClass="bosca.bml.ide.BmlCompletionContributor"/>
+        <annotator language="BML" implementationClass="bosca.bml.ide.BmlImportAnnotator"/>
         <!-- No language attribute: fires for all completion, gated to BML injection hosts inside, so it
              offers provides/props within the injected Kotlin without depending on the Kotlin plugin. -->
         <completion.contributor

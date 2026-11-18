@@ -60,7 +60,7 @@ tasks.register<JavaExec>("packageDefaultMessageProject") {
 
 // Native image via GraalVM 25i's Crema (runtime class loading): the server hot-loads message jars
 // inside the native binary. Build with JAVA_HOME + GRAALVM_HOME at the 25i toolchain (the GDS
-// `25i4` stream, JDK 25.0.4.1.1 / GraalVM 25.4.4.1.1). Run `./gradlew --stop`
+// `25i5` stream, JDK 25.0.5.0.3 / GraalVM 25.5.5.0.3). Run `./gradlew --stop`
 // after switching; GRAALVM_HOME is not part of the daemon fingerprint. KNOWN LIMITATION
 // (accepted): retired classloader generations never unload natively (~230KB leaked per publish;
 // Crema scopes load/link/execute only) — routine restarts cover it at email publish cadence.

@@ -1,0 +1,19 @@
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
+
+type Query {
+  security: Security!
+  profiles: Profiles!
+  search: Search!
+}
+
+type Mutation {
+  security: SecurityMutation!
+  profiles: ProfilesMutation!
+}
+
+# Git and Pipelines contribute the subscription fields through their domain schemas.
+type Subscription

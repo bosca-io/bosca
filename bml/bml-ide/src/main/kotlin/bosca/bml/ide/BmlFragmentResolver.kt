@@ -3,18 +3,23 @@ package bosca.bml.ide
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.roots.LibraryOrderEntry
+import com.intellij.openapi.roots.OrderRootType
+import com.intellij.openapi.roots.ProjectFileIndex
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.search.FileTypeIndex
 import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.psi.search.GlobalSearchScopesCore
 import org.jetbrains.kotlin.psi.KtBlockCodeFragment
 import org.jetbrains.kotlin.psi.KtCodeFragment
 import org.jetbrains.kotlin.psi.KtFile
 
 /**
  * Resolves Kotlin references inside a `.bml` embedded-Kotlin region by re-resolving the injected text in a
- * module-anchored [KtBlockCodeFragment] (K2 doesn't resolve the language injection in place). See the goto
+ * source-anchored [KtBlockCodeFragment] (K2 doesn't resolve the language injection in place). See the goto
  * handler for the why.
  */
 object BmlFragmentResolver {
@@ -32,21 +37,22 @@ object BmlFragmentResolver {
                     BmlPageScope.findDeclarationElement(contextHost.containingFile, it, contextHost.textOffset)
                 }
             } else {
-                r
+                // The Kotlin plugin maps binary declarations to their matching source attachment.
+                r.navigationElement
             }
         }
 
     /**
-     * Runs [action] over module-anchored [KtBlockCodeFragment]s built from [text] until one yields a
+     * Runs [action] over source-anchored [KtBlockCodeFragment]s built from [text] until one yields a
      * non-null result. K2 code-fragment resolution is sensitive to the anchor element, so a few are
-     * tried (file scope, then a class, then any top-level declaration); each fragment's resolve scope
-     * is forced to the module's deps + libraries, else library symbols (e.g. `listOf`) don't resolve
-     * while local names do. This is the shared workaround for K2 not resolving the injection in place —
-     * goto and member completion both go through it.
+     * tried (file scope, then a class, then any top-level declaration). Project hosts use their module's
+     * deps + libraries; attached BML sources inherit the Kotlin anchor's own library scope. This is the
+     * shared workaround for K2 not resolving the injection in place — goto and member completion both
+     * go through it.
      */
     fun <T : Any> withAnchoredFragment(contextHost: PsiElement, text: String, action: (KtBlockCodeFragment) -> T?): T? {
         val module = ModuleUtilCore.findModuleForPsiElement(contextHost)
-        val ktFile = moduleKotlinFile(contextHost) ?: return null
+        val ktFile = contextKotlinFile(contextHost) ?: return null
         val scope = module?.let { GlobalSearchScope.moduleWithDependenciesAndLibrariesScope(it) }
         val anchors: List<PsiElement> = buildList {
             add(ktFile)
@@ -68,11 +74,26 @@ object BmlFragmentResolver {
         return null
     }
 
-    /** The first Kotlin source file in the host's module — gives a fragment a real `KaSourceModule` scope. */
-    private fun moduleKotlinFile(host: PsiElement): KtFile? {
-        val module = ModuleUtilCore.findModuleForPsiElement(host) ?: return null
+    /** Uses the host module or its own source attachment; unrelated modules never supply an anchor. */
+    private fun contextKotlinFile(host: PsiElement): KtFile? {
+        val project = host.project
+        val module = ModuleUtilCore.findModuleForPsiElement(host)
         val ktType = FileTypeManager.getInstance().getFileTypeByExtension("kt")
-        val vf = FileTypeIndex.getFiles(ktType, GlobalSearchScope.moduleScope(module)).firstOrNull() ?: return null
-        return PsiManager.getInstance(host.project).findFile(vf) as? KtFile
+        val scopes = if (module != null) {
+            listOf(GlobalSearchScope.moduleScope(module))
+        } else {
+            val file = host.containingFile?.virtualFile ?: return null
+            ProjectFileIndex.getInstance(project).getOrderEntriesForFile(file)
+                .filterIsInstance<LibraryOrderEntry>()
+                .flatMap { it.getRootFiles(OrderRootType.SOURCES).toList() }
+                .distinct()
+                .filter { VfsUtilCore.isAncestor(it, file, false) }
+                .map { GlobalSearchScopesCore.directoryScope(project, it, true) }
+        }
+        return scopes.firstNotNullOfOrNull { scope ->
+            FileTypeIndex.getFiles(ktType, scope).firstNotNullOfOrNull { file ->
+                PsiManager.getInstance(project).findFile(file) as? KtFile
+            }
+        }
     }
 }

@@ -16,6 +16,7 @@ import java.net.http.HttpResponse
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class BmlProductionClientOnlyPageTest {
@@ -27,15 +28,27 @@ class BmlProductionClientOnlyPageTest {
             HttpResponse.BodyHandlers.ofString(),
         )
         assertEquals(200, page.statusCode())
-        assertTrue("/_bml/js/index.page.js?_ts=" in page.body(), page.body())
+        assertFalse("type=\"importmap\"" in page.body(), page.body())
+        assertTrue(Regex("/_bml/js/deploy/[a-f0-9]+/index.page-ABCDEFGH[.]js").containsMatchIn(page.body()), page.body())
         assertTrue("/_bml/js/Page.js" !in page.body(), page.body())
 
         val bundle = client.send(
-            HttpRequest.newBuilder(URI.create("http://localhost:$port/_bml/js/index.page.js")).GET().build(),
+            HttpRequest.newBuilder(URI.create("http://localhost:$port/_bml/js/index.page-ABCDEFGH.js")).GET().build(),
             HttpResponse.BodyHandlers.ofString(),
         )
         assertEquals(200, bundle.statusCode())
         assertEquals("console.log('page only')", bundle.body())
+    }
+
+    @Test
+    fun `static page omits the import map and unrelated client asset references`() {
+        val page = client.send(
+            HttpRequest.newBuilder(URI.create("http://localhost:$port/static")).GET().build(),
+            HttpResponse.BodyHandlers.ofString(),
+        )
+        assertEquals(200, page.statusCode())
+        assertFalse("type=\"importmap\"" in page.body(), page.body())
+        assertFalse("/_bml/js/" in page.body(), page.body())
     }
 
     companion object {
@@ -49,7 +62,10 @@ class BmlProductionClientOnlyPageTest {
         fun boot() {
             port = ServerSocket(0).use { it.localPort }
             clientDir = java.nio.file.Files.createTempDirectory("bml-client-only-production-test").toFile()
-                .also { it.resolve("index.page.js").writeText("console.log('page only')") }
+                .also {
+                    it.resolve("index.page-ABCDEFGH.js").writeText("console.log('page only')")
+                    it.resolve("bml-imports.json").writeText("""{"index.page.js":["index.page-ABCDEFGH.js"]}""")
+                }
             val page = object : BmlPageRenderer {
                 override val route = "/"
                 override val clientModule = "Page.js"
@@ -57,9 +73,15 @@ class BmlProductionClientOnlyPageTest {
                     ctx.writer.markup("<html><head></head><body>client page</body></html>")
                 }
             }
+            val staticPage = object : BmlPageRenderer {
+                override val route = "/static"
+                override suspend fun render(ctx: RenderContext) {
+                    ctx.writer.markup("<html><head></head><body>static page</body></html>")
+                }
+            }
             val server = BmlServer(
                 project = CompiledProject("test", "1"),
-                pages = listOf(page),
+                pages = listOf(page, staticPage),
                 clientDir = clientDir,
                 port = port,
                 dev = false,

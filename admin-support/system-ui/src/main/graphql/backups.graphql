@@ -1,0 +1,7 @@
+query SystemBackups($offset: Int!) {
+  backups { records: list(offset: $offset, limit: 26) { id status path error includeFiles created modified } }
+}
+query SystemBackup($id: UUID!) { backups { backup(id: $id) { id status path } } }
+mutation SystemCreateBackup($includeFiles: Boolean!) { backups { create(includeFiles: $includeFiles) { id } } }
+mutation SystemRestoreBackup($id: UUID!, $strategy: ConflictStrategy!) { backups { restore(backupId: $id, conflictStrategy: $strategy) } }
+mutation SystemDeleteBackup($id: UUID!) { backups { delete(id: $id) } }

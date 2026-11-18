@@ -1,0 +1,15 @@
+{
+  "resources": {
+    "includes": [
+      {"pattern": "META-INF/bosca/bml/build-id"},
+      {"pattern": "atlas-server\\.yaml"},
+      {"pattern": "logback\\.xml"},
+      {"pattern": "db/migrations/.*\\.sql"},
+      {"pattern": "graphql/.*\\.graphqls"},
+      {"pattern": "META-INF/services/.*"},
+      {"pattern": "messages.*\\.properties"},
+      {"pattern": "org/postgresql/driverconfig\\.properties"},
+      {"pattern": "driver\\.properties"}
+    ]
+  }
+}

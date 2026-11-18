@@ -9,7 +9,7 @@ import java.net.URLClassLoader
 /**
  * Persistent JVM entry point used by the Gradle `bmlDev` task.
  *
- * Each successful build publishes an immutable application-output snapshot. The launcher loads
+ * Each successful build publishes an immutable application and library classpath. The launcher loads
  * that snapshot in a fresh child-first classloader and invokes the site's real main function.
  * [BmlServer.start] publishes the resulting configuration into the already-running Netty server.
  */
@@ -34,7 +34,7 @@ object BmlDevLauncher {
                 continue
             }
             observedDigest = generation.digest
-            val loader = ReloadClassLoader(arrayOf(generation.directory.toURI().toURL()), BmlDevLauncher::class.java.classLoader)
+            val loader = ReloadClassLoader(generation.classpath.map { it.toURI().toURL() }.toTypedArray(), BmlDevLauncher::class.java.classLoader)
             BmlHotSwapTransaction.begin()
             try {
                 invokeMain(loader, applicationMain, applicationArgs)
@@ -76,15 +76,15 @@ object BmlDevLauncher {
         if (!marker.isFile) return null
         val lines = marker.readLines()
         if (lines.size < 2) return null
-        val directory = File(lines[1])
-        if (!directory.isDirectory) return null
-        Generation(lines[0], directory)
+        val classpath = lines.drop(1).filter { it.isNotBlank() }.map(::File)
+        if (classpath.isEmpty() || classpath.any { !it.isDirectory && !it.isFile }) return null
+        Generation(lines[0], classpath)
     } catch (_: java.io.IOException) {
         // The marker is atomically replaced, but tolerate a concurrent filesystem hiccup.
         null
     }
 
-    private data class Generation(val digest: String, val directory: File)
+    private data class Generation(val digest: String, val classpath: List<File>)
 
     private class ReloadClassLoader(urls: Array<URL>, parent: ClassLoader) : URLClassLoader(urls, parent) {
         override fun loadClass(name: String, resolve: Boolean): Class<*> = synchronized(getClassLoadingLock(name)) {

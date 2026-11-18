@@ -378,6 +378,8 @@ type CollectionMutation {
     removeChildMetadata(id: UUID!, metadataId: UUID!): Collection!
     "Replace all category assignments on a collection"
     setCategories(categoryIds: [UUID!]!, id: UUID!): Boolean!
+    "Replace all freeform labels on a collection; an empty list clears them"
+    setLabels(id: UUID!, labels: [String!]!): Boolean!
     "Set attributes on a child item within a collection"
     setChildItemAttributes(attributes: JSON, childCollectionId: UUID, childMetadataId: UUID, id: UUID!): Collection!
     "Replace all custom attributes on a collection"

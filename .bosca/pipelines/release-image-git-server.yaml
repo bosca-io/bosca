@@ -38,20 +38,12 @@ jobs:
         uses: setup-java
         with:
           distribution: graal
-          stream: 25i4
-          version: "25.0.4.1.1"
+          stream: 25i5
+          version: "25.0.5.0.3"
       - name: Setup Rust
         uses: setup-rust
         with:
           toolchain: stable
-      - name: Setup Node
-        uses: setup-node
-        with:
-          version: "22"
-      - name: Setup pnpm
-        uses: setup-pnpm
-        with:
-          version: "10"
       - name: Build and push image
         run: scripts/release/build-image.sh "$IMAGE" "$VERSION"
         env:

@@ -1,13 +1,13 @@
 <component tag="git-repository-heading">
   <prop name="page" type="bosca.git.ui.RepositoryPage" required />
-  <div class="repository-heading">
-    <ui-page-heading
+  <div class="repository-heading workspace-fixed">
+    <page-heading
       icon="folder"
       :badge="page.visibility.lowercase()"
       :badgeTone='when (page.visibility) { "PUBLIC" -> "success"; "INTERNAL" -> "warning"; else -> "neutral" }'
       :subtitle='page.slug + " · " + page.visibility.lowercase() + " · " + page.defaultBranch'
       :title="page.name"
-      :trail='listOf(bosca.git.ui.components.NavigationItem("Repositories", page.listHref, false))'
+      :trail='listOf(bosca.design.model.NavigationItem("Git", "", false), bosca.design.model.NavigationItem("Repositories", page.listHref, false))'
     >
       <div class="repository-controls">
         <if page.tab == "code" || page.tab == "commits" || page.tab == "statuses">
@@ -27,15 +27,15 @@
         </if>
         <if page.tab == "pipelines" || page.tab == "statuses" || page.tab == "secrets">
           <a class="button-link" :href="page.href(tab = page.tab)">
-            <span class="refresh-icon"><ui-icon name="pulse" :size="14" /></span>
+            <span class="refresh-icon"><icon name="pulse" :size="14" /></span>
             Refresh
           </a>
         </if>
-        <ui-popover label="Clone repository" icon="download" iconOnly :width="420">
-          <ui-copy-field :value="page.cloneUrl" label="Clone URL" copyLabel="Copy clone URL" />
-        </ui-popover>
+        <popover label="Clone repository" icon="download" iconOnly :width="420">
+          <copy-field :value="page.cloneUrl" label="Clone URL" copyLabel="Copy clone URL" />
+        </popover>
       </div>
-    </ui-page-heading>
+    </page-heading>
   </div>
   <style scoped>
     .repository-heading {

@@ -1,0 +1,31 @@
+<component tag="system-hubspot-preview">
+  <prop name="admin" type="Boolean" default="false" />
+  <script server provides="model">bosca.system.ui.SystemHubSpotPreview(admin)</script>
+  <island name="system-hubspot-preview" :key='"preview"'>
+    <if model.admin>
+      <card :padded="false" title="Preview" description="Evaluate expressions against a real profile">
+        <div class="preview-stack" data-hubspot-preview :data-context="model.context?.toString()" :data-profile-type="model.profileType">
+          <system-feedback :feedback="model.feedback" />
+          <div class="system-actions"><button @click="model.sync(true, ctx)">Sync all profiles</button></div>
+          <form class="system-actions" @submit="model.search(form.query, ctx)"><field label="Search profiles" hint="Enter at least two characters."><input name="query" :value="model.query" minlength="2" /></field><button type="submit">Search profiles</button></form>
+          <form @submit="model.select(form.profileId, ctx)"><field label="Profile"><select name="profileId" label="Profile" searchable><option value="">Choose a profile</option>
+            <if model.profileId.isNotBlank() && model.profiles.none { it.id == model.profileId }><option :value="model.profileId" selected>{ model.profileName.ifBlank { model.profileId } }</option></if>
+            <for profile in model.profiles><option :value="profile.id" :selected="profile.id == model.profileId">{ profile.name + " · " + profile.type.name }</option></for>
+          </select></field><form-actions><button type="submit">Load profile</button></form-actions></form>
+          <if model.profileId.isNotBlank()>
+            <div class="system-actions"><strong>{ model.profileName.ifBlank { model.profileId } }</strong><badge>{ model.profileType }</badge><button @click="model.select(model.profileId, ctx)">Refresh context</button><button @click="model.sync(false, ctx)">Sync this profile</button></div>
+            <div class="preview-grid">
+              <field label="Profile context (input)"><json-editor name="hubspotContext" label="Profile context" :value="model.context ?: kotlinx.serialization.json.JsonNull" mode="text" readOnly /></field>
+              <field label="Expression output"><code-editor name="hubspotOutput" language="json" label="Expression output" readOnly /><alert tone="error" data-hubspot-preview-error hidden /></field>
+            </div>
+          </if>
+        </div>
+      </card>
+    </if>
+  </island>
+  <style scoped>
+    .preview-stack { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
+    .preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    @media (max-width: 900px) { .preview-grid { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+</component>

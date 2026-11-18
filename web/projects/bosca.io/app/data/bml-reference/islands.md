@@ -274,6 +274,9 @@ Declarative actions and `ctx.replace` normally replace the rendered region. Add 
 When the next server fragment contains the same key on the same element type, BML moves the
 existing element into its new position instead of recreating it. Its root attributes are refreshed
 from the server, while its child DOM, focus, media state, and client enhancements remain intact.
+BML captures native scroll offsets on the retained root and its descendants immediately before
+replacement and restores them before update callbacks run. Offsets are limited by the resulting
+content dimensions; changing a preservation key creates fresh DOM with its initial scroll position.
 Keys must be unique within the updated region. Retained nodes receive `data-bml-retained`, while
 new preservation roots receive `data-bml-added`; these markers can suppress old one-shot entrance
 animations and highlight only the new batch. `ctx.onUpdate` receives the same `added` and `retained`

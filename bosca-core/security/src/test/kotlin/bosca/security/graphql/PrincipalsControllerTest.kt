@@ -41,6 +41,18 @@ class PrincipalsControllerTest {
     }
 
     @Test
+    fun `admin search trims the query and preserves paging and deleted filter`() = runTest {
+        val principal = Principal(id = UUID.random())
+        every { groupEvaluator.hasAdminGroup(authentication) } returns true
+        coEvery { securityService.findPrincipals("Reader", 25, 26, true) } returns listOf(principal)
+        coEvery { securityService.getPrincipals(0, 26, false) } returns emptyList()
+
+        assertEquals(listOf(principal), controller.all(authentication, 26, 25, true, " Reader "))
+        assertEquals(emptyList(), controller.all(authentication, 26, 0, false, "  "))
+        coVerify(exactly = 1) { securityService.findPrincipals("Reader", 25, 26, true) }
+    }
+
+    @Test
     fun `non admin cannot list or look up principals`() = runTest {
         every { groupEvaluator.hasAdminGroup(authentication) } returns false
         every { groupEvaluator.throwUnauthorized() } throws SecurityException("unauthorized")
@@ -51,7 +63,11 @@ class PrincipalsControllerTest {
         assertFailsWith<SecurityException> {
             controller.principal(authentication, UUID.random())
         }
-        verify(exactly = 2) { groupEvaluator.throwUnauthorized() }
+        assertFailsWith<SecurityException> {
+            controller.all(authentication, 26, 25, true, "reader")
+        }
+        verify(exactly = 3) { groupEvaluator.throwUnauthorized() }
+        coVerify(exactly = 0) { securityService.findPrincipals(any(), any(), any(), any()) }
     }
 
     @Test

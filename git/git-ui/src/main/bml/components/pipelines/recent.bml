@@ -8,7 +8,7 @@
         <code class="run-number">#{ run.number }</code>
         <code class="run-ref">{ run.ref }</code>
         <span class="run-trigger">
-          <span class="trigger-icon"><ui-icon name="branch" :size="10" /></span>
+          <span class="trigger-icon"><icon name="branch" :size="10" /></span>
           { run.triggerType.name.lowercase().split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) } }
         </span>
         <code class="run-sha">{ run.commitSha.take(8) }</code>
@@ -23,7 +23,7 @@
           </for>
         </div>
         <code class="run-duration">{ bosca.git.ui.pipelineDuration(run.durationSeconds) }</code>
-        <span class="run-time"><ui-time :value="run.created" relative ago inheritTypography /></span>
+        <span class="run-time"><time :value="run.created" relative ago inheritTypography /></span>
         <git-status-badge :status="run.status.name" run />
       </a>
     </for>

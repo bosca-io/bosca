@@ -1,0 +1,34 @@
+<component tag="workspace-example">
+  <script server provides="source">(1..30).joinToString("\n\n") { "## Section $it\n\nA workspace gives the document room to read. Use Preview or Source, then expand the view." }</script>
+  <div class="workspace-content">
+    <workspace label="README.md" framed data-catalog-workspace>
+      <header class="workspace-fixed catalog-workspace-toolbar">
+        <strong>README.md</strong><fullscreen-button />
+      </header>
+      <div class="workspace-fixed"><view-tabs label="Document view" :tabs='listOf(bosca.design.model.ViewTab("Preview", "Preview"), bosca.design.model.ViewTab("Source", "Source"))' selected="Preview" /></div>
+      <article class="workspace-scroll catalog-workspace-prose" ref="preview" role="tabpanel" aria-label="Preview" tabindex="0">
+        <h2>Room for your work</h2>
+        <p>Switch views or open full screen to focus on this document.</p>
+        <for index in 1..30><h3>Section { index }</h3><p>A workspace gives the document room to read. Use Preview or Source, then expand the view.</p></for>
+      </article>
+      <div class="workspace-content" ref="source" role="tabpanel" aria-label="Source" hidden>
+        <source-view :content="source" path="README.md" label="README source" bare fill />
+      </div>
+    </workspace>
+  </div>
+  <script client scoped>
+    const preview = ctx.ref<HTMLElement>("preview"), source = ctx.ref<HTMLElement>("source");
+    for (const tab of ctx.root.querySelectorAll<HTMLButtonElement>("[role=tab]")) {
+      const panel = tab.dataset.tab === "Preview" ? preview : source;
+      if (!panel) continue;
+      tab.id = `workspace-tab-${crypto.randomUUID()}`;
+      panel.id = `workspace-panel-${crypto.randomUUID()}`;
+      tab.setAttribute("aria-controls", panel.id);
+      panel.setAttribute("aria-labelledby", tab.id);
+    }
+    ctx.on<CustomEvent<string>>(ctx.root, "viewchange", event => {
+      if (preview) preview.hidden = event.detail !== "Preview";
+      if (source) source.hidden = event.detail !== "Source";
+    });
+  </script>
+</component>

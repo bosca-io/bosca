@@ -1,0 +1,63 @@
+package bosca.atlas.server.graphql
+
+import bosca.git.configuration.GitSchemaRegistrar
+import bosca.artifacts.admin.graphql.ArtifactsAdminSchemaRegistrar
+import bosca.graphql.dispatcher.ArtifactsAdminDispatchersRegistrar
+import bosca.graphql.GraphQLService
+import bosca.graphql.SchemaRegistry
+import bosca.graphql.dispatcher.Dispatcher
+import bosca.graphql.dispatcher.DispatchersRegistrar
+import bosca.graphql.dispatcher.DispatchersRegistry
+import bosca.graphql.dispatcher.GitCiDispatchersRegistrar
+import bosca.graphql.dispatcher.GitDispatchersRegistrar
+import bosca.graphql.dispatcher.AtlasDispatchersRegistrar
+import bosca.graphql.dispatcher.PipelinesDispatchersRegistrar
+import bosca.graphql.dispatcher.SchedulerDispatchersRegistrar
+import bosca.graphql.dispatcher.SecurityDispatchersRegistrar
+import bosca.graphql.server.RuntimeWiringBuilder
+import bosca.pipelines.configuration.PipelinesSchemaRegistrar
+import bosca.scheduler.configuration.SchedulerSchemaRegistrar
+import bosca.security.configuration.SecuritySchemaRegistrar
+
+/** Atlas composes Git, CI, registry administration, and their supporting API namespaces. */
+class AtlasGraphQLService(introspectionEnabled: Boolean) :
+    GraphQLService(AtlasSchema, introspectionEnabled) {
+    override val dispatchersRegistrar =
+        object : DispatchersRegistrar {
+            override suspend fun dispatchers() = emptyMap<String, Dispatcher>()
+        }
+
+    override suspend fun initialize(builder: RuntimeWiringBuilder) {
+        SchemaRegistry.initialize(*atlasSchemaRegistrars())
+        DispatchersRegistry.register(
+            builder,
+            SecurityDispatchersRegistrar(),
+            bosca.graphql.dispatcher.BackupDispatchersRegistrar(),
+            IdentityDispatchersRegistrar(),
+            bosca.graphql.dispatcher.ConfigurationDispatchersRegistrar(),
+            PipelinesDispatchersRegistrar(),
+            SchedulerDispatchersRegistrar(),
+            GitDispatchersRegistrar(),
+            GitCiDispatchersRegistrar(),
+            ArtifactsAdminDispatchersRegistrar(),
+            bosca.graphql.dispatcher.PostgresAdminDispatchersRegistrar(),
+            bosca.graphql.dispatcher.NatsAdminDispatchersRegistrar(),
+            bosca.graphql.dispatcher.MeilisearchAdminDispatchersRegistrar(),
+            AtlasDispatchersRegistrar(),
+        )
+    }
+}
+
+internal fun atlasSchemaRegistrars() =
+    arrayOf(
+        AtlasSchemaRegistrar(),
+        bosca.postgres.admin.graphql.PostgresAdminSchemaRegistrar(),
+        bosca.nats.admin.graphql.NatsAdminSchemaRegistrar(),
+        bosca.meilisearch.admin.graphql.MeilisearchAdminSchemaRegistrar(),
+        SecuritySchemaRegistrar(),
+        bosca.backup.configuration.BackupSchemaRegistrar(),
+        GitSchemaRegistrar(),
+        PipelinesSchemaRegistrar(),
+        SchedulerSchemaRegistrar(),
+        ArtifactsAdminSchemaRegistrar(),
+    )

@@ -1926,6 +1926,50 @@ class BmlCodeGeneratorTest {
     // ── action arguments, @submit, and component models ─────────────────────────
 
     @Test
+    fun `live state references ignore literal and comment text while retaining evaluated expressions`() {
+        val references = listOf(
+            """<span>{ layout.count }</span>""",
+            """<span :data-value="layout.count"/>""",
+            """<span data-value="count-{ layout.count }"/>""",
+            """<span {...mapOf("data-count" to layout.count)}/>""",
+            """<for count in listOf(layout.count)><span>{ count }</span></for>""",
+            """<if (layout.count > 0)><span>Ready</span></if>""",
+            """<span>{ "value=${'$'}layout" }</span>""",
+            """<span>{ "value=${'$'}{layout.count}" }</span>""",
+        )
+        for (reference in references) {
+            val result = gen("""
+                <page route="/layout">
+                  <script server provides="layout">M()</script>
+                  <script server provides="navigation">M()</script>
+                  <island name="navigation">
+                    <a :href='"/layout"' :data-note='1 /* layout */'>Link</a>
+                    <span>{ "layout" }</span>
+                    <for item in listOf("layout")><span>{ item }</span></for>
+                    <if "layout".isNotBlank()><span>Ready</span></if>
+                    <span data-note='literal-{ "layout" }'>{ navigation.count }</span>
+                  </island>
+                  <island name="content">$reference</island>
+                  <button @click="layout.increment">Change content</button>
+                  <button @click="navigation.increment">Change navigation</button>
+                </page>
+            """.trimIndent())
+            assertFalse(result.diagnostics.any { it.severity == Severity.Error }, "$reference: ${result.diagnostics}")
+            assertEquals(1, Regex("public object NavigationIsland").findAll(result.source).count(), result.source)
+            assertEquals(1, Regex("public object ContentIsland").findAll(result.source).count(), result.source)
+        }
+        val duplicate = gen("""
+            <page route="/">
+              <script server provides="model">M()</script>
+              <island name="a"><span>{ "${'$'}model" }</span></island>
+              <island name="b"><span>{ "${'$'}{model.count}" }</span></island>
+              <button @click="model.increment">Change</button>
+            </page>
+        """.trimIndent())
+        assertTrue(duplicate.diagnostics.any { "referenced by multiple islands" in it.message }, duplicate.diagnostics.toString())
+    }
+
+    @Test
     fun `a click action with render-time arguments serializes them into the marker and decodes positionally`() {
         val src = gen(
             """<page route="/">""" +

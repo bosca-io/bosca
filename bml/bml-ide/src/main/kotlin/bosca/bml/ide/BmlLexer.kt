@@ -385,7 +385,7 @@ class BmlLexer : LexerBase() {
 
         /** BML's special/control/structural tags — highlighted as keywords, distinct from plain HTML. */
         val SPECIAL_TAGS = setOf(
-            "page", "route", "template", "component", "slot", "island", "prop", "data", "inject",
+            "import", "page", "route", "template", "component", "slot", "island", "prop", "data", "inject",
             "for", "if", "else", "else-if", "contract", "script", "style",
             // Localization plural forms: `:` is a name char here, so these lex whole.
             "t:zero", "t:one", "t:two", "t:few", "t:many", "t:other",

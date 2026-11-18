@@ -1,0 +1,40 @@
+<page route="/choices">
+  <catalog-document title="Local choices" description="Native values, searchable options and multiple selections." current="/choices">
+    <p class="page-intro">Choose a component and optional label, then save. Add and remove tags in the separate native form. Open Example states to try required, custom, loading and disabled behavior in each palette.</p>
+    <div class="catalog-grid">
+      <div class="catalog-palette-dark" data-local-choice-palette="dark"><card title="Dark palette"><local-choices-example id="dark" /></card></div>
+      <div class="catalog-palette-light" data-local-choice-palette="light"><card title="Light palette"><local-choices-example id="light" /></card></div>
+    </div>
+    <div class="catalog-grid" data-local-choice-cases>
+      <card title="Empty options"><div class="catalog-stack">
+        <field label="Empty choices"><select label="Empty choices" searchable data-local-empty /></field>
+        <p class="example-note">Opening an empty list gives local empty-state feedback.</p>
+      </div></card>
+      <card title="Compact control"><div class="catalog-stack">
+        <field label="Compact choice"><select label="Compact choice" size="sm" data-local-compact><option value="button">Button</option><option value="input">Input</option></select></field>
+        <p class="example-note">The small control keeps the same native value and keyboard behavior.</p>
+      </div></card>
+      <card title="Loading"><div class="catalog-stack">
+        <form data-local-loading-case><field label="Loading choice"><select label="Loading choice" name="loading" loading><option value="card" selected>Card</option></select></field></form>
+        <p class="example-note">Loading blocks enhanced interaction while retaining the native value.</p>
+      </div></card>
+      <card title="Disabled"><div class="catalog-stack">
+        <form data-local-disabled-case><field label="Disabled choice"><select label="Disabled choice" name="disabled" disabled><option value="card" selected>Card</option></select></field></form>
+        <p class="example-note">Disabled controls are excluded from their form's submitted values.</p>
+      </div></card>
+      <card title="Long labels"><div class="catalog-stack">
+        <field label="Long choice"><select label="Long choice" searchable data-local-long><option value="long">Page headings with a deliberately long descriptive sample name for narrow screens</option><option value="short">A shorter label</option></select></field>
+        <p class="example-note">The selected label truncates visually; its option keeps the complete text.</p>
+      </div></card>
+      <card title="Tag limit"><div class="catalog-stack">
+        <field label="Limited tags"><select label="Limited tags" multiple searchable :maxTags="1" data-local-tag-limit><option value="button" selected>veryLongComponentIdentifierThatStaysSelectableEvenWhenItDoesNotContainAnySpaces</option><option value="input" selected>Input</option><option value="card" selected>Card</option><option value="dialog" selected>Dialog</option></select></field>
+        <p class="example-note">One visible tag and a remaining count represent four native values.</p>
+      </div></card>
+    </div>
+    <card title="Use in your application"><div class="catalog-stack">
+      <p class="catalog-description">Options and optgroups belong to the caller. A stable preservation key retains local selection and popup state through surrounding updates. Change the key when changing options or declared defaults. Multiple selections expose repeated native form values through FormData.getAll. Local search uses the supplied options; the paged picker has its own server search example.</p>
+      <a class="catalog-link" href="/components/controls#ref-select">Select API and authoring</a>
+      <a class="catalog-link" href="/selection">Server-paged choices</a>
+    </div></card>
+  </catalog-document>
+</page>

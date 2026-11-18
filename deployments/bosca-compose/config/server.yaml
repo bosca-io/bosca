@@ -74,7 +74,10 @@ jobQueue:
 pubsub:
   type: nats
 distributedLock:
-  type: nats
+  type: redis
+redis:
+  host: redis
+  port: 6379
 counter:
   type: nats
 nats:

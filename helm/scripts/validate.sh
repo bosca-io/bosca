@@ -40,6 +40,7 @@ if [ ${#CHARTS[@]} -eq 0 ]; then
     bosca-io
     notifications-web
     profiles-web
+    bml-design-catalog
     bml-message-server
     text-embeddings-inference
     bosca-infra

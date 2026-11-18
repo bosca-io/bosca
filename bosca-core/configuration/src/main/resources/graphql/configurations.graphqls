@@ -53,8 +53,8 @@ input ConfigurationInput {
     description: String!
     "The unique key for this configuration (e.g. 'app.feature.enabled', 'theme.primaryColor'). Must be unique across all configurations."
     key: String!
-    "The list of permissions that control which groups can read or modify this configuration."
-    permissions: [PermissionInput!]!
+    "Permissions to replace on this entry. Omit to retain existing permissions; an empty list clears them."
+    permissions: [PermissionInput!]
     "Whether this configuration value should be publicly accessible without authentication."
     public: Boolean!
     "The configuration value stored as JSON. Can hold any JSON-serializable data including strings, numbers, objects, or arrays."

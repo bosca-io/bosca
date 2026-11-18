@@ -1,0 +1,4 @@
+<page route="/system/integrations/federation" requireAuth>
+  <script server provides="page">bosca.system.ui.systemFederation()</script>
+  <system-layout title="Federation" :admin="page.admin"><system-federation :initial="page" /></system-layout>
+</page>

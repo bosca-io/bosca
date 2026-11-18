@@ -1,0 +1,6 @@
+<page route="/artifacts/settings/permissions" requireAuth>
+  <script server provides="page">bosca.artifacts.ui.artifactPermissions()</script>
+  <artifacts-layout :admin="page.admin" title="Namespace permissions">
+    <artifacts-permissions :initial="page" />
+  </artifacts-layout>
+</page>

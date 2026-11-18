@@ -54,7 +54,7 @@ class Guide(
         val end = parts.find { it.startsWith("DTEND") }
             ?.substringAfter(":")
             ?.parse(dateTimePattern)
-            ?: start.plus(10, ChronoUnit.MONTHS)
+            ?: start.plus(12, ChronoUnit.MONTHS)
         val rule = parts.find { it.startsWith("RRULE") }?.substringAfter(":") ?: return emptyList()
         val recur = Recur<OffsetDateTime>(rule)
         return recur.getDates(

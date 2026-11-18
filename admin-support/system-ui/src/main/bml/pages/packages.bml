@@ -1,0 +1,4 @@
+<page route="/system/packages" requireAuth>
+  <script server provides="page">bosca.system.ui.systemPackages()</script>
+  <system-layout title="Packages" :admin="page.admin"><system-packages :initial="page" /></system-layout>
+</page>

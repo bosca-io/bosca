@@ -1,0 +1,44 @@
+<component tag="calendar-event-fields">
+  <prop name="value" type="bosca.design.model.CalendarEvent" required />
+  <prop name="calendars" type="List<bosca.design.model.CalendarDefinition>" required />
+  <prop name="participantOptions" type="List<bosca.design.model.CalendarParticipant>" default="emptyList()" />
+  <prop name="readOnly" type="Boolean" default="false" />
+  <script server provides="encodedValue">kotlinx.serialization.json.Json.encodeToString(bosca.design.model.CalendarEvent.serializer(), value)</script>
+  <script server provides="people">(value.participants + participantOptions).distinctBy { it.profileId }</script>
+  <div class="calendar-event-fields" :data-value="encodedValue" {...attrs}>
+    <field label="Title"><input name="title" :value="value.title" :readonly="readOnly" required autofocus /></field>
+    <field label="Calendar"><select name="calendarId" label="Calendar" :value="value.calendarId" :disabled="readOnly"><for calendar in calendars><option :value="calendar.id">{ calendar.name }</option></for></select></field>
+    <field label="Description"><input name="description" multiline :rows="3" :value="value.description" :readonly="readOnly" /></field>
+    <field label="Location"><input name="location" :value="value.location" :readonly="readOnly" /></field>
+    <field label="Event time"><html:select name="kind" ref="kind" :disabled="readOnly"><option value="timed" :selected="!value.allDay">Timed</option><option value="all-day" :selected="value.allDay">All day</option></html:select></field>
+    <field label="Starts"><input name="startLocal" ref="start" type="datetime-local" :value="value.startsAt.take(16)" :readonly="readOnly" required /></field>
+    <field label="Ends" hint="For all-day events, this is the first date after the event."><input name="endLocal" ref="end" type="datetime-local" :value="value.endsAt.take(16)" :readonly="readOnly" required /></field>
+    <html:input type="hidden" name="startsAt" ref="startValue" :value="value.startsAt" />
+    <html:input type="hidden" name="endsAt" ref="endValue" :value="value.endsAt" />
+    <html:input type="hidden" name="timeZone" ref="zone" :value="value.timeZone" />
+    <field label="Participants"><select name="participantIds" label="Participants" multiple searchable :disabled="readOnly"><for person in people><option :value="person.profileId" :selected="value.participants.any { it.profileId == person.profileId }">{ person.profileName } · { person.role } · { person.status }</option></for></select></field>
+    <html:input type="hidden" name="rrule" ref="rrule" :value="value.rrule" />
+    <fieldset ref="recurrence" :data-readonly="readOnly" :hidden="value.allDay" :disabled="readOnly || value.allDay"><legend>Recurrence</legend>
+      <div class="recurrence-controls">
+        <field label="Repeat"><html:select ref="frequency"><option value="">Does not repeat</option><option value="DAILY">Daily</option><option value="WEEKLY">Weekly</option><option value="MONTHLY">Monthly</option><option value="YEARLY">Yearly</option></html:select></field>
+        <field label="Every"><input ref="interval" type="number" min="1" value="1" /></field>
+        <field label="Occurrences" hint="Leave empty for no count limit."><input ref="count" type="number" min="1" /></field>
+        <field label="Repeat until" hint="Used when the occurrence count is empty."><input ref="until" type="date" /></field>
+      </div>
+      <fieldset><legend>Weekdays</legend><div class="weekday-options"><for day in listOf("MO", "TU", "WE", "TH", "FR", "SA", "SU")><checkbox :label="day" :value="day" :data-weekday="day" /></for></div></fieldset>
+    </fieldset>
+    <slot />
+  </div>
+  <style scoped>
+    .calendar-event-fields { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+    fieldset { margin: 0; border: 1px solid var(--line); padding: 12px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    [hidden] { display:none; }
+    .weekday-options { display:flex; flex-wrap:wrap; gap:12px; }
+    legend { color: var(--fg-2); font-size: 12px; } .recurrence-controls { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:12px; }
+    select { min-height:var(--control-height-md,32px); box-sizing:border-box; width:100%; padding:6px; border:1px solid var(--line); border-radius:var(--r-sm); background:var(--bg-2); color:var(--fg-1); font:inherit; }
+  </style>
+  <script client scoped>
+    import { mountCalendarEventFields } from "@client/helpers/calendar-event-fields";
+    mountCalendarEventFields(ctx);
+  </script>
+</component>

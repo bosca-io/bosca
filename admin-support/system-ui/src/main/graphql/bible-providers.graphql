@@ -1,0 +1,14 @@
+fragment SystemBibleConfigurationFields on BibleProviderConfiguration { id name provider enabled hasApiKey }
+fragment SystemBibleSourceFields on BibleSource { id configurationId name kind metadataId metadataVersion variant version allowedUses attribution { copyright citation informationUrl } }
+fragment SystemBibleCatalogFields on BibleCatalog { id kind name nameLocal abbreviation description languages { name iso } attribution { copyright citation informationUrl } }
+query SystemBibleConfigurations { content { bibleProviders { providers configurations { ...SystemBibleConfigurationFields } } } }
+query SystemBibleSources($configurationId: UUID!) { content { bibleProviders { sources(configurationId: $configurationId) { ...SystemBibleSourceFields } } } }
+query SystemBibleCatalog($configurationId: UUID!, $kind: BibleSourceKind!, $query: String, $offset: Int!, $limit: Int!) { content { bibleProviders { catalog(configurationId: $configurationId, kind: $kind, query: $query, offset: $offset, limit: $limit) { ...SystemBibleCatalogFields } } } }
+query SystemBibleAudioTargets($configurationId: UUID!, $providerBibleId: String!) { content { bibleProviders { audioTargets(configurationId: $configurationId, providerBibleId: $providerBibleId) { metadataId version variant name enabled } } } }
+mutation SystemSaveBibleConfiguration($input: BibleProviderConfigurationInput!) { content { bibleProviders { saveConfiguration(input: $input) { ...SystemBibleConfigurationFields } } } }
+mutation SystemTestBibleConfiguration($configurationId: UUID!) { content { bibleProviders { test(configurationId: $configurationId) } } }
+mutation SystemAddProviderBible($input: AddProviderBibleInput!) { content { bibleProviders { addBible(input: $input) { metadataId version variant } } } }
+mutation SystemAddProviderAudio($bibleId: UUID!, $version: Int!, $variant: String!, $input: AddProviderAudioInput!) { content { bibleProviders { addAudio(bibleId: $bibleId, version: $version, variant: $variant, input: $input) { id } } } }
+mutation SystemRefreshBibleSource($sourceId: UUID!) { content { bibleProviders { refresh(sourceId: $sourceId) } } }
+mutation SystemRemoveBibleSource($sourceId: UUID!, $expectedVersion: Long!) { content { bibleProviders { removeSource(sourceId: $sourceId, expectedVersion: $expectedVersion) } } }
+mutation SystemRemoveBibleConfiguration($configurationId: UUID!, $purgeSources: Boolean!) { content { bibleProviders { removeConfiguration(configurationId: $configurationId, purgeSources: $purgeSources) } } }

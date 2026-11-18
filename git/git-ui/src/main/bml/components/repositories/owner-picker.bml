@@ -7,7 +7,7 @@
   <prop name="name" type="String" default="owner" />
   <div :class='"owner-picker" + if (compact) " compact" else ""'>
     <span class="owner-caption">{ caption }</span>
-    <ui-select
+    <select
       :name="name"
       :label="caption"
       :placeholder="label"
@@ -18,14 +18,14 @@
       icon="users"
     >
       <if allowAll>
-        <option value="all" :selected='id == "all"'>All accessible repositories</option>
+        <option value="all" data-persistent :selected='id == "all"'>All accessible repositories</option>
       </if>
       <if id != "all" && id.isNotBlank()>
         <option :value="id" selected>{ label }</option>
       <else-if !allowAll>
         <option value="" selected>{ label }</option>
       </if>
-    </ui-select>
+    </select>
   </div>
   <style scoped>
     .owner-picker {

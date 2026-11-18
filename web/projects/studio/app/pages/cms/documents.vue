@@ -1,25 +1,25 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
 import type { GlassTableColumn, SelectOption , OverflowMenuItem  } from '@bosca/ui'
+import { sortFacetsByTemplateOrder, templateOrderByType } from '~/utils/templateOrder'
+import { isSystemDocumentType } from '~/utils/systemDocumentTypes'
 
 const { accent } = useCurrentSubsystem()
 const { useAsyncQuery, useSubscription, query: gqlQuery, mutation: gqlMutation } = useGraphQL()
 const router = useRouter()
 const toast = useToast()
 
-const showNewDocModal = ref(false)
-useCreateFromQuery(() => { showNewDocModal.value = true })
-
-function onDocumentCreated(id: string) {
-  showNewDocModal.value = false
-  navigateTo(getEditorRoute(id, 'bosca/v-document'))
-}
+const createMenuOpen = ref(false)
+useCreateFromQuery(() => { createMenuOpen.value = true })
 
 const activeTab = ref('All')
 const typeFacets = ref<Array<{ value: string; count: number }>>([])
 
 const tabs = computed(() => {
-  const facetTabs = typeFacets.value.map(f => formatTypeName(f.value))
+  // WorkOps and Feed Item documents are managed by their modules, so they
+  // get no filter tab here (same rule as the New Document menu).
+  const cmsFacets = typeFacets.value.filter(f => !isSystemDocumentType(f.value))
+  const facetTabs = sortFacetsByTemplateOrder(cmsFacets, typeOrder.value).map(f => formatTypeName(f.value))
   return ['All', ...facetTabs]
 })
 
@@ -96,7 +96,35 @@ async function loadFacets() {
   }
 }
 
-onMounted(() => loadFacets())
+// Tabs follow the template order set on Settings → Templates; types with no
+// ordered template follow, most-used first.
+const typeOrder = ref<Map<string, number>>(new Map())
+
+const templateOrderGql = gql`
+  query GetDocumentTemplateOrder {
+    content { documentTemplates { all { defaultAttributes metadata { name attributes } } } }
+  }
+`
+
+async function loadTypeOrder() {
+  try {
+    const result = await gqlQuery<{
+      content: { documentTemplates: { all: Array<{ defaultAttributes: Record<string, unknown> | null; metadata: { name: string; attributes: Record<string, unknown> | null } | null }> } }
+    }>(templateOrderGql)
+    typeOrder.value = templateOrderByType(
+      result.content.documentTemplates.all
+        .filter(t => t.metadata != null)
+        .map(t => ({ name: t.metadata!.name, attributes: t.metadata!.attributes, defaultAttributes: t.defaultAttributes })),
+    )
+  } catch (e) {
+    console.error('Failed to load template order', e)
+  }
+}
+
+onMounted(() => {
+  loadFacets()
+  loadTypeOrder()
+})
 watch(facetFilter, () => loadFacets())
 
 const searchQuery = ref('')
@@ -370,12 +398,10 @@ const docColumns: GlassTableColumn[] = [
             size="sm"
             icon="globe"
           />
-          <Button
-            primary
-            icon="plus"
-            size="sm"
+          <AddDocumentMenu
+            v-model:open="createMenuOpen"
             :accent="accent"
-            @click="showNewDocModal = true">New Document</Button>
+          />
         </template>
       </PageHeader>
     </template>
@@ -477,13 +503,6 @@ const docColumns: GlassTableColumn[] = [
 
     <MetadataBulkActions :actions="bulk" :accent="accent" />
   </PageShell>
-
-  <NewDocumentModal
-    v-if="showNewDocModal"
-    :accent="accent"
-    @close="showNewDocModal = false"
-    @created="onDocumentCreated"
-  />
 
   <!-- Delete confirmation -->
   <ConfirmModal

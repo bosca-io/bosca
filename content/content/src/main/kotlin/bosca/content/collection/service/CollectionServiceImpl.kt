@@ -913,6 +913,13 @@ class CollectionServiceImpl(
         CollectionUpdated(collection).dispatch()
     }
 
+    override suspend fun setLabels(id: UUID, labels: List<String>) = transaction {
+        repository.setLabels(id, labels)
+        removeFromCache(id)
+        val collection = getById(id) ?: error("missing collection")
+        CollectionUpdated(collection).dispatch()
+    }
+
     override suspend fun setTemplate(collectionId: UUID, templateId: UUID, templateVersion: Int) = transaction {
         repository.setTemplate(collectionId, templateId, templateVersion)
         val collection = repository.getById(collectionId) ?: error("missing collection")

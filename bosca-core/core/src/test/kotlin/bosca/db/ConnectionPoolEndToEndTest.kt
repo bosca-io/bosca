@@ -9,7 +9,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
-import org.testcontainers.containers.wait.strategy.Wait
+import org.junit.BeforeClass
+import org.junit.AfterClass
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -32,14 +33,7 @@ class ConnectionPoolEndToEndTest {
 
     @BeforeTest
     fun setup() = runBlocking {
-        postgresContainer = SharedPostgreSQLContainer()
-            .withExposedPorts(5432)
-            .withEnv("POSTGRES_USER", "test")
-            .withEnv("POSTGRES_PASSWORD", "test")
-            .withEnv("POSTGRES_DB", "test")
-            .withReuse(true)
-            .waitingFor(Wait.forLogMessage(".*database system is ready to accept connections.*\\s", 2))
-        postgresContainer.start()
+        postgresContainer = databaseTemplate.copy()
 
         val factory = ConnectionFactoryImpl(
             ConnectionConfig(
@@ -51,8 +45,6 @@ class ConnectionPoolEndToEndTest {
             key = "test"
         )
         connectionPool = ConnectionPool(factory)
-
-        FlywayMigration(connectionPool).migrate(listOf(CoreMigration()))
     }
 
     @AfterTest
@@ -406,5 +398,29 @@ class ConnectionPoolEndToEndTest {
                 assertFalse(rs.next(), "Failed transaction row should not exist")
             }
         }
+    }
+
+    companion object {
+        private val databaseTemplate = SharedPostgreSQLContainer().withDatabaseName("connection-pool-template")
+
+        @BeforeClass
+        @JvmStatic
+        fun startDatabase() = runBlocking {
+            databaseTemplate.start()
+            val pool = ConnectionPool(ConnectionFactoryImpl(ConnectionConfig(
+                url = databaseTemplate.jdbcUrl,
+                user = databaseTemplate.username,
+                password = databaseTemplate.password,
+            ), key = "template"))
+            try {
+                FlywayMigration(pool).migrate(listOf(CoreMigration()))
+            } finally {
+                pool.close()
+            }
+        }
+
+        @AfterClass
+        @JvmStatic
+        fun stopDatabase() = databaseTemplate.stop()
     }
 }

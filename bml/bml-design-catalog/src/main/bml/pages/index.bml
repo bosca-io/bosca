@@ -1,0 +1,42 @@
+<page route="/">
+  <catalog-document title="Components for BML" description="Shared controls, styled by your application." current="/">
+    <div class="overview-intro">
+      <p>Use short component tags, keep your own forms and actions, and choose colors in ordinary CSS.</p>
+      <a class="catalog-link" href="/foundation">Explore foundation components <icon name="arrow-right" /></a>
+    </div>
+    <div class="catalog-grid">
+      <card title="One import">
+        <div class="catalog-stack">
+          <p class="catalog-description">Declare the library once in your application’s <code>imports.bml</code>.</p>
+          <pre class="code-sample" role="group" tabindex="0" aria-label="Library import"><code>&lt;import library="io.bosca:bml-design" /&gt;</code></pre>
+          <p class="catalog-description">Then use unprefixed tags in pages and local components.</p>
+          <pre class="code-sample" role="group" tabindex="0" aria-label="Button authoring"><code>&lt;button primary icon="save"&gt;Save&lt;/button&gt;</code></pre>
+        </div>
+      </card>
+      <card title="Familiar controls">
+        <div class="catalog-stack">
+          <p class="catalog-description">Native buttons and inputs, accessible labels, and reusable feedback.</p>
+          <div class="example-actions">
+            <button primary icon="save">Save</button>
+            <button size="sm">Compact</button>
+            <button loading>Saving</button>
+            <button disabled>Unavailable</button>
+          </div>
+          <div class="example-actions"><badge tone="success">Ready</badge><badge tone="info">Preview</badge></div>
+        </div>
+      </card>
+    </div>
+    <card title="Your application, your palette">
+      <div class="catalog-stack">
+        <p class="catalog-description">Change surfaces, text, borders and tones in your CSS. The same component markup works in independently themed sections.</p>
+        <a class="catalog-link" href="/themes">Compare palettes <icon name="arrow-right" /></a>
+      </div>
+    </card>
+    <card title="Component reference">
+      <div class="catalog-stack">
+        <p class="catalog-description">Browse the public props, native behavior and authoring examples for all 51 components.</p>
+        <a class="catalog-link" href="/components">Browse components <icon name="arrow-right" /></a>
+      </div>
+    </card>
+  </catalog-document>
+</page>

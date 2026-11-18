@@ -13,7 +13,7 @@ interface DocumentTemplateRepository {
     @Query("insert into document_templates (metadata_id, version, default_attributes, configuration, schema, content) values (:metadataId, :version, :defaultAttributes, :configuration, :schema, :content) returning *")
     suspend fun add(template: DocumentTemplate)
 
-    @Query("select * from document_templates inner join metadata on metadata_id = metadata.id where metadata.content_type = 'bosca/v-document-template'")
+    @Query("select * from document_templates inner join metadata on metadata_id = metadata.id where metadata.content_type = 'bosca/v-document-template' and metadata.deleted = false")
     suspend fun getAll(): List<DocumentTemplate>
 
     @Query("insert into document_templates (metadata_id, version, default_attributes, configuration, schema, content) values (:id, :version, :defaultAttributes, :configuration, :schema, :content) on conflict (metadata_id, version) do update set default_attributes = :defaultAttributes, configuration = :configuration, schema = :schema, content = :content")

@@ -1,5 +1,6 @@
 {
   "resources": [
+    {"pattern": "bosca/cli/compose/.*"},
     {"pattern": "META-INF/services/.*"},
     {"pattern": "logback\\.xml"},
     {"pattern": ".*\\.yaml$"},

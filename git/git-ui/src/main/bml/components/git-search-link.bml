@@ -1,0 +1,26 @@
+<component tag="git-search-link">
+  <prop name="active" type="Boolean" default="false" />
+  <a href="/search" title="Search (⌘K)" :aria-current='if (active) "page" else "false"'>
+    <span class="search-icon"><icon name="search" :size="15" /></span>
+    Search
+  </a>
+  <style scoped>
+    .search-icon {
+      display: inline-flex;
+      flex: none;
+      color: var(--fg-3);
+    }
+    a[aria-current="page"] .search-icon {
+      color: var(--accent);
+    }
+  </style>
+  <script client scoped>
+    const search = ctx.root as HTMLAnchorElement;
+    ctx.on<KeyboardEvent>(window, "keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        location.assign(search.href);
+      }
+    });
+  </script>
+</component>

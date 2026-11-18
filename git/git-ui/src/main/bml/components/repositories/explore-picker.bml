@@ -5,11 +5,11 @@
     <git-owner-picker compact :id="page.list.owner.id" :label="page.list.owner.label" />
     <if repository>
       <div class="repository-filter">
-        <ui-select searchable name="repo" label="Repository" size="sm">
+        <select searchable name="repo" label="Repository" size="sm">
           <for option in page.list.repositories>
             <option :value="option.id" :selected="option.id == page.id">{ option.name }</option>
           </for>
-        </ui-select>
+        </select>
       </div>
     </if>
   </form>

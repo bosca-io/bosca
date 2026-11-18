@@ -1,0 +1,17 @@
+<component tag="table-scroll">
+  <prop name="label" type="String" default="Scrollable table" />
+  <div class="table-scroll" data-bml-design-table tabindex="0" role="region" :aria-label="label" {...attrs}>
+    <slot />
+  </div>
+  <style scoped>
+    .table-scroll {
+      max-width: 100%;
+      min-width: 0;
+      overflow: auto;
+    }
+    .table-scroll:focus-visible {
+      outline: var(--focus-width) solid var(--accent);
+      outline-offset: 2px;
+    }
+  </style>
+</component>

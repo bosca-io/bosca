@@ -1,0 +1,4 @@
+<page route="/system/scheduler/{id}" requireAuth>
+  <script server provides="page">bosca.system.ui.systemSchedule()</script>
+  <system-layout title="Scheduled job" :admin="page.admin"><system-schedule :initial="page" /></system-layout>
+</page>

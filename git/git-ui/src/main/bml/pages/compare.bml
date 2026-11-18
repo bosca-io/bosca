@@ -3,13 +3,13 @@
     bosca.git.ui.explorePage("compare")
   </script>
   <git-layout title="Compare">
-    <ui-page>
-      <ui-page-heading title="Compare" subtitle="Compare branches, tags, or commits" />
+    <page-shell>
+      <page-heading :trail='listOf(bosca.design.model.NavigationItem("Git", "", false))' title="Compare" subtitle="Compare branches, tags, or commits" />
       <div class="compare-layout">
         <git-compare-bar :page="page" />
         <git-compare-results :page="page" />
       </div>
-    </ui-page>
+    </page-shell>
   </git-layout>
   <style scoped>
     .compare-layout {

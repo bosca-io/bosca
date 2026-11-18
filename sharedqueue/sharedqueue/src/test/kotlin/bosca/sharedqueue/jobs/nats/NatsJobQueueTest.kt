@@ -142,7 +142,7 @@ class NatsJobQueueTest {
 
     @OptIn(Internal::class)
     @Test
-    fun `enqueueIfAbsent leaves existing durable state unchanged and republishes delivery`() = runTest {
+    fun `enqueueIfAbsent leaves existing durable state and delivery unchanged`() = runTest {
         val jobId = UUID.random()
         val existing = mockk<KeyValueEntry>()
         every { kv.create(jobId.toString(), any<ByteArray>()) } throws
@@ -159,9 +159,10 @@ class NatsJobQueueTest {
 
         verify(exactly = 1) { kv.get(jobId.toString()) }
         verify(exactly = 0) { kv.put(jobId.toString(), any<String>()) }
-        verify(exactly = 1) {
+        verify(exactly = 0) {
             js.publish("jobs.test", jobId.toString().toByteArray(), any<PublishOptions>())
         }
+        verify(exactly = 0) { kv.update(jobId.toString(), any<String>(), any()) }
     }
 
     @OptIn(Internal::class)
@@ -237,10 +238,11 @@ class NatsJobQueueTest {
         )
         val delay = Duration.parse("10s")
         val options = slot<PublishOptions>()
+        every { kv.put(any<String>(), any<String>()) } returns 77L
         every { js.publish(any<String>(), any<ByteArray>(), capture(options)) } returns mockk(relaxed = true)
         val jobId = queue.enqueueLater(job, delay)
         assertNotNull(jobId)
-        assertTrue(options.captured.messageId.startsWith("$jobId-scheduled-"))
+        assertEquals("$jobId-77", options.captured.messageId)
         verify {
             kv.put(jobId.toString(), any<String>())
             scheduledKv.put(jobId.toString(), any<String>())
@@ -289,323 +291,82 @@ class NatsJobQueueTest {
         assertNull(job.message)
 
         verify {
-            msg.ack()
+            msg.nakWithDelay(java.time.Duration.ofSeconds(30))
             kv.put(reEnqueuedId.toString(), any<String>())
             scheduledKv.put(reEnqueuedId.toString(), any<String>())
-            js.publish("jobs.test", any<ByteArray>(), any<PublishOptions>())
         }
+        verify(exactly = 0) { msg.ack() }
+        verify(exactly = 0) { js.publish("jobs.test", any<ByteArray>(), any<PublishOptions>()) }
+    }
+
+    private fun storedJob(id: UUID, status: JobStatus) = SerializedJob(
+        id = id, parentId = null, type = "TestJob", status = status, failures = 0, maxFailures = 10,
+        created = bosca.serialization.OffsetDateTime.now().minusHours(1),
+        modified = bosca.serialization.OffsetDateTime.now().minusHours(1),
+        definition = Json.parseToJsonElement("{}"), executor = TestJobExecutor::class.qualifiedName.orEmpty(),
+        executorName = null, children = emptyList(), callbacks = emptyList(), context = Json.parseToJsonElement("{}"),
+    )
+
+    private fun entryFor(job: SerializedJob) = mockk<KeyValueEntry> {
+        every { valueAsString } returns json.encodeToString(SerializedJob.serializer(), job)
+        every { operation } returns KeyValueOperation.PUT
+        every { revision } returns 7L
     }
 
     @Test
-    fun testCheckForExpiredJobs() = runTest {
-        val expiredJobId = UUID.random()
-        val recentJobId = UUID.random()
-
-        val pastTime = bosca.serialization.OffsetDateTime.now().minusHours(1)
-        val futureTime = bosca.serialization.OffsetDateTime.now()
-
-        val expiredJob = SerializedJob(
-            id = expiredJobId,
-            parentId = null,
-            type = "TestJob",
-            status = JobStatus.RUNNING,
-            failures = 0,
-            maxFailures = 10,
-            created = pastTime,
-            modified = pastTime,
-            definition = Json.parseToJsonElement("{}"),
-            executor = TestJobExecutor::class.qualifiedName!!,
-            executorName = null,
-            children = emptyList(),
-            callbacks = emptyList(),
-            context = Json.parseToJsonElement("{}")
-        )
-
-        val recentJob = SerializedJob(
-            id = recentJobId,
-            parentId = null,
-            type = "TestJob",
-            status = JobStatus.RUNNING,
-            failures = 0,
-            maxFailures = 10,
-            created = futureTime,
-            modified = futureTime,
-            definition = Json.parseToJsonElement("{}"),
-            executor = TestJobExecutor::class.qualifiedName!!,
-            executorName = null,
-            children = emptyList(),
-            callbacks = emptyList(),
-            context = Json.parseToJsonElement("{}")
-        )
-
-        every { kv.keys() } returns listOf(expiredJobId.toString(), recentJobId.toString())
-        every { kv.get(expiredJobId.toString()) } returns mockk<KeyValueEntry> {
-            every { valueAsString } returns json.encodeToString(SerializedJob.serializer(), expiredJob)
-            every { operation } returns KeyValueOperation.PUT
-        }
-        every { kv.get(recentJobId.toString()) } returns mockk<KeyValueEntry> {
-            every { valueAsString } returns json.encodeToString(SerializedJob.serializer(), recentJob)
-            every { operation } returns KeyValueOperation.PUT
-        }
-
-        // Use a time that is after the expired job's modified + 1800000ms threshold (in milliseconds)
-        val checkTime = pastTime.toEpochSecond() * 1000 + 1800001
-
-        queue.checkForExpiredJobs(checkTime)
-
-        // Expired job should be re-enqueued
-        verify {
-            js.publish("jobs.test", expiredJobId.toString().toByteArray(), any<PublishOptions>())
-        }
-
-        // Recent job should NOT be re-enqueued
-        verify(exactly = 0) {
-            js.publish("jobs.test", recentJobId.toString().toByteArray(), any<PublishOptions>())
-        }
-    }
-
-    @Test
-    fun testCheckForExpiredJobsRePublishesExpiredPending() = runTest {
-        val pendingJobId = UUID.random()
-
-        val pastTime = bosca.serialization.OffsetDateTime.now().minusHours(1)
-
-        val pendingJob = SerializedJob(
-            id = pendingJobId,
-            parentId = null,
-            type = "TestJob",
-            status = JobStatus.PENDING,
-            failures = 0,
-            maxFailures = 10,
-            created = pastTime,
-            modified = pastTime,
-            definition = Json.parseToJsonElement("{}"),
-            executor = TestJobExecutor::class.qualifiedName!!,
-            executorName = null,
-            children = emptyList(),
-            callbacks = emptyList(),
-            context = Json.parseToJsonElement("{}")
-        )
-
-        every { kv.keys() } returns listOf(pendingJobId.toString())
-        every { kv.get(pendingJobId.toString()) } returns mockk<KeyValueEntry> {
-            every { valueAsString } returns json.encodeToString(SerializedJob.serializer(), pendingJob)
-            every { operation } returns KeyValueOperation.PUT
-        }
+    fun `automatic recovery leaves all published execution states alone regardless of age`() = runTest {
+        val jobs = listOf(JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED, JobStatus.COMPLETE, JobStatus.FAILED_AND_COMPLETE)
+            .map { storedJob(UUID.random(), it) }
+        every { kv.keys() } returns jobs.map { it.id.toString() }
+        jobs.forEach { job -> every { kv.get(job.id.toString()) } returns entryFor(job) }
 
         queue.checkForExpiredJobs(Long.MAX_VALUE)
 
-        // Stale PENDING job should be re-published
-        verify {
-            js.publish("jobs.test", pendingJobId.toString().toByteArray(), any<PublishOptions>())
-        }
+        verify(exactly = 0) { js.publish(any<String>(), any<ByteArray>(), any<PublishOptions>()) }
+        verify(exactly = 0) { kv.put(any<String>(), any<String>()) }
     }
 
     @Test
-    fun testCheckForExpiredJobsSkipsRecentPending() = runTest {
-        val pendingJobId = UUID.random()
+    fun `automatic recovery retries unconfirmed publication with a stable revision key`() = runTest {
+        val job = storedJob(UUID.random(), JobStatus.UNINITIALIZED)
+        val future = storedJob(UUID.random(), JobStatus.UNINITIALIZED).copy(modified = bosca.serialization.OffsetDateTime.now().plusHours(1))
+        every { kv.keys() } returns listOf(job.id.toString(), future.id.toString())
+        every { kv.get(job.id.toString()) } returns entryFor(job)
+        every { kv.get(future.id.toString()) } returns entryFor(future)
+        val options = mutableListOf<PublishOptions>()
+        every { js.publish(any<String>(), any<ByteArray>(), capture(options)) } returns mockk(relaxed = true)
 
-        val recentTime = bosca.serialization.OffsetDateTime.now()
+        repeat(2) { queue.checkForExpiredJobs(System.currentTimeMillis()) }
 
-        val pendingJob = SerializedJob(
-            id = pendingJobId,
-            parentId = null,
-            type = "TestJob",
-            status = JobStatus.PENDING,
-            failures = 0,
-            maxFailures = 10,
-            created = recentTime,
-            modified = recentTime,
-            definition = Json.parseToJsonElement("{}"),
-            executor = TestJobExecutor::class.qualifiedName!!,
-            executorName = null,
-            children = emptyList(),
-            callbacks = emptyList(),
-            context = Json.parseToJsonElement("{}")
-        )
-
-        val entry = mockk<KeyValueEntry>()
-        every { entry.valueAsString } returns json.encodeToString(SerializedJob.serializer(), pendingJob)
-        every { entry.operation } returns KeyValueOperation.PUT
-        every { kv.keys() } returns listOf(pendingJobId.toString())
-        every { kv.get(pendingJobId.toString()) } returns entry
-
-        // Use a time that is before the 5-minute threshold
-        val checkTime = recentTime.toEpochSecond() * 1000 + 60000 // only 1 minute
-
-        queue.checkForExpiredJobs(checkTime)
-
-        // Recent PENDING job should NOT be re-published
-        verify(exactly = 0) {
-            js.publish("jobs.test", any<ByteArray>(), any<PublishOptions>())
-        }
+        assertEquals(listOf("${job.id}-7", "${job.id}-7"), options.map { it.messageId })
+        verify(exactly = 0) { js.publish("jobs.test", future.id.toString().toByteArray(), any<PublishOptions>()) }
     }
 
     @Test
-    fun testCheckForExpiredJobsSkipsScheduledFuturePending() = runTest {
-        val pendingJobId = UUID.random()
+    fun `manual redrive repairs published pending and running jobs`() = runTest {
+        val jobs = listOf(JobStatus.PENDING, JobStatus.RUNNING).map { storedJob(UUID.random(), it) }
+        every { kv.keys() } returns jobs.map { it.id.toString() }
+        jobs.forEach { job -> every { kv.get(job.id.toString()) } returns entryFor(job) }
+        every { scheduledKv.get(any()) } returns null
 
-        // Modified an hour ago, so it is well past the 5-minute stale threshold.
-        val pastTime = bosca.serialization.OffsetDateTime.now().minusHours(1)
+        queue.expireAllJobs()
 
-        val pendingJob = SerializedJob(
-            id = pendingJobId,
-            parentId = null,
-            type = "TestJob",
-            status = JobStatus.PENDING,
-            failures = 0,
-            maxFailures = 10,
-            created = pastTime,
-            modified = pastTime,
-            definition = Json.parseToJsonElement("{}"),
-            executor = TestJobExecutor::class.qualifiedName!!,
-            executorName = null,
-            children = emptyList(),
-            callbacks = emptyList(),
-            context = Json.parseToJsonElement("{}")
-        )
-
-        every { kv.keys() } returns listOf(pendingJobId.toString())
-        every { kv.get(pendingJobId.toString()) } returns mockk<KeyValueEntry> {
-            every { valueAsString } returns json.encodeToString(SerializedJob.serializer(), pendingJob)
-            every { operation } returns KeyValueOperation.PUT
-        }
-        // Scheduled an hour into the future. Even though the job is stale by age, it is
-        // intentionally delayed (enqueueLater): its message is already in the stream and
-        // gets NAK'd-until-due, so the sweep must NOT re-publish it (that was the flood bug).
-        val scheduledAt = System.currentTimeMillis() + 3_600_000
-        every { scheduledKv.get(pendingJobId.toString()) } returns mockk<KeyValueEntry> {
-            every { valueAsString } returns scheduledAt.toString()
-            every { operation } returns KeyValueOperation.PUT
-        }
-
-        queue.checkForExpiredJobs(Long.MAX_VALUE)
-
-        verify(exactly = 0) {
-            js.publish("jobs.test", any<ByteArray>(), any<PublishOptions>())
-        }
+        jobs.forEach { job -> verify { js.publish("jobs.test", job.id.toString().toByteArray(), any<PublishOptions>()) } }
     }
 
     @Test
-    fun testCheckForExpiredJobsRePublishesPastDueScheduledPending() = runTest {
-        val pendingJobId = UUID.random()
-
-        val pastTime = bosca.serialization.OffsetDateTime.now().minusHours(1)
-
-        val pendingJob = SerializedJob(
-            id = pendingJobId,
-            parentId = null,
-            type = "TestJob",
-            status = JobStatus.PENDING,
-            failures = 0,
-            maxFailures = 10,
-            created = pastTime,
-            modified = pastTime,
-            definition = Json.parseToJsonElement("{}"),
-            executor = TestJobExecutor::class.qualifiedName!!,
-            executorName = null,
-            children = emptyList(),
-            callbacks = emptyList(),
-            context = Json.parseToJsonElement("{}")
-        )
-
-        every { kv.keys() } returns listOf(pendingJobId.toString())
-        every { kv.get(pendingJobId.toString()) } returns mockk<KeyValueEntry> {
-            every { valueAsString } returns json.encodeToString(SerializedJob.serializer(), pendingJob)
+    fun `manual redrive preserves future scheduled work`() = runTest {
+        val job = storedJob(UUID.random(), JobStatus.PENDING)
+        every { kv.keys() } returns listOf(job.id.toString())
+        every { kv.get(job.id.toString()) } returns entryFor(job)
+        every { scheduledKv.get(job.id.toString()) } returns mockk<KeyValueEntry> {
             every { operation } returns KeyValueOperation.PUT
-        }
-        // Scheduled time already passed: the job is genuinely due, and its message may have
-        // been lost, so the stale-PENDING safety net must still re-publish it (no zombies).
-        val scheduledAt = System.currentTimeMillis() - 3_600_000
-        every { scheduledKv.get(pendingJobId.toString()) } returns mockk<KeyValueEntry> {
-            every { valueAsString } returns scheduledAt.toString()
-            every { operation } returns KeyValueOperation.PUT
+            every { valueAsString } returns (System.currentTimeMillis() + 3_600_000).toString()
         }
 
-        queue.checkForExpiredJobs(Long.MAX_VALUE)
+        queue.expireAllJobs()
 
-        verify {
-            js.publish("jobs.test", pendingJobId.toString().toByteArray(), any<PublishOptions>())
-        }
-    }
-
-    @Test
-    fun testCheckForExpiredJobsUsesStableRetryMessageId() = runTest {
-        val pendingJobId = UUID.random()
-
-        val pastTime = bosca.serialization.OffsetDateTime.now().minusHours(1)
-
-        val pendingJob = SerializedJob(
-            id = pendingJobId,
-            parentId = null,
-            type = "TestJob",
-            status = JobStatus.PENDING,
-            failures = 0,
-            maxFailures = 10,
-            created = pastTime,
-            modified = pastTime,
-            definition = Json.parseToJsonElement("{}"),
-            executor = TestJobExecutor::class.qualifiedName!!,
-            executorName = null,
-            children = emptyList(),
-            callbacks = emptyList(),
-            context = Json.parseToJsonElement("{}")
-        )
-
-        every { kv.keys() } returns listOf(pendingJobId.toString())
-        every { kv.get(pendingJobId.toString()) } returns mockk<KeyValueEntry> {
-            every { valueAsString } returns json.encodeToString(SerializedJob.serializer(), pendingJob)
-            every { operation } returns KeyValueOperation.PUT
-        }
-        // Not scheduled, so it falls through to the stale-PENDING re-publish path.
-        every { scheduledKv.get(pendingJobId.toString()) } returns null
-
-        val optsSlot = slot<PublishOptions>()
-        every { js.publish(any<String>(), any<ByteArray>(), capture(optsSlot)) } returns mockk(relaxed = true)
-
-        queue.checkForExpiredJobs(Long.MAX_VALUE)
-
-        // The re-queue id must be stable per job (no nanoTime suffix) so the dedup window
-        // collapses repeated sweeps, and namespaced with "-retry" so it never collides
-        // with enqueue()'s messageId(jobId).
-        assertEquals("$pendingJobId-retry", optsSlot.captured.messageId)
-    }
-
-    @Test
-    fun testCheckForExpiredJobsSkipsComplete() = runTest {
-        val completeJobId = UUID.random()
-
-        val pastTime = bosca.serialization.OffsetDateTime.now().minusHours(1)
-
-        val completeJob = SerializedJob(
-            id = completeJobId,
-            parentId = null,
-            type = "TestJob",
-            status = JobStatus.COMPLETE,
-            failures = 0,
-            maxFailures = 10,
-            created = pastTime,
-            modified = pastTime,
-            definition = Json.parseToJsonElement("{}"),
-            executor = TestJobExecutor::class.qualifiedName!!,
-            executorName = null,
-            children = emptyList(),
-            callbacks = emptyList(),
-            context = Json.parseToJsonElement("{}")
-        )
-
-        every { kv.keys() } returns listOf(completeJobId.toString())
-        every { kv.get(completeJobId.toString()) } returns mockk<KeyValueEntry> {
-            every { valueAsString } returns json.encodeToString(SerializedJob.serializer(), completeJob)
-            every { operation } returns KeyValueOperation.PUT
-        }
-
-        queue.checkForExpiredJobs(Long.MAX_VALUE)
-
-        // COMPLETE job should not be re-published
-        verify(exactly = 0) {
-            js.publish("jobs.test", any<ByteArray>(), any<PublishOptions>())
-        }
+        verify(exactly = 0) { js.publish(any<String>(), any<ByteArray>(), any<PublishOptions>()) }
     }
 
     @Test

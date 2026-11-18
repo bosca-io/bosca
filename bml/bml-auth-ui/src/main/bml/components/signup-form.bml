@@ -1,0 +1,136 @@
+<component tag="auth-signup-form">
+  <div class="auth-flow">
+    <auth-providers />
+    <alert ref="error" hidden />
+    <form ref="form" class="auth-form">
+      <div class="auth-name-grid">
+        <field label="First name">
+          <input
+            ref="firstName"
+            name="firstName"
+            type="text"
+            autocomplete="given-name"
+            required
+          />
+        </field>
+        <field label="Last name">
+          <input
+            ref="lastName"
+            name="lastName"
+            type="text"
+            autocomplete="family-name"
+            required
+          />
+        </field>
+      </div>
+      <field label="Email">
+        <input ref="identifier" name="identifier" type="email" autocomplete="email" required />
+      </field>
+      <field label="Password">
+        <input
+          ref="password"
+          name="password"
+          type="password"
+          autocomplete="new-password"
+          required
+        />
+      </field>
+      <p ref="strength" class="password-strength" role="status">Use a long, unique password.</p>
+      <button ref="submit" type="submit" class="auth-primary">Create account</button>
+    </form>
+    <p class="auth-footer">Already have an account? <a ref="login" href="/login">Sign in</a></p>
+  </div>
+  <script client scoped>
+    import { passwordStrength } from "@client/auth";
+
+    const form = ctx.ref<HTMLFormElement>("form");
+    const submit = ctx.ref<HTMLButtonElement>("submit");
+    const error = ctx.ref<HTMLParagraphElement>("error");
+    const value = (name: string) => ctx.ref<HTMLInputElement>(name)?.value ?? "";
+    let mounted = true;
+    let busy = false;
+
+    ctx.onUnmount(() => {
+      mounted = false;
+    });
+
+    function show(element: HTMLElement | null, message: string) {
+      if (!mounted || !element) return;
+      element.textContent = message;
+      element.hidden = false;
+    }
+
+    async function run(
+      action: () => Promise<void>,
+      fallback: string,
+      button = submit,
+    ) {
+      if (busy) return false;
+      busy = true;
+      const label = button?.textContent ?? "";
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Please wait…";
+      }
+      form?.setAttribute("aria-busy", "true");
+      if (error) error.hidden = true;
+      try {
+        await action();
+        return true;
+      } catch (reason) {
+        if (!mounted) return false;
+        const message = boscaAuthFlow.failure(reason, fallback);
+        if (message) show(error, message);
+        return false;
+      } finally {
+        busy = false;
+        if (mounted) {
+          if (button) {
+            button.disabled = false;
+            button.textContent = label;
+          }
+          form?.removeAttribute("aria-busy");
+        }
+      }
+    }
+
+    const loginLink = ctx.ref<HTMLAnchorElement>("login");
+    if (loginLink) loginLink.href = boscaAuthFlow.url("/login");
+
+    const password = ctx.ref<HTMLInputElement>("password");
+    const strength = ctx.ref<HTMLParagraphElement>("strength");
+    if (password && strength) {
+      ctx.on(password, "input", () => {
+        strength.textContent = passwordStrength(password.value);
+      });
+    }
+    if (form) {
+      ctx.on<SubmitEvent>(form, "submit", (event) => {
+        event.preventDefault();
+        void run(
+          () =>
+            boscaAuthFlow.signUp(
+              value("identifier"),
+              value("password"),
+              value("firstName"),
+              value("lastName"),
+            ),
+          "We couldn't create your account. Please try again.",
+        );
+      });
+    }
+    void boscaAuthFlow.ready.then((failure) => {
+      if (!mounted || boscaAuthFlow.redirecting) return;
+      if (failure)
+        show(
+          error,
+          boscaAuthFlow.failure(
+            failure,
+            "Sign-in could not be completed. Please try again.",
+          ) ?? "",
+        );
+      else if (boscaAuth.isAuthenticated && !boscaAuthFlow.params.has("unauthorized"))
+        boscaAuthFlow.finish();
+    });
+  </script>
+</component>

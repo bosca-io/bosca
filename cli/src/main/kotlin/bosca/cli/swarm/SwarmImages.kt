@@ -13,7 +13,7 @@ import kotlin.coroutines.cancellation.CancellationException
 class SwarmUpdateImagesCommand : SwarmAction(name = "update-images") {
     override fun help(context: Context) = "Pin Bosca images to their newest published stable releases"
     private val registry by option("--registry", help = "Override the image registry and namespace; default: each configured repository")
-    private val images by option("--image", help = "Swarm image key to update; repeat to select images (default: all Bosca images)").multiple()
+    private val images by option("--image", help = "Swarm image key to update, including inactive services; repeat to select images (default: deployed Bosca services)").multiple()
     private val check by option("--check", help = "Show resolved images without saving the configuration").flag()
 
     override fun run() = runBlocking {
@@ -41,7 +41,7 @@ class SwarmUpdateImagesCommand : SwarmAction(name = "update-images") {
     }
 }
 
-/** Resolves all requested releases before changing any image pins; infrastructure and site images stay configured. */
+/** Resolves explicit image keys or the active topology before changing pins; other configured images stay pinned. */
 internal suspend fun updateSwarmImages(
     config: SwarmConfig,
     registry: String?,
@@ -53,7 +53,16 @@ internal suspend fun updateSwarmImages(
     require(keys.all { it in available }) { "Unknown Bosca image key; choose ${available.keys.joinToString()}" }
     val updated = config.images.toMutableMap()
     val schemes = config.registrySchemes.toMutableMap()
-    for ((key, repositoryName) in available.filterKeys { keys.isEmpty() || it in keys }) {
+    val optionalServices = mapOf(
+        "runner" to config.sites.any { it.runnerServer.enabled },
+        "atlas-ui" to config.sites.any { it.atlasUiServer.enabled },
+        "git" to config.sites.any { it.gitServer.enabled },
+        "artifacts" to config.sites.any { it.artifactsServer.enabled },
+        "kit-controller" to config.sites.any { it.kit.enabled },
+        "kit-codex-runtime" to config.sites.any { it.kit.enabled && it.kit.harness == "codex" },
+        "kit-claude-runtime" to config.sites.any { it.kit.enabled && it.kit.harness == "claude" },
+    )
+    for ((key, repositoryName) in available.filterKeys { if (keys.isEmpty()) optionalServices[it] != false else it in keys }) {
         val configured = config.images.getValue(key)
         val repository = registry?.let { "${it.trimEnd('/')}/$repositoryName" } ?: configured.substringBefore('@').let {
             if (it.substringAfterLast('/').contains(':')) it.substringBeforeLast(':') else it

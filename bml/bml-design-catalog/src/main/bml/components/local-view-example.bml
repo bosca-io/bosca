@@ -1,0 +1,22 @@
+<component tag="local-view-example">
+  <div data-local-views>
+    <view-tabs label="Example view" :tabs='listOf(bosca.design.model.ViewTab("Preview", "Preview"), bosca.design.model.ViewTab("Details", "Details"), bosca.design.model.ViewTab("Source", "Source"))' selected="Preview" />
+    <div role="tabpanel" tabindex="0" data-view="Preview">A local preview, owned by the application.</div>
+    <div role="tabpanel" tabindex="0" data-view="Details" hidden>Details for the selected example.</div>
+    <div role="tabpanel" tabindex="0" data-view="Source" hidden>Source belongs to this application.</div>
+  </div>
+  <script client scoped>
+    const panels = [...ctx.root.querySelectorAll<HTMLElement>("[role=tabpanel]")];
+    for (const tab of ctx.root.querySelectorAll<HTMLElement>("[role=tab]")) {
+      const panel = panels.find(panel => panel.dataset.view === tab.dataset.tab);
+      if (!panel) continue;
+      tab.id = `catalog-tab-${crypto.randomUUID()}`;
+      panel.id = `catalog-panel-${crypto.randomUUID()}`;
+      tab.setAttribute("aria-controls", panel.id);
+      panel.setAttribute("aria-labelledby", tab.id);
+    }
+    ctx.on<CustomEvent<string>>(ctx.root, "viewchange", event => {
+      for (const panel of panels) panel.hidden = panel.dataset.view !== event.detail;
+    });
+  </script>
+</component>

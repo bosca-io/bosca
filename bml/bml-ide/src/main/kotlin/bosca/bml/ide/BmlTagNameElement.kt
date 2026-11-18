@@ -21,5 +21,5 @@ class BmlTagNameElement(node: ASTNode) : ASTWrapperPsiElement(node) {
 private class BmlComponentReference(element: PsiElement) :
     PsiReferenceBase<PsiElement>(element, TextRange(0, element.textLength), /* soft = */ true) {
 
-    override fun resolve(): PsiElement? = BmlComponentDecls.find(element.project, element.text)
+    override fun resolve(): PsiElement? = BmlComponentDecls.find(element.containingFile, element.text)
 }

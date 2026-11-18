@@ -5,7 +5,7 @@ import java.net.URI
 /**
  * Hosts of a Bosca deployment's companion services, derived from the deployment's GraphQL
  * endpoint with the layout the Helm charts and Swarm configuration share: the API is served from
- * the base domain or its `api`, `studio`, `www`, `ws`, or `upload` subdomain, and the services
+ * the base domain or its `api`, `studio`, `www`, `ws`, `upload`, `atlas`, `git`, or `artifacts` subdomain, and the services
  * live at `artifacts.<domain>` and `git.<domain>`. A local endpoint maps to the development ports.
  */
 object DeploymentHosts {
@@ -16,7 +16,7 @@ object DeploymentHosts {
     /** Local development port of the git server. */
     const val LOCAL_GIT_PORT = 8091
 
-    private val apiPrefixes = listOf("api.", "studio.", "www.", "ws.", "upload.")
+    private val apiPrefixes = listOf("api.", "studio.", "www.", "ws.", "upload.", "atlas.", "git.", "artifacts.")
     private val localHosts = setOf("localhost", "127.0.0.1", "[::1]")
 
     /** The Artifacts registry host for the deployment serving [endpoint]. */

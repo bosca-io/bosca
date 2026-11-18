@@ -71,7 +71,7 @@ class BmlClientAssetsTest {
     @Test
     fun `generated script URLs carry the encoded deployment cache token`() {
         assertEquals(
-            """<script type="module" src="/_bml/js/HomePage.js?_ts=release%2042"></script>""",
+            """<script type="module" src="/_bml/js/deploy/release%2042/HomePage.js"></script>""",
             BmlClientAssets.scriptTag("HomePage.js", "release 42"),
         )
     }

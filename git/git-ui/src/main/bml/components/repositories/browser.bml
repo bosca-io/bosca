@@ -1,8 +1,11 @@
 <component tag="git-repository-browser">
   <prop name="page" type="bosca.git.ui.RepositoryPage" required />
-  <ui-page :data-repository-page="page.id">
+  <script server provides="fileWorkspace">
+    page.tab == "code" && (page.file.isNotBlank() || page.editing || page.creating)
+  </script>
+  <page-shell :fill="fileWorkspace" :class='if (fileWorkspace) "repository-file-page" else ""' :data-repository-page="page.id">
     <git-repository-heading :page="page" />
-    <ui-tabs label="Repository section" :items="page.tabs" header />
+    <tabs label="Repository section" :items="page.tabs" header class="workspace-fixed" />
     <if page.tab == "commits">
       <git-repository-commits :page="page" />
     <else-if page.tab == "branches" || page.tab == "tags">
@@ -18,17 +21,19 @@
       <if page.secrets.allowed>
         <git-repository-secrets :page="page.secrets" />
       <else>
-        <ui-alert>Manage permission is required.</ui-alert>
+        <alert>Manage permission is required.</alert>
       </if>
     <else-if page.settings != null>
       <git-repository-settings :page="page.settings" />
     <else>
-      <div class="code-panel">
+      <div :class='if (fileWorkspace) "code-panel workspace-content" else "code-panel"'>
         <if page.branches.isEmpty() && page.tags.isEmpty() && !page.creating && page.file.isBlank()>
           <git-repository-setup :page="page" />
         <else>
-          <git-repository-stats :id="page.id" />
-          <git-repository-path :page="page" />
+          <if !fileWorkspace>
+            <git-repository-stats :id="page.id" />
+            <git-repository-path :page="page" />
+          </if>
           <if page.editing || page.creating>
             <git-file-editor :page="page" />
           <else-if page.file.isNotBlank()>
@@ -38,25 +43,25 @@
           <else>
             <git-repository-tree :entries="page.entries" :editable="page.canWriteRef" />
             <if page.readmeHtml.isNotBlank() && page.readmeEntry != null>
-              <section class="readme-card">
+              <html:section class="readme-card">
                 <a class="readme-header" :href="page.readmeEntry?.href.orEmpty()">
-                  <span class="readme-icon"><ui-icon name="book-open" :size="14" /></span>
+                  <span class="readme-icon"><icon name="book-open" :size="14" /></span>
                   { page.readmeEntry?.name.orEmpty() }
                 </a>
                 <git-markdown :html="page.readmeHtml" />
-              </section>
+              </html:section>
             </if>
             <if page.description.isNotBlank() && page.path.isBlank()>
-              <section class="side-card about-card">
+              <html:section class="side-card about-card">
                 <h2 class="side-card-title">About</h2>
                 <p>{ page.description }</p>
-              </section>
+              </html:section>
             </if>
           </if>
         </if>
       </div>
     </if>
-  </ui-page>
+  </page-shell>
   <style scoped>
     /* Studio's Code tab panel: a 12px stack of cards. */
     .code-panel {

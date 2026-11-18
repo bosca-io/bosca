@@ -1,0 +1,25 @@
+extend type Query { configurations: Configurations! }
+type Collaboration { federation: Federation! }
+type Content
+type ContentMutation
+extend type Query { content: Content! }
+extend type Mutation { content: ContentMutation! }
+type Bible { metadataId: UUID! version: Int! variant: String! name: String! enabled: Boolean! }
+type BibleAudio { id: UUID! name: String! nameLocal: String! abbreviation: String! attribution: BibleAttribution! }
+type BibleLanguage { iso: String! name: String! nameLocal: String! script: String! scriptCode: String! scriptDirection: String! }
+type BibleAttribution { copyright: String! citation: String! informationUrl: String }
+type CollaborationMutation { federation: FederationMutation! }
+extend type Query { collaboration: Collaboration! }
+extend type Mutation { collaboration: CollaborationMutation! }
+extend type Mutation {
+    configurations: ConfigurationsMutation!
+    clearCache: Boolean!
+    clearCdnCache: Boolean!
+    expireAllJobs: Boolean!
+    clearJobLocks: Boolean!
+}
+
+type Ai { models: Models! }
+extend type Query { ai: Ai! }
+extend type Search { configuration: SearchConfiguration }
+type SearchConfiguration { previewMetadata(id: UUID!): JSON previewCollection(id: UUID!): JSON previewProfile(id: UUID!): JSON }

@@ -1,6 +1,6 @@
 package bosca.git.ui
 
-import bosca.git.ui.components.NavigationItem
+import bosca.design.model.NavigationItem
 import bosca.git.ui.graphql.*
 import kotlinx.serialization.Serializable
 

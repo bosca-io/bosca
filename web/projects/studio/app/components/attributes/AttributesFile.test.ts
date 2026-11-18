@@ -32,7 +32,7 @@ const stubs = {
   LazyTimeEventsEditor: { template: '<div class="mock-timeline-editor" />' },
   AttributesFileSelectorModal: {
     template: '<div class="mock-selector" />',
-    props: ['onSelected', 'searchFilter'],
+    props: ['onSelected', 'searchFilter', 'allowYouTube'],
     emits: ['close'],
   },
 }
@@ -72,6 +72,13 @@ describe('AttributesFile', () => {
     await wrapper.find('.file-dropzone').trigger('click')
     const selector = wrapper.findComponent('.mock-selector') as VueWrapper
     expect((selector.props() as Record<string, unknown>).searchFilter).toBe('contentType STARTS WITH "video/"')
+  })
+
+  it.each([true, false, undefined])('passes allowYouTube configuration (%s) to the selector', async (allowYouTube) => {
+    const wrapper = mountFile(makeAttribute({ configuration: { allowYouTube } }))
+    await wrapper.find('.file-dropzone').trigger('click')
+    const selector = wrapper.findComponent('.mock-selector') as VueWrapper
+    expect((selector.props() as Record<string, unknown>).allowYouTube).toBe(allowYouTube === true)
   })
 
   it('sets the attribute metadata when an asset is selected', async () => {

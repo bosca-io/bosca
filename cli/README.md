@@ -512,12 +512,49 @@ including administrator access.
 Services on a Swarm manager. See [Kit on Swarm](../ai/kit/runtime/SWARM.md) for
 controller settings, native profiles, Secret delivery and lifecycle validation.
 
+## CI/CD pipeline runs and logs
+
+Find a repository's pipelines, then list its runs and inspect jobs and steps:
+
+```bash
+bosca ci pipeline list --repo-id <repository-id>
+bosca ci run list --repo-id <repository-id> --pipeline-id <pipeline-id> --limit 20 --offset 0
+bosca ci run get --id <run-id>
+bosca ci run jobs --run-id <run-id>
+bosca ci run steps --run-id <run-id>
+bosca ci run steps --run-id <run-id> --job-id <job-id>
+```
+
+Run lists include run and pipeline IDs, status, ref, trigger, timestamp, and
+commit. Omit `--pipeline-id` to list runs across the repository. `get` includes
+run details and each job and step's ID and status.
+
+```bash
+bosca ci run logs --run-id <run-id>
+bosca ci run logs --run-id <run-id> --job-id <job-id>
+bosca ci run logs --step-id <step-id>
+bosca ci run logs --run-id <run-id> --follow
+bosca ci run logs --run-id <run-id> --step-id <step-id> --follow
+```
+
+Logs are paged until exhausted. Run and job logs label each line with its job
+and step; output is grouped by job and step within each poll. `--offset` skips
+that many lines per step. `--follow` polls every two seconds until the selected
+run, job, or step completes and requires `--run-id`. These commands use the
+selected account profile and also accept the standard CI authentication options.
+
+## Swarm backends
+
+The manager can also run application workloads: list the same SSH target in
+`manager.ssh` and `workers`. Run `bosca swarm bootstrap` after upgrading the CLI
+to set application placement labels, then run `bosca swarm deploy` as usual.
+
 The shared `dragonfly` service runs Dragonfly `v2.0.2`, configured through
 `images.dragonfly`. Existing configs gain this image setting automatically.
 Dragonfly uses fresh storage, so disposable cache and lock data need no import;
 see the [Dragonfly cutover steps](../deployments/bosca-swarm/README.md#dragonfly).
 
-Set each site's `cacheBackend`, `pubsubBackend`, `jobQueueBackend`, `distributedLockBackend`, and `counterBackend` independently to `nats` (the default) or `redis` in the Swarm JSON configuration. For Redis caching with NATS pub/sub, set `"cacheBackend": "redis"` and `"pubsubBackend": "nats"`. See [backend selection](../deployments/bosca-swarm/README.md#backend-selection) for deployment and switching steps.
+Distributed locks use `distributedLockBackend: redis`. Set each site's `cacheBackend`, `pubsubBackend`, `jobQueueBackend`, and `counterBackend` independently to `nats` (the default) or `redis` in the Swarm JSON configuration. For Redis caching with NATS pub/sub, set `"cacheBackend": "redis"` and `"pubsubBackend": "nats"`. See [backend selection](../deployments/bosca-swarm/README.md#backend-selection) for deployment and switching steps.
 
 ## Swarm OAuth redirects
 
@@ -538,7 +575,24 @@ bosca swarm update-images --config ./swarm.local.json
 bosca swarm deploy --config ./swarm.local.json
 ```
 
-`update-images` saves version pins locally. It keeps each configured image
+`swarm deploy` reuses saved Docker registry credentials. Add `--registry-login`
+for the first deployment of private images or to renew credentials; ordinary
+config updates skip fresh registry login. `swarm setup-tokens` also accepts this
+flag when applying newly created root-image credentials.
+
+`swarm deploy` checks node disk space before pulling, removes omitted services
+after readiness passes, and reclaims retired images and stopped task containers.
+It preserves active and rollback images. Configure `imageRetention.enabled`
+and `imageRetention.minimumFreeGiB` (defaults: `true` and `4`) in the Swarm
+configuration. See [Swarm deployment](../deployments/bosca-swarm/README.md)
+for retention and rollback details.
+
+`update-images` saves version pins locally for services used by the configured
+topology. Standard runner, separate Atlas UI, Git, and artifacts images are
+skipped unless at least one site enables the corresponding standalone service.
+An explicit `--image` also selects an inactive service, for example before
+changing topology.
+It keeps each configured image
 repository, infrastructure images, root website images, and secrets. Repeat
 `--image` to update selected Swarm image keys, for example `--image server
 --image runner`. Use `--registry artifacts.example.com/bosca` to move the
@@ -726,3 +780,46 @@ This is a single-module application built on the Clikt command framework for con
 - `io.bosca:core`, `io.bosca:core-security`, `io.bosca:core-graalvm` -- from bosca-core
 - `io.bosca:di`, `io.bosca:service` -- from `services-di`
 - `io.bosca:core-content` -- from bosca-content
+
+## Atlas deployment
+
+`bosca swarm` deploys Atlas with the primary `atlas.<domain>` origin and retained
+Git/registry hostnames. Per-site `atlas` settings select separate UI, Git or
+registry services and embedded queue consumers. See the
+[Swarm deployment guide](../deployments/bosca-swarm/README.md). Set a site's
+`runnerServer.enabled` to `false` and keep `atlas.servers.runner` enabled to
+run only Atlas workers. Deployment enables Atlas worker listeners, Git sync,
+and scheduling, and removes the old standard runner after readiness passes.
+`swarm update-images` and Helm image updates recognize `atlas-server` and
+`atlas-ui-server`; profiles pointed at Atlas derive the existing Git and registry
+hostnames. Helm topology and Gateway examples are in the
+[Helm guide](../helm/README.md#bosca-atlas).
+`bosca helm images` prepares image values; run Helm itself to deploy the charts.
+
+```sh
+bosca swarm update-images --config ./swarm.local.json --image atlas --image atlas-ui
+bosca helm images --service bosca-atlas-server --service bosca-atlas-ui-server --output atlas-images.yaml
+```
+
+For a single Docker host, `bosca compose` bundles the portable Compose installer.
+Python 3 and Docker Compose v2 must be installed on that host:
+
+```sh
+bosca compose init --domain example.com --directory /opt/bosca
+# Configure image versions and message artifacts in /opt/bosca/.env,
+# then configure host nginx and HTTPS using the deployment guide.
+bosca compose config --directory /opt/bosca
+bosca compose up --directory /opt/bosca
+bosca compose status --directory /opt/bosca
+bosca compose down --directory /opt/bosca
+```
+
+Init accepts independent `--separate-git`, `--separate-artifacts`, `--separate-ui`,
+and `--atlas-runner-enabled` flags. Change those public settings in the installed
+`.env` later and run `bosca compose render --directory /opt/bosca`. Lifecycle
+commands `up` and `config` also rerender before invoking Compose. `status` and
+`down` use the existing configuration. `up` removes obsolete project
+containers while retaining bind-mounted data. Install and reload the generated
+host nginx configuration when routing changes. See the
+[Compose deployment guide](../deployments/bosca-compose/README.md) for images,
+credentials, HTTPS, storage, and topology changes.

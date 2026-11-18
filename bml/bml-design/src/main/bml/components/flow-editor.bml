@@ -1,0 +1,59 @@
+<component tag="flow-editor">
+  <prop name="id" type="String" required />
+  <prop name="label" type="String" required />
+  <prop name="name" type="String" default="graph" />
+  <prop name="value" type="bosca.design.model.FlowGraph" :default="bosca.design.model.FlowGraph()" />
+  <script server provides="encodedValue">kotlinx.serialization.json.Json.encodeToString(bosca.design.model.FlowGraph.serializer(), value)</script>
+  <prop name="readOnly" type="Boolean" default="false" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <prop name="error" type="String" default="" />
+  <prop name="preserveKey" type="String" default="" />
+  <div class="flow-editor" data-bml-flow-editor role="group" :aria-label="label" :data-editor-id="id"
+       :data-label="label" :data-name="name" :data-value="encodedValue" :data-readonly="readOnly" :data-disabled="disabled"
+       :data-error="error" :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" {...attrs}>
+    <div ref="controls" class="flow-controls" role="group" :aria-label='label + " view controls"' hidden>
+      <button ref="zoomOut" size="xs">Zoom out</button>
+      <button ref="zoomIn" size="xs">Zoom in</button>
+      <button ref="fit" size="xs">Fit</button>
+      <button ref="remove" size="xs" disabled>Remove selected</button>
+    </div>
+    <textarea ref="value" :id="id" :name="name" :aria-label="label" :readonly="readOnly" :disabled="disabled" spellcheck="false">{ encodedValue }</textarea>
+    <div ref="canvas" class="flow-canvas" />
+    <details ref="outline" class="flow-outline" hidden>
+      <summary>Nodes and connections</summary>
+      <div class="flow-outline-body"><p :id='id + "-instructions"'>Enter or Space selects a node or connection. Escape clears selection. When editing, use arrow keys to move selected nodes and Remove selected to delete. Tab leaves the canvas.</p>
+        <ul ref="nodes" aria-label="Nodes" /><ul ref="edges" aria-label="Connections" />
+        <div ref="connectControls" class="flow-connect" role="group" aria-label="Add connection">
+          <label>From <span class="flow-select"><html:select ref="source" /><span class="flow-select-chevron" aria-hidden="true"><icon name="chevron" :size="13" /></span></span></label>
+          <label>To <span class="flow-select"><html:select ref="target" /><span class="flow-select-chevron" aria-hidden="true"><icon name="chevron" :size="13" /></span></span></label>
+          <button ref="connect" size="xs">Connect</button>
+        </div>
+      </div>
+    </details>
+    <p ref="feedback" role="status" aria-live="polite" :hidden="error.isBlank()">{ error }</p>
+    <slot />
+  </div>
+  <style scoped>
+    .flow-editor { display: flex; flex-direction: column; gap: 12px; min-width: 0; color: var(--fg-1); font: 13px/1.5 var(--font-sans); }
+    .flow-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+    .flow-canvas { min-width: 0; height: var(--flow-height, 420px); border: 1px solid var(--control-border, var(--line)); border-radius: var(--r-md); background: var(--flow-bg, var(--bg-2)); overflow: hidden; }
+    .flow-canvas:empty { display: none; }
+    [hidden], .flow-controls[hidden], .flow-connect[hidden] { display: none; }
+    textarea { box-sizing: border-box; width: 100%; min-height: var(--flow-height, 420px); padding: 16px; border: 1px solid var(--control-border, var(--line)); border-radius: var(--r-md); color: var(--fg-1); background: var(--bg-1); font: 13px/1.6 var(--font-mono); }
+    .flow-outline-body { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; }
+    summary { cursor: pointer; padding: 4px 0; font-weight: 500; }
+    summary:focus-visible, textarea:focus-visible, select:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
+    .flow-outline-body p { margin: 0; color: var(--fg-2); }
+    .flow-connect { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+    label { display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; }
+    .flow-select { display: block; position: relative; min-width: 0; max-width: 100%; }
+    select { box-sizing: border-box; width: 100%; max-width: 100%; height: var(--control-height-sm); padding: 0 32px 0 10px; appearance: none; -webkit-appearance: none; border: 1px solid var(--control-border, var(--line)); border-radius: var(--r-sm); background: var(--control-bg, var(--bg-2)); color: var(--fg-0); font: inherit; }
+    .flow-select-chevron { position: absolute; top: 50%; right: 11px; transform: translateY(-50%); display: flex; color: var(--fg-4); pointer-events: none; }
+    select:disabled + .flow-select-chevron { opacity: 0.35; }
+    .flow-editor > p { margin: 0; color: var(--err); }
+  </style>
+  <script client scoped>
+    import { mountFlowEditor } from "@client/helpers/flow-editor";
+    mountFlowEditor(ctx);
+  </script>
+</component>

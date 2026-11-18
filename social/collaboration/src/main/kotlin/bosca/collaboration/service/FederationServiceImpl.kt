@@ -115,7 +115,7 @@ class FederationServiceImpl(
         if (configuration != null) {
             configurationService.setValue(configuration.id, JsonNull)
         }
-        runCatching { inboundListener.get().refresh() }
+        if (inboundListener.exists) inboundListener.get().refresh()
     }
 
     override suspend fun setSharedSecret(peerId: UUID, secret: String?) {
@@ -157,12 +157,12 @@ class FederationServiceImpl(
         direction: FederationSyncDirection,
     ) {
         repository.upsertFederatedChannel(localChannelId, peerId, remoteChannelId, direction)
-        runCatching { inboundListener.get().refresh() }
+        if (inboundListener.exists) inboundListener.get().refresh()
     }
 
     override suspend fun unfederateChannel(localChannelId: UUID, peerId: UUID) {
         repository.deleteFederatedChannel(localChannelId, peerId)
-        runCatching { inboundListener.get().refresh() }
+        if (inboundListener.exists) inboundListener.get().refresh()
     }
 
     override suspend fun getFederatedChannels(localChannelId: UUID): List<FederatedChannel> =

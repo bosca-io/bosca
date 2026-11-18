@@ -1,0 +1,4 @@
+<page route="/system/integrations" requireAuth>
+  <script server provides="page">bosca.system.ui.systemIntegrations()</script>
+  <system-layout title="Integrations" :admin="page.admin"><system-integrations :initial="page" /></system-layout>
+</page>

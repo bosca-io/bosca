@@ -8,9 +8,9 @@ import bosca.serialization.UUID
 @Repository
 interface PipelineRepository {
 
-    /** Serializes catalog reconciliation and identity creation for a repository until transaction commit. */
-    @Query("select true from pg_advisory_xact_lock(hashtextextended(cast(:repositoryId as text), 0))")
-    suspend fun lockForSync(repositoryId: UUID): Boolean
+    /** Tries to serialize catalog reconciliation until commit, returning immediately when another transaction owns it. */
+    @Query("select pg_try_advisory_xact_lock(hashtextextended(cast(:repositoryId as text), 0))")
+    suspend fun tryLockForSync(repositoryId: UUID): Boolean
 
     @Query("select * from git.pipelines where id = :id")
     suspend fun findById(id: UUID): Pipeline?

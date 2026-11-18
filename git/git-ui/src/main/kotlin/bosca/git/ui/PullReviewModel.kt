@@ -43,13 +43,23 @@ class PullReviewModel(
     val viewSummary: String
         get() = if (page.view == "reviews") reviewSummary else fileSummary
 
-    fun lineThreads(
-        file: String,
-        old: Int?,
-        new: Int?,
-    ): List<PullReviewThread> =
-        reviews.flatMap(::reviewThreads)
-            .filter { sharesDisplayedCommit(it) && it.matches(file, old, new) }
+    @kotlinx.serialization.Transient
+    private var indexedReviews: List<GitUiPullData.Git.PullRequest.Reviews>? = null
+
+    @kotlinx.serialization.Transient
+    private var threadsByLine: Map<Triple<String, Boolean, Int>, List<PullReviewThread>> = emptyMap()
+
+    /** Index discussions once per review snapshot, including after an action refreshes reviews. */
+    fun lineThreads(file: String, old: Int?, new: Int?): List<PullReviewThread> {
+        if (indexedReviews !== reviews) {
+            threadsByLine = reviews.flatMap(::reviewThreads)
+                .filter { sharesDisplayedCommit(it) && !it.outdated && it.hasLine }
+                .groupBy { Triple(it.first.filePath, it.first.newLineNumber != null, it.line) }
+            indexedReviews = reviews
+        }
+        return threadsByLine[Triple(file, true, new ?: 0)].orEmpty() +
+            threadsByLine[Triple(file, false, old ?: 0)].orEmpty()
+    }
 
     private fun sharesDisplayedCommit(thread: PullReviewThread): Boolean =
         page.selectedCommit == null && (page.pull.status != GitPullRequestStatus.MERGED || thread.first.commitSha == page.headSha)
@@ -309,7 +319,7 @@ class PullReviewModel(
             ctx.gql
                 .execute(
                     GitUiPull,
-                    GitUiPull.Variables(page.pull.id),
+                    GitUiPull.Variables(page.pull.id, false),
                 )
                 .git
                 .pullRequest

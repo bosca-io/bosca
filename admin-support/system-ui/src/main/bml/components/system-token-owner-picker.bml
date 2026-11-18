@@ -1,0 +1,25 @@
+<component tag="system-token-owner-picker">
+  <prop name="name" type="String" required />
+  <prop name="value" type="String" default="" />
+  <prop name="options" type="Map<String, String>" required />
+  <prop name="label" type="String" default="Token owner" />
+  <prop name="canSearch" type="Boolean" default="true" />
+  <div class="token-owner-picker" {...attrs}>
+    <select :name="name" :label="label" :searchable="canSearch" :async="canSearch" :minQuery="2"
+            icon="user" :preserveKey='"token-owner-" + name'>
+      <for choice in options.entries><option :value="choice.key" :selected='choice.key == value || choice.key == "__self__" && value.isBlank()' :data-persistent='choice.key == "__self__"'>{ choice.value }</option></for>
+    </select>
+  </div>
+  <style scoped>.token-owner-picker { min-width:0; width:min(100%,320px); }</style>
+  <script client scoped>
+    import type { SelectSearch } from "@bosca/bml-design/select";
+    import { SystemTokenOwnerSearch } from "./SystemTokenOwnerSearch";
+    ctx.on<CustomEvent<SelectSearch>>(ctx.root, "selectsearch", event => {
+      event.stopPropagation();
+      SystemTokenOwnerSearch.search(event.detail.query).then(
+        owners => event.detail.resolve(owners.map(owner => ({value:owner.id, label:owner.label}))),
+        event.detail.reject,
+      );
+    });
+  </script>
+</component>

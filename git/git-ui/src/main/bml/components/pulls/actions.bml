@@ -4,13 +4,13 @@
     bosca.git.ui.PullActionsModel(page)
   </script>
   <island name="git-pull-actions" :key="page.pull.id">
-    <section :data-next-href="model.nextHref">
+    <html:section :data-next-href="model.nextHref">
       <if model.page.canEdit && (model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT" || model.page.pull.status.name == "CLOSED")>
         <div class="side-card">
           <h2 class="side-card-title">Actions</h2>
           <div class="action-stack">
             <if model.page.pull.status.name == "DRAFT">
-              <ui-dialog
+              <dialog
                 title="Ready for review"
                 triggerLabel="Mark Ready for Review"
                 icon="eye"
@@ -21,29 +21,29 @@
                 <form class="modal-form" @submit='model.lifecycle("ready", true, ctx)'>
                   <div class="modal-fields">
                     <p class="detail-note">Reviewers will be able to approve or request changes.</p>
-                    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
+                    <if model.message.isNotBlank()><alert>{ model.message }</alert></if>
                   </div>
                   <footer class="modal-footer">
-                    <ui-button ref="cancel">Cancel</ui-button>
-                    <ui-button type="submit" primary>Ready for review</ui-button>
+                    <button ref="cancel">Cancel</button>
+                    <button type="submit" primary>Ready for review</button>
                   </footer>
                 </form>
-              </ui-dialog>
+              </dialog>
             </if>
             <if model.page.pull.status.name == "OPEN">
               <form class="merge-form" @submit="model.prepare(form.strategy, ctx)">
                 <div class="merge-row">
-                  <ui-select name="strategy" size="sm" label="Merge method">
+                  <select name="strategy" size="sm" label="Merge method">
                     <for strategy in listOf("MERGE_COMMIT", "SQUASH", "REBASE", "FAST_FORWARD")>
                       <option :value="strategy" :selected="model.strategy == strategy">
                         { bosca.git.ui.mergeStrategyOptionLabel(strategy) }
                       </option>
                     </for>
-                  </ui-select>
+                  </select>
                 </div>
-                <ui-button type="submit" size="sm" primary class="block" :disabled="model.page.hasMergeBlockers">
+                <button type="submit" size="sm" primary class="block" :disabled="model.page.hasMergeBlockers">
                   Merge Pull Request
-                </ui-button>
+                </button>
               </form>
               <if model.page.hasMergeBlockers>
                 <p class="action-note" data-tone="error">Cannot merge — resolve conflicts or unavailable branches.</p>
@@ -53,9 +53,9 @@
                 <p class="action-note">Open dependencies will be included in the merge confirmation.</p>
               </if>
               <if model.failed && model.selectedAction == "merge" && model.plan.isEmpty()>
-                <ui-alert>{ model.message }</ui-alert>
+                <alert>{ model.message }</alert>
               </if>
-              <ui-dialog
+              <dialog
                 title="Merge pull request"
                 triggerLabel="Merge pull request"
                 icon="merge"
@@ -64,10 +64,10 @@
               >
                 <form class="modal-form" @submit="model.merge(true, false, ctx)">
                   <div class="modal-fields">
-                    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
+                    <if model.message.isNotBlank()><alert>{ model.message }</alert></if>
                     <div class="detail-heading">
                       <h3>Merge plan</h3>
-                      <ui-badge>{ bosca.git.ui.mergeStrategyLabel(model.strategy) }</ui-badge>
+                      <badge>{ bosca.git.ui.mergeStrategyLabel(model.strategy) }</badge>
                     </div>
                     <p class="detail-note">
                       { if (model.plan.size == 1) "The following pull request will be merged." else "Dependencies will be merged in this order, followed by this pull request." }
@@ -91,28 +91,28 @@
                       </for>
                     </ol>
                     <if model.checksBlocked && model.page.canBypassStatusChecks>
-                      <ui-alert>As an administrator, you can bypass required status checks for every pull request in this plan. Reviews and merge conflicts must still be resolved.</ui-alert>
+                      <alert>As an administrator, you can bypass required status checks for every pull request in this plan. Reviews and merge conflicts must still be resolved.</alert>
                     </if>
                     <if model.mergeBlocked>
-                      <ui-alert>Resolve the blocked pull requests before merging.</ui-alert>
+                      <alert>Resolve the blocked pull requests before merging.</alert>
                     </if>
                   </div>
                   <footer class="modal-footer merge-footer">
-                    <ui-button ref="cancel">Cancel</ui-button>
+                    <button ref="cancel">Cancel</button>
                     <if model.checksBlocked && model.page.canBypassStatusChecks>
-                      <ui-button class="danger" icon="merge" :disabled="model.mergeBlocked" @click="model.merge(true, true, ctx)">
+                      <button class="danger" icon="merge" :disabled="model.mergeBlocked" @click="model.merge(true, true, ctx)">
                         Bypass status checks and merge
-                      </ui-button>
+                      </button>
                     </if>
-                    <ui-button type="submit" primary icon="merge" :disabled="model.mergeBlocked || model.checksBlocked">
+                    <button type="submit" primary icon="merge" :disabled="model.mergeBlocked || model.checksBlocked">
                       { if (model.plan.size > 1) "Merge pull requests" else "Merge pull request" }
-                    </ui-button>
+                    </button>
                   </footer>
                 </form>
-              </ui-dialog>
+              </dialog>
             </if>
             <if model.page.pull.status.name == "CLOSED">
-              <ui-dialog
+              <dialog
                 title="Reopen pull request"
                 triggerLabel="Reopen"
                 icon="pull"
@@ -123,17 +123,17 @@
                 <form class="modal-form" @submit='model.lifecycle("reopen", true, ctx)'>
                   <div class="modal-fields">
                     <p class="detail-note">Reopen this pull request to continue reviewing its changes.</p>
-                    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
+                    <if model.message.isNotBlank()><alert>{ model.message }</alert></if>
                   </div>
                   <footer class="modal-footer">
-                    <ui-button ref="cancel">Cancel</ui-button>
-                    <ui-button type="submit" primary>Reopen pull request</ui-button>
+                    <button ref="cancel">Cancel</button>
+                    <button type="submit" primary>Reopen pull request</button>
                   </footer>
                 </form>
-              </ui-dialog>
+              </dialog>
             </if>
             <if model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT">
-              <ui-dialog
+              <dialog
                 title="Close pull request"
                 triggerLabel="Close"
                 icon="close"
@@ -144,19 +144,19 @@
                 <form class="modal-form" @submit='model.lifecycle("close", true, ctx)'>
                   <div class="modal-fields">
                     <p class="detail-note">Close without merging these changes. You can reopen it later.</p>
-                    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
+                    <if model.message.isNotBlank()><alert>{ model.message }</alert></if>
                   </div>
                   <footer class="modal-footer">
-                    <ui-button ref="cancel">Cancel</ui-button>
-                    <ui-button type="submit" class="danger">Close pull request</ui-button>
+                    <button ref="cancel">Cancel</button>
+                    <button type="submit" class="danger">Close pull request</button>
                   </footer>
                 </form>
-              </ui-dialog>
+              </dialog>
             </if>
           </div>
         </div>
       </if>
-    </section>
+    </html:section>
   </island>
   <style scoped>
     .merge-footer {

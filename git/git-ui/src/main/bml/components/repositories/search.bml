@@ -5,7 +5,7 @@
   </script>
   <div class="search-workspace">
     <island name="git-search" :key='"search"'>
-      <section
+      <html:section
         :data-search-query="model.query"
         :data-search-repo="model.id"
         :data-search-mode="model.mode"
@@ -18,35 +18,33 @@
           data-bml-coalesce
           aria-label="Repository search"
         >
-          <ui-search-input
+          <search-input
             :value="model.query"
             :placeholder="model.placeholder"
             label="Search repository content or paths"
             preserveKey="git-search-query"
             :disabled="model.repositories.isEmpty()"
           >
-            <ui-icon-button
+            <icon-button
               type="submit"
               icon="search"
               label="Search repository"
               :disabled="model.repositories.isEmpty()"
             />
-          </ui-search-input>
+          </search-input>
           <div class="search-options">
-            <ui-field label="Search" hideLabel>
-              <ui-segmented-control
+            <field label="Search" hideLabel>
+              <segmented-control
                 label="Search mode"
                 name="mode"
-                :options='listOf("Content", "Paths")'
-                :values='listOf("content", "paths")'
-                :icons='listOf("code", "file")'
+                :options='listOf(bosca.design.model.SegmentOption("content", "Content", "code"), bosca.design.model.SegmentOption("paths", "Paths", "file"))'
                 :value="model.mode"
                 preserveKey="git-search-mode"
               />
-            </ui-field>
+            </field>
             <div class="repository-choice">
-              <ui-field label="Repository" hideLabel>
-                <ui-select
+              <field label="Repository" hideLabel>
+                <select
                   name="repo"
                   label="Repository"
                   size="sm"
@@ -69,13 +67,13 @@
                       { model.repositoryLabel(repository) }
                     </option>
                   </for>
-                </ui-select>
-              </ui-field>
+                </select>
+              </field>
             </div>
             <div class="ref-choice">
-              <ui-field :label='if (model.mode == "paths") "Ref" else "Branch"' hideLabel>
+              <field :label='if (model.mode == "paths") "Ref" else "Branch"' hideLabel>
                 <git-ref-search :id="model.id" mode="search" :branchesOnly='model.mode == "content"'>
-                  <ui-select
+                  <select
                     name="ref"
                     label="Search ref"
                     size="sm"
@@ -97,16 +95,16 @@
                         { choice.name + if (choice.kind == "tag") " (tag)" else "" }
                       </option>
                     </for>
-                  </ui-select>
+                  </select>
                 </git-ref-search>
-              </ui-field>
+              </field>
             </div>
           </div>
         </form>
         <git-search-results :page="model" />
-      </section>
+      </html:section>
     </island>
-    <ui-loading-state ref="loading" label="Searching…" hidden />
+    <loading-state ref="loading" label="Searching…" hidden />
     <p ref="transportError" class="search-error" role="alert" hidden>
       Search could not be completed. Try again.
     </p>

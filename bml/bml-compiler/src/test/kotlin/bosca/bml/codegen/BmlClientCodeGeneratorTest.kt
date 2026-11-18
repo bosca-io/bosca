@@ -7,6 +7,32 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BmlClientCodeGeneratorTest {
+    @Test
+    fun `scoped CSS imports terminated by semicolon are hoisted before same line setup code`() {
+        val document = BmlParser.parse("""
+            <component tag="button"><script client scoped>import "./button.css"; ctx.onUnmount(() => {});</script><html:button/></component>
+        """.trimIndent()).document
+        val ts = BmlClientCodeGenerator().generate(document) ?: error("missing client module")
+        assertTrue(ts.indexOf("import \"./button.css\";") < ts.indexOf("defineComponent<"), ts)
+        assertTrue("ctx.onUnmount" in ts, ts)
+        assertFalse(ts.substringAfter("defineComponent<").contains("import \"./button.css\""), ts)
+    }
+
+    @Test
+    fun `producer scope definitions and literal fragment targets use the server identity`() {
+        val id = bosca.bml.library.BmlLibraryArtifacts.componentId("example:design", "button")
+        val document = BmlParser.parse("""
+            <component tag="button">
+              <html:button><script client scoped>ctx.onUnmount(() => {})</script></html:button>
+              <island name="view"><script client>renderFragment("button", {})</script></island>
+            </component>
+        """.trimIndent()).document
+        val ts = BmlClientCodeGenerator().withLibraryIdentity("example:design")
+            .withComponentIds(mapOf("button" to id)).generate(document).orEmpty()
+        assertHas(ts, "\"$id\", (ctx)")
+        assertHas(ts, "\"component:$id:view\"")
+        assertHas(ts, "renderFragment(\"$id\", {})")
+    }
 
     private fun gen(src: String): String? {
         val parsed = BmlParser.parse(src)

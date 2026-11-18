@@ -102,7 +102,7 @@ class PostgresAdminServiceImpl(
 
     @OptIn(InternalDI::class)
     override suspend fun getConnectionPoolStats(): List<PgConnectionPoolStats> {
-        return ProviderRegistry.findAll(ConnectionPool::class).map {
+        return ProviderRegistry.findAll(ConnectionPool::class).filter { it.exists }.map {
             val pool = it.get()
             PgConnectionPoolStats(
                 poolName = pool.name,

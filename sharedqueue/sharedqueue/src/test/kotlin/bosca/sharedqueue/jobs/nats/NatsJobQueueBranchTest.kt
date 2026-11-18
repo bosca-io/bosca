@@ -160,6 +160,14 @@ class NatsJobQueueBranchTest {
     private fun entryFor(job: SerializedJob) = mockk<KeyValueEntry> {
         every { valueAsString } returns json.encodeToString(SerializedJob.serializer(), job)
         every { operation } returns KeyValueOperation.PUT
+        every { revision } returns 1L
+    }
+
+    private fun apiFailure(code: Int, apiCode: Int): io.nats.client.JetStreamApiException {
+        val response = object : io.nats.client.api.ApiResponse<Any>(io.nats.client.support.JsonParser.parse(
+            """{"error":{"code":$code,"err_code":$apiCode,"description":"test failure"}}""",
+        )) {}
+        return io.nats.client.JetStreamApiException(checkNotNull(response.errorObject))
     }
 
     // ----- markComplete -----
@@ -857,10 +865,10 @@ class NatsJobQueueBranchTest {
         assertFailsWith<IllegalStateException> { queue.enqueue(job) }
     }
 
-    private fun stalePending(id: UUID): SerializedJob {
+    private fun unpublished(id: UUID): SerializedJob {
         val past = OffsetDateTime.now().minusHours(1)
         return SerializedJob(
-            id = id, parentId = null, type = "TestJob", status = JobStatus.PENDING, failures = 0, maxFailures = 10,
+            id = id, parentId = null, type = "TestJob", status = JobStatus.UNINITIALIZED, failures = 0, maxFailures = 10,
             created = past, modified = past, definition = Json.parseToJsonElement("{}"),
             executor = NatsBranchExecutor::class.qualifiedName!!, executorName = null,
             children = emptyList(), callbacks = emptyList(), context = Json.parseToJsonElement("{}"),
@@ -868,15 +876,175 @@ class NatsJobQueueBranchTest {
     }
 
     @Test
+    fun `recovery rechecks state after acquiring the lock instead of overwriting a checkin`() = runTest {
+        val id = UUID.random()
+        val lock = newLock(held = true, acquires = true)
+        coEvery { lockFactory.create(any()) } returns lock
+        every { kv.keys() } returns listOf(id.toString())
+        every { kv.get(id.toString()) } returnsMany listOf(entryFor(unpublished(id)), entryFor(serializedJob(id)))
+
+        queue.checkForExpiredJobs(System.currentTimeMillis())
+
+        verify(exactly = 0) { kv.put(any<String>(), any<String>()) }
+        verify(exactly = 0) { js.publish(any<String>(), any<ByteArray>(), any<PublishOptions>()) }
+        io.mockk.coVerify { lock.release() }
+    }
+
+    @Test
+    fun `recovery does not recreate a job completed since the scan read`() = runTest {
+        val id = UUID.random()
+        val lock = newLock(held = true, acquires = true)
+        coEvery { lockFactory.create(any()) } returns lock
+        every { kv.keys() } returns listOf(id.toString())
+        every { kv.get(id.toString()) } returnsMany listOf(entryFor(unpublished(id)), null)
+
+        queue.expireAllJobs()
+
+        verify(exactly = 0) { kv.put(any<String>(), any<String>()) }
+        io.mockk.coVerify { lock.release() }
+    }
+
+    @Test
+    fun `recovery skips jobs whose worker still owns the lock`() = runTest {
+        val id = UUID.random()
+        coEvery { lockFactory.create(any()) } returns newLock(held = false, acquires = false)
+        every { kv.keys() } returns listOf(id.toString())
+        every { kv.get(id.toString()) } returns entryFor(unpublished(id))
+
+        queue.expireAllJobs()
+
+        verify(exactly = 1) { kv.get(id.toString()) }
+        verify(exactly = 0) { kv.put(any<String>(), any<String>()) }
+    }
+
+    @Test
+    fun `dequeue retries a delivery when state cannot be read`() = runTest {
+        val id = UUID.random()
+        val msg = message(id.toString())
+        stubFetch(msg)
+        every { scheduledKv.get(id.toString()) } returns null
+        every { kv.get(id.toString()) } throws java.io.IOException("state unavailable")
+
+        assertNull(queue.dequeue())
+
+        verify(exactly = 0) { msg.ack() }
+        verify { msg.nakWithDelay(java.time.Duration.ofSeconds(5)) }
+    }
+
+    @Test
+    fun `dequeue releases the lock if execution completed after its initial state read`() = runTest {
+        val id = UUID.random()
+        val msg = message(id.toString())
+        val lock = newLock(held = true, acquires = true)
+        stubFetch(msg)
+        coEvery { lockFactory.create(any()) } returns lock
+        every { scheduledKv.get(id.toString()) } returns null
+        every { kv.get(id.toString()) } returnsMany listOf(
+            entryFor(serializedJob(id)),
+            entryFor(serializedJob(id, JobStatus.COMPLETE)),
+        )
+
+        assertNull(queue.dequeue())
+
+        verify { msg.ack() }
+        verify(exactly = 0) { kv.put(any<String>(), any<String>()) }
+        io.mockk.coVerify { lock.release() }
+    }
+
+    @Test
+    fun `dequeue retains an unconfirmed delivery while another worker owns the job lock`() = runTest {
+        val id = UUID.random()
+        val msg = message(id.toString())
+        stubFetch(msg)
+        every { scheduledKv.get(id.toString()) } returns null
+        every { kv.get(id.toString()) } returns entryFor(serializedJob(id, JobStatus.UNINITIALIZED))
+        coEvery { lockFactory.create(any()) } returns newLock(held = false, acquires = false)
+
+        assertNull(queue.dequeue())
+
+        verify(exactly = 0) { msg.ack() }
+        verify { msg.nakWithDelay(java.time.Duration.ofSeconds(30)) }
+    }
+
+    @Test
+    fun `rescheduling does not acknowledge a delivery when durable state fails to save`() = runTest {
+        val job = lockedJob()
+        val msg = message(job.id.toString())
+        job.message = msg
+        every { kv.put(job.id.toString(), any<String>()) } throws java.io.IOException("write failed")
+
+        assertFailsWith<java.io.IOException> { queue.enqueueLater(job, 100.milliseconds) }
+
+        verify(exactly = 0) { msg.ack() }
+        verify(exactly = 0) { msg.nakWithDelay(any<java.time.Duration>()) }
+        assertEquals(msg, job.message)
+    }
+
+    @Test
+    fun `rescheduling retains the delivery until its transaction commits`() = runTest {
+        val cm = mockk<ConnectionManager>(relaxed = true)
+        every { cm.inTransaction } returns true
+        val callback = slot<ConnectionManagerCallback>()
+        every { cm.addCallback(capture(callback)) } just Runs
+        val job = lockedJob()
+        val msg = message(job.id.toString())
+        job.message = msg
+
+        withContext(cm.asCoroutineContext()) { queue.enqueueLater(job, 100.milliseconds) }
+
+        verify(exactly = 0) { msg.ack() }
+        verify(exactly = 0) { msg.nakWithDelay(any<java.time.Duration>()) }
+        verify(exactly = 0) { kv.put(any<String>(), any<String>()) }
+        callback.captured.onCommit()
+        verify { msg.nakWithDelay(java.time.Duration.ofMillis(100)) }
+        assertNull(job.message)
+    }
+
+    @Test
+    fun `publication does not overwrite a worker that persisted state before the publish response`() = runTest {
+        val job = InternalJobConstructor(Json.parseToJsonElement("{}"), NatsBranchExecutor::class)
+        val conflict = apiFailure(400, 10071)
+        every { kv.update(any<String>(), any<String>(), any()) } throws conflict
+
+        val id = queue.enqueue(job)
+        assertEquals(job.id, id)
+
+        verify(exactly = 1) { kv.put(job.id.toString(), any<String>()) }
+        verify(exactly = 1) { kv.update(job.id.toString(), any<String>(), any()) }
+    }
+
+    @Test
+    fun `publication propagates errors other than a concurrent state update`() = runTest {
+        val failure = apiFailure(503, 10077)
+        every { kv.update(any<String>(), any<String>(), any()) } throws failure
+        val job = InternalJobConstructor(Json.parseToJsonElement("{}"), NatsBranchExecutor::class)
+
+        assertEquals(failure, assertFailsWith<io.nats.client.JetStreamApiException> { queue.enqueue(job) })
+    }
+
+    @Test
+    fun `unconfirmed publication remains recoverable when confirmation fails`() = runTest {
+        val id = UUID.random()
+        every { kv.keys() } returns listOf(id.toString())
+        every { kv.get(id.toString()) } returns entryFor(unpublished(id))
+        every { kv.update(any<String>(), any<String>(), any()) } throws java.io.IOException("confirmation unavailable")
+
+        queue.checkForExpiredJobs(Long.MAX_VALUE)
+
+        verify { js.publish("jobs.test", id.toString().toByteArray(), any<PublishOptions>()) }
+        verify(exactly = 0) { kv.put(any<String>(), any<String>()) }
+    }
+
+    @Test
     fun `stale pending with a tombstoned scheduled entry is re-published`() = runTest {
         val id = UUID.random()
         every { kv.keys() } returns listOf(id.toString())
-        every { kv.get(id.toString()) } returns entryFor(stalePending(id))
+        every { kv.get(id.toString()) } returns entryFor(unpublished(id).copy(status = JobStatus.PENDING))
         every { scheduledKv.get(id.toString()) } returns mockk<KeyValueEntry> {
             every { operation } returns KeyValueOperation.DELETE
             every { valueAsString } returns null
         }
-        queue.checkForExpiredJobs(Long.MAX_VALUE)
+        queue.expireAllJobs()
         verify { js.publish("jobs.test", id.toString().toByteArray(), any<PublishOptions>()) }
     }
 
@@ -884,35 +1052,36 @@ class NatsJobQueueBranchTest {
     fun `stale pending with a purged scheduled entry is re-published`() = runTest {
         val id = UUID.random()
         every { kv.keys() } returns listOf(id.toString())
-        every { kv.get(id.toString()) } returns entryFor(stalePending(id))
+        every { kv.get(id.toString()) } returns entryFor(unpublished(id).copy(status = JobStatus.PENDING))
         every { scheduledKv.get(id.toString()) } returns mockk<KeyValueEntry> {
             every { operation } returns KeyValueOperation.PURGE
             every { valueAsString } returns null
         }
-        queue.checkForExpiredJobs(Long.MAX_VALUE)
+        queue.expireAllJobs()
         verify { js.publish("jobs.test", id.toString().toByteArray(), any<PublishOptions>()) }
     }
 
     @Test
-    fun `stale pending is re-published when the scheduled lookup throws`() = runTest {
+    fun `recovery leaves state and delivery unchanged when the schedule cannot be read`() = runTest {
         val id = UUID.random()
         every { kv.keys() } returns listOf(id.toString())
-        every { kv.get(id.toString()) } returns entryFor(stalePending(id))
+        every { kv.get(id.toString()) } returns entryFor(unpublished(id).copy(status = JobStatus.PENDING))
         every { scheduledKv.get(id.toString()) } throws RuntimeException("kv down")
-        queue.checkForExpiredJobs(Long.MAX_VALUE)
-        verify { js.publish("jobs.test", id.toString().toByteArray(), any<PublishOptions>()) }
+        queue.expireAllJobs()
+        verify(exactly = 0) { js.publish("jobs.test", any<ByteArray>(), any<PublishOptions>()) }
+        verify(exactly = 0) { kv.put(id.toString(), any<String>()) }
     }
 
     @Test
     fun `stale pending with a valueless scheduled entry is re-published`() = runTest {
         val id = UUID.random()
         every { kv.keys() } returns listOf(id.toString())
-        every { kv.get(id.toString()) } returns entryFor(stalePending(id))
+        every { kv.get(id.toString()) } returns entryFor(unpublished(id).copy(status = JobStatus.PENDING))
         every { scheduledKv.get(id.toString()) } returns mockk<KeyValueEntry> {
             every { operation } returns KeyValueOperation.PUT
             every { valueAsString } returns null
         }
-        queue.checkForExpiredJobs(Long.MAX_VALUE)
+        queue.expireAllJobs()
         verify { js.publish("jobs.test", id.toString().toByteArray(), any<PublishOptions>()) }
     }
 

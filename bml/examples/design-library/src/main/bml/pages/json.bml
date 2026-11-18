@@ -1,0 +1,24 @@
+<page route="/json">
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Structured JSON</title>
+    </head>
+    <body>
+      <page-shell>
+        <h1>Structured JSON</h1>
+        <div class="themes">
+          <div class="light json-theme" data-palette="light"><json-controls id="light" /></div>
+          <div class="purple json-theme" data-palette="purple"><json-controls id="purple" /></div>
+        </div>
+        <div class="json-cases light">
+          <json-editor name="invalid" :text="bosca.design.example.JsonEditorSamples.invalid" mode="text" label="Invalid draft" data-json-invalid />
+          <json-editor name="empty" text="" mode="text" label="Empty draft" data-json-empty />
+          <json-editor name="table" :value="bosca.design.example.JsonEditorSamples.table" mode="table" readOnly label="Readonly table" data-json-table />
+        </div>
+        <p id="json-after" tabindex="0">After the JSON editors.</p>
+      </page-shell>
+    </body>
+  </html>
+</page>

@@ -19,7 +19,12 @@ fun BoscaApplication.module() {
 /** Installs UI routes using an HTTP GraphQL endpoint owned by the Git API listener. */
 fun BoscaApplication.installGitUiServer(graphqlEndpoint: String, authCookiePrefix: String? = null) {
     installGitUi(this, graphqlEndpoint, authCookiePrefix)
-    GitFileProxy(graphqlEndpoint).install(this)
+    installGitFileProxy(graphqlEndpoint)
     router.get("/welcome") { call.respondRedirect("/repositories") }
     router.get("/api/v1/ready") { call.respond("ready") }
+}
+
+/** Installs the existing same-origin file routes when a host composes the Git pages itself. */
+fun BoscaApplication.installGitFileProxy(graphqlEndpoint: String) {
+    GitFileProxy(graphqlEndpoint).install(this)
 }

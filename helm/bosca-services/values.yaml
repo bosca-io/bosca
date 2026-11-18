@@ -334,6 +334,10 @@ notifications-web:
 profiles-web:
   enabled: false
 
+# ─── Design Library component catalog ─────────────────────────────────
+bml-design-catalog:
+  enabled: false
+
 # ─── imageprocessor ─────────────────────────────────────────────────
 # Internal-only HTTP image transform service. bosca-server and
 # bosca-runner reach it at http://imageprocessor.<ns>.svc.cluster.local:8003
@@ -342,24 +346,24 @@ profiles-web:
 imageprocessor:
   enabled: true
 
-# ─── Recommendation ML stack (tf-serving + loader sidecar / trainer JobProfile) ───
-# TFRS model serving, training, and delivery for recommendations. The model
-# loader runs as a sidecar inside the tf-serving pod and shares its model volume
-# (an emptyDir by default), so NO ReadWriteMany storage class is required.
+# ─── Recommendation ML stack ───────────────────────────────────────
+# TF Serving runs only through controller-managed, version-specific Pods.
+# Enable this profile once the controller CRDs and matching images are installed.
 tf-serving:
-  enabled: true
+  provisioning:
+    enabled: false
+  # resources:
+  #   requests: {memory: 6Gi}
+  #   limits: {memory: 6Gi}
   # loader:
   #   image:
-  #     tag: ""           # override the loader sidecar image to a specific ML release
-  # persistence:
-  #   enabled: true       # back the model volume with a node-local RWO PVC to skip
-  #   storageClass: ""    # re-downloading the model on every pod restart
+  #     tag: ""           # select the published model-loader release
 
 recommendation-trainer:
   enabled: true
 
 # HuggingFace Text Embeddings Inference (EmbeddingGemma) — computes per-content semantic embeddings for
-# the recommender's content tower. Opt-in (unlike tf-serving/trainer): it pulls a Gemma-license-gated
+# the recommender's content tower. Opt-in: it pulls a Gemma-license-gated
 # model and requires a pre-created `text-embeddings-inference` Secret holding an HF token, so it stays
 # off unless a deployment explicitly provides that and turns on the app's `embedding.enabled` flag.
 text-embeddings-inference:
@@ -394,3 +398,22 @@ gateway:
   # the owning subchart's `gateway.hostnames` — that list still drives the
   # Gateway listener + TLS cert the redirect terminates on.
   canonicalRedirects: {}
+
+# Atlas replaces the registry/API composition when enabled; Git's independent host may remain enabled.
+bosca-atlas-server:
+  enabled: false
+  runner:
+    enabled: false
+    listeners: false
+    scheduler: false
+  secrets:
+    database: {create: false}
+    nats: {create: false}
+    jwt: {create: false}
+    cfg: {create: false}
+    meilisearch: {create: false}
+    s3: {create: false}
+    url: {create: false}
+
+bosca-atlas-ui-server:
+  enabled: false

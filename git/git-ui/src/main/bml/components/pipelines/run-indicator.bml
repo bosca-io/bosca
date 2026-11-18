@@ -12,7 +12,7 @@
     }
   </script>
   <span :class='"run-indicator status-" + status.lowercase()' :data-compact="compact" :data-large="large" :title="status.lowercase()">
-    <ui-icon :name="icon" :size="if (compact) 12 else 14" :strokeWidth="2.0" />
+    <icon :name="icon" :size="if (compact) 12 else 14" :strokeWidth="2.0" />
   </span>
   <style scoped>
     .run-indicator {

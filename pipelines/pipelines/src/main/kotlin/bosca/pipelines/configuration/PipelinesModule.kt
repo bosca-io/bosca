@@ -19,10 +19,11 @@ class PipelinesModule : BoscaApplicationModule {
 
     override suspend fun install(application: BoscaApplication) {
         if (application.gitSyncListenersEnabled()) {
-            PipelineGitPushListener(
+            val listener = PipelineGitPushListener(
                 pubSubService = provide(),
                 pipelineGitSyncService = provide(),
             )
+            application.onShutdown { listener.stop() }
         }
     }
 }

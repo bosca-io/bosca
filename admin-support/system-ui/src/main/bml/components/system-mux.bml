@@ -1,0 +1,33 @@
+<component tag="system-mux">
+  <prop name="initial" type="bosca.system.ui.SystemMuxModel" required />
+  <script server provides="model">bosca.system.ui.SystemMuxModel(initial.admin, initial.draft, initial.loaded, initial.hasTokenId, initial.hasTokenSecret, initial.feedback)</script>
+  <island name="system-mux" :key='"mux"'>
+    <page-shell fill><page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" title="Mux" subtitle="Video hosting, encoding, and streaming"><button type="submit" form="system-mux-settings" primary icon="check" :disabled="!model.loaded">Save Mux settings</button></page-heading><div class="system-content" data-bml-scroll="system-content">
+      <system-feedback :feedback="model.feedback" />
+      <form id="system-mux-settings" class="system-stack" @submit="model.save(form.tokenId, form.tokenSecret, form.clearTokenId, form.clearTokenSecret, form.playbackPolicy, form.maxWaitSeconds, form.videoQuality, form.maxResolution, form.mp4Support, form.subtitleLanguage, form.test, ctx)">
+        <card title="API credentials" description="Mux API access-token credentials"><form-body>
+          <field label="Token ID"><input name="tokenId" type="password" :value="model.draft.tokenId" autocomplete="new-password" :placeholder='if (model.hasTokenId) "Stored token ID — leave blank to keep" else "Mux API access-token ID"' /></field>
+          <checkbox name="clearTokenId" label="Clear stored token ID" :checked="model.draft.clearTokenId" />
+          <field label="Token secret"><input name="tokenSecret" type="password" :value="model.draft.tokenSecret" autocomplete="new-password" :placeholder='if (model.hasTokenSecret) "Stored token secret — leave blank to keep" else "Mux API secret key"' /></field>
+          <checkbox name="clearTokenSecret" label="Clear stored token secret" :checked="model.draft.clearTokenSecret" />
+          <p>Leave credential fields blank to keep their current stored values.</p>
+        </form-body></card>
+        <card title="Asset settings" description="Controls how Mux processes new video assets"><form-body>
+          <field label="Playback policy"><select name="playbackPolicy" label="Playback policy"><option value="public" :selected='model.draft.playbackPolicy == "public"'>Public</option><option value="signed" :selected='model.draft.playbackPolicy == "signed"'>Signed</option></select></field>
+          <p>Use Signed for token-gated playback.</p>
+          <field label="Max wait seconds"><input name="maxWaitSeconds" type="number" min="60" step="60" :value="model.draft.maxWaitSeconds" required /></field>
+        </form-body></card>
+        <card title="Quality and encoding" description="Defaults applied to newly processed assets; individual items can override"><form-body>
+          <field label="Video quality"><select name="videoQuality" label="Video quality"><option value="default" :selected='model.draft.videoQuality == "default"'>Default</option><option value="basic" :selected='model.draft.videoQuality == "basic"'>Basic</option><option value="plus" :selected='model.draft.videoQuality == "plus"'>Plus</option><option value="premium" :selected='model.draft.videoQuality == "premium"'>Premium</option></select></field>
+          <p>Higher tiers produce better quality at higher cost.</p>
+          <field label="Max resolution"><select name="maxResolution" label="Max resolution"><option value="default" :selected='model.draft.maxResolution == "default"'>Default (1080p)</option><option value="1080p" :selected='model.draft.maxResolution == "1080p"'>1080p</option><option value="1440p" :selected='model.draft.maxResolution == "1440p"'>1440p</option><option value="2160p" :selected='model.draft.maxResolution == "2160p"'>2160p (4K)</option></select></field>
+          <p>Assets are encoded up to this resolution if the source supports it.</p>
+          <switch name="mp4Support" label="MP4 downloads" description="Request static MP4 renditions in addition to HLS streaming." :checked="model.draft.mp4Support" />
+          <field label="Auto-transcription language"><input name="subtitleLanguage" :value="model.draft.subtitleLanguage" placeholder="en" /></field>
+          <switch name="test" label="Test mode" description="Create short-lived, watermarked development assets." :checked="model.draft.test" />
+        </form-body></card>
+
+      </form>
+    </div></page-shell>
+  </island>
+</component>

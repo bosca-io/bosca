@@ -1,0 +1,16 @@
+<component tag="profile-attribute-actions">
+  <details class="attribute-menu">
+    <summary class="icon-trigger" aria-label="Attribute actions" title="Actions">
+      <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="5" cy="12" r="1.5"/>
+        <circle cx="12" cy="12" r="1.5"/>
+        <circle cx="19" cy="12" r="1.5"/>
+      </svg>
+    </summary>
+    <div class="attribute-menu-popover"><slot/></div>
+  </details>
+  <script client scoped>
+    import { profileDisclosure } from "@client/helpers/profile-disclosure"
+    profileDisclosure(ctx)
+  </script>
+</component>

@@ -301,3 +301,4 @@ These rules capture recurring design decisions and failure modes that apply acro
 - Breaking changes, things where we need to consider compatibility with older versions, is typically only a concern with the GraphQL layer.  Internal services, repositories, etc are not client facing.  So, before you make a decision to 
   include backwards compatibility concerns, this is a discussion point, not something you are allowed to pre-decide.  Backwards compatibility is considered technical debt and should only be done with consent.
 - Offset pagination is perfectly fine.  That's how everything else is done right now.  I prefer the consistency.  I don't want a new way of pagination right now.
+- DO NOT OVERCOMPLICATE THINGS.  Complexity is your enemy.  If you cannot come up with a simple solution, ask for help.

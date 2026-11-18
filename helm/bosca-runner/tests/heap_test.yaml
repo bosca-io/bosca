@@ -1,0 +1,77 @@
+suite: bosca-runner heap sizing
+templates:
+  - templates/statefulset.yaml
+  - templates/configmap-appconfig.yaml
+set:
+  global.domain: example.com
+tests:
+  - it: uses the default heap percentage
+    template: templates/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JAVA_OPTS
+            value: "-XX:MaxRAMPercentage=75"
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["-config=/app/config/application.yaml"]
+
+  - it: accepts a custom integer heap percentage
+    template: templates/statefulset.yaml
+    set:
+      maxRAMPercentage: 60
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JAVA_OPTS
+            value: "-XX:MaxRAMPercentage=60"
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["-config=/app/config/application.yaml"]
+
+  - it: accepts a fractional heap percentage alongside custom container memory
+    template: templates/statefulset.yaml
+    set:
+      maxRAMPercentage: 62.5
+      workers.default.resources.requests.memory: 1Gi
+      workers.default.resources.limits.memory: 3Gi
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JAVA_OPTS
+            value: "-XX:MaxRAMPercentage=62.5"
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["-config=/app/config/application.yaml"]
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 1Gi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 3Gi
+
+  - it: applies the chart heap percentage to every worker
+    template: templates/statefulset.yaml
+    set:
+      maxRAMPercentage: 70
+      workers.heavy.replicas: 1
+      workers.heavy.resources.requests.memory: 2Gi
+      workers.heavy.resources.limits.memory: 4Gi
+    asserts:
+      - hasDocuments:
+          count: 2
+      - contains:
+          documentIndex: 0
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JAVA_OPTS
+            value: "-XX:MaxRAMPercentage=70"
+      - contains:
+          documentIndex: 1
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JAVA_OPTS
+            value: "-XX:MaxRAMPercentage=70"

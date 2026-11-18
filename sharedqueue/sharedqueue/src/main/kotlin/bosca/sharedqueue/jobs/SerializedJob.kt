@@ -9,7 +9,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlin.reflect.KClass
 
 @Serializable
-class SerializedJob(
+data class SerializedJob(
     @Contextual
     val parentId: UUID?,
     @Contextual

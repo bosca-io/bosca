@@ -17,12 +17,26 @@ internal class ClientScriptScanner(private val source: String) {
      * A template literal containing `${…}` is dynamic and therefore not a literal tag.
      */
     fun renderFragmentTargets(): List<String> {
+        return renderFragmentLiterals().map { range -> source.substring(range) }
+    }
+
+    /** Rewrites only literal executable fragment targets, preserving comments and unrelated strings. */
+    fun rewriteRenderFragmentTargets(componentIds: Map<String, String>): String {
+        val rewritten = StringBuilder(source)
+        renderFragmentLiterals().asReversed().forEach { range ->
+            componentIds[source.substring(range)]?.let { rewritten.replace(range.first, range.last + 1, it) }
+        }
+        return rewritten.toString()
+    }
+
+    private fun renderFragmentLiterals(): List<IntRange> {
         val code = maskNonCode()
         return RENDER_FRAGMENT_CALL.findAll(code).mapNotNull { match ->
             val quote = source[match.range.last]
             val start = match.range.last + 1
             val end = closingQuote(start, quote) ?: return@mapNotNull null
-            source.substring(start, end).takeIf { tag ->
+            (start until end).takeIf {
+                val tag = source.substring(start, end)
                 tag.isNotEmpty() && '\\' !in tag && (quote != '`' || "\${" !in tag)
             }
         }.toList()

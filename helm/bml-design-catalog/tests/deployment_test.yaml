@@ -1,0 +1,86 @@
+suite: Design Library catalog deployment
+templates:
+  - templates/deployment.yaml
+  - templates/service.yaml
+  - templates/pdb.yaml
+release:
+  name: catalog
+tests:
+  - it: runs one native site with probes on the catalog listener
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["9093"]
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 9093
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet
+          value: {path: /, port: http}
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value: {path: /, port: http}
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet
+          value: {path: /, port: http}
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+      - notExists:
+          path: spec.template.spec.containers[0].env
+      - notExists:
+          path: spec.template.spec.containers[0].envFrom
+  - it: honors the shared image registry and explicit image version
+    template: templates/deployment.yaml
+    set:
+      global.imageRegistry: registry.example/bosca
+      image.tag: 7.8.9
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example/bosca/bml-design-catalog:7.8.9
+  - it: keeps a custom port consistent with the application and service
+    template: templates/deployment.yaml
+    set:
+      service.port: 9098
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["9098"]
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 9098
+  - it: routes service traffic to the named listener
+    template: templates/service.yaml
+    set:
+      service.port: 9098
+    asserts:
+      - equal:
+          path: spec.ports[0]
+          value: {port: 9098, targetPort: http, protocol: TCP, name: http}
+  - it: accepts native heap tuning without requiring backend credentials
+    template: templates/deployment.yaml
+    set:
+      extraArgs: [-Xmx256m]
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["9093", -Xmx256m]
+  - it: permits a voluntary disruption when its optional budget is enabled
+    template: templates/pdb.yaml
+    set:
+      podDisruptionBudget.enabled: true
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: 1

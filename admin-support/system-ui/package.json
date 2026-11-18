@@ -1,0 +1,16 @@
+{
+  "name": "@bosca/system-ui-client",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bosca/bml": "file:../../bml/bml-runtime",
+    "jsonata": "2.2.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "typescript": "^5.6.3"
+  }
+}

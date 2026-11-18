@@ -1,0 +1,63 @@
+<component tag="system-email">
+  <prop name="initial" type="bosca.system.ui.SystemEmailModel" required />
+  <script server provides="model">bosca.system.ui.SystemEmailModel(initial.kind, initial.admin, initial.draft, initial.loaded, initial.hasPassword, initial.hasApiKey, initial.hasVerificationKey, initial.feedback)</script>
+  <island name="system-email" :key="initial.kind">
+    <page-shell fill><page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" :title="model.title" subtitle="Outgoing email settings"><button form="system-email-settings" type="submit" primary icon="check" :disabled="!model.loaded">{ when (model.kind) { "mailer" -> "Save email provider"; "smtp" -> "Save SMTP settings"; "mailgun" -> "Save Mailgun settings"; else -> "Save SendGrid settings" } }</button></page-heading><div class="system-content" data-bml-scroll="system-content">
+      <system-feedback :feedback="model.feedback" />
+      <if model.kind == "mailer">
+        <card title="Email provider"><form id="system-email-settings" @submit="model.saveProvider(form.provider, ctx)"><form-body class="system-settings-fields">
+          <field label="Provider"><select name="provider" label="Email provider">
+            <option value="deployment" :selected='model.draft.provider == "deployment"'>Use deployment setting</option>
+            <option value="sendgrid" :selected='model.draft.provider == "sendgrid"'>SendGrid</option>
+            <option value="mailgun" :selected='model.draft.provider == "mailgun"'>Mailgun</option>
+            <option value="smtp" :selected='model.draft.provider == "smtp"'>SMTP</option>
+          </select></field>
+          <p>Save the provider's connection settings before selecting it. Changes apply to new sends. Use deployment setting follows the provider selected for your deployment.</p>
+          <div class="system-actions"><a href="/system/integrations/sendgrid">Configure SendGrid</a><a href="/system/integrations/mailgun">Configure Mailgun</a><a href="/system/integrations/smtp">Configure SMTP</a></div>
+        </form-body></form></card>
+      <else-if model.kind == "smtp">
+        <form id="system-email-settings" class="system-stack" @submit="model.saveSmtp(form.host, form.port, form.security, form.username, form.password, form.clearPassword, ctx)">
+          <card title="SMTP server"><form-body class="system-settings-fields">
+            <field label="Host"><input name="host" :value="model.draft.host" placeholder="smtp.example.com" required /></field>
+            <field label="Port"><input name="port" type="number" min="1" max="65535" :value="model.draft.port" required /></field>
+            <field label="Connection security"><select name="security" label="Connection security"><option value="STARTTLS" :selected='model.draft.security == "STARTTLS"'>STARTTLS</option><option value="TLS" :selected='model.draft.security == "TLS"'>TLS</option><option value="NONE" :selected='model.draft.security == "NONE"'>None (plain SMTP)</option></select></field>
+            <p>Common ports are 587 for STARTTLS, 465 for TLS, and 25 for plain SMTP. Use the settings supplied by your mail server.</p>
+          </form-body></card>
+          <card title="Authentication"><form-body class="system-settings-fields">
+            <field label="Username"><input name="username" :value="model.draft.username" autocomplete="off" /></field>
+            <field label="Password"><input name="password" type="password" :value="model.draft.password" autocomplete="new-password" :placeholder='if (model.hasPassword) "Stored password — leave blank to keep" else "SMTP password"' /></field>
+            <checkbox name="clearPassword" label="Clear stored password" :checked="model.draft.clearPassword" />
+            <p>Leave the password blank to keep its stored value. For an unauthenticated relay, clear the stored password and leave the username empty.</p>
+            <p>Select SMTP in <a href="/system/integrations/email">Email settings</a> to use this server.</p>
+          </form-body></card>
+
+        </form>
+      <else-if model.kind == "mailgun">
+        <form id="system-email-settings" class="system-stack" @submit="model.saveMailgun(form.apiKey, form.domain, form.apiBaseUrl, ctx)">
+          <card title="API credentials"><form-body class="system-settings-fields">
+            <field label="API key"><input name="apiKey" type="password" :value="model.draft.apiKey" autocomplete="new-password" :placeholder='if (model.hasApiKey) "Stored API key — leave blank to keep" else "Mailgun API key"' /></field>
+            <p>Leave the key blank to keep its stored value. A key is required to save this provider.</p>
+          </form-body></card>
+          <card title="Sending domain"><form-body class="system-settings-fields">
+            <field label="Domain"><input name="domain" :value="model.draft.domain" placeholder="mg.example.com" required /></field>
+            <field label="API base URL"><input name="apiBaseUrl" type="url" :value="model.draft.apiBaseUrl" required /></field>
+            <p>Enter your verified Mailgun sending domain and its regional API origin.</p>
+          </form-body></card>
+        </form>
+      <else>
+        <form id="system-email-settings" class="system-stack" @submit="model.saveSendgrid(form.apiKey, form.clearApiKey, form.verificationKey, form.clearVerificationKey, ctx)">
+          <card title="API credentials"><form-body class="system-settings-fields">
+            <field label="API key"><input name="apiKey" type="password" :value="model.draft.apiKey" autocomplete="new-password" :placeholder='if (model.hasApiKey) "Stored API key — leave blank to keep" else "SendGrid API key"' /></field>
+            <checkbox name="clearApiKey" label="Clear stored API key" :checked="model.draft.clearApiKey" />
+            <p>Use a restricted key with Mail Send access. Leave the key blank to keep its stored value.</p>
+          </form-body></card>
+          <card title="Signed event webhook"><form-body class="system-settings-fields">
+            <field label="Verification key"><input name="verificationKey" type="password" :value="model.draft.verificationKey" autocomplete="new-password" :placeholder='if (model.hasVerificationKey) "Stored verification key — leave blank to keep" else "SendGrid webhook verification key"' /></field>
+            <checkbox name="clearVerificationKey" label="Clear stored verification key" :checked="model.draft.clearVerificationKey" />
+            <p>Enable signed Event Webhooks in SendGrid and send them to this path on the public Bosca API origin.</p><code>/api/v1/webhooks/sendgrid</code>
+          </form-body></card>
+        </form>
+      </if>
+    </div></page-shell>
+  </island>
+</component>

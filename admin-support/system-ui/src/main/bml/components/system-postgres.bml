@@ -1,0 +1,137 @@
+<component tag="system-postgres">
+  <prop name="initial" type="bosca.system.ui.PostgresConsoleModel" required />
+  <script server provides="model">bosca.system.ui.PostgresConsoleModel(admin = initial.admin, tab = initial.tab, overview = initial.overview, tables = initial.tables, bloated = initial.bloated, tableIO = initial.tableIO, indexes = initial.indexes, unusedIndexes = initial.unusedIndexes, suggestions = initial.suggestions, slowQueries = initial.slowQueries, settings = initial.settings, loadedTabs = initial.loadedTabs, bloatedLoaded = initial.bloatedLoaded, ioLoaded = initial.ioLoaded, tableSchema = initial.tableSchema, indexSchema = initial.indexSchema, indexTab = initial.indexTab, queryLimit = initial.queryLimit, queryOrder = initial.queryOrder, minBloat = initial.minBloat, settingsFilter = initial.settingsFilter, tableSelectionSchema = initial.tableSelectionSchema, tableSelectionName = initial.tableSelectionName, tableRequest = initial.tableRequest, indexSelectionSchema = initial.indexSelectionSchema, indexSelectionName = initial.indexSelectionName, indexRequest = initial.indexRequest, querySelection = initial.querySelection, failedOperation = initial.failedOperation, completedOperation = initial.completedOperation, refreshes = initial.refreshes, feedback = initial.feedback)</script>
+  <island name="system-postgres" :key='"postgres"'>
+    <page-shell fill><page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" title="PostgreSQL" :subtitle='model.overview?.let { it.serverVersion + " · Uptime: " + it.uptime }.orEmpty()'><if model.admin><button @click="model.refresh(ctx)" icon="refresh">Refresh</button></if></page-heading>
+      <if model.admin><div class="postgres-tabs"><view-tabs label="PostgreSQL diagnostics" :tabs="model.tabs" :selected="model.tab" data-bml-preserve="pg-main-tabs" data-postgres-tabs /><div class="postgres-tab-loading" ref="tabLoading" hidden role="status"><spinner /><span class="sr-only">Loading PostgreSQL diagnostics…</span></div></div></if>
+      <div class="system-content" :data-bml-scroll='"system-content-" + model.tab'>
+        <if !model.admin><alert>Administrator access is required.</alert><else>
+          <div class="system-stack" data-postgres-console :data-refreshes="model.refreshes">
+            <system-feedback :feedback="model.feedback" /><alert ref="transportError" tone="error" hidden />
+            <div class="console-stat-grid">
+              <system-console-metric valueSize="sm" label="Status" :value='if (model.overview == null) "Disconnected" else "Connected"' :tone='if (model.overview == null) "error" else "success"' />
+              <system-console-metric label="Connections" :value="bosca.system.ui.systemCount(model.overview?.databaseStats?.numBackends)" />
+              <system-console-metric label="Cache hit ratio" :value='model.overview?.databaseStats?.cacheHitRatio?.let { bosca.system.ui.systemDecimal(it) + "%" } ?: "—"' />
+              <system-console-metric label="Database size" :value="bosca.system.ui.systemBytes(model.overview?.databaseStats?.databaseSize)" />
+              <system-console-metric label="Commits" :value="bosca.system.ui.systemCount(model.overview?.databaseStats?.xactCommit)" />
+              <system-console-metric label="Rollbacks" :value="bosca.system.ui.systemCount(model.overview?.databaseStats?.xactRollback)" />
+              <system-console-metric label="Deadlocks" :value="bosca.system.ui.systemCount(model.overview?.databaseStats?.deadlocks)" />
+            </div>
+            <div class="console-panel" role="tabpanel" tabindex="0" id="pg-panel-Overview" aria-labelledby="pg-tab-Overview" :hidden='model.tab != "Overview"'>
+              <for data in listOfNotNull(model.overview)><system-postgres-overview :data="data" /></for>
+              <card :padded="false" :title='"Active queries (" + model.overview?.activeQueries.orEmpty().size + ")"'>
+                <if model.overview?.activeQueries.orEmpty().isEmpty()><empty-state message="No active queries." /><else>
+                  <table-scroll label="Active PostgreSQL queries" data-pg-active-queries><table class="console-table pg-active-query-table"><thead><tr><th>PID</th><th>User</th><th>Application</th><th>State</th><th>Duration</th><th>Wait</th><th>Query</th><th>Actions</th></tr></thead><tbody>
+                    <for query in model.overview?.activeQueries.orEmpty()><tr :data-pg-active-pid="query.pid"><td data-label="PID">{ query.pid }</td><td data-label="User">{ query.userName ?: "—" }</td><td data-label="Application">{ query.applicationName ?: "—" }</td><td data-label="State"><badge :tone='if (query.state == "active") "success" else if (query.state == "idle in transaction") "warning" else "neutral"'>{ query.state ?: "—" }</badge></td><td data-label="Duration">{ query.queryDurationSeconds?.let { bosca.system.ui.systemDecimal(it) + " s" } ?: "—" }</td><td data-label="Wait">{ listOfNotNull(query.waitEventType, query.waitEvent).joinToString(": ").ifBlank { "—" } }</td>
+                      <td class="query-cell" data-label="Query"><details :data-bml-disclosure='"pg-active-" + query.pid + "-" + query.queryStart.orEmpty()'><disclosure-heading>{ query.query.orEmpty().take(80) }</disclosure-heading><pre class="console-sql">{ query.query.orEmpty() }</pre><dl class="console-facts"><dt>Database</dt><dd>{ query.databaseName ?: "—" }</dd><dt>Client</dt><dd>{ query.clientAddr ?: "—" }</dd><dt>Query start</dt><dd>{ query.queryStart ?: "—" }</dd><dt>Backend type</dt><dd>{ query.backendType ?: "—" }</dd></dl></details></td>
+                      <td data-label="Actions"><if query.state == "active"><div class="pg-query-actions" role="group" aria-label="Query actions">
+                        <confirm-dialog title="Cancel query?" :description='"Send a cancel signal to backend PID " + query.pid + "."' triggerLabel="Cancel query" icon="close" triggerStyle="ghost" :forceOpen='model.feedback.failed && model.failedOperation == "cancel:" + query.pid' :completed='model.completedOperation == "cancel:" + query.pid' :data-pg-cancel="query.pid"><form class="modal-form" @submit="model.cancelQuery(query.pid.toString(), form.confirmed, ctx)"><form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><checkbox name="confirmed" :label='"Cancel the query on PID " + query.pid' required /></form-body><form-actions class="modal-footer" bordered><button data-dialog-close>Cancel</button><button type="submit" class="danger">Cancel query</button></form-actions></form></confirm-dialog>
+                        <confirm-dialog title="Terminate backend?" :description='"Forcefully close backend PID " + query.pid + " and its connection."' triggerLabel="Terminate backend" icon="log-out" triggerStyle="ghost" :forceOpen='model.feedback.failed && model.failedOperation == "terminate:" + query.pid' :completed='model.completedOperation == "terminate:" + query.pid' :data-pg-terminate="query.pid"><form class="modal-form" @submit="model.terminateBackend(query.pid.toString(), form.confirmed, ctx)"><form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><checkbox name="confirmed" :label='"Terminate PID " + query.pid' required /></form-body><form-actions class="modal-footer" bordered><button data-dialog-close>Cancel</button><button type="submit" class="danger">Terminate backend</button></form-actions></form></confirm-dialog>
+                      </div></if></td>
+                    </tr></for>
+                  </tbody></table></table-scroll>
+                </if>
+              </card>
+            </div>
+            <div class="console-panel" role="tabpanel" tabindex="0" id="pg-panel-Cluster" aria-labelledby="pg-tab-Cluster" :hidden='model.tab != "Cluster"'>
+              <for data in listOfNotNull(model.overview)><system-postgres-cluster :data="data" /></for>
+            </div>
+            <div class="console-panel" role="tabpanel" tabindex="0" id="pg-panel-Tables" aria-labelledby="pg-tab-Tables" :hidden='model.tab != "Tables"'>
+              <card :padded="false" title="Tables"><div class="console-body system-stack">
+                <form class="system-actions" data-bml-preserve="pg-table-filter" @submit="model.loadTables(form.schemaName, ctx)">
+                  <field label="Schema"><input name="schemaName" :value="model.tableSchema" placeholder="All schemas" /></field><button type="submit">Load tables</button><button @click="model.loadIO(form.schemaName, ctx)">Show I/O stats</button>
+                </form>
+                <form class="system-actions" data-bml-preserve="pg-bloat-filter" @submit="model.loadBloated(form.minBloat, ctx)"><field label="Minimum bloat percent"><input name="minBloat" type="number" min="0" step="0.1" :value="model.minBloat" /></field><button type="submit">Show bloated tables</button></form>
+                <if model.tables.isEmpty()><empty-state message="No tables found." /><else>
+                  <table-scroll label="PostgreSQL tables"><table class="console-table"><thead><tr><th>Table</th><th>Schema</th><th>Size</th><th>Live rows</th><th>Dead rows</th><th>Sequential scans</th><th>Index scans</th><th>Bloat</th><th>Actions</th></tr></thead><tbody>
+                    <for table in model.tables><tr :data-pg-table="table.tableName"><td><span class="resource-name" data-resource-name>{ table.tableName }</span></td><td>{ table.schemaName }</td><td>{ bosca.system.ui.systemBytes(table.totalSize) }</td><td>{ bosca.system.ui.systemCount(table.nLiveTup) }</td><td>{ bosca.system.ui.systemCount(table.nDeadTup) }</td><td>{ bosca.system.ui.systemCount(table.seqScan) }</td><td>{ bosca.system.ui.systemCount(table.idxScan) }</td><td><badge :tone='if (table.bloatRatio > 50) "error" else if (table.bloatRatio > 20) "warning" else "success"'>{ bosca.system.ui.systemDecimal(table.bloatRatio) + "%" }</badge></td><td><icon-button icon="eye" :label='"View table " + table.schemaName + "." + table.tableName' size="xs" class="ghost" :data-pg-table-trigger="table.schemaName == model.tableSelectionSchema && table.tableName == model.tableSelectionName" @click="model.openTable(table.schemaName, table.tableName)" /></td></tr></for>
+                  </tbody></table></table-scroll>
+                </if>
+              </div></card>
+              <if model.bloatedLoaded><card :padded="false" title="Bloated tables"><div class="console-body" data-pg-bloated><if model.bloated.isEmpty()><empty-state message="No tables match this bloat threshold." /><else><div class="system-stack"><for table in model.bloated><div class="system-resource-row"><span class="resource-name" data-resource-name>{ table.schemaName + "." + table.tableName }</span><icon-button icon="eye" :label='"View table " + table.schemaName + "." + table.tableName' size="xs" class="ghost" :data-pg-table-trigger="table.schemaName == model.tableSelectionSchema && table.tableName == model.tableSelectionName" @click="model.openTable(table.schemaName, table.tableName)" /><span>{ bosca.system.ui.systemBytes(table.totalSize) }</span><span>{ bosca.system.ui.systemCount(table.nLiveTup) + " live / " + bosca.system.ui.systemCount(table.nDeadTup) + " dead" }</span><badge :tone='if (table.bloatRatio > 50) "error" else if (table.bloatRatio > 20) "warning" else "success"'>{ bosca.system.ui.systemDecimal(table.bloatRatio) + "%" }</badge><span>{ "Last vacuum: " + (table.lastVacuum ?: table.lastAutovacuum ?: "—") }</span></div></for></div></if></div></card></if>
+              <if model.ioLoaded><card :padded="false" title="Table I/O statistics"><if model.tableIO.isEmpty()><empty-state message="No table I/O statistics found." /><else><table-scroll label="Table I/O statistics"><table class="console-table" data-pg-io><thead><tr><th>Table</th><th>Schema</th><th>Heap read</th><th>Heap hit</th><th>Index read</th><th>Index hit</th><th>Toast read</th><th>Toast hit</th><th>Cache hit</th></tr></thead><tbody><for io in model.tableIO><tr><td>{ io.tableName }</td><td>{ io.schemaName }</td><td>{ bosca.system.ui.systemCount(io.heapBlksRead) }</td><td>{ bosca.system.ui.systemCount(io.heapBlksHit) }</td><td>{ bosca.system.ui.systemCount(io.idxBlksRead) }</td><td>{ bosca.system.ui.systemCount(io.idxBlksHit) }</td><td>{ bosca.system.ui.systemCount(io.toastBlksRead) }</td><td>{ bosca.system.ui.systemCount(io.toastBlksHit) }</td><td>{ bosca.system.ui.systemDecimal(io.cacheHitRatio) + "%" }</td></tr></for></tbody></table></table-scroll></if></card></if>
+            </div>
+            <div class="console-panel" role="tabpanel" tabindex="0" id="pg-panel-Indexes" aria-labelledby="pg-tab-Indexes" :hidden='model.tab != "Indexes"'>
+              <card :padded="false" title="Indexes"><div class="console-body system-stack">
+                <form class="system-actions" data-bml-preserve="pg-index-filter" @submit="model.loadIndexes(form.schemaName, ctx)"><field label="Schema"><input name="schemaName" :value="model.indexSchema" placeholder="All schemas" /></field><button type="submit">Load indexes</button></form>
+                <view-tabs label="Index diagnostics" :tabs="model.indexTabs" :selected="model.indexTab" data-bml-preserve="pg-index-tabs" data-postgres-index-tabs />
+                <div id="pg-index-panel" role="tabpanel" tabindex="0" :aria-labelledby='"pg-index-tab-" + model.indexTab'><if model.indexTab == "suggestions"><p class="system-muted">Tables with high sequential scan counts that may benefit from indexes.</p><if model.suggestions.isEmpty()><empty-state message="No index suggestions." /><else><div class="console-grid"><for suggestion in model.suggestions><card :padded="false" :title='suggestion.schemaName + "." + suggestion.tableName'><div class="console-body"><p>{ suggestion.reason }</p><dl class="console-facts"><dt>Table size</dt><dd>{ bosca.system.ui.systemBytes(suggestion.tableSize) }</dd><dt>Sequential scans</dt><dd>{ bosca.system.ui.systemCount(suggestion.seqScan) }</dd><dt>Rows read</dt><dd>{ bosca.system.ui.systemCount(suggestion.seqTupRead) }</dd><dt>Index scans</dt><dd>{ bosca.system.ui.systemCount(suggestion.idxScan) }</dd></dl></div></card></for></div></if><else>
+                  <if model.shownIndexes.isEmpty()><empty-state message="No indexes found." /><else><table-scroll label="PostgreSQL indexes"><table class="console-table"><thead><tr><th>Index</th><th>Table</th><th>Schema</th><th>Scans</th><th>Tuples read</th><th>Size</th><th>Actions</th></tr></thead><tbody><for index in model.shownIndexes><tr :data-pg-index="index.indexName"><td><span class="resource-name" data-resource-name>{ index.indexName }</span></td><td>{ index.tableName }</td><td>{ index.schemaName }</td><td>{ bosca.system.ui.systemCount(index.idxScan) }</td><td>{ bosca.system.ui.systemCount(index.idxTupRead) }</td><td>{ bosca.system.ui.systemBytes(index.indexSize) }</td><td><icon-button icon="eye" :label='"View index " + index.schemaName + "." + index.indexName' size="xs" class="ghost" :data-pg-index-trigger="index.schemaName == model.indexSelectionSchema && index.indexName == model.indexSelectionName" @click="model.openIndex(index.schemaName, index.indexName)" /></td></tr></for></tbody></table></table-scroll></if>
+                </if></div>
+              </div></card>
+            </div>
+            <div class="console-panel" role="tabpanel" tabindex="0" id="pg-panel-Queries" aria-labelledby="pg-tab-Queries" :hidden='model.tab != "Queries"'>
+              <card :padded="false" title="Slow queries"><div class="console-body system-stack">
+                <div class="system-actions"><form class="system-actions" data-bml-preserve="pg-query-filter" @submit="model.loadQueries(form.limit, form.order, ctx)"><field label="Limit"><input type="number" name="limit" min="1" max="1000" :value="model.queryLimit" /></field><field label="Order by"><select name="order" label="Query order"><option value="total" :selected='model.queryOrder == "total"'>Total time</option><option value="mean" :selected='model.queryOrder == "mean"'>Mean time</option></select></field><button type="submit">Refresh queries</button></form>
+                  <confirm-dialog title="Reset statement statistics?" description="Reset all pg_stat_statements statistics. This cannot be undone." triggerLabel="Reset stats" :triggerIconOnly="false" :forceOpen='model.feedback.failed && model.failedOperation == "reset"' :completed='model.completedOperation == "reset"'><form class="modal-form" @submit="model.resetStatements(form.confirmed, ctx)"><form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><checkbox name="confirmed" label="Reset statement statistics" required /></form-body><form-actions class="modal-footer" bordered><button data-dialog-close>Cancel</button><button type="submit" class="danger">Reset stats</button></form-actions></form></confirm-dialog>
+                </div>
+                <if model.slowQueries.isEmpty()><empty-state message="No slow query data available. The pg_stat_statements extension may not be installed." /><else><table-scroll label="Slow PostgreSQL queries"><table class="console-table"><thead><tr><th>Query</th><th>Calls</th><th>Total</th><th>Mean</th><th>Maximum</th><th>Rows</th><th>Cache hit</th><th>Actions</th></tr></thead><tbody>
+                  <for query in model.slowQueries><tr><td class="query-cell"><code data-resource-name>{ query.query.take(60) }</code></td><td>{ bosca.system.ui.systemCount(query.calls) }</td><td>{ bosca.system.ui.systemDecimal(query.totalTimeMs) + " ms" }</td><td>{ bosca.system.ui.systemDecimal(query.meanTimeMs) + " ms" }</td><td>{ bosca.system.ui.systemDecimal(query.maxTimeMs) + " ms" }</td><td>{ bosca.system.ui.systemCount(query.rows) }</td><td>{ bosca.system.ui.systemDecimal(query.hitRatio) + "%" }</td><td><icon-button icon="eye" label="View full query" size="xs" class="ghost" data-pg-query-trigger @click="model.openQuery(model.slowQueries.indexOf(query))" /></td></tr></for>
+                </tbody></table></table-scroll></if>
+              </div></card>
+              <for query in listOfNotNull(model.selectedQuery)><card :padded="false" title="Full query"><div class="console-body" data-pg-query-detail><source-view :content="query.query" language="sql" label="Full SQL query" :preserveKey='"pg-query-source-" + model.querySelection' bare wrapped /><dl class="console-facts"><dt>Calls</dt><dd>{ bosca.system.ui.systemCount(query.calls) }</dd><dt>Total</dt><dd>{ bosca.system.ui.systemDecimal(query.totalTimeMs) + " ms" }</dd><dt>Mean</dt><dd>{ bosca.system.ui.systemDecimal(query.meanTimeMs) + " ms" }</dd><dt>Minimum</dt><dd>{ bosca.system.ui.systemDecimal(query.minTimeMs) + " ms" }</dd><dt>Maximum</dt><dd>{ bosca.system.ui.systemDecimal(query.maxTimeMs) + " ms" }</dd><dt>Standard deviation</dt><dd>{ bosca.system.ui.systemDecimal(query.stddevTimeMs) + " ms" }</dd><dt>Rows</dt><dd>{ bosca.system.ui.systemCount(query.rows) }</dd><dt>Cache hit ratio</dt><dd>{ bosca.system.ui.systemDecimal(query.hitRatio) + "%" }</dd><dt>Shared blocks hit</dt><dd>{ bosca.system.ui.systemCount(query.sharedBlksHit) }</dd><dt>Shared blocks read</dt><dd>{ bosca.system.ui.systemCount(query.sharedBlksRead) }</dd></dl></div></card></for>
+            </div>
+            <div class="console-panel" role="tabpanel" tabindex="0" id="pg-panel-Locks" aria-labelledby="pg-tab-Locks" :hidden='model.tab != "Locks"'>
+              <card :padded="false" :title='"Locks (" + model.overview?.locks.orEmpty().size + ")"'><if model.overview?.locks.orEmpty().isEmpty()><empty-state message="No active locks." /><else><table-scroll label="PostgreSQL locks"><table class="console-table"><thead><tr><th>PID</th><th>Type</th><th>Relation</th><th>Mode</th><th>Granted</th><th>State</th><th>Duration</th><th>Query</th></tr></thead><tbody><for lock in model.overview?.locks.orEmpty()><tr><td>{ lock.pid }</td><td>{ lock.lockType }</td><td>{ lock.relationName ?: "—" }<p class="system-muted">{ lock.databaseName.orEmpty() }</p></td><td>{ lock.mode }</td><td><badge :tone='if (lock.granted) "success" else "error"'>{ if (lock.granted) "Yes" else "Waiting" }</badge></td><td>{ lock.state ?: "—" }</td><td>{ lock.durationSeconds?.let { bosca.system.ui.systemDecimal(it) + " s" } ?: "—" }</td><td class="query-cell"><details :data-bml-disclosure='"pg-lock-" + lock.pid + "-" + lock.lockType + "-" + lock.relationName.orEmpty() + "-" + lock.mode'><disclosure-heading>SQL query</disclosure-heading><pre class="console-sql">{ lock.query.orEmpty() }</pre></details></td></tr></for></tbody></table></table-scroll></if></card>
+            </div>
+            <div class="console-panel" role="tabpanel" tabindex="0" id="pg-panel-Settings" aria-labelledby="pg-tab-Settings" :hidden='model.tab != "Settings"'>
+              <card :padded="false" title="Server settings"><div class="console-body system-stack"><form class="system-actions" data-bml-preserve="pg-settings-filter" @submit="model.loadSettings(form.filter, ctx)"><field label="Filter by name or category"><input name="filter" :value="model.settingsFilter" /></field><button type="submit">Search settings</button></form>
+                <if model.settings.isEmpty()><empty-state message="No settings match this filter." /><else><table-scroll label="PostgreSQL settings"><table class="console-table"><thead><tr><th>Name</th><th>Value</th><th>Category</th><th>Context</th><th>Source</th><th>Restart required</th></tr></thead><tbody><for setting in model.settings><tr><td><details :data-bml-disclosure='"pg-setting-" + setting.name'><disclosure-heading>{ setting.name }</disclosure-heading><p>{ setting.shortDesc }</p><dl class="console-facts"><dt>Type</dt><dd>{ setting.vartype }</dd><dt>Unit</dt><dd>{ setting.unit ?: "—" }</dd><dt>Minimum</dt><dd>{ setting.minVal ?: "—" }</dd><dt>Maximum</dt><dd>{ setting.maxVal ?: "—" }</dd></dl></details></td><td>{ setting.setting + " " + setting.unit.orEmpty() }</td><td>{ setting.category }</td><td>{ setting.context }</td><td>{ setting.source }</td><td><badge :tone='if (setting.pendingRestart) "warning" else "neutral"'>{ if (setting.pendingRestart) "Yes" else "No" }</badge></td></tr></for></tbody></table></table-scroll></if>
+              </div></card>
+            </div>
+            <for table in listOfNotNull(model.selectedTable)>
+              <dialog :title='table.schemaName + "." + table.tableName' triggerLabel="Table details" returnFocus="[data-pg-table-trigger]" :showTrigger="false" :openRequest="model.tableOpenRequest" size="md" placement="right" icon="database" :data-bml-preserve='"pg-table-detail-" + model.tableRequest' data-pg-table-detail>
+                <form class="modal-form" @submit="model.analyzeTable(table.schemaName, table.tableName, form.confirmed, ctx)"><form-body padded class="modal-fields"><system-postgres-table-detail :table="table" /><checkbox name="confirmed" :label='"Run ANALYZE on " + table.schemaName + "." + table.tableName' required /><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if></form-body><form-actions class="modal-footer" bordered><button data-dialog-close>Cancel</button><button type="submit" primary>Run ANALYZE</button></form-actions></form>
+              </dialog>
+            </for>
+            <for index in listOfNotNull(model.selectedIndex)>
+              <dialog :title="index.indexName" :subtitle='index.schemaName + "." + index.tableName' triggerLabel="Index details" returnFocus="[data-pg-index-trigger]" :showTrigger="false" :openRequest="model.indexOpenRequest" size="lg" :data-bml-preserve='"pg-index-detail-" + model.indexRequest' data-pg-index-detail><div class="console-body system-stack modal-fields"><dl class="console-facts"><dt>Scans</dt><dd>{ bosca.system.ui.systemCount(index.idxScan) }</dd><dt>Tuples read</dt><dd>{ bosca.system.ui.systemCount(index.idxTupRead) }</dd><dt>Tuples fetched</dt><dd>{ bosca.system.ui.systemCount(index.idxTupFetch) }</dd><dt>Size</dt><dd>{ bosca.system.ui.systemBytes(index.indexSize) }</dd></dl><source-view :content="index.indexDef.orEmpty()" language="sql" label="Index definition" bare wrapped /><copy :value="index.indexDef.orEmpty()" label="Copy index definition" /></div></dialog>
+            </for>
+          </div>
+        </if>
+      </div>
+    </page-shell>
+  </island>
+  <script client scoped>
+    const relationships = () => {
+      for (const tab of ctx.root.querySelectorAll<HTMLElement>("[data-postgres-tabs] [data-tab]")) {
+        const name = tab.dataset.tab ?? "";
+        tab.id = "pg-tab-" + name;
+        tab.setAttribute("aria-controls", "pg-panel-" + name);
+      }
+      for (const tab of ctx.root.querySelectorAll<HTMLElement>("[data-postgres-index-tabs] [data-tab]")) {
+        tab.id = "pg-index-tab-" + (tab.dataset.tab ?? "");
+        tab.setAttribute("aria-controls", "pg-index-panel");
+      }
+    };
+    ctx.on<CustomEvent<string>>(ctx.root, "viewchange", async event => {
+      if (!(event.target instanceof Element)) return;
+      const transport = ctx.ref<HTMLElement>("transportError");
+      try {
+        if (transport) transport.hidden = true;
+        if (event.target.hasAttribute("data-postgres-tabs")) {
+          for (const panel of ctx.root.querySelectorAll<HTMLElement>(".console-panel")) panel.hidden = panel.id !== "pg-panel-" + event.detail;
+          const loading = ctx.ref<HTMLElement>("tabLoading"); if (loading) loading.hidden = false;
+          await ctx.dispatch(model.chooseTab(event.detail, ctx), { coalesce: true });
+        } else if (event.target.hasAttribute("data-postgres-index-tabs")) {
+          await ctx.dispatch(model.chooseIndexTab(event.detail), { coalesce: true });
+        }
+      } catch (failure) {
+        if (transport) { transport.textContent = failure instanceof Error ? failure.message : String(failure); transport.hidden = false; }
+      } finally {
+        const loading = ctx.ref<HTMLElement>("tabLoading"); if (loading) loading.hidden = true;
+      }
+    });
+    let busy = false, disposed = false;
+    const timer = setInterval(async () => {
+      if (disposed || busy || document.hidden || ctx.ref<HTMLElement>("tabLoading")?.hidden === false || !ctx.root.querySelector("[data-postgres-console]") || ctx.root.querySelector("dialog[open], [data-bml-action-pending]")) return;
+      busy = true;
+      try { await ctx.dispatch(model.refresh(ctx)); }
+      catch (failure) { const error = ctx.ref<HTMLElement>("transportError"); if (error) { error.textContent = failure instanceof Error ? failure.message : String(failure); error.hidden = false; } }
+      finally { busy = false; }
+    }, 10000);
+    ctx.onUpdate(relationships);
+    ctx.onUnmount(() => { disposed = true; clearInterval(timer); });
+    relationships();
+  </script>
+</component>

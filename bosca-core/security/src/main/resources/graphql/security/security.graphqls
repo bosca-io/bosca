@@ -221,7 +221,7 @@ type PrincipalMutation {
 "Query operations for listing and accessing principals (user accounts)"
 type Principals {
     "Paginated list of all principals in the system. Soft-deleted principals are excluded unless includeDeleted is true."
-    all(limit: Int!, offset: Long!, includeDeleted: Boolean! = false): [Principal!]!
+    all(limit: Int!, offset: Long!, includeDeleted: Boolean! = false, query: String): [Principal!]!
     "The currently authenticated principal"
     current: Principal!
     "Retrieve a specific principal by their unique identifier. Returns null if not found."

@@ -1,0 +1,20 @@
+<page route="/artifacts/repositories/upload" requireAuth>
+  <contract>
+  interface ArtifactUploadTarget {
+      suspend fun resolve(repositoryId: String, namespaceId: String, name: String): Map<String, String>
+  }
+  </contract>
+  <script server provides="page">bosca.artifacts.ui.artifactUpload()</script>
+  <artifacts-layout :admin="page.admin" title="Upload raw artifacts">
+    <page-shell class="artifact-page" flush>
+      <page-heading title="Upload files" subtitle="Store files in a raw artifact version" :trail='listOf(bosca.design.model.NavigationItem("Artifacts", "/artifacts/namespaces", false), bosca.design.model.NavigationItem("Repositories", "/artifacts/repositories", false))' />
+      <div class="artifact-content">
+        <if page.admin>
+          <artifacts-upload :page="page" />
+        <else>
+          <p>Administrator access is required to upload through artifact administration. Registry clients use your namespace permissions.</p>
+        </if>
+      </div>
+    </page-shell>
+  </artifacts-layout>
+</page>

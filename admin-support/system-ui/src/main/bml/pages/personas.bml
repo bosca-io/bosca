@@ -1,0 +1,4 @@
+<page route="/system/security/personas" requireAuth>
+  <script server provides="page">bosca.system.ui.systemPersonas()</script>
+  <system-layout title="Personas" :admin="page.admin"><system-personas :initial="page" /></system-layout>
+</page>

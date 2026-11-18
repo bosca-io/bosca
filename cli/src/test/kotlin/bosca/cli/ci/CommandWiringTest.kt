@@ -13,6 +13,7 @@ class CommandWiringTest {
     @Test
     fun `ci command shows help with subcommands`() {
         val result = CiCommand().subcommands(
+            CiPipelineCommand().subcommands(PipelineListCommand()),
             CiAgentCommand().subcommands(
                 AgentRegisterCommand(),
                 AgentListCommand(),
@@ -37,6 +38,7 @@ class CommandWiringTest {
         assertTrue(result.stdout.contains("agent"), "Expected 'agent' subcommand in help: ${result.stdout}")
         assertTrue(result.stdout.contains("run"), "Expected 'run' subcommand in help: ${result.stdout}")
         assertTrue(result.stdout.contains("secret"), "Expected 'secret' subcommand in help: ${result.stdout}")
+        assertTrue(result.stdout.contains("pipeline"))
     }
 
     @Test
@@ -58,6 +60,9 @@ class CommandWiringTest {
     @Test
     fun `ci run command shows help`() {
         val result = CiRunCommand().subcommands(
+            RunGetCommand(),
+            RunJobsCommand(),
+            RunStepsCommand(),
             RunTriggerCommand(),
             RunListCommand(),
             RunCancelCommand(),
@@ -71,6 +76,9 @@ class CommandWiringTest {
         assertTrue(result.stdout.contains("cancel"))
         assertTrue(result.stdout.contains("rerun"))
         assertTrue(result.stdout.contains("logs"))
+        assertTrue(result.stdout.contains("get"))
+        assertTrue(result.stdout.contains("jobs"))
+        assertTrue(result.stdout.contains("steps"))
     }
 
     @Test

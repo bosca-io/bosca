@@ -1,0 +1,76 @@
+<component tag="local-choices-example">
+  <prop name="id" type="String" required />
+  <script server provides="choices" scope="server-session">bosca.design.catalog.CatalogLocalChoices(id)</script>
+  <island name="choices" :key="id">
+    <div class="catalog-stack" :data-local-choices="choices.id">
+      <if choices.visible>
+        <form @submit="choices.save(form.component, form.label)" class="example-form" :data-local-choice-form="choices.id">
+          <field label="Component" hint="Choose an available component. The empty option is unset.">
+            <select name="component" label="Component" placeholder="Choose a component…" :required="choices.required"
+                    :disabled="choices.disabled" :loading="choices.loading" :data-local-single="choices.id"
+                    :preserveKey='"local-single-" + choices.id + "-" + choices.revision + "-" + choices.saves'
+                    :aria-describedby='"local-choice-hint-" + choices.id'>
+              <option value="" :selected="choices.component.isEmpty()">Choose a component…</option>
+              <for option in bosca.design.catalog.CatalogChoiceSearch.options>
+                <option :value="option.value" :selected="choices.component == option.value" :disabled="option.disabled">{option.label}</option>
+              </for>
+            </select>
+          </field>
+          <p class="example-note" :id='"local-choice-hint-" + choices.id'>Native validation focuses the enhanced trigger when a required choice is missing.</p>
+          <field label="Custom label" hint="Choose a label or type a new one.">
+            <select name="label" label="Custom label" placeholder="Choose or enter a label…" searchable :allowCustom="choices.allowCustom"
+                    :disabled="choices.disabled" :loading="choices.loading" :data-local-custom="choices.id"
+                    :preserveKey='"local-custom-" + choices.id + "-" + choices.revision + "-" + choices.saves'>
+              <option value="" :selected="choices.label.isEmpty()">Choose or enter a label…</option>
+              <option value="Preview" :selected='choices.label == "Preview"'>Preview</option>
+              <option value="Published" :selected='choices.label == "Published"'>Published</option>
+              <if choices.label.isNotEmpty() && choices.label !in listOf("Preview", "Published")>
+                <option :value="choices.label" selected>{choices.label}</option>
+              </if>
+            </select>
+          </field>
+          <div class="example-actions">
+            <button type="submit" primary :disabled="choices.disabled || choices.loading" :data-local-save="choices.id">Save component</button>
+            <button type="reset" :disabled="choices.disabled || choices.loading" :data-local-reset="choices.id">Reset component</button>
+          </div>
+        </form>
+        <form class="example-form" :data-local-tags-form="choices.id">
+          <field label="Example tags" hint="Each selection contributes a repeated native form value.">
+            <select name="tags" label="Example tags" multiple searchable :allowCustom="choices.allowCustom" :maxTags="choices.maxTags" size="sm"
+                    :disabled="choices.disabled" :loading="choices.loading" :data-local-multiple="choices.id"
+                    :preserveKey='"local-tags-" + choices.id + "-" + choices.revision'>
+              <for option in bosca.design.catalog.CatalogChoiceSearch.options>
+                <option :value="option.value" :selected="option.value in choices.tags" :disabled="option.disabled">{option.label}</option>
+              </for>
+              <optgroup label="Unavailable group" disabled><option value="group-unavailable">A disabled group choice</option></optgroup>
+            </select>
+          </field>
+          <div class="example-actions"><button type="reset" :disabled="choices.disabled || choices.loading" :data-local-tags-reset="choices.id">Reset tags</button></div>
+        </form>
+      </if>
+      <details data-example-states>
+        <disclosure-heading>Example states</disclosure-heading>
+        <div class="catalog-stack local-choice-state-options">
+          <switch label="Reject component saves" :checked="choices.rejectSaves" @change="choices.toggleRejection" :data-local-reject="choices.id" />
+          <switch label="Require a component" :checked="choices.required" @change="choices.toggleRequired" :data-local-required="choices.id" />
+          <switch label="Allow custom choices" :checked="choices.allowCustom" @change="choices.toggleCustom" :data-local-allow-custom="choices.id" />
+          <switch label="Disable the controls" :checked="choices.disabled" @change="choices.toggleDisabled" :data-local-disabled="choices.id" />
+          <switch label="Show loading controls" :checked="choices.loading" @change="choices.toggleLoading" :data-local-loading="choices.id" />
+          <switch label="Show controls" :checked="choices.visible" @change="choices.toggleVisible" :data-local-visible="choices.id" />
+          <div class="example-actions">
+            <button @click="choices.changeTagLimit" :data-local-limit="choices.id">Change tag limit</button>
+            <button @click="choices.replace" :disabled="!choices.visible || choices.disabled || choices.loading" :data-local-replace="choices.id">Replace defaults</button>
+            <button @click="choices.refresh" :data-local-refresh="choices.id">Refresh example</button>
+          </div>
+          <p class="example-note">Saving sets new defaults for the component and custom label. Tags keep their own native values. Replace defaults changes the preservation keys for all three controls. Reset restores their declared defaults.</p>
+        </div>
+      </details>
+      <toast :id='"local-choices-notice-" + choices.id' :message="choices.notice" :sequence="choices.noticeSequence"
+             :tone="choices.noticeTone" :data-local-toast="choices.id" />
+    </div>
+  </island>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+  </script>
+</component>

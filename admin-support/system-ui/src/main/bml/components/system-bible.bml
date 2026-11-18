@@ -1,0 +1,100 @@
+<component tag="system-bible">
+  <prop name="initial" type="bosca.system.ui.SystemBibleModel" required />
+  <script server provides="model">bosca.system.ui.SystemBibleModel(initial.admin, initial.providers, initial.configurations, initial.configurationId, initial.sources, initial.catalog, initial.kind, initial.search, initial.offset, initial.catalogLoaded, initial.mode, initial.dialogRequest, initial.draft, initial.registration, initial.variant, initial.allowedUses, initial.targetKey, initial.targets, initial.targetsLoaded, initial.removingSource, initial.removingSources, initial.purgeSources, initial.feedback, initial.catalogFeedback, initial.targetsFeedback)</script>
+  <island name="system-bible" :key='"bible"'>
+    <page-shell fill><page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" title="Bible providers" subtitle="Configure providers and register text Bibles and recordings">
+      <if model.admin><button primary :disabled="model.providers.isEmpty()" @click.coalesce="model.editConfiguration(true)">Add configuration</button></if>
+    </page-heading><div class="system-content" data-bml-scroll="system-content">
+      <if !model.admin><alert>Administrator access is required.</alert><else>
+        <toast id="bible-feedback" :message='if (model.mode.isBlank() || !model.feedback.failed) model.feedback.message else ""' :sequence="model.feedback.noticeSequence" :tone='if (model.feedback.failed) "error" else "success"' :announceInitial="model.feedback.failed" :data-system-error="model.feedback.failed && model.mode.isBlank()" :data-system-success="!model.feedback.failed" />
+        <card title="Configurations"><form @submit="model.selectConfiguration(form.configurationId, ctx)"><form-body>
+          <field label="Configuration"><select name="configurationId" label="Configuration" :disabled="model.configurations.isEmpty()" @change="model.selectConfiguration(form.configurationId, ctx)">
+            <if model.configurations.isEmpty()><option value="">No configurations</option></if>
+            <for config in model.configurations><option :value="config.id" :selected="config.id == model.configurationId">{ config.name + if (config.enabled) "" else " (disabled)" }</option></for>
+          </select></field>
+          <if model.configurations.isEmpty()><p>Add a configuration to browse the provider catalog.</p></if>
+        </form-body></form>
+          <if model.selected != null><p>{ model.providerLabel(model.selected?.provider.orEmpty()) + " · " + if (model.selected?.hasApiKey == true) "Key saved" else "Key missing" }</p>
+            <div class="system-actions"><button @click.coalesce="model.editConfiguration(false)">Edit configuration</button><button @click="model.testConnection(ctx)">Test connection</button><button @click.coalesce="model.prepareRemoveConfiguration(ctx)">Remove configuration</button></div>
+          </if>
+        </card>
+        <if model.selected != null>
+          <card title="Catalog">
+            <if model.selected?.enabled != true><p>Enable this configuration to browse its catalog.</p><else>
+              <form ref="catalogForm" :data-autoload="model.needsCatalog" @submit="model.loadCatalog(form.kind, form.query, 0, ctx)">
+                <form-body><field label="Catalog"><select name="kind" label="Catalog" @change="model.loadCatalog(form.kind, form.query, 0, ctx)"><option value="TEXT" :selected='model.kind == "TEXT"'>Text</option><option value="AUDIO" :selected='model.kind == "AUDIO"'>Audio</option></select></field>
+                  <field label="Search catalog"><input name="query" :value="model.search" type="search" /></field></form-body>
+                <form-actions><button type="submit">Search</button></form-actions>
+              </form>
+              <system-feedback :feedback="model.catalogFeedback" />
+              <if !model.catalogLoaded><p>Loading catalog…</p><else><if model.catalog.isEmpty() && !model.catalogFeedback.failed><empty-state message="No catalog results." /></if></if>
+              <ul class="bible-entries"><for entry in model.catalog><li :data-bible-entry="entry.id"><div class="bible-details">
+                <strong>{ entry.name }</strong><if entry.nameLocal != entry.name><span>{ entry.nameLocal }</span></if>
+                <span>{ entry.abbreviation + " · " + entry.languages.joinToString(", ") { it.name } }</span>
+                <if entry.description.isNotBlank()><p>{ entry.description }</p></if><p>{ entry.attribution.copyright }</p><if entry.attribution.citation.isNotBlank()><p>{ entry.attribution.citation }</p></if>
+              </div><button @click.coalesce="model.prepareRegistration(entry.id)">{ if (entry.kind.name == "TEXT") "Add Bible" else "Add audio" }</button></li></for></ul>
+              <div class="system-actions"><button :disabled="model.offset == 0" @click="model.loadCatalog(model.kind, model.search, model.offset - 20, ctx)">Previous</button><span>{ "Page " + (model.offset / 20 + 1) }</span><button :disabled="model.catalog.size < 20" @click="model.loadCatalog(model.kind, model.search, model.offset + 20, ctx)">Next</button></div>
+            </if>
+          </card>
+          <card title="Sources"><if model.sources.isEmpty()><empty-state message="No sources registered." /><else>
+            <ul class="bible-entries"><for source in model.sources><li :data-bible-source="source.id"><div class="bible-details">
+              <a :href='"/cms/metadata/" + bosca.system.ui.systemEncode(source.metadataId)'>{ source.name }</a>
+              <span>{ source.kind.name.lowercase().replaceFirstChar(Char::uppercase) + " · version " + source.metadataVersion + " · " + source.variant }</span>
+              <span>{ "Permitted uses: " + source.allowedUses.joinToString(", ") { model.useLabel(it) }.ifEmpty { "None" } }</span><p>{ source.attribution.copyright }</p>
+            </div><div class="system-actions"><button :disabled="model.selected?.enabled != true" @click="model.refreshSource(source.id, ctx)">Refresh</button><button @click.coalesce="model.prepareRemoveSource(source.id)">Remove source</button></div></li></for></ul>
+          </if></card>
+        </if>
+        <dialog @dialogdismiss.coalesce="model.cancel()" :title='if (model.draft.id.isBlank()) "Add Bible provider configuration" else "Edit Bible provider configuration"' triggerLabel="Configuration" :showTrigger="false" :forceOpen='model.mode == "configuration"' :openRequest='if (model.mode == "configuration") model.dialogRequest.toString() else ""' :completed='model.mode != "configuration"'>
+          <form @submit="model.saveConfiguration(form.name, form.provider, form.enabled, form.apiKey, ctx)" class="modal-form"><form-body padded class="modal-fields">
+            <toast id="bible-configuration-error" :message='if (model.feedback.failed && model.mode == "configuration") model.feedback.message else ""' :sequence="model.feedback.noticeSequence" tone="error" :announceInitial="model.feedback.failed" data-bible-modal-error />
+            <field label="Name"><input name="name" :value="model.draft.name" required /></field>
+            <field label="Provider"><select name="provider" label="Provider" required><for provider in model.providers><option :value="provider" :selected="provider == model.draft.provider">{ model.providerLabel(provider) }</option></for></select></field>
+            <checkbox name="enabled" label="Enabled" :checked="model.draft.enabled" />
+            <field label="API key" :hint='if (model.draft.hasApiKey) "Leave blank to keep the saved key." else "Enter the provider API key."'><input name="apiKey" type="password" :value="model.draft.apiKey" autocomplete="new-password" :required="!model.draft.hasApiKey" /></field>
+          </form-body><form-actions bordered class="modal-footer"><button @click="model.cancel()">Cancel</button><button type="submit" primary>Save configuration</button></form-actions></form>
+        </dialog>
+        <dialog @dialogdismiss.coalesce="model.cancel()" :title='"Register " + model.registration?.name.orEmpty()' triggerLabel="Register source" :showTrigger="false" :forceOpen='model.mode == "register"' :openRequest='if (model.mode == "register") model.dialogRequest.toString() else ""' :completed='model.mode != "register"'>
+          <form ref="targetsForm" hidden :data-autoload="model.needsTargets" @submit="model.loadTargets(ctx)"></form>
+          <form @submit="model.register(form.variant, form.uses, form.target, ctx)" class="modal-form"><form-body padded class="modal-fields">
+            <toast id="bible-register-error" :message='if (model.feedback.failed && model.mode == "register") model.feedback.message else ""' :sequence="model.feedback.noticeSequence" tone="error" :announceInitial="model.feedback.failed" data-bible-modal-error />
+            <p>{ model.registration?.attribution?.copyright.orEmpty() }</p><p>{ model.registration?.attribution?.citation.orEmpty() }</p>
+            <if model.audioRegistration>
+              <html:input type="hidden" name="variant" value="" />
+              <system-feedback :feedback="model.targetsFeedback" />
+              <if !model.targetsLoaded><p>Finding compatible Bible variants…</p><else><if model.targets.isEmpty() && !model.targetsFeedback.failed><p>No compatible Bible variants. Register the matching text Bible first.</p></if></if>
+              <if model.targetsFeedback.failed><button @click="model.loadTargets(ctx)">Retry compatible variants</button></if>
+              <field label="Bible variant"><select name="target" label="Bible variant" required :disabled="!model.targetsLoaded"><option value="">Select a Bible variant</option><for target in model.targets><option :value="model.targetKey(target)" :selected="model.targetKey(target) == model.targetKey">{ target.name + " · version " + target.version + " · " + target.variant + if (target.enabled) "" else " (disabled)" }</option></for></select></field>
+            <else><html:input type="hidden" name="target" value="" /><field label="Variant"><input name="variant" :value="model.variant" placeholder="reader" required /></field></if>
+            <field label="Permitted uses" hint="Select uses permitted by your provider agreement. Leave all unselected to grant no use."><select name="uses" label="Permitted uses" multiple><for use in model.useOptions><option :value="use.name" :selected="use in model.allowedUses">{ model.useLabel(use) }</option></for></select></field>
+          </form-body><form-actions bordered class="modal-footer"><button @click="model.cancel()">Cancel</button><button type="submit" primary :disabled="model.audioRegistration && (!model.targetsLoaded || model.targets.isEmpty())">Register</button></form-actions></form>
+        </dialog>
+        <dialog @dialogdismiss.coalesce="model.cancel()" :title='"Remove " + model.removingSource?.name.orEmpty() + "?"' triggerLabel="Remove source" :showTrigger="false" :forceOpen='model.mode == "source"' :openRequest='if (model.mode == "source") model.dialogRequest.toString() else ""' :completed='model.mode != "source"'>
+          <form @submit="model.removeSource(form.confirmed, ctx)" class="modal-form"><form-body padded class="modal-fields">
+            <toast id="bible-source-error" :message='if (model.feedback.failed && model.mode == "source") model.feedback.message else ""' :sequence="model.feedback.noticeSequence" tone="error" :announceInitial="model.feedback.failed" data-bible-modal-error />
+            <p>{ if (model.removingSource?.kind?.name == "TEXT") "This also deletes the " + model.removingSource?.variant.orEmpty() + " Bible variant, its chapters and its recordings. The Bible is deleted when no other variant remains." else "Remove this recording and its cached audio." }</p>
+            <checkbox name="confirmed" label="Remove this source" required />
+          </form-body><form-actions bordered class="modal-footer"><button @click="model.cancel()">Cancel</button><button type="submit" class="danger">Remove source</button></form-actions></form>
+        </dialog>
+        <dialog @dialogdismiss.coalesce="model.cancel()" :title='"Remove " + model.selected?.name.orEmpty() + "?"' triggerLabel="Remove configuration" :showTrigger="false" :forceOpen='model.mode == "removeConfiguration"' :openRequest='if (model.mode == "removeConfiguration") model.dialogRequest.toString() else ""' :completed='model.mode != "removeConfiguration"'>
+          <form @submit="model.removeConfiguration(form.confirmed, form.purge, ctx)" class="modal-form"><form-body padded class="modal-fields">
+            <toast id="bible-removeConfiguration-error" :message='if (model.feedback.failed && model.mode == "removeConfiguration") model.feedback.message else ""' :sequence="model.feedback.noticeSequence" tone="error" :announceInitial="model.feedback.failed" data-bible-modal-error />
+            <if model.removingSources.isNotEmpty()><p>{ "Removing this configuration also removes these " + model.removingSources.size + " sources and their cached content. Each text source's Bible variant is deleted with it." }</p><ul><for source in model.removingSources><li>{ source.name + " · " + source.variant + " · version " + source.metadataVersion }</li></for></ul><checkbox name="purge" label="Remove all listed sources" :checked="model.purgeSources" required /></if>
+            <checkbox name="confirmed" label="Remove this configuration" required />
+          </form-body><form-actions bordered class="modal-footer"><button @click="model.cancel()">Cancel</button><button type="submit" class="danger">Remove configuration</button></form-actions></form>
+        </dialog>
+      </if>
+    </div></page-shell>
+  </island>
+  <script client scoped>
+    import { mountBibleCatalog } from "@client/bible-catalog";
+    mountBibleCatalog(ctx);
+  </script>
+  <style scoped>
+    .bible-entries { list-style: none; margin: 12px 0; padding: 0; }
+    .bible-entries > li { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+    .bible-details { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+    .bible-details p { margin: 0; }
+    .bible-details p, .bible-details span { color: var(--fg-3); font-size: 12px; line-height: 1.5; }
+    @media (max-width: 640px) { .bible-entries > li { flex-direction: column; } }
+  </style>
+</component>

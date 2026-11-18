@@ -1,0 +1,25 @@
+<component tag="auth-layout">
+  <prop name="title" type="String" required />
+  <prop name="product" type="String" required />
+  <prop name="heading" type="String" required />
+  <prop name="description" type="String" required />
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <meta name="robots" content="noindex,nofollow" />
+      <meta name="referrer" content="same-origin" />
+      <title>{ title } — Bosca { product }</title>
+    </head>
+    <body class="auth-document">
+      <div class="auth-layout">
+        <auth-brand :product="product" :heading="heading" :description="description" />
+        <main class="auth-content">
+          <div class="auth-card">
+            <slot />
+          </div>
+        </main>
+      </div>
+    </body>
+  </html>
+</component>

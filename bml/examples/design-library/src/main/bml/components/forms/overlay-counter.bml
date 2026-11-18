@@ -1,0 +1,10 @@
+<component tag="overlay-counter">
+  <prop name="id" type="String" required />
+  <script server provides="counter" scope="server-session">bosca.design.example.IconActions(id)</script>
+  <island name="counter" :key="id">
+    <button @click="counter.increment" :data-popover-update="counter.id">Count { counter.count }</button>
+    <if counter.count != 0>
+      <p>Content updated inside this open overlay.</p>
+    </if>
+  </island>
+</component>

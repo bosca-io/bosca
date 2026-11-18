@@ -14,25 +14,23 @@
   <island name="git-file-actions" :key="model.page.id + model.page.ref + model.page.file">
     <div class="file-actions" :data-next-href="model.nextHref">
       <if model.message.isNotBlank()>
-        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+        <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
       <if model.page.file.isNotBlank()>
-        <ui-confirm-dialog
+        <confirm-dialog
           title="Delete file?"
           :description='"A commit removing " + model.page.file + " will be added to " + model.page.ref + "."'
-          triggerLabel="Delete"
-          :triggerIconOnly="false"
-          triggerStyle="plain"
+          triggerLabel="Delete file"
         >
           <form class="modal-form" @submit="model.delete(true, ctx)">
             <footer class="modal-footer">
-              <ui-button ref="cancel">Cancel</ui-button>
-              <ui-button type="submit" class="danger">Delete file</ui-button>
+              <button ref="cancel">Cancel</button>
+              <button type="submit" class="danger">Delete file</button>
             </footer>
           </form>
-        </ui-confirm-dialog>
+        </confirm-dialog>
       <else>
-        <ui-dialog
+        <dialog
           title="New folder"
           triggerLabel="New folder"
           triggerIcon="folder"
@@ -42,23 +40,23 @@
           <form class="modal-form" @submit="model.folder(form.path, ctx)">
             <div class="modal-fields">
               <if model.failed>
-                <ui-alert :tone='if (model.failed) "error" else "success"'>
+                <alert :tone='if (model.failed) "error" else "success"'>
                   { model.message }
-                </ui-alert>
+                </alert>
               </if>
-              <ui-field
+              <field
                 label="Folder path"
                 hint="A .gitkeep file will be committed so Git can store the folder."
               >
-                <ui-input name="path" :value="model.draftPath" required />
-              </ui-field>
+                <input name="path" :value="model.draftPath" required />
+              </field>
             </div>
             <footer class="modal-footer">
-              <ui-button ref="cancel">Cancel</ui-button>
-              <ui-button type="submit" primary>Create folder</ui-button>
+              <button ref="cancel">Cancel</button>
+              <button type="submit" primary>Create folder</button>
             </footer>
           </form>
-        </ui-dialog>
+        </dialog>
       </if>
     </div>
   </island>

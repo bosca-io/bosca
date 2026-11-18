@@ -1,0 +1,36 @@
+<component tag="profile">
+  <prop name="name" type="String" required />
+  <prop name="subtitle" type="String" default="" />
+  <prop name="avatar" type="String" default="" />
+  <prop name="initials" type="String" default="" />
+  <prop name="showAvatar" type="Boolean" default="true" />
+  <div class="profile" data-bml-design-profile {...attrs}>
+    <if showAvatar>
+      <span class="profile-avatar" aria-hidden="true">
+        <if avatar.isNotBlank()><img :src="avatar" alt="" />
+        <else-if initials.isNotBlank()>{ initials }
+        <else><icon name="users" :size="16" />
+        </if>
+      </span>
+    </if>
+    <div class="profile-copy">
+      <strong data-profile-name>{ name }</strong>
+      <span data-profile-subtitle :hidden="subtitle.isBlank()">{ subtitle }</span>
+    </div>
+  </div>
+  <style scoped>
+    .profile { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .profile-avatar {
+      display: inline-flex; align-items: center; justify-content: center;
+      flex: 0 0 28px; width: 28px; height: 28px; overflow: hidden;
+      border-radius: 50%; background: var(--bg-3); color: var(--fg-1);
+      font: 600 11px/1 var(--font-sans);
+    }
+    .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .profile-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    strong, .profile-copy > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    strong { font: 600 13px/18px var(--font-sans); color: var(--fg-0); }
+    .profile-copy > span { font: 400 11.5px/16px var(--font-sans); color: var(--fg-2); }
+    .profile-copy > span[hidden] { display: none; }
+  </style>
+</component>

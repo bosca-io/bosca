@@ -1,0 +1,4 @@
+<page route="/system/integrations/hubspot" requireAuth>
+  <script server provides="page">bosca.system.ui.systemHubSpot()</script>
+  <system-layout title="HubSpot" :admin="page.admin"><system-hubspot :initial="page" /></system-layout>
+</page>

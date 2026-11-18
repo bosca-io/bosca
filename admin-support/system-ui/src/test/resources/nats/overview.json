@@ -1,0 +1,9 @@
+{"natsAdmin":{
+  "serverInfo":{"serverId":"fixture-server","serverName":"System fixture","version":"2.12","host":"0.0.0.0","port":4222,"maxConnections":65536,"maxPayload":1048576,"uptime":"12d3h4m5s","mem":2048,"cpu":1.25,"connections":1,"totalConnections":3,"subscriptions":8,"slowConsumers":1,"inMsgs":10,"outMsgs":12,"inBytes":1024,"outBytes":2048,"jetstream":{"config":{"maxMemory":4096,"maxStorage":8192,"storeDir":"/fixture/store"},"stats":{"memory":128,"storage":256,"reservedMemory":512,"reservedStorage":1024,"accounts":1,"haAssets":2,"api":{"total":14,"errors":1}}}},
+  "connections":{"numConnections":1,"total":1,"connections":[{"cid":51,"kind":"Client","type":"tcp","ip":"127.0.0.1","port":32222,"start":"2026-01-01T00:00:00Z","lastActivity":null,"rtt":"1ms","uptime":"1m","idle":"1s","pendingBytes":64,"inMsgs":10,"outMsgs":12,"inBytes":1024,"outBytes":2048,"subscriptions":3,"name":"fixture-client","lang":"java","version":"2.25"}]},
+  "jetStreamInfo":{"memory":128,"storage":256,"streams":2,"consumers":1,"messages":3,"bytes":384,"api":{"total":14,"errors":1}},
+  "jetStreamStreams":[{"name":"fixture_events","created":"2026-01-01T00:00:00Z","state":{"messages":3,"bytes":384,"firstSeq":9007199254740993,"lastSeq":9007199254740995,"consumerCount":1,"numSubjects":2,"numDeleted":1},"cluster":{"leader":"fixture-leader"}},{"name":"KV_fixture_bucket","created":null,"state":null,"cluster":null}],
+  "clusterRoutes":{"numRoutes":1,"routes":[{"rid":19,"remoteId":"remote-fixture-id","remoteName":"Fixture route","didSolicit":true,"isConfigured":false,"ip":"127.0.0.2","port":6222,"pendingSize":12,"inMsgs":8,"outMsgs":9,"inBytes":1024,"outBytes":2048,"subscriptions":2}]},
+  "subscriptionsInfo":{"numSubscriptions":8,"numCache":4,"numInserts":12,"numRemoves":4,"numMatches":20,"cacheHitRate":0.95,"maxFanout":3,"avgFanout":1.25},
+  "keyValueStores":[{"bucket":"fixture_bucket","entryCount":3,"bytes":384,"ttl":65000,"maxBytes":0,"maxValueSize":0,"history":5}]
+}}

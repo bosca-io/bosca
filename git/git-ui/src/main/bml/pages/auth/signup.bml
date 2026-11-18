@@ -1,0 +1,10 @@
+<page route="/auth/signup">
+  <git-auth-layout title="Create your account.">
+    <auth-heading
+      eyebrow="Get started"
+      title="Create your account."
+      sub="Sign up to use Bosca Git."
+    />
+    <auth-signup-form />
+  </git-auth-layout>
+</page>

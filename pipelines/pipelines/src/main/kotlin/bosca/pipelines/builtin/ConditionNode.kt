@@ -12,6 +12,7 @@ import bosca.pipelines.node.PipelineValue
 import bosca.pipelines.node.TransformNode
 import com.dashjoin.jsonata.Jsonata
 import com.dashjoin.jsonata.json.Json as JsonataJson
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
@@ -66,8 +67,11 @@ class ConditionNode(
             frame.bind("eventCreated", context.inputCreated.toString())
             jsonata.evaluate(javaInput, frame)
         }
+        catch (e: CancellationException) {
+            throw e
+        }
         catch (e: Exception) {
-            error("Condition node '${name.ifBlank { id }}' has an invalid expression ($expression): ${e.message}")
+            throw IllegalStateException("Condition node '${name.ifBlank { id }}' has an invalid expression ($expression): ${e.message}", e)
         }
         val taken = if (Jsonata.boolize(result)) "true" else "false"
         context.trace?.recordAction(id, buildJsonObject { put("takenBranch", taken) })

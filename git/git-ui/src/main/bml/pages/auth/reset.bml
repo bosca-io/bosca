@@ -1,0 +1,10 @@
+<page route="/auth/reset-password">
+  <git-auth-layout title="Choose a new password.">
+    <auth-heading
+      eyebrow="Account recovery"
+      title="Choose a new password."
+      sub="Set a new password, then sign in."
+    />
+    <auth-reset-form />
+  </git-auth-layout>
+</page>

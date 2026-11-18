@@ -12,7 +12,6 @@ import bosca.graphql.language.ObjectField
 import bosca.graphql.language.ObjectValue
 import bosca.graphql.language.StringValue
 import bosca.graphql.language.Variable
-import kotlinx.datetime.Instant
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -21,6 +20,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 

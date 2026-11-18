@@ -3,6 +3,7 @@
 package bosca.analytics.repository
 
 import bosca.analytics.model.ErrorGroupStatus
+import bosca.analytics.AnalyticsTestDatabase
 import bosca.cache.CacheManager
 import bosca.cache.RequestCacheSerializer
 import bosca.db.ConnectionConfig
@@ -10,8 +11,6 @@ import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionManager
 import bosca.db.ConnectionPool
 import bosca.db.asCoroutineContext
-import bosca.db.migrations.CoreMigration
-import bosca.db.migrations.FlywayMigration
 import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provides
@@ -27,9 +26,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
 import bosca.test.resources.SharedPostgreSQLContainer
-import org.testcontainers.containers.wait.strategy.Wait
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import org.junit.AfterClass
+import org.junit.BeforeClass
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -62,14 +62,7 @@ class ErrorGroupRepositoryEndToEndTest {
     fun setup() = runBlocking {
         unmockkAll()
 
-        postgresContainer = SharedPostgreSQLContainer()
-            .withExposedPorts(5432)
-            .withEnv("POSTGRES_USER", "test")
-            .withEnv("POSTGRES_PASSWORD", "test")
-            .withEnv("POSTGRES_DB", "test")
-            .withReuse(true)
-            .waitingFor(Wait.forLogMessage(".*database system is ready to accept connections.*\\s", 2))
-        postgresContainer.start()
+        postgresContainer = database.copy()
 
         val factory = ConnectionFactoryImpl(
             ConnectionConfig(
@@ -80,8 +73,6 @@ class ErrorGroupRepositoryEndToEndTest {
             key = "test"
         )
         connectionPool = ConnectionPool(factory)
-
-        FlywayMigration(connectionPool).migrate(listOf(CoreMigration()))
 
         ProviderRegistry.clear()
         provides<CacheManager>(singleton = true) { mockk(relaxed = true) }
@@ -337,5 +328,17 @@ class ErrorGroupRepositoryEndToEndTest {
             assertEquals("Root cause: null check missing", updated.aiSummary)
             assertNotNull(updated.aiSummaryAt)
         }
+    }
+
+    companion object {
+        private val database = AnalyticsTestDatabase()
+
+        @BeforeClass
+        @JvmStatic
+        fun startDatabase() = runBlocking { database.start() }
+
+        @AfterClass
+        @JvmStatic
+        fun stopDatabase() = database.stop()
     }
 }

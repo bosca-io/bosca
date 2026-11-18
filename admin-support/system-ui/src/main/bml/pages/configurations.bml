@@ -1,0 +1,4 @@
+<page route="/system/config" requireAuth>
+  <script server provides="page">bosca.system.ui.systemConfigurations()</script>
+  <system-layout title="Configuration" :admin="page.admin"><system-configurations :initial="page" /></system-layout>
+</page>

@@ -2,6 +2,7 @@
 
 package bosca.artifacts.sync
 
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.artifacts.model.*
 import bosca.artifacts.repository.*
 import bosca.artifacts.service.*
@@ -10,7 +11,6 @@ import bosca.cache.RequestCacheSerializer
 import bosca.db.*
 import bosca.di.*
 import bosca.lock.DistributedLockFactory
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.observability.ErrorCapture
 import bosca.artifacts.pipeline.*
 import bosca.events.catalog.EventCatalogRegistrar
@@ -39,6 +39,7 @@ import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
 import bosca.sharedqueue.jobs.configuration.RegisterJobsConfiguration
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageService
+import bosca.test.resources.SharedValkeyContainer
 import bosca.test.resources.SharedNatsContainer
 import bosca.test.resources.SharedPostgreSQLContainer
 import io.mockk.coEvery
@@ -57,6 +58,7 @@ import kotlin.time.Duration.Companion.milliseconds
 /** Real Postgres and NATS: normal tag event, pipeline matching, durable action and GHCR copying. */
 class ArtifactSyncIntegrationTest {
     private lateinit var postgres: SharedPostgreSQLContainer
+    private lateinit var lockRedis: SharedValkeyContainer
     private lateinit var nats: SharedNatsContainer
     private lateinit var pool: ConnectionPool
     private lateinit var remote: GhcrTestServer
@@ -92,6 +94,8 @@ class ArtifactSyncIntegrationTest {
         )
         nats = SharedNatsContainer()
         nats.start()
+        lockRedis = SharedValkeyContainer()
+        lockRedis.start()
         remote = GhcrTestServer()
         val application = BoscaApplication(ApplicationConfig.load("bosca:\n  server:\n    development: false\n".byteInputStream()))
         // Test KSP emits its own empty module registrar; use the production generated providers.
@@ -140,7 +144,7 @@ class ArtifactSyncIntegrationTest {
         secrets = PipelineSecretServiceImpl(PipelineSecretRepositoryImpl())
         provides<PipelineSecretService>(singleton = true) { secrets }
         val natsPool = nats.newConnectionPool(1)
-        val locks = NatsDistributedLockFactory(natsPool)
+        val locks = RedisDistributedLockFactory(lockRedis.newConnectionPool())
         provides<DistributedLockFactory>(singleton = true) { locks }
         provides<JobQueueFactory>(singleton = true) {
             NatsJobQueueFactory(natsPool, application.json, locks, null, emptyList(), false)
@@ -222,6 +226,7 @@ class ArtifactSyncIntegrationTest {
         if (::remote.isInitialized) remote.close()
         if (::pool.isInitialized) pool.close()
         if (::postgres.isInitialized) postgres.stop()
+        if (::lockRedis.isInitialized) lockRedis.stop()
         if (::nats.isInitialized) nats.stop()
         ProviderRegistry.clear()
     }

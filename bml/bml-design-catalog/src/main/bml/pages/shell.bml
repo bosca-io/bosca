@@ -1,0 +1,5 @@
+<page route="/shell">
+  <html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Application shell · Bosca Design Library</title></head>
+    <body class="shell-example-document"><shell-example /></body>
+  </html>
+</page>

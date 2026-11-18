@@ -1,0 +1,40 @@
+<page route="/composition">
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Trees, comments and timestamps</title>
+    </head>
+    <body>
+      <page-shell>
+        <h1>Trees, comments and timestamps</h1>
+        <p id="comment-context">Plain text comments in this isolated example.</p>
+        <div class="themes">
+          <div class="light composition-theme" data-palette="light"><composition-controls id="light" /></div>
+          <div class="purple composition-theme" data-palette="purple"><composition-controls id="purple" /></div>
+        </div>
+        <tree label="Empty files" data-empty-tree />
+        <tree label="Unavailable folders" local embedded data-disabled-tree>
+          <tree-item path="locked" label="Locked folder" directory disabled />
+          <tree-item path="ready" label="Ready folder" directory expanded />
+          <tree-item path="ready/file" label="Ready file" href="#ready" :depth="1" />
+          <tree-item path="offline" label="Offline folder" directory disabled />
+          <tree-item path="last" label="Last file" href="#last" />
+        </tree>
+        <div class="light timestamp-examples">
+          <time value="2026-10-18T08:15:00-05:00" data-default-time />
+          <time value="2026-10-18T08:15:00-05:00" format="yyyy-MM-dd HH:mm XXX" data-custom-time />
+          <time value="not a timestamp" data-invalid-time />
+          <p class="inherited-time"><time value="2026-10-18T08:15:00Z" inheritTypography data-inherited-time /></p>
+          <html:time id="native-time" datetime="2026-10-18">Native timestamp</html:time>
+        </div>
+        <form class="light comment-edge-cases">
+          <comment-editor id="readonly-comment" label="Readonly comment" value="Readonly draft" readonly data-readonly-comment>
+            <button type="submit">Readonly submit</button>
+          </comment-editor>
+          <comment-editor id="disabled-comment" label="Disabled comment" value="Disabled draft" disabled data-disabled-comment />
+        </form>
+      </page-shell>
+    </body>
+  </html>
+</page>

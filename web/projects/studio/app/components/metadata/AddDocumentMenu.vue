@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
 import type { OverflowMenuItem } from '@bosca/ui'
+import { compareTemplatesByOrder } from '~/utils/templateOrder'
+import { isSystemDocumentType } from '~/utils/systemDocumentTypes'
 
 withDefaults(defineProps<{
   accent?: string
@@ -8,8 +10,12 @@ withDefaults(defineProps<{
   accent: '#5ec5ff',
 })
 
+/** Lets pages open the menu programmatically (e.g. the command palette's ?new=1 trigger). */
+const open = defineModel<boolean>('open', { default: false })
+
 const { query: gqlQuery, mutation: gqlMutation } = useGraphQL()
 const router = useRouter()
+const toast = useToast()
 
 const templatesGql = gql`
   query GetDocumentTemplates {
@@ -21,6 +27,7 @@ const templatesGql = gql`
       }
       documentTemplates {
         all {
+          defaultAttributes
           metadata {
             id
             version
@@ -29,10 +36,20 @@ const templatesGql = gql`
           }
         }
       }
+      guideTemplates {
+        all {
+          steps {
+            metadata { id }
+            modules { metadata { id } }
+          }
+        }
+      }
     }
   }
 `
 
+// setReady: true moves the new document out of the pending workflow state so
+// it lands in the editor as an editable draft.
 const addDocumentGql = gql`
   mutation AddDocument($parentCollectionId: UUID!, $templateId: UUID!, $templateVersion: Int!) {
     content {
@@ -52,43 +69,86 @@ interface TemplateInfo {
   attributes: Record<string, unknown> | null
 }
 
+interface DocumentTemplateEntry {
+  defaultAttributes: Record<string, unknown> | null
+  metadata: TemplateInfo | null
+}
+
+interface GuideTemplateEntry {
+  steps: Array<{
+    metadata: { id: string } | null
+    modules: Array<{ metadata: { id: string } | null }>
+  }>
+}
+
+// WorkOps and Feeds templates: their documents are created by those modules.
+function isSystemTemplate(entry: DocumentTemplateEntry): boolean {
+  return isSystemDocumentType(entry.defaultAttributes?.type)
+}
+
+// Templates a guide uses for its steps or modules. Step documents are created
+// inside their guide, so they don't belong in the top-level New Document menu.
+function guideStepTemplateIds(guides: GuideTemplateEntry[]): Set<string> {
+  const ids = new Set<string>()
+  for (const guide of guides) {
+    for (const step of guide.steps) {
+      if (step.metadata) ids.add(step.metadata.id)
+      for (const mod of step.modules) {
+        if (mod.metadata) ids.add(mod.metadata.id)
+      }
+    }
+  }
+  return ids
+}
+
 const templates = ref<TemplateInfo[]>([])
 const rootCollectionId = ref<string>('')
-const loading = ref(false)
+const templatesLoading = ref(true)
+const creating = ref(false)
 
 onMounted(async () => {
   try {
     const result = await gqlQuery<{
       content: {
         collections: { root: { id: string } }
-        documentTemplates: {
-          all: Array<{ metadata: TemplateInfo | null }>
-        }
+        documentTemplates: { all: DocumentTemplateEntry[] }
+        guideTemplates: { all: GuideTemplateEntry[] }
       }
     }>(templatesGql)
     rootCollectionId.value = result.content.collections.root.id
+    const stepIds = guideStepTemplateIds(result.content.guideTemplates.all)
     templates.value = result.content.documentTemplates.all
+      .filter(t => !isSystemTemplate(t))
       .map(t => t.metadata)
       .filter((m): m is TemplateInfo => m != null)
       .filter(m => m.attributes?.['template.type.sub'] === undefined)
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .filter(m => !stepIds.has(m.id))
+      .sort(compareTemplatesByOrder)
   } catch (e) {
     console.error('Failed to load document templates', e)
+  } finally {
+    templatesLoading.value = false
   }
 })
 
-const menuItems = computed<OverflowMenuItem[]>(() =>
-  templates.value.map(t => ({
+const menuItems = computed<OverflowMenuItem[]>(() => {
+  if (templatesLoading.value) {
+    return [{ id: 'loading', label: 'Loading templates…', disabled: true }]
+  }
+  if (templates.value.length === 0) {
+    return [{ id: 'empty', label: 'No templates available', disabled: true }]
+  }
+  return templates.value.map(t => ({
     id: t.id,
     label: t.name,
     icon: 'file',
-  })),
-)
+  }))
+})
 
 async function onSelect(templateId: string) {
   const template = templates.value.find(t => t.id === templateId)
-  if (!template || !rootCollectionId.value) return
-  loading.value = true
+  if (!template || !rootCollectionId.value || creating.value) return
+  creating.value = true
   try {
     const result = await gqlMutation<{
       content: { metadata: { addDocument: { id: string } } }
@@ -99,18 +159,20 @@ async function onSelect(templateId: string) {
     })
     const newId = result?.content?.metadata?.addDocument?.id
     if (newId) {
-      await router.push(`/cms/editor/${newId}`)
+      await router.push(getEditorRoute(newId, 'bosca/v-document'))
     }
   } catch (e) {
     console.error('Failed to create document', e)
+    toast.error('Failed to create document')
   } finally {
-    loading.value = false
+    creating.value = false
   }
 }
 </script>
 
 <template>
   <OverflowMenu
+    v-model:open="open"
     :items="menuItems"
     @select="onSelect"
   >
@@ -120,7 +182,7 @@ async function onSelect(templateId: string) {
         icon="plus"
         size="sm"
         :accent="accent"
-        :disabled="loading || templates.length === 0"
+        :disabled="creating"
         @click="toggle">
         New Document
       </Button>

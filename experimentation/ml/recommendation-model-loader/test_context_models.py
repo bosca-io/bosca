@@ -73,7 +73,7 @@ def test_context_selection_prioritizes_rollback_then_pending_then_active(request
 
 
 @pytest.mark.parametrize("path", [
-    "helm/tf-serving/files/serve.sh", "web/services/tf-serving/serve.sh",
+    "web/services/tf-serving/serve.sh",
     "server/services/tf-serving/serve.sh", "infra/services/tf-serving/serve.sh",
 ])
 def test_serving_scripts_discover_only_selected_context_models(tmp_path, path):

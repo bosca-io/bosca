@@ -5,7 +5,7 @@
   </script>
   <island name="git-agent-deregister" :key="page.selected?.id.orEmpty()">
     <div class="agent-deregister" :data-next-href="model.nextHref">
-      <ui-confirm-dialog
+      <confirm-dialog
         title="Deregister CI agent"
         description="The agent's token will be revoked and it will no longer accept jobs."
         triggerLabel="Deregister"
@@ -14,14 +14,14 @@
       >
         <form class="modal-form" @submit="model.deregister(model.page.selected?.id.orEmpty(), true, ctx)">
           <if model.failed>
-            <div class="modal-fields"><ui-alert>{ model.message }</ui-alert></div>
+            <div class="modal-fields"><alert>{ model.message }</alert></div>
           </if>
           <footer class="modal-footer">
-            <ui-button ref="cancel">Cancel</ui-button>
-            <ui-button type="submit" class="danger">Deregister agent</ui-button>
+            <button ref="cancel">Cancel</button>
+            <button type="submit" class="danger">Deregister agent</button>
           </footer>
         </form>
-      </ui-confirm-dialog>
+      </confirm-dialog>
     </div>
   </island>
   <style scoped>

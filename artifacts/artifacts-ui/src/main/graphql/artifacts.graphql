@@ -1,0 +1,44 @@
+fragment ArtifactNamespaceFields on ArtifactNamespaceInfo { id name public created repositoryCount }
+fragment ArtifactRepositoryFields on ArtifactRepoInfo { id namespaceId name type created modified namespace { id name } versionCount tagCount }
+fragment ArtifactBlobFields on ArtifactVersionBlobInfo { digest role filename mediaType size }
+fragment ArtifactVersionFields on ArtifactVersionInfo { id repositoryId version metadata created completed finalized completedCommitSha blobs { ...ArtifactBlobFields } }
+fragment ArtifactTagFields on ArtifactTagInfo { id repositoryId name manifestDigest created modified }
+query ArtifactsAccess { security { principals { current { id groups { id name } } } } }
+query ArtifactsGroups($offset: Long!) { security { groups { all(limit: 100, offset: $offset) { id name description } } } }
+query ArtifactsNamespaces { artifactsAdmin { namespaces { ...ArtifactNamespaceFields dockerCount: repositoryCount(type: docker) helmCount: repositoryCount(type: helm) mavenCount: repositoryCount(type: maven) npmCount: repositoryCount(type: npm) rawCount: repositoryCount(type: raw) mlCount: repositoryCount(type: ml) } } }
+query ArtifactsNamespace($id: UUID!, $type: ArtifactRegistryType, $offset: Long!) { artifactsAdmin { namespace(id: $id) { ...ArtifactNamespaceFields filteredRepositoryCount: repositoryCount(type: $type) repositories(type: $type, limit: 15, offset: $offset) { ...ArtifactRepositoryFields } } } }
+query ArtifactsRepositories($type: ArtifactRegistryType, $offset: Long!) { artifactsAdmin { repositories(type: $type, limit: 16, offset: $offset) { ...ArtifactRepositoryFields } } }
+query ArtifactsRepository($id: UUID!, $offset: Long!, $tagOffset: Long!) { artifactsAdmin { repository(id: $id) { ...ArtifactRepositoryFields versions(limit: 15, offset: $offset) { ...ArtifactVersionFields } tags(limit: 15, offset: $tagOffset) { ...ArtifactTagFields } } } }
+query ArtifactsUploadRepository($id: UUID!) { artifactsAdmin { repository(id: $id) { id name type namespace { id name } } } }
+query ArtifactsPermissions($id: UUID!) { artifactsAdmin { namespace(id: $id) { permissions { groupId action group { name } } } } }
+mutation ArtifactsCreateNamespace($name: String!, $public: Boolean!) { artifactsAdmin { createNamespace(name: $name, public: $public) { id } } }
+mutation ArtifactsUpdateNamespace($id: UUID!, $public: Boolean!) { artifactsAdmin { updateNamespace(id: $id, public: $public) { id public } } }
+mutation ArtifactsDeleteNamespace($id: UUID!) { artifactsAdmin { deleteNamespace(id: $id) } }
+mutation ArtifactsCreateRepository($namespaceId: UUID!, $name: String!, $type: ArtifactRegistryType!) { artifactsAdmin { createRepository(namespaceId: $namespaceId, name: $name, type: $type) { id name type namespace { id name } } } }
+mutation ArtifactsDeleteRepository($id: UUID!) { artifactsAdmin { deleteRepository(id: $id) } }
+mutation ArtifactsDeleteVersion($id: UUID!) { artifactsAdmin { deleteVersion(id: $id) } }
+mutation ArtifactsDeleteTag($repositoryId: UUID!, $name: String!) { artifactsAdmin { deleteTag(repositoryId: $repositoryId, name: $name) } }
+mutation ArtifactsGrant($permission: PermissionInput!) { artifactsAdmin { addPermission(permission: $permission) } }
+mutation ArtifactsRevoke($permission: PermissionInput!) { artifactsAdmin { removePermission(permission: $permission) } }
+query ArtifactsSecrets { pipelines { secrets { name } } }
+mutation ArtifactsSetSecret($name: String!, $value: String!) { pipelines { setSecret(name: $name, value: $value) { name } } }
+fragment ArtifactSyncDestinationFields on ArtifactSyncDestination { id key remoteRepository username tokenSecretName enabled version }
+query ArtifactsSyncDestinations($id: UUID!) { artifactsAdmin { syncDestinations(repositoryId: $id) { ...ArtifactSyncDestinationFields } } }
+query ArtifactsSyncs($id: UUID!, $offset: Long!) { artifactsAdmin { syncs(repositoryId: $id, limit: 16, offset: $offset) { id destinationId tagName manifestDigest attempts synced error modified } } }
+mutation ArtifactsCreateSync($input: ArtifactSyncDestinationInput!) { artifactsAdmin { createSyncDestination(input: $input) { id } } }
+mutation ArtifactsUpdateSync($id: UUID!, $version: Long!, $enabled: Boolean!, $username: String!, $tokenSecretName: String!, $key: String!, $remoteRepository: String!) { artifactsAdmin { updateSyncDestination(id: $id, version: $version, enabled: $enabled, username: $username, tokenSecretName: $tokenSecretName, key: $key, remoteRepository: $remoteRepository) { id } } }
+mutation ArtifactsDeleteSync($id: UUID!, $version: Long!) { artifactsAdmin { deleteSyncDestination(id: $id, version: $version) } }
+mutation ArtifactsRetrySync($id: UUID!) { artifactsAdmin { retrySync(id: $id) { id } } }
+mutation ArtifactsPushImage($destinationId: UUID!, $tagName: String!) { artifactsAdmin { pushImage(destinationId: $destinationId, tagName: $tagName) } }
+fragment ArtifactPublicationDestinationFields on ArtifactPublicationDestination { id key owner githubRepository githubRepositoryId tagPrefix tokenSecretName enabled version }
+query ArtifactsPublicationDestinations($id: UUID!) { artifactsAdmin { publicationDestinations(repositoryId: $id) { ...ArtifactPublicationDestinationFields } } }
+query ArtifactsPublications($id: UUID!, $offset: Long!) { artifactsAdmin { publications(versionId: $id, limit: 16, offset: $offset) { id destinationId tagName commitSha attempts published verified verifiedAttempt error files { filename digest size mediaType } } } }
+mutation ArtifactsCreatePublication($input: ArtifactPublicationDestinationInput!) { artifactsAdmin { createPublicationDestination(input: $input) { id } } }
+mutation ArtifactsUpdatePublication($id: UUID!, $version: Long!, $enabled: Boolean!, $tokenSecretName: String!) { artifactsAdmin { updatePublicationDestination(id: $id, version: $version, enabled: $enabled, tokenSecretName: $tokenSecretName) { id } } }
+query ArtifactsVersion($id: UUID!) { artifactsAdmin { version(id: $id) { ...ArtifactVersionFields } } }
+mutation ArtifactsCompleteVersion($id: UUID!, $commitSha: String!, $blobs: [ArtifactVersionBlobInput!]!) { artifactsAdmin { completeVersion(versionId: $id, commitSha: $commitSha, expectedBlobs: $blobs) { id } } }
+mutation ArtifactsPublishRelease($destinationId: UUID!, $versionId: UUID!, $commitSha: String!) { artifactsAdmin { publishRelease(destinationId: $destinationId, versionId: $versionId, commitSha: $commitSha) } }
+
+query ArtifactsRun($id: UUID!) { pipelines { run(runId: $id) { id pipelineId status error createdAt modifiedAt nodes { nodeId status error } } } }
+mutation ArtifactsRestartRun($id: UUID!) { pipelines { restartRun(runId: $id) { id } } }
+mutation ArtifactsCancelRun($id: UUID!) { pipelines { cancelRun(runId: $id) } }

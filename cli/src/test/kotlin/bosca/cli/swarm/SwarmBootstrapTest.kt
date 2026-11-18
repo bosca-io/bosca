@@ -35,12 +35,14 @@ class SwarmBootstrapTest {
         workersInManagerCluster: Boolean = true,
         dataLabel: String = "true",
         mlLabel: String = "true",
+        applicationLabel: String = "true",
     ) = FakeNodes { target, script ->
         when {
             script.contains("{{.Swarm.LocalNodeState}} {{.Swarm.ControlAvailable}}") -> managerState
             script.contains("{{.Swarm.LocalNodeState}}") -> workerState(target)
             script.contains("node inspect") && script.contains("bosca_data") -> dataLabel
             script.contains("node inspect") && script.contains("bosca_ml") -> mlLabel
+            script.contains("node inspect") && script.contains("bosca_application") -> applicationLabel
             script == "sudo -n docker node ls -q" -> if (workersInManagerCluster) {
                 "node-manager\nnode-worker1\nnode-worker2"
             } else {
@@ -48,7 +50,7 @@ class SwarmBootstrapTest {
             }
             script.contains("join-token -q worker") -> "SWMTKN-1-token"
             script.contains("{{.Swarm.Error}}") -> "join timed out"
-            script.contains("{{.Swarm.NodeAddr}}") -> "10.0.0.11"
+            script.contains("{{.Swarm.NodeAddr}}") -> if (target == config.manager.ssh) config.manager.advertiseAddress else "10.0.0.11"
             script.contains("{{.Swarm.NodeID}}") -> "node-" + target.substringAfter('@')
             script == "uname -m" -> architecture(target)
             else -> null
@@ -58,6 +60,61 @@ class SwarmBootstrapTest {
     @AfterTest
     fun restoreShell() {
         remoteShell = SshRemoteShell
+    }
+
+    @Test
+    fun `manager can also be the only application worker`() {
+        val single = config.copy(workers = listOf(SwarmWorker(config.manager.ssh, config.manager.advertiseAddress)))
+        single.validate()
+        assertEquals(listOf(config.manager.ssh), single.sshTargets)
+        val fake = nodes(managerState = "active true", workerState = { "active" })
+        remoteShell = fake
+
+        bootstrapNodes(single)
+
+        assertEquals(listOf(config.manager.ssh), fake.calls.filter { it.script.contains("command -v docker") }.map { it.target })
+        assertFalse(fake.calls.any { it.script.contains("swarm join") })
+        assertTrue(fake.calls.any { it.script == applicationNodeLabelScript(listOf("node-manager")) })
+        assertEquals(modelNodeLabelScript("node-manager"), fake.calls.last().script)
+
+        verifyBootstrappedNodes(single)
+        verifyBootstrappedNodes(single.copy(workers = listOf(SwarmWorker(config.manager.ssh))))
+    }
+
+    @Test
+    fun `fresh manager worker initializes once without joining itself`() {
+        val single = config.copy(workers = listOf(SwarmWorker(config.manager.ssh)))
+        val fake = nodes()
+        remoteShell = fake
+        bootstrapNodes(single)
+        assertEquals(1, fake.calls.count { it.script.contains("swarm init") })
+        assertFalse(fake.calls.any { it.script.contains("swarm join") })
+        assertTrue(fake.calls.any { it.script == applicationNodeLabelScript(listOf("node-manager")) })
+    }
+
+    @Test
+    fun `manager and separate workers can share application work`() {
+        val mixed = config.copy(workers = listOf(SwarmWorker(config.manager.ssh)) + config.workers)
+        mixed.validate()
+        val fake = nodes(managerState = "active true", workerState = { "active" })
+        remoteShell = fake
+        bootstrapNodes(mixed)
+        assertEquals(3, fake.calls.count { it.script.contains("command -v docker") })
+        assertTrue(fake.calls.any {
+            it.script == applicationNodeLabelScript(listOf("node-manager", "node-worker1", "node-worker2"))
+        })
+        verifyBootstrappedNodes(mixed)
+    }
+
+    @Test
+    fun `worker targets stay unique and shared manager addresses must agree`() {
+        assertFailsWith<IllegalArgumentException> { config.copy(workers = config.workers + config.workers.first()).validate() }
+        assertFailsWith<IllegalArgumentException> {
+            config.copy(workers = listOf(SwarmWorker(config.manager.ssh, "10.0.0.99"))).validate()
+        }
+        remoteShell = nodes(managerState = "active true", workerState = { "active" }, applicationLabel = "")
+        assertTrue(assertFailsWith<IllegalArgumentException> { verifyBootstrappedNodes(config) }
+            .message.orEmpty().contains("bosca_application=true"))
     }
 
     @Test

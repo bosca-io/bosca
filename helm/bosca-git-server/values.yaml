@@ -38,10 +38,8 @@ gateway:
   gatewayNamespace: ""
   hostnames: []
 
-# The embedded BML listener shares the Git origin and is selected by HTTP path.
-ui:
-  port: 8093
-  authCookiePrefix: ""
+# Maximum heap as a percentage of the container memory limit.
+maxRAMPercentage: 75
 
 resources:
   requests:
@@ -66,15 +64,22 @@ appConfig:
   realm: ""
   databaseUrl: ""
   databaseMaxConnections: 20
+  natsEnabled: true
   natsHost: nats
-  # Distributed cache and lock backends: nats or redis.
+  jobQueueFactory: nats
+  pubsubType: nats
+  counterType: nats
+  # Empty follows pubsubType.
+  liveSessionsType: ""
+  # Distributed cache backend: nats or redis. Distributed locks use redis.
   cacheType: nats
-  distributedLockType: nats
+  distributedLockType: redis
   # Redis Service in the release namespace, used when either backend is redis.
   redisHost: redis
   redisPort: 6379
   meilisearchHost: meilisearch
   gitUrl: ""
+  uiUrl: ""
   autoVerify: false
   authCookiePrefixes: []
   googleEnabled: true

@@ -12,7 +12,7 @@ private val log = LoggerFactory.getLogger(UnsubscribeModel::class.java)
 /**
  * One-click unsubscribe — the `/unsubscribe` page's live-island model. [confirm] runs the
  * unsubscribe-all mutation server-side; the island re-renders into the done state, or an
- * inline retry notice when the write failed.
+ * retry toast when the write failed.
  */
 @Serializable
 class UnsubscribeModel(
@@ -20,6 +20,7 @@ class UnsubscribeModel(
     val invalid: Boolean = false,
     var done: Boolean = false,
     var failed: Boolean = false,
+    var messageId: Int = 0,
     /** Island re-renders only see the model, so the brand rides in it for the confirm copy. */
     val brand: String = brand(),
 ) {
@@ -34,5 +35,6 @@ class UnsubscribeModel(
             log.warn("Unsubscribe failed: {}", e.toString())
             failed = true
         }
+        messageId += 1
     }
 }

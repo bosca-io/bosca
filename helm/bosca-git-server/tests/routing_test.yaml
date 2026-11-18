@@ -1,4 +1,4 @@
-suite: Git API and BML UI path routing
+suite: Git backend and UI redirects
 templates:
   - templates/service.yaml
   - templates/httproute.yaml
@@ -8,7 +8,7 @@ set:
 release:
   name: test
 tests:
-  - it: serves API and UI on the existing Git hostname
+  - it: keeps Git API on the Git host and redirects UI to Atlas
     template: templates/httproute.yaml
     asserts:
       - equal:
@@ -18,11 +18,11 @@ tests:
           path: spec.rules[0].matches[0].path.type
           value: RegularExpression
       - equal:
-          path: spec.rules[0].backendRefs[0]
-          value: {name: test-bosca-git-server, port: 8093}
+          path: spec.rules[0].filters[0].requestRedirect
+          value: {scheme: https, hostname: atlas.example.com, statusCode: 302}
       - equal:
-          path: spec.rules[1].backendRefs[0]
-          value: {name: test-bosca-git-server, port: 8093}
+          path: spec.rules[1].filters[0].requestRedirect
+          value: {scheme: https, hostname: atlas.example.com, statusCode: 302}
       - lengthEqual:
           path: spec.rules[0].matches
           count: 8
@@ -36,32 +36,26 @@ tests:
           path: spec.rules[2].backendRefs[0]
           value: {name: test-bosca-git-server, port: 8091}
 
-  - it: exposes both internal service ports by listener name
+  - it: exposes one backend Service port
     template: templates/service.yaml
     asserts:
       - contains:
           path: spec.ports
           content: {name: http, port: 8091, targetPort: http, protocol: TCP}
-      - contains:
+      - lengthEqual:
           path: spec.ports
-          content: {name: ui, port: 8093, targetPort: ui, protocol: TCP}
+          count: 1
 
-  - it: customizes the internal UI port without changing the public hostname
+  - it: customizes the external UI origin without adding a listener
     template: templates/httproute.yaml
     set:
-      ui.port: 18093
+      appConfig.uiUrl: https://build.example.com
     asserts:
       - equal:
-          path: spec.rules[0].backendRefs[0].port
-          value: 18093
-      - equal:
-          path: spec.rules[1].backendRefs[0].port
-          value: 18093
-      - equal:
-          path: spec.hostnames
-          value: [git.example.com]
+          path: spec.rules[0].filters[0].requestRedirect.hostname
+          value: build.example.com
 
-  - it: uses the existing Gateway for both listeners
+  - it: uses the existing Gateway for backend traffic and UI redirects
     template: templates/httproute.yaml
     set:
       gateway.gatewayName: custom-gateway

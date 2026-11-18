@@ -1,0 +1,8 @@
+<page route="/calendars">
+  <catalog-document title="Calendars" description="Month, week and day views from Studio." current="/calendars">
+    <p class="page-intro">Add an event with New event, the plus button on a month day, or a time slot in week/day views. Enter a title and times to add it to this example. Browse the month grid or the week and day time grids. Applications supply occurrences, calendar colors and persistence. Editable events support dragging; time views include a resize handle. Focus an editable event and use Alt with Left/Right to move by day or Up/Down by 15 minutes. Add Shift to resize with Up/Down.</p>
+    <a class="catalog-link" href="/components/calendars">Calendar APIs and authoring</a>
+    <div class="catalog-palette-dark"><calendar-example id="dark" /></div>
+    <div class="catalog-palette-light"><calendar-example id="light" /></div>
+  </catalog-document>
+</page>

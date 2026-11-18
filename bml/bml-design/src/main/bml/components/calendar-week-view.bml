@@ -1,0 +1,9 @@
+<component tag="calendar-week-view">
+  <prop name="current" type="String" required />
+  <prop name="events" type="List<bosca.design.model.CalendarEvent>" default="emptyList()" />
+  <prop name="calendarColors" type="Map<String, String>" default="emptyMap()" />
+  <prop name="label" type="String" default="Calendar" />
+  <prop name="readOnly" type="Boolean" default="false" />
+  <prop name="preserveKey" type="String" default="" />
+  <calendar-view view="week" :current="current" :events="events" :calendarColors="calendarColors" :label="label" :readOnly="readOnly" :preserveKey="preserveKey" {...attrs} />
+</component>

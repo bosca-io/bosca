@@ -12,10 +12,10 @@ import org.slf4j.LoggerFactory
 private val log = LoggerFactory.getLogger(PreferencesModel::class.java)
 
 /**
- * The preference matrix — the `/preferences` page's live-island model. `@click` runs the
+ * The preference matrix — the `/preferences` page's live-island model. Declarative actions run the
  * per-channel toggles / [unsubscribeAll] server-side with the page's token and the island
- * re-renders the matrix with the new state. A failed write surfaces as an inline status
- * message; the matrix keeps its last-saved state.
+ * re-renders the matrix with the new state. Each outcome advances the toast sequence;
+ * failed writes keep the matrix's last-saved state.
  */
 @Serializable
 class PreferencesModel(
@@ -24,6 +24,7 @@ class PreferencesModel(
     val invalid: Boolean = false,
     var message: String? = null,
     var failed: Boolean = false,
+    var messageId: Int = 0,
 ) {
     /** The status line's CSS class — referenced from the page markup. */
     val statusClass: String get() = if (failed) "status error" else "status ok"
@@ -62,6 +63,7 @@ class PreferencesModel(
             message = "We couldn't save that change — please try again."
             failed = true
         }
+        messageId += 1
     }
 
     suspend fun unsubscribeAll() {
@@ -77,5 +79,6 @@ class PreferencesModel(
             message = "We couldn't unsubscribe you — please try again."
             failed = true
         }
+        messageId += 1
     }
 }

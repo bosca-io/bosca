@@ -1,6 +1,8 @@
 package bosca.git.ci.service
 
 import bosca.db.transaction
+import bosca.db.withConnectionManager
+import bosca.db.connectionOrNull
 import bosca.git.ci.parser.PipelineYamlParser
 import bosca.git.ci.repository.PipelineRepository
 import bosca.git.model.ArtifactDefinition
@@ -18,6 +20,7 @@ import bosca.serialization.OffsetDateTime
 import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
@@ -58,14 +61,56 @@ class PipelineServiceImpl(
         return errors
     }
 
-    override suspend fun syncPipelines(repositoryId: UUID, ref: String, commitSha: String): List<Pipeline> = transaction {
-        pipelineRepository.lockForSync(repositoryId)
-        val repository = repositoryService.findById(repositoryId)
-            ?: throw NoSuchElementException("Repository not found: $repositoryId")
-        val defaultBranchRef = "refs/heads/${repository.defaultBranch}"
-        // Resolve after acquiring the lock so a delayed worker always reconciles the current head.
-        val catalogSha = browseService.resolveRef(repositoryId, defaultBranchRef)
-        val catalogSnapshot = catalogSha?.let { parsePipelines(repositoryId, it) }.orEmpty()
+    override suspend fun syncPipelines(repositoryId: UUID, ref: String, commitSha: String): List<Pipeline> {
+        check(connectionOrNull()?.inTransaction != true) { "Pipeline synchronization must run outside a database transaction" }
+        var triggerSnapshot: List<Pair<Pipeline, PipelineDefinition>>? = null
+        while (true) {
+            val repository = repositoryService.findById(repositoryId)
+                ?: throw NoSuchElementException("Repository not found: $repositoryId")
+            val defaultBranchRef = "refs/heads/${repository.defaultBranch}"
+            val catalogSha = browseService.resolveRef(repositoryId, defaultBranchRef)
+            // Pack and blob reads use independent connections. Finish them before holding a
+            // catalog transaction or lock so its owner never needs another pooled connection.
+            val catalogSnapshot = catalogSha?.let { parsePipelines(repositoryId, it) }.orEmpty()
+            val triggered = if (catalogSha == commitSha) catalogSnapshot else {
+                triggerSnapshot ?: parsePipelines(repositoryId, commitSha).also { triggerSnapshot = it }
+            }
+            var snapshotChanged = false
+            var retryDelayMillis = 50L
+            do {
+                val synced = withConnectionManager {
+                    transaction {
+                        if (!pipelineRepository.tryLockForSync(repositoryId)) return@transaction null
+                        val current = repositoryService.findById(repositoryId)
+                            ?: throw NoSuchElementException("Repository not found: $repositoryId")
+                        // Ref reads borrow this transaction's connection. Recheck after locking
+                        // so a concurrent push or default-branch change cannot install an old catalog.
+                        if (current.defaultBranch != repository.defaultBranch ||
+                            browseService.resolveRef(repositoryId, defaultBranchRef) != catalogSha) {
+                            snapshotChanged = true
+                            return@transaction null
+                        }
+                        reconcileCatalog(repositoryId, ref, defaultBranchRef, catalogSnapshot, triggered, catalogSha == commitSha)
+                    }
+                }
+                if (synced != null) return synced
+                // An unsuccessful attempt has committed and released its connection before waiting.
+                if (!snapshotChanged) {
+                    delay(retryDelayMillis)
+                    retryDelayMillis = (retryDelayMillis * 2).coerceAtMost(1_000L)
+                }
+            } while (!snapshotChanged)
+        }
+    }
+
+    private suspend fun reconcileCatalog(
+        repositoryId: UUID,
+        ref: String,
+        defaultBranchRef: String,
+        catalogSnapshot: List<Pair<Pipeline, PipelineDefinition>>,
+        triggerSnapshot: List<Pair<Pipeline, PipelineDefinition>>,
+        triggerIsCatalog: Boolean,
+    ): List<Pipeline> {
         val catalog = mutableMapOf<String, Pipeline>()
 
         for ((snapshot, definition) in catalogSnapshot) {
@@ -93,8 +138,8 @@ class PipelineServiceImpl(
             }
         }
 
-        if (catalogSha == commitSha) return@transaction catalog.values.toList()
-        parsePipelines(repositoryId, commitSha).map { (snapshot, _) ->
+        if (triggerIsCatalog) return catalog.values.toList()
+        return triggerSnapshot.map { (snapshot, _) ->
             val identity = catalog[snapshot.filePath]
                 ?: pipelineRepository.findByRepositoryAndFilePath(repositoryId, snapshot.filePath)
                 ?: pipelineRepository.create(snapshot.copy(deletedAt = OffsetDateTime.now()))

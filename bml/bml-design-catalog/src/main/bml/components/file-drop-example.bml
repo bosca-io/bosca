@@ -1,0 +1,18 @@
+<component tag="file-drop-example">
+  <prop name="id" type="String" required />
+  <card title="Local file selection" :data-file-example="id">
+    <div class="catalog-stack">
+      <file-drop label="Choose files or drop them here" description="The application receives the selected files." multiple data-example-drop="multiple" />
+      <file-drop label="Choose an archive" description="One file at a time" accept=".zip" data-example-drop="single" />
+      <file-drop label="File selection unavailable" disabled data-example-drop="disabled" />
+      <p ref="selection" role="status">No files selected.</p>
+      <p class="example-note">These examples show filenames locally. Your application owns validation and uploading.</p>
+    </div>
+  </card>
+  <script client scoped>
+    const selection = ctx.ref<HTMLElement>("selection");
+    ctx.on<CustomEvent<File[]>>(ctx.root, "filesselected", event => {
+      if (selection) selection.textContent = event.detail.map(file => file.name).join(", ");
+    });
+  </script>
+</component>

@@ -1,0 +1,8 @@
+{
+  "reflection": [
+    {
+      "type": "com.dashjoin.jsonata.Functions",
+      "allDeclaredMethods": true
+    }
+  ]
+}

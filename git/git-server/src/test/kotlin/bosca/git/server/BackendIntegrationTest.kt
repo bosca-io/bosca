@@ -17,7 +17,6 @@ import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provideProvider
 import bosca.lock.DistributedLockFactory
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.nats.NatsConnectionPool
 import bosca.pubsub.NatsPubSubServiceImpl
@@ -61,7 +60,7 @@ class BackendIntegrationTest {
                 mapOf("CACHE_TYPE" to "redis", "PUBSUB_TYPE" to "nats", "JOB_QUEUE_FACTORY" to "nats",
                     "DISTRIBUTED_LOCK_TYPE" to "redis", "COUNTER_TYPE" to "redis"),
                 mapOf("CACHE_TYPE" to "nats", "PUBSUB_TYPE" to "redis", "JOB_QUEUE_FACTORY" to "redis",
-                    "DISTRIBUTED_LOCK_TYPE" to "nats", "COUNTER_TYPE" to "nats"),
+                    "DISTRIBUTED_LOCK_TYPE" to "redis", "COUNTER_TYPE" to "nats"),
             )
             selections.forEachIndexed { index, backends ->
                 val id = "mixed-$index"
@@ -75,7 +74,7 @@ class BackendIntegrationTest {
                     .replace("\$NATS_HOST:localhost:4222", nats.url)
                     .replace("\$NATS_USERNAME:", nats.username)
                     .replace("\$NATS_PASSWORD:", nats.password)
-                backends.forEach { (setting, backend) -> yaml = yaml.replace("\$$setting:nats", backend) }
+                backends.forEach { (setting, backend) -> yaml = yaml.replace("\$$setting:nats", backend).replace("\$$setting:redis", backend) }
                 val application = BoscaApplication(ApplicationConfig.load(yaml.byteInputStream()))
                 try {
                     CoreProviderRegistrar().register()
@@ -88,9 +87,7 @@ class BackendIntegrationTest {
                         val natsProvider = provideProvider<NatsConnectionPool>()
                         val redisProvider = provideProvider<RedisConnectionPool>()
                         val locks = provide<DistributedLockFactory>()
-                        if (backends.getValue("DISTRIBUTED_LOCK_TYPE") == "redis") {
-                            assertIs<RedisDistributedLockFactory>(locks)
-                        } else assertIs<NatsDistributedLockFactory>(locks)
+                        assertIs<RedisDistributedLockFactory>(locks)
                         val factory = configuration.jobQueueFactory(application, natsProvider, redisProvider, application.json, locks)
                         if (backends.getValue("JOB_QUEUE_FACTORY") == "redis") {
                             assertIs<RedisJobQueueFactory>(factory)

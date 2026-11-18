@@ -13,6 +13,8 @@ plugins {
     alias(libs.plugins.kover)
 }
 
+val iosEnabled = gradle.extra["iosEnabled"] as Boolean
+
 kotlin {
     jvm()
 
@@ -30,8 +32,10 @@ kotlin {
         }
     }
 
-    iosArm64()
-    iosSimulatorArm64()
+    if (iosEnabled) {
+        iosArm64()
+        iosSimulatorArm64()
+    }
 
     sourceSets {
         commonTest.dependencies {

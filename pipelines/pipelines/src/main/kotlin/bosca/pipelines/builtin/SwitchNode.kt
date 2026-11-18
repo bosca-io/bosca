@@ -13,6 +13,7 @@ import bosca.pipelines.node.PipelineValue
 import bosca.pipelines.node.TransformNode
 import com.dashjoin.jsonata.Jsonata
 import com.dashjoin.jsonata.json.Json as JsonataJson
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
@@ -93,8 +94,10 @@ class SwitchNode(
                 val frame = jsonata.createFrame()
                 frame.bind("eventCreated", context.inputCreated.toString())
                 jsonata.evaluate(javaInput, frame)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                error("Switch node '${name.ifBlank { id }}' case '${case.label}' has an invalid expression (${case.expression}): ${e.message}")
+                throw IllegalStateException("Switch node '${name.ifBlank { id }}' case '${case.label}' has an invalid expression (${case.expression}): ${e.message}", e)
             }
             Jsonata.boolize(result)
         }

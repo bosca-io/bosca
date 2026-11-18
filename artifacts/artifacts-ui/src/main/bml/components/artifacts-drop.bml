@@ -1,0 +1,31 @@
+<component tag="artifacts-drop">
+  <prop name="href" type="String" default="/artifacts/repositories/upload" />
+  <div class="artifact-stack" :data-upload-href="href">
+    <file-drop ref="dropZone" label="Drop files to upload" description="Choose their version and artifact filenames" multiple />
+    <alert ref="message" compact hidden />
+    <a class="sr-only" :href="href">Upload files</a>
+  </div>
+  <script client scoped>
+    import { stageArtifactFiles } from "@client/staging";
+    const drop = ctx.ref<HTMLElement>("dropZone");
+    const message = ctx.ref<HTMLElement>("message");
+    let staging = false;
+    const stage = async (files: File[]) => {
+      if (!files.length || staging) return;
+      staging = true;
+      drop?.setAttribute("data-disabled", "");
+      if (message) message.hidden = true;
+      try {
+        await stageArtifactFiles(files, ctx.root.dataset.uploadHref ?? "/artifacts/repositories/upload");
+      } catch (error) {
+        if (message) {
+          message.textContent = error instanceof Error ? error.message : "Open Upload files and choose the files again.";
+          message.hidden = false;
+        }
+        staging = false;
+        drop?.removeAttribute("data-disabled");
+      }
+    };
+    if (drop) ctx.on<CustomEvent<File[]>>(drop, "filesselected", event => { void stage(event.detail); });
+  </script>
+</component>

@@ -2,7 +2,7 @@ package bosca.git.ui
 
 import bosca.bml.graphql.execute
 import bosca.bml.render.RenderContext
-import bosca.git.ui.components.NavigationItem
+import bosca.design.model.NavigationItem
 import bosca.git.ui.graphql.*
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.Serializable

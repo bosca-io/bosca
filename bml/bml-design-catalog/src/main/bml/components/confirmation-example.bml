@@ -1,0 +1,16 @@
+<component tag="confirmation-example">
+  <prop name="id" type="String" required />
+  <script server provides="confirmation" scope="server-session">bosca.design.catalog.CatalogConfirmation(id)</script>
+  <island name="confirmation" :key="id">
+    <confirm-dialog title="Remove the sample?" description="This local example rejects the request and retains your reason."
+                    triggerLabel="Remove sample" :triggerIconOnly="false" :forceOpen="confirmation.error.isNotBlank()"
+                    :data-catalog-confirm="confirmation.id">
+      <form @submit="confirmation.remove(form.reason)" class="catalog-modal-form">
+        <field label="Reason"><input name="reason" :value="confirmation.reason" required /></field>
+        <div class="example-actions"><button ref="cancel">Keep sample</button><button type="submit" class="danger">Remove sample</button></div>
+      </form>
+      <toast :id='"removal-rejected-" + confirmation.id' :message="confirmation.error" :sequence="confirmation.attempts"
+             tone="error" :data-catalog-confirm-toast="confirmation.id" />
+    </confirm-dialog>
+  </island>
+</component>

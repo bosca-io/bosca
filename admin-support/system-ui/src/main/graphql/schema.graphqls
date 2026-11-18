@@ -1,0 +1,2712 @@
+scalar UUID
+scalar Long
+scalar DateTime
+scalar JSON
+type Query { ai: Ai! configurations: Configurations! postgresAdmin: PostgresAdmin! natsAdmin: NatsAdmin! meilisearchAdmin: MeilisearchAdmin! storageSystems: StorageSystems!  profiles: Profiles! search: Search! security: Security! scheduler: Scheduler! packages: Packages! }
+type Mutation { storageSystems: StorageSystemsMutation! configurations: ConfigurationsMutation! clearCache: Boolean! clearCdnCache: Boolean! expireAllJobs: Boolean! clearJobLocks: Boolean! postgresAdmin: PostgresAdminMutation! natsAdmin: NatsAdminMutation! meilisearchAdmin: MeilisearchAdminMutation!  profiles: ProfilesMutation! security: SecurityMutation! scheduler: SchedulerMutation! packages: PackagesMutation! }
+type Security { principals: Principals! groups: Groups! apiTokens: ApiTokens! passkeys: Passkeys! }
+type Principals { current: Principal! all(limit: Int!, offset: Long!, includeDeleted: Boolean! = false): [Principal!]! principal(id: UUID!): Principal }
+type Principal { id: UUID! groups: [Group!]! verified: Boolean! anonymous: Boolean! primaryProfileId: UUID deletedAt: DateTime created: DateTime! modified: DateTime! lastLogin: DateTime credentials: [PrincipalCredential!]! profiles: [Profile!]! }
+type PrincipalCredential { type: CredentialType! identifier: String! originator: String lastOriginator: String }
+enum CredentialType { API_TOKEN OAUTH2 PASSKEY PASSWORD PASSWORD_SCRYPT }
+type Profile { id: UUID! name: String! type: ProfileType! deletedAt: DateTime principal: Principal thirdparty: ThirdPartyExtension }
+enum ProfileType { GENERIC ORGANIZATION CHILD }
+type ProfileMutation { thirdparty: ThirdPartyExtensionMutation }
+type ThirdPartyExtension { context: JSON }
+type ThirdPartyExtensionMutation { sync(profileId: UUID!): Boolean! syncAll: Boolean! }
+type Profiles { studioPersonas: StudioPersonas! profile(id: UUID!): Profile }
+type ProfilesMutation { studioPersonas: StudioPersonasMutation! profile: ProfileMutation! }
+type Search { search(query: SearchQuery): SearchResult }
+input SearchQuery { query: String! filter: [String!] storageSystemName: String limit: Int offset: Int }
+type SearchResult { documents: [SearchDocument!]! }
+type SearchDocument { profile: Profile }
+
+type Group { id: UUID! name: String! description: String! type: GroupType! }
+enum GroupType { PRINCIPAL SYSTEM }
+type Groups { find(nameOrDescription: String!, type: GroupType, limit: Int!, offset: Long!): [Group!]! }
+type SecurityMutation { groups: GroupsMutation! admin: AdminMutation! apiTokens: ApiTokensMutation! passkeys: PasskeysMutation! }
+type AdminMutation { markPrincipalDeleted(id: UUID!): Principal! restorePrincipal(id: UUID!): Principal! deletePrincipal(id: UUID!): Boolean! }
+type GroupsMutation { addGroup(name: String!, description: String!, groupType: GroupType!): Group! deleteGroup(id: UUID!): Boolean! }
+"The current execution status of a scheduled job run."
+enum ExecutionStatus {
+    "The job is queued and waiting to be executed."
+    PENDING
+    "The job is currently being executed."
+    RUNNING
+    "The job has finished executing successfully."
+    COMPLETED
+    "The job execution failed due to an error."
+    FAILED
+    "The job execution was skipped (e.g. because a concurrent run was already in progress and concurrent execution is disabled)."
+    SKIPPED
+    "The job execution was cancelled by an administrator before it completed."
+    CANCELLED
+    "The job became stale — no status update was received within the expected execution window."
+    STALE
+}
+
+"The source that triggered a job execution."
+enum JobHistorySource {
+    "The job was triggered by the cron-based scheduler at its scheduled time."
+    SCHEDULER
+    "The job was triggered by an external event or manual invocation."
+    EVENT
+}
+
+"Whether and how a scheduled job's execution principal has been assigned."
+enum ScheduledJobPrincipalState {
+    NOT_REQUIRED
+    NEEDS_PRINCIPAL
+    PENDING_CONFIRMATION
+    ACTIVE
+}
+
+"A scheduled job definition that runs a background task on a cron schedule. Jobs reference a job definition by name and pass parameters to it, and can also be triggered immediately."
+type ScheduledJob {
+    "The unique identifier of this scheduled job."
+    id: UUID!
+    "A human-readable name for this scheduled job."
+    name: String!
+    "An optional description of what this scheduled job does."
+    description: String
+    "The name of the job definition to execute. Must match a registered JobDefinition name in the system."
+    jobName: String!
+    "The parameters passed to the job definition on each execution, stored as JSON."
+    jobParameters: JSON!
+    "The required cron expression defining the schedule (e.g. '0 0 * * *' for daily at midnight)."
+    cronExpression: String!
+    "Whether this scheduled job is enabled and will be executed on its schedule."
+    enabled: Boolean!
+    "Whether multiple instances of this job are allowed to run concurrently. If false, overlapping runs are skipped."
+    allowConcurrent: Boolean!
+    "Whether the scheduler should execute missed runs that occurred while the scheduler was down (catch-up execution)."
+    catchUp: Boolean!
+    "The maximum number of missed runs to catch up on when the scheduler restarts. Prevents excessive catch-up execution."
+    maxCatchUp: Int!
+    "The timestamp when this scheduled job was created."
+    createdAt: DateTime!
+    "The timestamp when this scheduled job was last updated."
+    updatedAt: DateTime!
+    "The UUID of the principal who created this scheduled job."
+    createdBy: UUID!
+    "The principal whose permissions this job executes with; distinct from createdBy."
+    executionPrincipalId: UUID
+    "The durable assignment/consent state for the execution principal."
+    principalState: ScheduledJobPrincipalState!
+    "The principal who assigned the execution identity."
+    principalAssignedBy: UUID
+    "The assigned principal or administrator who confirmed the identity."
+    principalConfirmedBy: UUID
+    "The timestamp of the last execution of this scheduled job. Null if the job has never been executed."
+    lastRunAt: DateTime
+    "The timestamp of the next planned execution based on the cron expression, when available."
+    nextRunAt: DateTime
+    "Retrieve a paginated and filtered list of execution history entries for this scheduled job."
+    history(
+        "The maximum number of history entries to return."
+        limit: Int
+        "The zero-based offset for pagination."
+        offset: Long
+        "Filter history entries by execution status."
+        status: ExecutionStatus
+        "Filter history entries by trigger source (SCHEDULER or EVENT)."
+        source: JobHistorySource
+    ): [JobHistory!]!
+    "Count the execution history entries for this scheduled job, optionally filtered by status and source."
+    historyCount(
+        "Filter the count by execution status."
+        status: ExecutionStatus
+        "Filter the count by trigger source."
+        source: JobHistorySource
+    ): Long!
+}
+
+"A record of a single job execution, including timing, status, and error details. Tracks both scheduled and event-triggered runs."
+type JobHistory {
+    "The unique identifier of this history entry."
+    id: UUID!
+    "The UUID of the scheduled job that produced this execution. Null if the job was triggered outside of a scheduled job context."
+    scheduledJobId: UUID
+    "The UUID of the underlying job execution in the job queue system."
+    jobId: UUID!
+    "The name of the job that was executed."
+    name: String
+    "The timestamp when this execution was originally scheduled to run."
+    scheduledFor: DateTime!
+    "The timestamp when this execution was actually triggered."
+    triggeredAt: DateTime!
+    "The source that triggered this execution (SCHEDULER for cron-based, EVENT for manual or event-triggered)."
+    source: JobHistorySource!
+    "The current execution status of this run."
+    status: ExecutionStatus!
+    "The timestamp when this execution completed. Null if the job is still running or pending."
+    completedAt: DateTime
+    "The error message if the execution failed. Null if the execution succeeded or is still in progress."
+    errorMessage: String
+    "Whether this execution was a catch-up run for a missed scheduled execution."
+    wasCatchUp: Boolean!
+    "The timestamp until which this execution was delayed before being allowed to run. Null if the job was not delayed."
+    delayedUntil: DateTime
+    "The job ID of the enclosing parent execution, if this row represents a child fanned out from a multi-job or other composite executor. Null for top-level jobs."
+    parentJobId: UUID
+    "The job definition snapshot at the time of execution, stored as JSON."
+    definition: JSON
+    "Additional context information about this execution, stored as JSON."
+    context: JSON
+}
+
+"Input for creating or updating a scheduled job definition."
+input ScheduledJobInput {
+    "A human-readable name for this scheduled job."
+    name: String!
+    "An optional description of what this scheduled job does."
+    description: String
+    "The name of the job definition to execute. Must match a registered JobDefinition name in the system."
+    jobName: String!
+    "The parameters to pass to the job definition on each execution, stored as JSON."
+    jobParameters: JSON!
+    "The required cron expression defining the schedule (e.g. '0 0 * * *' for daily at midnight)."
+    cronExpression: String!
+    "Whether this scheduled job should be enabled upon creation. Defaults to false if not specified."
+    enabled: Boolean
+    "Whether multiple instances of this job are allowed to run concurrently. Defaults to false if not specified."
+    allowConcurrent: Boolean
+    "Whether the scheduler should catch up on missed runs. Defaults to false if not specified."
+    catchUp: Boolean
+    "The maximum number of missed runs to catch up on. Defaults to a system-defined limit if not specified."
+    maxCatchUp: Int
+    "Whether the job must have a confirmed execution principal before it can be enabled."
+    requiresPrincipal: Boolean
+}
+
+"Metadata about a registered job definition that can be referenced by scheduled jobs. Provides the schema for job parameters."
+type JobDefinitionInfo {
+    "The unique string identifier of this job definition."
+    id: String!
+    "The human-readable name of this job definition."
+    name: String!
+    "A human-friendly label for admin UIs. Falls back to name when blank."
+    displayName: String!
+    "The name of the queue this job definition executes on."
+    queueName: String!
+    "A JSON Schema describing the expected parameters for this job definition. Null if the job accepts no parameters or has no defined schema."
+    parameterSchema: JSON
+}
+
+"The result of validating a cron expression, including whether it is valid and a preview of upcoming execution times."
+type CronValidationResult {
+    "Whether the cron expression is syntactically valid."
+    valid: Boolean!
+    "A description of the validation error, if the expression is invalid. Null if the expression is valid."
+    error: String
+    "A preview list of the next upcoming execution timestamps based on the cron expression. Empty if the expression is invalid."
+    nextRuns: [DateTime!]!
+}
+
+"Query operations for the job scheduler, including listing scheduled jobs, viewing execution history, and discovering available job definitions."
+type Scheduler {
+    "Retrieve a paginated list of scheduled jobs, optionally filtered by enabled status."
+    jobs(
+        "Filter jobs by enabled status. If null, returns both enabled and disabled jobs."
+        enabled: Boolean
+        "The maximum number of jobs to return."
+        limit: Int
+        "The zero-based offset for pagination."
+        offset: Long
+    ): [ScheduledJob!]!
+    "Retrieve a single scheduled job by its unique identifier. Returns null if the job does not exist."
+    job(
+        "The UUID of the scheduled job to retrieve."
+        id: UUID!
+    ): ScheduledJob
+    "Retrieve a paginated list of execution history entries across all scheduled jobs, optionally filtered by status and source."
+    history(
+        "The maximum number of history entries to return."
+        limit: Int
+        "The zero-based offset for pagination."
+        offset: Long
+        "Filter history entries by execution status."
+        status: ExecutionStatus
+        "Filter history entries by trigger source."
+        source: JobHistorySource
+    ): [JobHistory!]!
+    "Count the total execution history entries across all scheduled jobs, optionally filtered by status and source."
+    historyCount(
+        "Filter the count by execution status."
+        status: ExecutionStatus
+        "Filter the count by trigger source."
+        source: JobHistorySource
+    ): Long!
+    "Retrieve all registered job definitions that can be used when creating scheduled jobs."
+    availableJobDefinitions: [JobDefinitionInfo!]!
+    "Validate a cron expression and preview upcoming execution times."
+    validateCronExpression(
+        "The cron expression to validate (e.g. '0 0 * * *', '*/5 * * * *')."
+        expression: String!
+    ): CronValidationResult!
+}
+
+"Mutation operations for managing scheduled jobs, including CRUD operations and manual triggering."
+type SchedulerMutation {
+    "Create a new scheduled job with the specified configuration."
+    create(
+        "The scheduled job configuration to create."
+        input: ScheduledJobInput!
+    ): ScheduledJob!
+    "Update an existing scheduled job's configuration."
+    edit(
+        "The UUID of the scheduled job to update."
+        id: UUID!
+        "The updated scheduled job configuration."
+        input: ScheduledJobInput!
+    ): ScheduledJob!
+    "Delete a scheduled job by its unique identifier. Returns true if the deletion was successful."
+    delete(
+        "The UUID of the scheduled job to delete."
+        id: UUID!
+    ): Boolean!
+    "Enable a previously disabled scheduled job, allowing it to execute on its defined schedule."
+    enable(
+        "The UUID of the scheduled job to enable."
+        id: UUID!
+    ): ScheduledJob!
+    "Disable a scheduled job, preventing it from executing on its defined schedule. The job can still be triggered manually."
+    disable(
+        "The UUID of the scheduled job to disable."
+        id: UUID!
+    ): ScheduledJob!
+    "Administrator assignment of an execution principal; activates immediately with the admin as confirmer."
+    assignExecutionPrincipal(id: UUID!, principalId: UUID!): ScheduledJob!
+    "Confirms a pending assignment. The assigned principal or an administrator may confirm."
+    confirmExecutionPrincipal(id: UUID!): ScheduledJob!
+    "Clears and parks a principal-required job. Requires administrator access."
+    clearExecutionPrincipal(id: UUID!): ScheduledJob!
+    "Manually trigger an immediate execution of a scheduled job, regardless of its cron schedule or enabled status."
+    trigger(
+        "The UUID of the scheduled job to trigger."
+        id: UUID!
+    ): JobHistory!
+    "Cancel a pending or running job execution. Marks the execution as cancelled and records the cancellation time."
+    cancel(
+        "The UUID of the job history entry to cancel."
+        id: UUID!
+    ): JobHistory!
+}
+
+"A package available for installation, containing versioned installers for setting up default content, models, and configurations"
+type PackageInstallation {
+    "Unique key identifying this package (e.g. 'com.bosca.default')"
+    key: String!
+    "Human-readable name of the package"
+    name: String!
+    "Available versions of this package"
+    versions: [PackageInstallationVersion!]!
+}
+
+"A specific version of a package, listing its installers and which ones have already been installed"
+type PackageInstallationVersion {
+    "Semantic version string (e.g. '1.0.0')"
+    version: String!
+    "All installers available in this version"
+    installers: [InstalledPackage!]!
+    "Installers from this version that have already been run"
+    installed: [InstalledPackage!]!
+}
+
+"An individual installer within a package version"
+type InstalledPackage {
+    "Version of the installer"
+    version: String!
+    "Name of the installer (e.g. 'default-models', 'default-prompts')"
+    name: String!
+}
+
+"Record of a past package installation event"
+type PackageInstallationHistory {
+    "Unique ID of this installation record"
+    id: UUID!
+    "Package key that was installed"
+    key: String!
+    "Version that was installed"
+    version: String!
+    "Timestamp when the installation occurred"
+    created: DateTime!
+}
+
+"Query operations for browsing and inspecting available packages"
+type Packages {
+    "List all available packages with their versions and installation status"
+    all: [PackageInstallation!]!
+    "History of all package installations"
+    history: [PackageInstallationHistory!]!
+}
+
+"Mutation operations for installing packages and their individual installers"
+type PackagesMutation {
+    "Install all installers for a specific package version"
+    install(key: String!, version: String!): Boolean!
+    "Install a single named installer from a package version"
+    installInstaller(key: String!, version: String!, installerName: String!, installerVersion: String!): Boolean!
+}
+
+
+
+
+
+
+"Overall database statistics from pg_stat_database for the connected database."
+type PgDatabaseStats {
+    "The name of the database."
+    databaseName: String!
+    "Number of backends currently connected to this database."
+    numBackends: Int!
+    "Number of transactions committed in this database."
+    xactCommit: Long!
+    "Number of transactions rolled back in this database."
+    xactRollback: Long!
+    "Number of disk blocks read in this database."
+    blksRead: Long!
+    "Number of times disk blocks were found in the buffer cache."
+    blksHit: Long!
+    "Number of rows returned by queries in this database."
+    tupReturned: Long!
+    "Number of rows fetched by queries in this database."
+    tupFetched: Long!
+    "Number of rows inserted by queries in this database."
+    tupInserted: Long!
+    "Number of rows updated by queries in this database."
+    tupUpdated: Long!
+    "Number of rows deleted by queries in this database."
+    tupDeleted: Long!
+    "Number of queries canceled due to conflicts in this database."
+    conflicts: Long!
+    "Number of temporary files created by queries in this database."
+    tempFiles: Long!
+    "Total amount of data written to temporary files in bytes."
+    tempBytes: Long!
+    "Number of deadlocks detected in this database."
+    deadlocks: Long!
+    "Buffer cache hit ratio as a percentage (0-100)."
+    cacheHitRatio: Float!
+    "Total size of the database in bytes."
+    databaseSize: Long!
+    "Time at which database statistics were last reset."
+    statsReset: String
+}
+
+"A currently running query from pg_stat_activity."
+type PgActiveQuery {
+    "The process ID of the backend."
+    pid: Int!
+    "The name of the database this backend is connected to."
+    databaseName: String
+    "The name of the user logged into this backend."
+    userName: String
+    "The application name connected to this backend."
+    applicationName: String
+    "The IP address of the client connected to this backend."
+    clientAddr: String
+    "The current state of the backend (active, idle, idle in transaction, etc.)."
+    state: String
+    "The text of the currently or most recently executing query."
+    query: String
+    "Time when the currently active query was started."
+    queryStart: String
+    "Time when the current state was entered."
+    stateChange: String
+    "Time when the current transaction was started."
+    xactStart: String
+    "Duration in seconds that the current query has been running."
+    queryDurationSeconds: Float
+    "Whether this backend is currently waiting on a lock."
+    waitEventType: String
+    "The specific wait event the backend is waiting for."
+    waitEvent: String
+    "Time when the server process was started."
+    backendStart: String
+    "The type of backend (client backend, autovacuum worker, etc.)."
+    backendType: String
+}
+
+"A slow query captured from pg_stat_statements (requires pg_stat_statements extension)."
+type PgSlowQuery {
+    "The query text with parameters replaced by placeholders."
+    query: String!
+    "Total number of times this query has been executed."
+    calls: Long!
+    "Total time spent executing this query in milliseconds."
+    totalTimeMs: Float!
+    "Mean execution time per call in milliseconds."
+    meanTimeMs: Float!
+    "Minimum execution time in milliseconds."
+    minTimeMs: Float!
+    "Maximum execution time in milliseconds."
+    maxTimeMs: Float!
+    "Standard deviation of execution time in milliseconds."
+    stddevTimeMs: Float!
+    "Total number of rows retrieved or affected by this query."
+    rows: Long!
+    "Number of shared buffer cache hits by this query."
+    sharedBlksHit: Long!
+    "Number of shared buffer cache reads by this query."
+    sharedBlksRead: Long!
+    "Cache hit ratio for this query as a percentage (0-100)."
+    hitRatio: Float!
+}
+
+"Table-level statistics from pg_stat_user_tables."
+type PgTableStats {
+    "The schema containing this table."
+    schemaName: String!
+    "The name of the table."
+    tableName: String!
+    "Number of sequential scans initiated on this table."
+    seqScan: Long!
+    "Number of live rows fetched by sequential scans."
+    seqTupRead: Long!
+    "Number of index scans initiated on this table."
+    idxScan: Long!
+    "Number of live rows fetched by index scans."
+    idxTupFetch: Long!
+    "Number of rows inserted."
+    nTupIns: Long!
+    "Number of rows updated (includes HOT updates)."
+    nTupUpd: Long!
+    "Number of rows deleted."
+    nTupDel: Long!
+    "Number of rows HOT updated (no separate index entry needed)."
+    nTupHotUpd: Long!
+    "Estimated number of live rows."
+    nLiveTup: Long!
+    "Estimated number of dead rows."
+    nDeadTup: Long!
+    "Last time this table was manually vacuumed."
+    lastVacuum: String
+    "Last time this table was vacuumed by autovacuum."
+    lastAutovacuum: String
+    "Last time this table was manually analyzed."
+    lastAnalyze: String
+    "Last time this table was analyzed by autovacuum."
+    lastAutoanalyze: String
+    "Number of times this table has been manually vacuumed."
+    vacuumCount: Long!
+    "Number of times this table has been vacuumed by autovacuum."
+    autovacuumCount: Long!
+    "Number of times this table has been manually analyzed."
+    analyzeCount: Long!
+    "Number of times this table has been analyzed by autovacuum."
+    autoanalyzeCount: Long!
+    "Total size of the table including indexes and TOAST in bytes."
+    totalSize: Long!
+    "Size of the table data alone in bytes."
+    tableSize: Long!
+    "Size of indexes on this table in bytes."
+    indexSize: Long!
+    "Ratio of dead tuples to live tuples as a percentage."
+    bloatRatio: Float!
+}
+
+"Index-level statistics from pg_stat_user_indexes."
+type PgIndexStats {
+    "The schema containing the index."
+    schemaName: String!
+    "The name of the table this index belongs to."
+    tableName: String!
+    "The name of the index."
+    indexName: String!
+    "Number of index scans initiated on this index."
+    idxScan: Long!
+    "Number of index entries returned by scans on this index."
+    idxTupRead: Long!
+    "Number of live table rows fetched by simple index scans using this index."
+    idxTupFetch: Long!
+    "Size of the index in bytes."
+    indexSize: Long!
+    "The index definition (CREATE INDEX statement)."
+    indexDef: String
+}
+
+"A candidate table or index that may benefit from an index, based on sequential scan analysis."
+type PgIndexSuggestion {
+    "The schema containing the table."
+    schemaName: String!
+    "The table that may benefit from an index."
+    tableName: String!
+    "Number of sequential scans on this table."
+    seqScan: Long!
+    "Number of rows read via sequential scans."
+    seqTupRead: Long!
+    "Number of index scans on this table."
+    idxScan: Long!
+    "Total size of the table in bytes."
+    tableSize: Long!
+    "A human-readable description of why an index may help."
+    reason: String!
+}
+
+"Lock information from pg_locks joined with pg_stat_activity."
+type PgLockInfo {
+    "The process ID holding or waiting for the lock."
+    pid: Int!
+    "The type of lockable object (relation, transactionid, tuple, etc.)."
+    lockType: String!
+    "The name of the database in which the locked object exists."
+    databaseName: String
+    "The name of the locked relation, if applicable."
+    relationName: String
+    "The lock mode held or desired (AccessShareLock, RowExclusiveLock, etc.)."
+    mode: String!
+    "Whether the lock has been granted (true) or is being waited for (false)."
+    granted: Boolean!
+    "The query being executed by the process holding or waiting for the lock."
+    query: String
+    "The current state of the backend holding the lock."
+    state: String
+    "How long this lock has been held or waited for, in seconds."
+    durationSeconds: Float
+}
+
+"Replication slot information from pg_replication_slots."
+type PgReplicationSlot {
+    "The name of the replication slot."
+    slotName: String!
+    "The type of the slot: physical or logical."
+    slotType: String!
+    "Whether the slot is currently active."
+    active: Boolean!
+    "The name of the database this slot is associated with."
+    databaseName: String
+    "The WAL position this slot has been confirmed flushed up to."
+    confirmedFlushLsn: String
+    "The amount of WAL retained by this slot in bytes."
+    retainedWalBytes: Long
+}
+
+"Connection pool statistics for the application's database connection pools."
+type PgConnectionPoolStats {
+    "The name of the connection pool."
+    poolName: String!
+    "The maximum number of connections allowed in this pool."
+    maxConnections: Int!
+    "The number of currently active (checked out) connections."
+    activeConnections: Int!
+    "The number of connections that have been created."
+    createdConnections: Int!
+    "Whether there are connections available in the pool."
+    hasAvailableConnections: Boolean!
+}
+
+"PostgreSQL server configuration settings from pg_settings."
+type PgSetting {
+    "The name of the configuration parameter."
+    name: String!
+    "The current value of the parameter."
+    setting: String!
+    "The unit of the parameter value, if applicable."
+    unit: String
+    "The category of the parameter."
+    category: String!
+    "A short description of the parameter."
+    shortDesc: String!
+    "The context in which the parameter can be changed (postmaster, sighup, superuser, user)."
+    context: String!
+    "The data type of the parameter (bool, integer, real, string, enum)."
+    vartype: String!
+    "The source of the current value (default, configuration file, etc.)."
+    source: String!
+    "The minimum allowed value, if applicable."
+    minVal: String
+    "The maximum allowed value, if applicable."
+    maxVal: String
+    "The list of allowed values for enum parameters."
+    enumVals: [String!]
+    "Whether the value requires a server restart to take effect."
+    pendingRestart: Boolean!
+}
+
+"Database vacuum and maintenance progress information."
+type PgVacuumProgress {
+    "The process ID of the vacuum worker."
+    pid: Int!
+    "The name of the database being vacuumed."
+    databaseName: String
+    "The schema of the table being vacuumed."
+    schemaName: String
+    "The name of the table being vacuumed."
+    tableName: String
+    "The current phase of the vacuum operation."
+    phase: String!
+    "The total number of heap blocks in the table."
+    heapBlksTotal: Long!
+    "The number of heap blocks scanned so far."
+    heapBlksScanned: Long!
+    "The number of heap blocks vacuumed so far."
+    heapBlksVacuumed: Long!
+    "The number of dead tuples that can be removed."
+    numDeadTuples: Long!
+}
+
+"Table I/O statistics from pg_statio_user_tables."
+type PgTableIOStats {
+    "The schema containing this table."
+    schemaName: String!
+    "The name of the table."
+    tableName: String!
+    "Number of disk blocks read from this table."
+    heapBlksRead: Long!
+    "Number of buffer cache hits for this table."
+    heapBlksHit: Long!
+    "Number of disk blocks read from all indexes on this table."
+    idxBlksRead: Long!
+    "Number of buffer cache hits for indexes on this table."
+    idxBlksHit: Long!
+    "Number of disk blocks read from this table's TOAST table."
+    toastBlksRead: Long!
+    "Number of buffer cache hits for this table's TOAST table."
+    toastBlksHit: Long!
+    "Cache hit ratio for this table as a percentage (0-100)."
+    cacheHitRatio: Float!
+}
+
+"Write-Ahead Log generation and I/O statistics from pg_stat_wal for monitoring WAL throughput and tuning."
+type PgWalStats {
+    "Total number of WAL records generated."
+    walRecords: Long!
+    "Total number of WAL full page images generated."
+    walFpi: Long!
+    "Total amount of WAL generated in bytes."
+    walBytes: Long!
+    "Number of times WAL data was written to disk because WAL buffers became full."
+    walBuffersFull: Long!
+    "Total number of times WAL buffers were written out to disk via XLogWrite request."
+    walWrite: Long!
+    "Total number of times WAL files were synced to disk via issue_xlog_fsync request."
+    walSync: Long!
+    "Total time spent writing WAL buffers to disk in milliseconds."
+    walWriteTime: Float!
+    "Total time spent syncing WAL files to disk in milliseconds."
+    walSyncTime: Float!
+    "Time at which WAL statistics were last reset."
+    statsReset: String
+}
+
+"Background writer and checkpoint statistics from pg_stat_bgwriter for monitoring checkpoint behavior and buffer management."
+type PgCheckpointStats {
+    "Number of scheduled checkpoints that have been performed."
+    checkpointsTimedCount: Long!
+    "Number of requested checkpoints that have been performed."
+    checkpointsRequestedCount: Long!
+    "Number of buffers written during checkpoints."
+    buffersCheckpoint: Long!
+    "Number of buffers written by the background writer."
+    buffersClean: Long!
+    "Number of times the background writer stopped a cleaning scan because it had written too many buffers."
+    maxwrittenClean: Long!
+    "Number of buffers written directly by a backend."
+    buffersBackend: Long!
+    "Number of times a backend had to execute its own fsync call."
+    buffersBackendFsync: Long!
+    "Number of buffers allocated."
+    buffersAlloc: Long!
+    "Time at which these statistics were last reset."
+    statsReset: String
+}
+
+"A blocking relationship between two backends where one process holds a lock preventing another from proceeding."
+type PgBlockingChain {
+    "The process ID of the blocked backend."
+    blockedPid: Int!
+    "The user name of the blocked backend."
+    blockedUser: String
+    "The query being executed by the blocked backend."
+    blockedQuery: String
+    "The current state of the blocked backend."
+    blockedState: String
+    "How long the blocked backend has been waiting in seconds."
+    blockedDurationSeconds: Float
+    "The process ID of the blocking backend."
+    blockingPid: Int!
+    "The user name of the blocking backend."
+    blockingUser: String
+    "The query being executed by the blocking backend."
+    blockingQuery: String
+    "The current state of the blocking backend."
+    blockingState: String
+}
+
+"A long-running transaction, particularly idle-in-transaction sessions that hold locks and prevent autovacuum."
+type PgLongTransaction {
+    "The process ID of the backend."
+    pid: Int!
+    "The name of the database this backend is connected to."
+    databaseName: String
+    "The name of the user logged into this backend."
+    userName: String
+    "The application name connected to this backend."
+    applicationName: String
+    "The current state of the backend (active, idle, idle in transaction, etc.)."
+    state: String
+    "Time when the current transaction was started."
+    xactStartTime: String
+    "Duration in seconds that the current transaction has been open."
+    xactDurationSeconds: Float
+    "The text of the most recently executed query in this transaction."
+    lastQuery: String
+    "The type of event the backend is currently waiting for."
+    waitEventType: String
+    "The specific wait event the backend is waiting for."
+    waitEvent: String
+}
+
+"Sequence utilization information showing how close a sequence is to its maximum value."
+type PgSequenceUsage {
+    "The schema containing the sequence."
+    schemaName: String!
+    "The name of the sequence."
+    sequenceName: String!
+    "The data type of the sequence (smallint, integer, bigint)."
+    dataType: String!
+    "The current (last issued) value of the sequence."
+    currentValue: Long!
+    "The maximum value the sequence can reach before exhaustion."
+    maxValue: Long!
+    "The percentage of the sequence range that has been consumed (0-100)."
+    percentUsed: Float!
+}
+
+"Size information for a database object (table, index, or materialized view)."
+type PgObjectSize {
+    "The schema containing the object."
+    schemaName: String!
+    "The name of the object."
+    objectName: String!
+    "The type of object (table, index, materialized view)."
+    objectType: String!
+    "Total size of the object including indexes and TOAST data in bytes."
+    totalSize: Long!
+    "Size of the table data alone in bytes (only for tables)."
+    tableSize: Long
+    "Size of indexes on this table in bytes (only for tables)."
+    indexSize: Long
+}
+
+"Metadata about an installed PostgreSQL extension."
+type PgExtension {
+    "The name of the extension."
+    name: String!
+    "The currently installed version of the extension."
+    installedVersion: String!
+    "The default version available for installation."
+    defaultVersion: String
+    "A brief description of what the extension provides."
+    description: String
+}
+
+"Connection pool utilization from PgBouncer's SHOW POOLS command per database/user pair."
+type PgBouncerPoolStats {
+    "The database name this pool serves."
+    database: String!
+    "The user name this pool authenticates as."
+    user: String!
+    "Number of active client connections using a server connection."
+    clActive: Int!
+    "Number of client connections waiting for a server connection."
+    clWaiting: Int!
+    "Number of client connections that have sent a cancel request."
+    clCancelReq: Int!
+    "Number of active client cancel requests being processed."
+    clActiveCancelReq: Int!
+    "Number of server connections actively processing a client request."
+    svActive: Int!
+    "Number of server connections processing a cancel request."
+    svActiveCancel: Int!
+    "Number of server connections being canceled."
+    svBeingCanceled: Int!
+    "Number of server connections idle and ready for use."
+    svIdle: Int!
+    "Number of server connections used but not idle for more than server_check_delay."
+    svUsed: Int!
+    "Number of server connections currently running a reset or check query."
+    svTested: Int!
+    "Number of server connections currently logging in to PostgreSQL."
+    svLogin: Int!
+    "Maximum wait time in seconds for a client in this pool."
+    maxwait: Long!
+    "Maximum wait time in microseconds for a client in this pool."
+    maxwaitUs: Long!
+    "The pool mode for this pool (session, transaction, or statement)."
+    poolMode: String!
+}
+
+"Aggregated throughput and latency statistics from PgBouncer's SHOW STATS command."
+type PgBouncerDatabaseStats {
+    "The database name."
+    database: String!
+    "Total number of SQL transactions pooled by PgBouncer."
+    totalXactCount: Long!
+    "Total number of SQL queries pooled by PgBouncer."
+    totalQueryCount: Long!
+    "Total volume of network traffic received from clients in bytes."
+    totalReceived: Long!
+    "Total volume of network traffic sent to clients in bytes."
+    totalSent: Long!
+    "Total time spent by PgBouncer when connected to PostgreSQL in transactions in microseconds."
+    totalXactTime: Long!
+    "Total time spent by PgBouncer when actively querying PostgreSQL in microseconds."
+    totalQueryTime: Long!
+    "Time spent by clients waiting for a server connection in microseconds."
+    totalWaitTime: Long!
+    "Average number of transactions per second in the last stats period."
+    avgXactCount: Long!
+    "Average number of queries per second in the last stats period."
+    avgQueryCount: Long!
+    "Average received bytes per second."
+    avgRecv: Long!
+    "Average sent bytes per second."
+    avgSent: Long!
+    "Average transaction duration in microseconds."
+    avgXactTime: Long!
+    "Average query duration in microseconds."
+    avgQueryTime: Long!
+    "Average time a client spent waiting for a server in microseconds."
+    avgWaitTime: Long!
+}
+
+"Database routing configuration from PgBouncer's SHOW DATABASES command."
+type PgBouncerDatabase {
+    "The logical database name exposed by PgBouncer."
+    name: String!
+    "The physical PostgreSQL host this database routes to."
+    host: String
+    "The port of the physical PostgreSQL host."
+    port: Int!
+    "The actual PostgreSQL database name connected to."
+    database: String!
+    "The user PgBouncer forces connections as, if configured."
+    forceUser: String
+    "The default pool size for this database."
+    poolSize: Int!
+    "The minimum pool size maintained for this database."
+    minPoolSize: Int!
+    "The number of reserve connections for this database."
+    reservePool: Int!
+    "The pool mode for this database (session, transaction, or statement)."
+    poolMode: String
+    "The maximum number of connections allowed for this database."
+    maxConnections: Int!
+    "The number of connections currently established."
+    currentConnections: Int!
+    "Whether this database is currently paused."
+    paused: Boolean!
+    "Whether this database is currently disabled."
+    disabled: Boolean!
+}
+
+"Composite view of PgBouncer status combining pool, stats, and database routing information."
+type PgBouncerInfo {
+    "Whether PgBouncer is reachable and responding to admin commands."
+    available: Boolean!
+    "The PgBouncer version string."
+    version: String
+    "Connection pool utilization per database/user pair."
+    pools: [PgBouncerPoolStats!]!
+    "Aggregated throughput and latency statistics per database."
+    stats: [PgBouncerDatabaseStats!]!
+    "Database routing configuration showing logical-to-physical mappings."
+    databases: [PgBouncerDatabase!]!
+}
+
+"Streaming replication state for a connected standby from pg_stat_replication."
+type PgReplicationStatus {
+    "The process ID of the WAL sender process."
+    pid: Int!
+    "The user name of the replication connection."
+    userName: String
+    "The application name of the connected standby."
+    applicationName: String
+    "The IP address of the connected standby."
+    clientAddr: String
+    "The current replication state (startup, catchup, streaming, backup, stopping)."
+    state: String
+    "The last WAL position sent on this connection."
+    sentLsn: String
+    "The last WAL position written to disk by this standby."
+    writeLsn: String
+    "The last WAL position flushed to disk by this standby."
+    flushLsn: String
+    "The last WAL position replayed (applied) by this standby."
+    replayLsn: String
+    "Replay lag in seconds behind the primary."
+    replayLagSeconds: Float
+    "Write lag in seconds behind the primary."
+    writeLagSeconds: Float
+    "Flush lag in seconds behind the primary."
+    flushLagSeconds: Float
+    "Synchronous replication state (async, sync, potential, quorum)."
+    syncState: String
+    "Priority of this standby for synchronous replication."
+    syncPriority: Int
+}
+
+"Query operations for introspecting the PostgreSQL database's operational state."
+type PostgresAdmin {
+    "Retrieve overall database statistics including transaction counts, I/O, and cache performance."
+    databaseStats: PgDatabaseStats!
+    "Retrieve currently active queries running on the database."
+    activeQueries(
+        "Minimum duration in seconds to filter queries by (default: show all)."
+        minDurationSeconds: Float
+    ): [PgActiveQuery!]!
+    "Retrieve the slowest queries by total execution time (requires pg_stat_statements extension)."
+    slowQueries(
+        "Maximum number of slow queries to return (default 20)."
+        limit: Int
+        "Order by total time or mean time (default: total)."
+        orderBy: String
+    ): [PgSlowQuery!]!
+    "Retrieve per-table statistics including row counts, scan types, and maintenance history."
+    tableStats(
+        "Filter to a specific schema (default: all non-system schemas)."
+        schemaName: String
+    ): [PgTableStats!]!
+    "Retrieve per-index statistics including scan counts and sizes."
+    indexStats(
+        "Filter to a specific schema (default: all non-system schemas)."
+        schemaName: String
+    ): [PgIndexStats!]!
+    "Retrieve unused or redundant indexes that may be candidates for removal."
+    unusedIndexes(
+        "Minimum table size in bytes to consider (default: 0)."
+        minTableSize: Long
+    ): [PgIndexStats!]!
+    "Identify tables that could benefit from additional indexes based on sequential scan patterns."
+    indexSuggestions(
+        "Minimum number of sequential scans to consider (default: 50)."
+        minSeqScans: Long
+    ): [PgIndexSuggestion!]!
+    "Retrieve current lock information including blocked and blocking queries."
+    locks: [PgLockInfo!]!
+    "Retrieve replication slot information."
+    replicationSlots: [PgReplicationSlot!]!
+    "Retrieve application connection pool statistics."
+    connectionPoolStats: [PgConnectionPoolStats!]!
+    "Retrieve important PostgreSQL server configuration settings."
+    settings(
+        "Filter settings by category or name pattern."
+        filter: String
+    ): [PgSetting!]!
+    "Retrieve currently running vacuum operations and their progress."
+    vacuumProgress: [PgVacuumProgress!]!
+    "Retrieve per-table I/O statistics showing disk reads vs cache hits."
+    tableIOStats(
+        "Filter to a specific schema (default: all non-system schemas)."
+        schemaName: String
+    ): [PgTableIOStats!]!
+    "Retrieve tables with the highest bloat ratios (dead tuples relative to live tuples)."
+    bloatedTables(
+        "Minimum bloat ratio percentage to include (default: 10)."
+        minBloatPercent: Float
+    ): [PgTableStats!]!
+    "Retrieve the PostgreSQL server version string."
+    serverVersion: String!
+    "Retrieve the server uptime as a human-readable string."
+    uptime: String!
+    "Retrieve Write-Ahead Log statistics for monitoring WAL generation throughput and buffer efficiency."
+    walStats: PgWalStats!
+    "Retrieve background writer and checkpoint statistics for monitoring I/O behavior."
+    checkpointStats: PgCheckpointStats!
+    "Retrieve blocking query chains showing which backends are blocking other backends."
+    blockingChains: [PgBlockingChain!]!
+    "Retrieve long-running transactions, particularly idle-in-transaction sessions holding locks."
+    longRunningTransactions(
+        "Minimum transaction duration in seconds to include (default: 60)."
+        minDurationSeconds: Float
+    ): [PgLongTransaction!]!
+    "Retrieve sequence utilization information to detect sequences approaching exhaustion."
+    sequenceUsage(
+        "Minimum percentage used to include (default: 0, show all)."
+        minPercentUsed: Float
+    ): [PgSequenceUsage!]!
+    "Retrieve the largest database objects ranked by total size for storage analysis."
+    databaseSizeBreakdown(
+        "Maximum number of objects to return (default: 50)."
+        limit: Int
+    ): [PgObjectSize!]!
+    "Retrieve all installed PostgreSQL extensions with version information."
+    installedExtensions: [PgExtension!]!
+    "Retrieve PgBouncer connection pooler status. Returns available=false when PgBouncer is not in the connection path."
+    pgBouncerInfo: PgBouncerInfo!
+    "Retrieve streaming replication status for all connected standby servers."
+    replicationStatus: [PgReplicationStatus!]!
+    "Whether this PostgreSQL server is running as a standby replica."
+    isInRecovery: Boolean!
+}
+
+"Mutation operations for PostgreSQL database administration."
+type PostgresAdminMutation {
+    "Cancel a running query by backend process ID. Returns true if the cancel signal was sent."
+    cancelQuery(
+        "The process ID of the backend to cancel."
+        pid: Int!
+    ): Boolean!
+    "Terminate a backend process by process ID. Returns true if the terminate signal was sent."
+    terminateBackend(
+        "The process ID of the backend to terminate."
+        pid: Int!
+    ): Boolean!
+    "Run ANALYZE on a specific table to update query planner statistics."
+    analyzeTable(
+        "The schema containing the table."
+        schemaName: String!
+        "The name of the table to analyze."
+        tableName: String!
+    ): Boolean!
+    "Reset the pg_stat_statements statistics counters (requires pg_stat_statements extension)."
+    resetStatStatements: Boolean!
+    "Run VACUUM on a specific table to reclaim storage from dead tuples."
+    vacuumTable(
+        "The schema containing the table."
+        schemaName: String!
+        "The name of the table to vacuum."
+        tableName: String!
+        "Whether to perform a VACUUM FULL (rewrites entire table, requires exclusive lock). Default: false."
+        full: Boolean
+    ): Boolean!
+    "Rebuild an index to reclaim bloated space and restore optimal performance."
+    reindex(
+        "The schema containing the index."
+        schemaName: String!
+        "The name of the index to rebuild."
+        indexName: String!
+    ): Boolean!
+}
+
+
+
+
+
+"General information about the NATS server including version, uptime, connection counts, and resource usage."
+type NatsServerInfo {
+    "The unique identifier of the NATS server instance."
+    serverId: String!
+    "The human-readable name of the NATS server."
+    serverName: String!
+    "The NATS server software version."
+    version: String!
+    "The hostname the server is listening on."
+    host: String!
+    "The port the server is listening on for client connections."
+    port: Int!
+    "Maximum number of client connections allowed."
+    maxConnections: Int!
+    "Maximum allowed message payload size in bytes."
+    maxPayload: Int!
+    "Human-readable duration since the server started."
+    uptime: String!
+    "Server process memory usage in bytes."
+    mem: Long!
+    "Server process CPU usage as a percentage."
+    cpu: Float!
+    "The number of currently active client connections."
+    connections: Int!
+    "The total number of client connections since the server started."
+    totalConnections: Long!
+    "The number of active subscriptions across all connections."
+    subscriptions: Long!
+    "The number of slow consumers detected by the server."
+    slowConsumers: Long!
+    "Total number of messages received by the server."
+    inMsgs: Long!
+    "Total number of messages sent by the server."
+    outMsgs: Long!
+    "Total bytes received by the server."
+    inBytes: Long!
+    "Total bytes sent by the server."
+    outBytes: Long!
+    "JetStream configuration and runtime statistics, null if JetStream is disabled."
+    jetstream: JetStreamServerConfig
+}
+
+"JetStream configuration and runtime statistics embedded in server info."
+type JetStreamServerConfig {
+    "JetStream storage limits configuration."
+    config: JetStreamConfig
+    "JetStream runtime resource usage and API statistics."
+    stats: JetStreamStats
+}
+
+"JetStream storage configuration limits."
+type JetStreamConfig {
+    "Maximum memory available for JetStream in bytes."
+    maxMemory: Long!
+    "Maximum disk storage available for JetStream in bytes."
+    maxStorage: Long!
+    "Directory path where JetStream data is stored on disk."
+    storeDir: String!
+}
+
+"JetStream runtime resource usage and API call statistics."
+type JetStreamStats {
+    "Memory currently used by JetStream in bytes."
+    memory: Long!
+    "Disk storage currently used by JetStream in bytes."
+    storage: Long!
+    "Memory reserved for JetStream in bytes."
+    reservedMemory: Long!
+    "Disk storage reserved for JetStream in bytes."
+    reservedStorage: Long!
+    "Number of JetStream-enabled accounts."
+    accounts: Int!
+    "Number of high-availability assets."
+    haAssets: Int!
+    "JetStream API call statistics."
+    api: JetStreamApiStats
+}
+
+"JetStream API call counts and error totals."
+type JetStreamApiStats {
+    "Total number of JetStream API calls."
+    total: Long!
+    "Total number of JetStream API errors."
+    errors: Long!
+}
+
+"Active route connections between servers in a NATS cluster, as reported by the `/routez` monitoring endpoint."
+type NatsRoutes {
+    "The number of active route connections to other cluster members."
+    numRoutes: Int!
+    "The route connections to other servers in the cluster."
+    routes: [NatsRoute!]!
+}
+
+"A single route connection between two servers in a NATS cluster, representing the inter-server communication link."
+type NatsRoute {
+    "The server-assigned route identifier."
+    rid: Long!
+    "The unique identifier of the remote server."
+    remoteId: String!
+    "The human-readable name of the remote server."
+    remoteName: String!
+    "Whether this server initiated the route connection."
+    didSolicit: Boolean!
+    "Whether this route was explicitly configured (as opposed to discovered via gossip)."
+    isConfigured: Boolean!
+    "The IP address of the remote server."
+    ip: String!
+    "The route port of the remote server."
+    port: Int!
+    "Bytes waiting to be sent to the remote server."
+    pendingSize: Long!
+    "Total messages received from the remote server."
+    inMsgs: Long!
+    "Total messages sent to the remote server."
+    outMsgs: Long!
+    "Total bytes received from the remote server."
+    inBytes: Long!
+    "Total bytes sent to the remote server."
+    outBytes: Long!
+    "The number of subscriptions routed to the remote server."
+    subscriptions: Int!
+}
+
+"Details about an active client connection to the NATS server."
+type NatsConnection {
+    "The server-assigned connection identifier."
+    cid: Long!
+    "The kind of connection (e.g. Client, Leafnode, Route)."
+    kind: String
+    "The connection type (e.g. nats, mqtt, websocket)."
+    type: String
+    "The IP address of the connected client."
+    ip: String!
+    "The TCP port of the connected client."
+    port: Int!
+    "When the connection was established."
+    start: String
+    "When the last message was exchanged on this connection."
+    lastActivity: String
+    "The round-trip time to the client."
+    rtt: String
+    "Human-readable duration since the connection was established."
+    uptime: String!
+    "Human-readable duration since the last message was exchanged."
+    idle: String!
+    "Bytes waiting to be sent to the client."
+    pendingBytes: Long!
+    "Total messages received from this client."
+    inMsgs: Long!
+    "Total messages sent to this client."
+    outMsgs: Long!
+    "Total bytes received from this client."
+    inBytes: Long!
+    "Total bytes sent to this client."
+    outBytes: Long!
+    "The number of active subscriptions on this connection."
+    subscriptions: Int!
+    "The optional name provided by the client when connecting."
+    name: String
+    "The programming language of the client library."
+    lang: String
+    "The version of the client library."
+    version: String
+}
+
+"A paginated list of active connections to the NATS server."
+type NatsConnections {
+    "The number of connections in this response."
+    numConnections: Int!
+    "The total number of active connections."
+    total: Int!
+    "The current pagination offset."
+    offset: Int!
+    "The maximum number of connections per page."
+    limit: Int!
+    "The connections in this page of results."
+    connections: [NatsConnection!]!
+}
+
+"Overview statistics for the JetStream persistence layer."
+type JetStreamInfo {
+    "Memory used by JetStream in bytes."
+    memory: Long!
+    "Disk storage used by JetStream in bytes."
+    storage: Long!
+    "Memory reserved for JetStream in bytes."
+    reservedMemory: Long!
+    "Disk storage reserved for JetStream in bytes."
+    reservedStorage: Long!
+    "Number of JetStream-enabled accounts."
+    accounts: Int!
+    "Number of high-availability assets."
+    haAssets: Int!
+    "JetStream API statistics."
+    api: JetStreamApiStats
+    "Total number of streams."
+    streams: Int!
+    "Total number of consumers across all streams."
+    consumers: Int!
+    "Total number of messages stored across all streams."
+    messages: Long!
+    "Total bytes stored across all streams."
+    bytes: Long!
+}
+
+"Details about a JetStream stream including its state, message count, and consumer count."
+type JetStreamStreamDetail {
+    "The name of the stream."
+    name: String!
+    "When this stream was created."
+    created: String
+    "The runtime state of the stream."
+    state: JetStreamStreamState
+    "Cluster membership information."
+    cluster: JetStreamCluster
+}
+
+"Runtime state of a JetStream stream."
+type JetStreamStreamState {
+    "The total number of messages in this stream."
+    messages: Long!
+    "The total bytes stored in this stream."
+    bytes: Long!
+    "The first sequence number in the stream."
+    firstSeq: Long!
+    "The last sequence number in the stream."
+    lastSeq: Long!
+    "The number of consumers attached to this stream."
+    consumerCount: Int!
+    "The number of unique subjects in this stream."
+    numSubjects: Int!
+    "The number of deleted messages in this stream."
+    numDeleted: Int!
+}
+
+"Cluster membership information for a JetStream resource."
+type JetStreamCluster {
+    "The leader node identifier."
+    leader: String
+}
+
+"Details about a JetStream consumer attached to a stream."
+type JetStreamConsumerDetail {
+    "The name of this consumer."
+    name: String!
+    "The name of the stream this consumer is attached to."
+    streamName: String!
+    "When this consumer was created."
+    created: String
+    "The last delivered sequence position."
+    delivered: JetStreamSequenceInfo
+    "The acknowledged floor sequence position."
+    ackFloor: JetStreamSequenceInfo
+    "The number of messages awaiting acknowledgment."
+    numAckPending: Long!
+    "The number of messages that have been redelivered."
+    numRedelivered: Long!
+    "The number of pull requests waiting for messages."
+    numWaiting: Long!
+    "The number of messages pending delivery."
+    numPending: Long!
+    "Cluster membership information."
+    cluster: JetStreamCluster
+}
+
+"Sequence and timestamp position for a consumer's delivery or acknowledgment state."
+type JetStreamSequenceInfo {
+    "The consumer-side sequence number."
+    consumerSeq: Long!
+    "The stream-side sequence number."
+    streamSeq: Long!
+}
+
+"Subscription routing statistics from the NATS server."
+type NatsSubscriptionsInfo {
+    "The total number of active subscriptions."
+    numSubscriptions: Long!
+    "The number of entries in the subscription cache."
+    numCache: Long!
+    "The total number of subscription inserts since server start."
+    numInserts: Long!
+    "The total number of subscription removals since server start."
+    numRemoves: Long!
+    "The total number of subscription match lookups since server start."
+    numMatches: Long!
+    "The subscription cache hit rate as a ratio from 0.0 to 1.0."
+    cacheHitRate: Float!
+    "The maximum message fanout across all subscriptions."
+    maxFanout: Int!
+    "The average message fanout across all subscriptions."
+    avgFanout: Float!
+}
+
+"Metadata about a NATS KeyValue store bucket."
+type NatsKeyValueStore {
+    "The name of the KV bucket."
+    bucket: String!
+    "The number of entries in this bucket."
+    entryCount: Long!
+    "The total bytes stored in this bucket."
+    bytes: Long!
+    "The TTL for entries in milliseconds, 0 if no TTL."
+    ttl: Long!
+    "The maximum bytes allowed in this bucket."
+    maxBytes: Long!
+    "The maximum value size allowed in this bucket."
+    maxValueSize: Long!
+    "The maximum number of history entries per key."
+    history: Long!
+}
+
+"A single entry in a NATS KeyValue store."
+type NatsKeyValueEntry {
+    "The key of this entry."
+    key: String!
+    "The string value of this entry, null if deleted."
+    value: String
+    "The revision number of this entry."
+    revision: Long!
+    "When this entry was created or last updated."
+    created: String!
+    "The operation type (PUT, DELETE, PURGE)."
+    operation: String!
+}
+
+"A message stored in a NATS JetStream stream."
+type NatsStreamMessage {
+    "The NATS subject this message was published to."
+    subject: String!
+    "The sequence number within the stream."
+    sequence: Long!
+    "When this message was stored."
+    timestamp: String!
+    "The message payload as a UTF-8 string."
+    data: String
+    "The message headers."
+    headers: [NatsHeader!]!
+}
+
+"A key-value pair from a NATS message header."
+type NatsHeader {
+    "The header key."
+    key: String!
+    "The header values."
+    values: [String!]!
+}
+
+"Query operations for introspecting the NATS server's operational state."
+type NatsAdmin {
+    "Retrieve general server information including version, uptime, and throughput statistics."
+    serverInfo: NatsServerInfo!
+    "Retrieve active route connections between servers in the NATS cluster."
+    clusterRoutes: NatsRoutes!
+    "Retrieve active client connections with optional pagination and sorting."
+    connections(
+        "Maximum number of connections to return."
+        limit: Int
+        "Zero-based offset for pagination."
+        offset: Int
+        "Field to sort connections by (e.g. 'cid', 'bytes_to', 'msgs_to')."
+        sortBy: String
+    ): NatsConnections!
+    "Retrieve JetStream overview statistics including stream and consumer counts."
+    jetStreamInfo: JetStreamInfo!
+    "Retrieve details for all JetStream streams."
+    jetStreamStreams: [JetStreamStreamDetail!]!
+    "Retrieve all consumers for a specific JetStream stream."
+    jetStreamConsumers(
+        "The name of the stream to query consumers for."
+        streamName: String!
+    ): [JetStreamConsumerDetail!]!
+    "Retrieve subscription routing statistics."
+    subscriptionsInfo: NatsSubscriptionsInfo!
+    "List all KeyValue store buckets, optionally filtered by bucket name."
+    keyValueStores: [NatsKeyValueStore!]!
+    "Browse entries in a KeyValue store bucket with optional key and value filtering."
+    keyValueEntries(
+        "The name of the KV bucket to browse."
+        bucket: String!
+        "Optional glob pattern to filter keys (e.g. 'prefix.*')."
+        keyFilter: String
+        "Optional substring to search for within entry values."
+        valueSearch: String
+    ): [NatsKeyValueEntry!]!
+    "Read messages from a JetStream stream with optional filtering by subject, sequence range, and payload content."
+    streamMessages(
+        "The name of the stream to read from."
+        streamName: String!
+        "Maximum number of messages to return (default 50)."
+        limit: Int
+        "Filter messages by subject (supports NATS wildcards: * for single token, > for remaining)."
+        subjectFilter: String
+        "Read messages starting from this sequence number (inclusive)."
+        fromSeq: Long
+        "Read messages up to this sequence number (inclusive)."
+        toSeq: Long
+        "Search for this substring within message payloads."
+        dataSearch: String
+    ): [NatsStreamMessage!]!
+}
+
+
+
+"Mutation operations for modifying NATS KeyValue store entries and JetStream stream messages."
+type NatsAdminMutation {
+    "Create or update a key-value entry in the specified bucket. Returns the entry with its new revision."
+    putKeyValueEntry(
+        "The name of the KV bucket."
+        bucket: String!
+        "The key to create or update."
+        key: String!
+        "The string value to store."
+        value: String!
+    ): NatsKeyValueEntry!
+    "Delete a key-value entry from the specified bucket."
+    deleteKeyValueEntry(
+        "The name of the KV bucket."
+        bucket: String!
+        "The key to delete."
+        key: String!
+    ): Boolean!
+    "Permanently remove all tombstoned (deleted/purged) entries from a KeyValue store bucket, reclaiming storage."
+    purgeKeyValueDeletes(
+        "The name of the KV bucket to compact."
+        bucket: String!
+    ): Boolean!
+    "Purge all messages from a JetStream stream, preserving configuration and consumers."
+    purgeStream(
+        "The name of the stream to purge."
+        streamName: String!
+    ): Boolean!
+    "Remove all KeyValue tombstone messages (DEL/PURGE markers) from a stream, reclaiming storage while preserving live entries. Returns the number of tombstones removed."
+    purgeStreamDeletes(
+        "The name of the stream to purge tombstones from."
+        streamName: String!
+    ): Int!
+    "Delete a single message from a JetStream stream by sequence number."
+    deleteStreamMessage(
+        "The name of the stream containing the message."
+        streamName: String!
+        "The sequence number of the message to delete."
+        sequence: Long!
+    ): Boolean!
+}
+
+
+
+"Version information from the Meilisearch instance identifying the exact build."
+type MeilisearchVersion {
+    "The Meilisearch server software version."
+    pkgVersion: String!
+    "The date the build was committed."
+    commitDate: String
+    "The short SHA of the commit."
+    commitSha: String
+}
+
+"Health status of a Meilisearch instance."
+type MeilisearchHealth {
+    "Whether the instance is healthy and accepting requests."
+    healthy: Boolean!
+}
+
+"Aggregate statistics across all indexes on a Meilisearch instance."
+type MeilisearchGlobalStats {
+    "Total number of indexes on this instance."
+    numberOfIndexes: Int!
+    "Total size of the database on disk in bytes."
+    databaseSize: Long!
+    "Timestamp of the most recent update across all indexes."
+    lastUpdate: String
+}
+
+"Metadata and entry point for a Meilisearch index."
+type MeilisearchIndex {
+    "The unique identifier of the index."
+    uid: String!
+    "The primary key field used for document deduplication."
+    primaryKey: String
+    "When this index was created."
+    createdAt: String!
+    "When this index was last updated."
+    updatedAt: String!
+    "Per-index statistics including document count and field distribution."
+    stats: MeilisearchIndexStats!
+    "The complete settings of this index."
+    settings: MeilisearchIndexSettings!
+    "Browse documents in this index with optional pagination and field selection."
+    documents(
+        "Zero-based offset for pagination."
+        offset: Int
+        "Maximum number of documents to return."
+        limit: Int
+        "Subset of fields to include in each document."
+        fields: [String!]
+    ): [JSON!]!
+}
+
+"Per-index statistics from Meilisearch."
+type MeilisearchIndexStats {
+    "Total number of documents in this index."
+    numberOfDocuments: Long!
+    "Whether this index is currently processing updates."
+    isIndexing: Boolean!
+    "Distribution of fields across documents, showing how many documents contain each field."
+    fieldDistribution: [MeilisearchFieldDistribution!]!
+}
+
+"Count of documents containing a particular field within an index."
+type MeilisearchFieldDistribution {
+    "The field name."
+    field: String!
+    "The number of documents containing this field."
+    count: Long!
+}
+
+"Complete settings of a Meilisearch index."
+type MeilisearchIndexSettings {
+    "The ranking rules that determine result ordering."
+    rankingRules: [String!]!
+    "The attributes that can be used as search query terms."
+    searchableAttributes: [String!]!
+    "The attributes returned in search results."
+    displayedAttributes: [String!]!
+    "The attributes that can be used for filtering and faceting."
+    filterableAttributes: [String!]!
+    "The attributes that can be used for sorting results."
+    sortableAttributes: [String!]!
+    "Words ignored during search."
+    stopWords: [String!]!
+    "Groups of words considered equivalent during search."
+    synonyms: [MeilisearchSynonym!]!
+    "The distinct attribute used for deduplication."
+    distinctAttribute: String
+    "Typo tolerance configuration."
+    typoTolerance: MeilisearchTypoTolerance
+    "Pagination limits."
+    pagination: MeilisearchPagination
+    "Faceting configuration."
+    faceting: MeilisearchFaceting
+    "Configured embedders for semantic and vector search."
+    embedders: [MeilisearchEmbedderEntry!]!
+    "Proximity precision setting (byWord or byAttribute)."
+    proximityPrecision: String
+    "Search cutoff time in milliseconds."
+    searchCutoffMs: Int
+}
+
+"A synonym mapping between a word and its alternative search terms."
+type MeilisearchSynonym {
+    "The word that triggers synonym expansion."
+    word: String!
+    "The synonyms for this word."
+    synonyms: [String!]!
+}
+
+"Typo tolerance configuration for an index."
+type MeilisearchTypoTolerance {
+    "Whether typo tolerance is enabled."
+    enabled: Boolean!
+    "Minimum word size thresholds for typo correction."
+    minWordSizeForTypos: MeilisearchMinWordSize
+    "Words that should never have typo correction applied."
+    disableOnWords: [String!]
+    "Attributes where typo correction is disabled."
+    disableOnAttributes: [String!]
+}
+
+"Minimum word length thresholds for activating typo correction."
+type MeilisearchMinWordSize {
+    "Minimum word length to allow one typo."
+    oneTypo: Int!
+    "Minimum word length to allow two typos."
+    twoTypos: Int!
+}
+
+"Pagination limits for search results."
+type MeilisearchPagination {
+    "Maximum total number of hits that can be returned."
+    maxTotalHits: Int!
+}
+
+"Faceting configuration for search results."
+type MeilisearchFaceting {
+    "Maximum number of facet values returned per facet."
+    maxValuesPerFacet: Int!
+}
+
+"Configuration for a named embedder enabling semantic and vector search on an index."
+type MeilisearchEmbedderEntry {
+    "The name of this embedder configuration."
+    name: String!
+    "The source type (e.g., openAi, huggingFace, userProvided, rest, ollama)."
+    source: String
+    "The model identifier for this embedder."
+    model: String
+    "The dimensionality of the embedding vectors."
+    dimensions: Int
+    "The template used to generate text for embedding from documents."
+    documentTemplate: String
+    "Maximum bytes for the document template."
+    documentTemplateMaxBytes: Int
+    "The URL of the embedding provider endpoint. Required for rest embedders."
+    url: String
+    "The request body template as JSON, defining how Meilisearch sends data to the provider."
+    request: JSON
+    "The response mapping as JSON, defining where embeddings are located in the provider response."
+    response: JSON
+    "Custom HTTP headers sent with each request to the embedding provider."
+    headers: JSON
+}
+
+"An asynchronous operation tracked by Meilisearch."
+type MeilisearchTask {
+    "The unique identifier of the task."
+    uid: Int!
+    "The type of operation (e.g., indexCreation, documentAdditionOrUpdate, settingsUpdate)."
+    type: String!
+    "The current status (enqueued, processing, succeeded, failed, canceled)."
+    status: String!
+    "The index UID this task operates on, if applicable."
+    indexUid: String
+    "When the task was enqueued."
+    enqueuedAt: String!
+    "When the task started processing."
+    startedAt: String
+    "When the task finished."
+    finishedAt: String
+    "Duration of the task execution."
+    duration: String
+    "Error details if the task failed."
+    error: MeilisearchTaskError
+    "The task UID that canceled this task, if applicable."
+    canceledBy: Int
+}
+
+"Error details from a failed Meilisearch task."
+type MeilisearchTaskError {
+    "The error message."
+    message: String!
+    "The machine-readable error code."
+    code: String!
+    "The error type classification."
+    type: String!
+    "A link to the documentation about this error."
+    link: String
+}
+
+"An API key registered on the Meilisearch instance."
+type MeilisearchKey {
+    "The name of this API key."
+    name: String
+    "The description of this API key."
+    description: String!
+    "The unique identifier of this key."
+    uid: String!
+    "The key value (may be partially masked)."
+    key: String!
+    "The actions this key is authorized to perform."
+    actions: [String!]!
+    "The index UIDs this key has access to (* for all)."
+    indexes: [String!]!
+    "When this key expires, null if it never expires."
+    expiresAt: String
+    "When this key was created."
+    createdAt: String!
+    "When this key was last updated."
+    updatedAt: String!
+}
+
+"A Meilisearch instance in the multi-node topology, assigned to one or more storage systems."
+type MeilisearchNode {
+    "The database identifier of this node."
+    id: UUID!
+    "Human-readable name of this node."
+    name: String!
+    "Description of this node's role or purpose."
+    description: String!
+    "The Meilisearch instance URL for this node."
+    url: String!
+    "Whether this node is currently healthy and reachable."
+    healthy: Boolean!
+    "The search types this node supports, drawn from the StorageSystemType enum."
+    types: [StorageSystemType!]!
+    "The index UIDs hosted on this node."
+    indexes: [String!]!
+    "Server version of this node."
+    version: MeilisearchVersion
+    "Global stats for this node."
+    stats: MeilisearchGlobalStats
+    "The IDs of storage systems this node is assigned to."
+    storageSystemIds: [UUID!]!
+    "Remote instances configured in this node's federation network."
+    networkRemotes: [MeilisearchNetworkRemote!]!
+}
+
+"A remote Meilisearch instance registered in the federation network."
+type MeilisearchNetworkRemote {
+    "The name identifying this remote instance."
+    name: String!
+    "The URL of the remote Meilisearch instance."
+    url: String!
+}
+
+"Query operations for introspecting Meilisearch instance state, indexes, tasks, keys, and nodes."
+type MeilisearchAdmin {
+    "Retrieve server version information."
+    version: MeilisearchVersion!
+    "Check server health status."
+    health: MeilisearchHealth!
+    "Retrieve global statistics across all indexes."
+    stats: MeilisearchGlobalStats!
+    "List all indexes with optional pagination."
+    indexes(
+        "Zero-based offset for pagination."
+        offset: Int
+        "Maximum number of indexes to return."
+        limit: Int
+    ): [MeilisearchIndex!]!
+    "Get details for a specific index by UID."
+    index(
+        "The unique identifier of the index."
+        uid: String!
+    ): MeilisearchIndex
+    "List recent tasks with optional filtering by status, type, and index."
+    tasks(
+        "Maximum number of tasks to return."
+        limit: Int
+        "Task UID to start from for pagination."
+        from: Int
+        "Filter by task statuses."
+        status: [String!]
+        "Filter by task types."
+        type: [String!]
+        "Filter by index UIDs."
+        indexUid: [String!]
+    ): [MeilisearchTask!]!
+    "Get details for a specific task."
+    task(
+        "The task UID."
+        uid: Int!
+    ): MeilisearchTask
+    "List all API keys registered on the instance."
+    keys: [MeilisearchKey!]!
+    "List all Meilisearch nodes in the multi-node topology."
+    nodes: [MeilisearchNode!]!
+    "Get a specific node by database ID."
+    node(
+        "The node's database ID."
+        id: UUID!
+    ): MeilisearchNode
+}
+
+
+
+"Mutation operations for managing Meilisearch indexes, settings, embedders, documents, tasks, nodes, replication, and federation."
+type MeilisearchAdminMutation {
+    "Create a new index with the given UID and optional primary key."
+    createIndex(
+        "The unique identifier for the new index."
+        uid: String!
+        "The primary key field for document deduplication."
+        primaryKey: String
+    ): MeilisearchTask!
+    "Delete an index by UID."
+    deleteIndex(
+        "The unique identifier of the index to delete."
+        uid: String!
+    ): MeilisearchTask!
+    "Swap the contents of two indexes atomically."
+    swapIndexes(
+        "Pairs of index UIDs to swap, each pair as a two-element list."
+        indexes: [[String!]!]!
+    ): MeilisearchTask!
+    "Update settings for an index. Only provided fields are changed."
+    updateSettings(
+        "The index UID to update."
+        uid: String!
+        "The settings fields to update."
+        settings: MeilisearchSettingsInput!
+    ): MeilisearchTask!
+    "Reset all settings for an index to their defaults."
+    resetSettings(
+        "The index UID to reset."
+        uid: String!
+    ): MeilisearchTask!
+    "Update embedder configurations for semantic and vector search on a specific index."
+    updateEmbedders(
+        "The index UID to update."
+        uid: String!
+        "The embedder configurations to apply."
+        embedders: [MeilisearchEmbedderInput!]!
+    ): MeilisearchTask!
+    "Remove all embedder configurations from an index, disabling semantic search."
+    resetEmbedders(
+        "The index UID to reset."
+        uid: String!
+    ): MeilisearchTask!
+    "Remove one named embedder while retaining other configured providers."
+    removeEmbedder(uid: String!, name: String!): MeilisearchTask!
+    "Delete all documents from an index."
+    deleteAllDocuments(
+        "The index UID to clear."
+        uid: String!
+    ): MeilisearchTask!
+    "Delete specific documents by their IDs."
+    deleteDocuments(
+        "The index UID."
+        uid: String!
+        "The document IDs to delete."
+        ids: [String!]!
+    ): MeilisearchTask!
+    "Delete documents matching a filter expression."
+    deleteDocumentsByFilter(
+        "The index UID."
+        uid: String!
+        "The Meilisearch filter expression."
+        filter: String!
+    ): MeilisearchTask!
+    "Cancel tasks matching the given filters."
+    cancelTasks(
+        "Specific task UIDs to cancel."
+        uids: [Int!]
+        "Cancel tasks with these statuses."
+        statuses: [String!]
+        "Cancel tasks of these types."
+        types: [String!]
+        "Cancel tasks operating on these index UIDs."
+        indexUids: [String!]
+    ): MeilisearchTask!
+    "Create a database dump for backup or migration."
+    createDump: MeilisearchTask!
+    "Trigger a snapshot of the current database state."
+    createSnapshot: MeilisearchTask!
+    "Register a new Meilisearch node in the multi-node topology."
+    addNode(
+        "The node configuration to create."
+        input: MeilisearchNodeInput!
+    ): MeilisearchNode!
+    "Update an existing node's configuration."
+    editNode(
+        "The node's database ID."
+        id: UUID!
+        "The fields to update."
+        input: MeilisearchEditNodeInput!
+    ): MeilisearchNode!
+    "Remove a node from the topology."
+    deleteNode(
+        "The node's database ID."
+        id: UUID!
+    ): Boolean!
+    "Assign a node to a storage system, making it serve that storage system's indexes."
+    assignNodeToStorageSystem(
+        "The storage system ID."
+        storageSystemId: UUID!
+        "The node ID to assign."
+        nodeId: UUID!
+    ): Boolean!
+    "Remove a node from a storage system assignment."
+    removeNodeFromStorageSystem(
+        "The storage system ID."
+        storageSystemId: UUID!
+        "The node ID to remove."
+        nodeId: UUID!
+    ): Boolean!
+    "Export data from the primary instance to a specific node for replication."
+    exportToNode(
+        "The target node's database ID."
+        nodeId: UUID!
+        "Specific index UIDs to export, or all if omitted."
+        indexUids: [String!]
+        "Whether to override existing settings on the target."
+        overrideSettings: Boolean
+    ): MeilisearchTask!
+    "Configure the federation network on a specific node, registering remote instances for distributed search."
+    configureNetwork(
+        "The node's database ID."
+        nodeId: UUID!
+        "The remote instances to register."
+        remotes: [MeilisearchNetworkRemoteInput!]!
+    ): Boolean!
+}
+
+
+
+"Input for updating index settings. Only provided fields are changed."
+input MeilisearchSettingsInput {
+    "The ranking rules that determine result ordering."
+    rankingRules: [String!]
+    "The attributes that can be used as search query terms."
+    searchableAttributes: [String!]
+    "The attributes returned in search results."
+    displayedAttributes: [String!]
+    "The attributes that can be used for filtering."
+    filterableAttributes: [String!]
+    "The attributes that can be used for sorting."
+    sortableAttributes: [String!]
+    "Words to ignore during search."
+    stopWords: [String!]
+    "The distinct attribute for deduplication."
+    distinctAttribute: String
+    "Proximity precision (byWord or byAttribute)."
+    proximityPrecision: String
+    "Search cutoff time in milliseconds."
+    searchCutoffMs: Int
+}
+
+"Input for configuring an embedder on an index for semantic and vector search."
+input MeilisearchEmbedderInput {
+    "The name for this embedder configuration."
+    name: String!
+    "The source type (openAi, huggingFace, userProvided, rest, ollama)."
+    source: String!
+    "The model identifier."
+    model: String
+    "The API key for the embedding provider."
+    key: String
+    "The dimensionality of the vectors."
+    dimensions: Int
+    "The template used to generate text for embedding."
+    documentTemplate: String
+    "Maximum bytes for the document template."
+    documentTemplateMaxBytes: Int
+    "The URL of the embedding provider endpoint. Required for rest embedders."
+    url: String
+    "The request body template as JSON, defining how to send data to the provider."
+    request: JSON
+    "The response mapping as JSON, defining where embeddings are in the provider response."
+    response: JSON
+    "Custom HTTP headers as JSON key-value pairs sent with each request."
+    headers: JSON
+}
+
+"Input for creating a new Meilisearch node in the multi-node topology."
+input MeilisearchNodeInput {
+    "Human-readable name for the node."
+    name: String!
+    "Description of the node's role."
+    description: String
+    "The Meilisearch instance URL."
+    url: String!
+    "The API key for authenticating with this node."
+    key: String!
+    "The search types this node supports."
+    types: [StorageSystemType!]!
+}
+
+"Input for updating an existing Meilisearch node's configuration. Only provided fields are changed."
+input MeilisearchEditNodeInput {
+    "Updated name."
+    name: String
+    "Updated description."
+    description: String
+    "Updated URL."
+    url: String
+    "Updated API key."
+    key: String
+    "Updated search types."
+    types: [StorageSystemType!]
+}
+
+"Input for registering a remote Meilisearch instance in the federation network."
+input MeilisearchNetworkRemoteInput {
+    "The name identifying the remote instance."
+    name: String!
+    "The URL of the remote Meilisearch instance."
+    url: String!
+}
+
+"A long-lived API token credential for programmatic access. The raw token value is only available at creation time."
+type ApiToken {
+    "Credential ID in the principal_credentials table"
+    id: Long!
+    "ID of the principal this token authenticates as"
+    principalId: UUID!
+    "Human-readable name for identifying this token"
+    name: String!
+    "Optional description of this token's purpose"
+    description: String
+    "First 12 characters of the raw token, for identification in the UI"
+    tokenPrefix: String!
+    "List of scopes restricting this token's permissions. Null means unrestricted."
+    scopes: [String!]
+    "Subset of the principal's groups this token may act under. Null means all groups."
+    allowedGroups: [UUID!]
+    "When this token expires. Null means it never expires."
+    expiresAt: DateTime
+    "When this token was last used for authentication"
+    lastUsedAt: DateTime
+    "IP address of the most recent authentication using this token"
+    lastUsedIp: String
+    "When this token was revoked. Null means it is still active."
+    revokedAt: DateTime
+    "Whether this token is currently usable (not revoked and not expired)"
+    active: Boolean!
+}
+
+"Response returned when creating a new API token. Contains the raw token value which is only shown once."
+type ApiTokenCreationResponse {
+    "The created token metadata"
+    apiToken: ApiToken!
+    "The raw token value. Store this securely — it cannot be retrieved again."
+    rawToken: String!
+}
+
+"Input for creating a new API token"
+input ApiTokenInput {
+    "Human-readable name for the token (e.g. 'CI Deploy Token')"
+    name: String!
+    "Optional description of this token's intended use"
+    description: String
+    "Scopes to restrict this token's permissions. Omit for unrestricted access."
+    scopes: [String!]
+    "Group IDs to restrict this token to. Must be a subset of the principal's groups. Omit for all groups."
+    allowedGroups: [UUID!]
+    "When this token should expire. Omit for no expiration."
+    expiresAt: DateTime
+}
+
+"Describes an available API token scope"
+type ApiTokenScopeInfo {
+    "The scope identifier (e.g. 'content:view')"
+    name: String!
+    "Human-readable description of what this scope permits"
+    description: String!
+}
+
+"Query operations for API tokens"
+type ApiTokens {
+    "List all API tokens for the current principal"
+    my(limit: Int!, offset: Long!): [ApiToken!]!
+    "List all API tokens for a specific principal. Allowed for the principal themselves; listing another principal's tokens requires admin."
+    forPrincipal(principalId: UUID!, limit: Int!, offset: Long!): [ApiToken!]!
+    "Retrieve a specific API token by credential ID"
+    token(id: Long!): ApiToken
+    "List all available scope values"
+    availableScopes: [ApiTokenScopeInfo!]!
+}
+
+"Mutation operations for managing API tokens"
+type ApiTokensMutation {
+    "Create a new API token for the current principal. The raw token is only returned in this response."
+    create(input: ApiTokenInput!): ApiTokenCreationResponse!
+    "Create a new API token for a specific principal. Allowed for the principal themselves (equivalent to create); minting a token for another principal requires admin."
+    createForPrincipal(principalId: UUID!, input: ApiTokenInput!): ApiTokenCreationResponse!
+    "Revoke an API token immediately. The token can no longer be used for authentication."
+    revoke(id: Long!): Boolean!
+    "Revoke all API tokens for the current principal"
+    revokeAll: Boolean!
+    "Revoke all API tokens for a specific principal. Allowed for the principal themselves (equivalent to revokeAll); revoking another principal's tokens requires admin."
+    revokeAllForPrincipal(principalId: UUID!): Boolean!
+    "Update a token's name, description, or scopes. Null scopes leave restrictions unchanged; clearScopes explicitly removes restrictions."
+    edit(id: Long!, name: String, description: String, scopes: [String!], clearScopes: Boolean! = false): ApiToken!
+    "Permanently delete a revoked token record"
+    delete(id: Long!): Boolean!
+}
+
+"A registered WebAuthn passkey credential for passwordless authentication"
+type Passkey {
+    "Base64url-encoded credential ID assigned by the authenticator"
+    credentialId: String!
+    "Human-readable label for identifying this passkey (e.g. 'MacBook Pro Touch ID')"
+    name: String!
+    "ISO-8601 timestamp when this passkey was registered"
+    createdAt: String!
+    "ISO-8601 timestamp of the most recent authentication using this passkey, null if never used"
+    lastUsedAt: String
+    "Transport hints reported by the authenticator (e.g. 'internal', 'usb', 'ble', 'nfc')"
+    transports: [String!]!
+}
+
+"Query operations for WebAuthn passkeys"
+type Passkeys {
+    "List all registered passkeys for the current principal"
+    current: [Passkey!]!
+    "List all registered passkeys for a specific principal (admin only)"
+    all(principalId: UUID!): [Passkey!]!
+}
+
+"Mutation operations for managing WebAuthn passkeys"
+type PasskeysMutation {
+    "Remove a registered passkey by its credential ID. Cannot remove the last credential on the account."
+    delete(credentialId: String!): Boolean!
+}
+
+"A named bundle of Studio subsystem access that can be assigned to user profiles."
+type StudioPersona {
+    "The unique identifier of this persona."
+    id: UUID!
+    "The display name of this persona."
+    name: String!
+    "A description of what this persona grants access to."
+    description: String
+    "The list of Studio subsystem identifiers this persona grants access to."
+    subsystemIds: [String!]!
+    "Whether this persona is currently active and can be assigned."
+    enabled: Boolean!
+    "The timestamp when this persona was created."
+    created: DateTime!
+    "The timestamp when this persona was last modified."
+    modified: DateTime!
+}
+
+"Input for creating or updating a Studio persona definition."
+input StudioPersonaInput {
+    "The UUID of an existing persona to update. Null when creating."
+    id: UUID
+    "The display name of the persona."
+    name: String!
+    "A description of what this persona grants access to."
+    description: String
+    "The list of Studio subsystem identifiers this persona grants access to."
+    subsystemIds: [String!]!
+    "Whether the persona is active."
+    enabled: Boolean
+}
+
+"Query operations for Studio persona management."
+type StudioPersonas {
+    "Retrieve all persona definitions. Requires administrator access."
+    all: [StudioPersona!]!
+    "Retrieve a single persona by its unique identifier. Requires administrator access."
+    persona(
+        "The UUID of the persona to retrieve."
+        id: UUID!
+    ): StudioPersona
+    "Retrieve all personas assigned to a profile."
+    byProfile(
+        "The UUID of the profile to look up personas for."
+        profileId: UUID!
+    ): [StudioPersona!]!
+}
+
+"Mutation operations for Studio persona management and profile assignment."
+type StudioPersonasMutation {
+    "Create a new persona definition. Requires administrator access."
+    create(
+        "The persona definition to create."
+        input: StudioPersonaInput!
+    ): StudioPersona!
+    "Update an existing persona definition. Requires administrator access."
+    update(
+        "The persona definition to update. The id field must be set."
+        input: StudioPersonaInput!
+    ): StudioPersona!
+    "Delete a persona definition and all its profile assignments. Requires administrator access."
+    delete(
+        "The UUID of the persona to delete."
+        id: UUID!
+    ): Boolean!
+    "Assign a persona to a profile. Requires administrator access."
+    assignToProfile(
+        "The UUID of the persona to assign."
+        personaId: UUID!
+        "The UUID of the profile to assign the persona to."
+        profileId: UUID!
+    ): Boolean!
+    "Remove a persona assignment from a profile. Requires administrator access."
+    removeFromProfile(
+        "The UUID of the persona to remove."
+        personaId: UUID!
+        "The UUID of the profile to remove the persona from."
+        profileId: UUID!
+    ): Boolean!
+}
+
+extend type Query { artifactsAdmin: ArtifactsAdmin! }
+type ArtifactsAdmin { namespaces: [ArtifactNamespaceInfo!]! }
+type ArtifactNamespaceInfo { name: String! repositories: [ArtifactRepoInfo!]! }
+type ArtifactRepoInfo { name: String! type: ArtifactRegistryType! versions: [ArtifactVersionInfo!]! }
+type ArtifactVersionInfo { version: String! }
+enum ArtifactRegistryType { docker helm maven npm raw ml }
+
+"A configuration entry in the application's key-value store. Configurations hold platform settings, feature flags, and other runtime parameters with permission-based access control."
+type Configuration {
+    "A human-readable description of what this configuration controls and how it is used."
+    description: String!
+    "The unique internal identifier of this configuration entry."
+    id: String!
+    "The unique key used to look up this configuration (e.g. 'app.feature.enabled', 'theme.primaryColor')."
+    key: String!
+    "The list of permissions that control which groups can read or modify this configuration."
+    permissions: [ConfigurationPermission!]!
+    "Whether this configuration value is publicly accessible without authentication. Public configurations are available to unauthenticated clients."
+    public: Boolean!
+    "The configuration value stored as JSON. Can hold any JSON-serializable data including strings, numbers, objects, or arrays."
+    value: JSON
+}
+
+"A permission rule that grants a specific action to a security group for accessing a configuration entry."
+type ConfigurationPermission {
+    "The permission action granted to the group (e.g. read, write)."
+    action: PermissionAction!
+    "The security group that is granted this permission."
+    group: Group!
+}
+
+"Query operations for retrieving application configuration entries."
+type Configurations {
+    "Retrieve all configuration entries that the current user has permission to access."
+    all: [Configuration!]!
+    "Retrieve a single configuration entry by its unique key. Returns null if the key does not exist or the user lacks permission."
+    configuration(
+        "The unique key of the configuration to retrieve."
+        key: String!
+    ): Configuration
+}
+
+"Mutation operations for managing application configuration entries."
+type ConfigurationsMutation {
+    "Delete a configuration entry by its key. Returns the key of the deleted configuration, or null if the key was not found."
+    deleteConfiguration(
+        "The unique key of the configuration to delete."
+        key: String!
+    ): String
+    "Create or update a configuration entry. If a configuration with the given key already exists, it is updated; otherwise a new entry is created."
+    setConfiguration(
+        "The configuration data to create or update."
+        configuration: ConfigurationInput!
+    ): Configuration
+}
+
+"Input for creating or updating a configuration entry in the key-value store."
+input ConfigurationInput {
+    "A human-readable description of what this configuration controls and how it is used."
+    description: String!
+    "The unique key for this configuration (e.g. 'app.feature.enabled', 'theme.primaryColor'). Must be unique across all configurations."
+    key: String!
+    "The list of permissions that control which groups can read or modify this configuration."
+    permissions: [PermissionInput!]
+    "Whether this configuration value should be publicly accessible without authentication."
+    public: Boolean!
+    "The configuration value stored as JSON. Can hold any JSON-serializable data including strings, numbers, objects, or arrays."
+    value: JSON!
+}
+
+enum PermissionAction { DELETE EDIT EXECUTE IMPERSONATE LIST MANAGE VIEW }
+input PermissionInput { action: PermissionAction! entityId: String! groupId: String! }
+
+"The category of a storage system, indicating its primary purpose for content processing and retrieval."
+enum StorageSystemType {
+    "A full-text search index (e.g. Meilisearch) used for keyword and faceted search across content."
+    SEARCH
+    "A supplementary file storage system used for storing additional files associated with content (e.g. thumbnails, attachments)."
+    SUPPLEMENTARY
+    "A vector embedding store used for semantic search and similarity queries powered by AI models."
+    VECTOR
+}
+
+"A storage system configuration that defines an external service for indexing, storing, or embedding content. Storage systems integrate with search engines, file stores, and vector databases."
+type StorageSystem {
+    "The unique identifier of this storage system."
+    id: UUID!
+    "The type category of this storage system (SEARCH, SUPPLEMENTARY, or VECTOR)."
+    type: StorageSystemType!
+    "The human-readable name of this storage system."
+    name: String!
+    "A description of this storage system's purpose and configuration."
+    description: String!
+    "The connection and behavior configuration for this storage system, stored as JSON. Structure depends on the system type."
+    configuration: JSON
+    "The list of AI models associated with this storage system, used for tasks such as generating embeddings or processing content."
+    models: [StorageSystemModel!]!
+}
+
+"An AI model association for a storage system, defining which model is used for content processing and how it is configured."
+type StorageSystemModel {
+    "The model-specific configuration stored as JSON, such as embedding dimensions, tokenizer settings, or processing parameters."
+    configuration: JSON!
+    "The resolved AI model entity. Null if the model has been deleted or is not accessible."
+    model: Model
+    "The UUID of the AI model used by this storage system."
+    modelId: UUID!
+}
+
+"Query operations for retrieving storage system configurations."
+type StorageSystems {
+    "Retrieve all registered storage systems."
+    all: [StorageSystem!]!
+    "Retrieve a single storage system by its unique identifier. Returns null if the system does not exist."
+    storageSystem(
+        "The UUID of the storage system to retrieve."
+        id: UUID!
+    ): StorageSystem
+}
+
+"Mutation operations for managing storage systems and triggering reindexing operations."
+type StorageSystemsMutation {
+    "Create a new storage system with the specified configuration."
+    add(
+        "The storage system configuration to create."
+        storageSystem: StorageSystemInput!
+    ): StorageSystem
+    "Delete a storage system by its unique identifier. Returns true if the deletion was successful."
+    delete(
+        "The UUID of the storage system to delete."
+        id: UUID!
+    ): Boolean!
+    "Update an existing storage system's configuration."
+    edit(
+        "The UUID of the storage system to update."
+        id: UUID!
+        "The updated storage system configuration."
+        storageSystem: StorageSystemInput!
+    ): StorageSystem
+    "Trigger a reindex operation to rebuild search indexes or vector embeddings. Can target specific content types and storage systems."
+    reindex(
+        "The name of the specific storage system to reindex. If null, reindexes all storage systems."
+        storageName: String,
+        "Whether to delete existing index data before reindexing. Useful for a clean rebuild."
+        deleteFirst: Boolean,
+        "Whether to reindex metadata (content items)."
+        metadata: Boolean,
+        "Whether to reindex collections."
+        collections: Boolean,
+        "Whether to reindex profiles."
+        profiles: Boolean,
+        "The number of items to process per batch during reindexing. Controls memory usage and throughput."
+        batchSize: Int
+    ): Boolean
+}
+
+"Input for creating or updating a storage system configuration."
+input StorageSystemInput {
+    "The connection and behavior configuration stored as JSON. Structure depends on the system type."
+    configuration: JSON
+    "A description of this storage system's purpose and configuration."
+    description: String!
+    "The list of AI model associations for this storage system."
+    models: [StorageSystemModelInput!]!
+    "The human-readable name of this storage system."
+    name: String!
+    "The type category of this storage system (SEARCH, SUPPLEMENTARY, or VECTOR)."
+    type: StorageSystemType!
+}
+
+"Input for associating an AI model with a storage system."
+input StorageSystemModelInput {
+    "The model-specific configuration stored as JSON, such as embedding dimensions or processing parameters."
+    configuration: JSON!
+    "The UUID of the AI model to associate with the storage system."
+    modelId: UUID!
+}
+
+
+type Ai { models: Models! }
+type Models { all: [Model!]! }
+type Model { id: UUID! name: String! key: String! }
+type SearchConfiguration { previewMetadata(id: UUID!): JSON }
+extend type Search { configuration: SearchConfiguration }
+
+"Tracks the status, result, and metadata of a backup operation."
+type Backup {
+    "Unique identifier for this backup operation."
+    id: UUID!
+    "Current status of the backup: pending, running, completed, or failed."
+    status: String!
+    "Object storage path of the completed backup archive, null until the backup finishes."
+    path: String
+    "Error message if the backup failed, null on success."
+    error: String
+    "Whether binary files from object storage are included in this backup."
+    includeFiles: Boolean!
+    "Metadata item identifier for downloading the backup archive through the standard content API."
+    metadataId: UUID
+    "Timestamp when the backup was initiated."
+    created: DateTime!
+    "Timestamp of the most recent status update."
+    modified: DateTime!
+}
+
+"Determines how the restore process handles pre-existing records that conflict with data in the backup archive."
+enum ConflictStrategy {
+    "Skip records that already exist, leaving the current data untouched."
+    SKIP
+    "Overwrite existing records with data from the backup archive."
+    OVERWRITE
+    "Abort the entire restore if any conflicts are detected."
+    FAIL
+}
+
+"Query operations for listing and inspecting backup records."
+type Backups {
+    "List all backups ordered by creation date descending, with pagination."
+    list(offset: Int! = 0, limit: Int! = 20): [Backup!]!
+    "Get a specific backup by its identifier."
+    backup(id: UUID!): Backup
+}
+
+"Mutation operations for creating backups and restoring from them."
+type BackupsMutation {
+    "Initiate a new backup of all system data. Returns the backup tracking record immediately; the actual backup runs asynchronously."
+    create(includeFiles: Boolean! = true): Backup!
+    "Register an already-uploaded metadata item as an imported backup archive."
+    importBackup(metadataId: UUID!): Backup!
+    "Initiate a restore from a previously completed backup archive. The restore runs asynchronously."
+    restore(backupId: UUID!, conflictStrategy: ConflictStrategy! = SKIP): Boolean!
+    "Delete a backup tracking record and optionally its archive."
+    delete(id: UUID!): Boolean!
+}
+
+extend type Query {
+    "Access backup query operations for listing and inspecting backup records."
+    backups: Backups!
+}
+
+extend type Mutation {
+    "Access backup mutation operations for creating backups and restoring from them."
+    backups: BackupsMutation!
+}
+
+"Direction in which a federated channel link relays messages between peers"
+enum FederationSyncDirection {
+    "Messages flow in both directions between the local and remote channel"
+    BIDIRECTIONAL
+    "Only inbound messages from the peer are accepted into the local channel"
+    INBOUND
+    "Only outbound messages from the local channel are sent to the peer"
+    OUTBOUND
+}
+
+"A remote Bosca instance that participates in federated chat. Peers communicate over NATS leaf nodes for transport and a REST API for handshake/control."
+type FederationPeer {
+    "Unique identifier for this peer"
+    id: UUID!
+    "Human-readable name for this peer"
+    name: String!
+    "NATS connection URL used by the leaf-node bridge for message transport"
+    natsUrl: String!
+    "Base URL of the peer's federation REST API used for control-plane operations"
+    apiUrl: String!
+    "Whether this peer is currently active"
+    active: Boolean!
+    "Timestamp when this peer was registered"
+    createdAt: DateTime
+    "Channel-level federation links to this peer originating from local channels"
+    federatedChannels: [FederatedChannel!]!
+}
+
+"Links a local chat channel to a remote channel on a federated peer, defining the direction of message relay"
+type FederatedChannel {
+    "ID of the local Bosca chat channel"
+    localChannelId: UUID!
+    "ID of the federation peer this link targets"
+    peerId: UUID!
+    "ID of the remote channel on the peer side"
+    remoteChannelId: UUID!
+    "Direction of message relay for this link"
+    syncDirection: FederationSyncDirection!
+    "The peer this link targets"
+    peer: FederationPeer
+}
+
+"Input for registering a new federation peer"
+input RegisterFederationPeerInput {
+    "Human-readable name for the peer"
+    name: String!
+    "NATS connection URL used by the leaf-node bridge"
+    natsUrl: String!
+    "Base URL of the peer's federation REST API"
+    apiUrl: String!
+    "Shared secret used to authenticate handshake and control-plane requests. Stored encrypted via the configuration service."
+    sharedSecret: String!
+}
+
+"Input for federating a local channel with a remote channel on a peer"
+input FederateChannelInput {
+    "ID of the local Bosca chat channel to federate"
+    localChannelId: UUID!
+    "ID of the federation peer to link with"
+    peerId: UUID!
+    "ID of the remote channel on the peer side"
+    remoteChannelId: UUID!
+    "Sync direction for this link. Defaults to bidirectional when omitted."
+    syncDirection: FederationSyncDirection
+}
+
+"Root query type for federation administration"
+type Federation {
+    "All active federation peers known to this instance"
+    peers: [FederationPeer!]!
+    "A specific peer by id"
+    peer(id: UUID!): FederationPeer
+    "Federated channel links originating from a local channel"
+    channelLinks(localChannelId: UUID!): [FederatedChannel!]!
+}
+
+"Mutation operations for managing federation peers and channel links"
+type FederationMutation {
+    "Register a new federation peer with its connection details and shared secret"
+    registerPeer(input: RegisterFederationPeerInput!): FederationPeer!
+    "Deactivate a federation peer, halting message synchronization"
+    deactivatePeer(id: UUID!): Boolean!
+    "Link a local channel with a remote channel on a peer for synchronization"
+    federateChannel(input: FederateChannelInput!): Boolean!
+    "Remove an existing federation link for a local channel"
+    unfederateChannel(localChannelId: UUID!, peerId: UUID!): Boolean!
+    "Set or rotate the shared secret used to authenticate handshake requests with a peer"
+    setSharedSecret(id: UUID!, secret: String): Boolean!
+}
+
+type Collaboration { federation: Federation! }
+type CollaborationMutation { federation: FederationMutation! }
+extend type Query { collaboration: Collaboration! }
+extend type Mutation { collaboration: CollaborationMutation! }
+
+type Content
+type ContentMutation
+extend type Query { content: Content! }
+extend type Mutation { content: ContentMutation! }
+type Bible { metadataId: UUID! version: Int! variant: String! name: String! enabled: Boolean! }
+type BibleAudio { id: UUID! name: String! nameLocal: String! abbreviation: String! attribution: BibleAttribution! }
+type BibleLanguage { iso: String! name: String! nameLocal: String! script: String! scriptCode: String! scriptDirection: String! }
+type BibleAttribution { copyright: String! citation: String! informationUrl: String }
+"Administrator queries for Bible provider integration"
+type BibleProviders {
+    providers: [String!]!
+    configurations: [BibleProviderConfiguration!]!
+    catalog(configurationId: UUID!, kind: BibleSourceKind!, query: String, offset: Int! = 0, limit: Int! = 20): [BibleCatalog!]!
+    sources(configurationId: UUID!): [BibleSource!]!
+    audioTargets(configurationId: UUID!, providerBibleId: String!): [Bible!]!
+}
+
+"Administrator operations for configuring providers and managing their sources"
+type BibleProvidersMutation {
+    saveConfiguration(input: BibleProviderConfigurationInput!): BibleProviderConfiguration!
+    test(configurationId: UUID!): Boolean!
+    addBible(input: AddProviderBibleInput!): Bible!
+    addAudio(bibleId: UUID!, version: Int!, variant: String!, input: AddProviderAudioInput!): BibleAudio!
+    refresh(sourceId: UUID!): Boolean!
+    removeSource(sourceId: UUID!, expectedVersion: Long!): Boolean!
+    "Active sources prevent removal unless purgeSources is explicitly true"
+    removeConfiguration(configurationId: UUID!, purgeSources: Boolean! = false): Boolean!
+}
+
+"Saved provider setup without credentials"
+type BibleProviderConfiguration {
+    id: UUID!
+    name: String!
+    provider: String!
+    enabled: Boolean!
+    hasApiKey: Boolean!
+}
+
+input BibleProviderConfigurationInput {
+    id: UUID
+    name: String!
+    provider: String!
+    enabled: Boolean!
+    "Omit or send null to preserve the saved key when updating"
+    apiKey: String
+}
+
+"A text Bible or recording available upstream; browsing does not download chapter content"
+type BibleCatalog {
+    id: String!
+    systemId: String!
+    kind: BibleSourceKind!
+    name: String!
+    nameLocal: String!
+    abbreviation: String!
+    abbreviationLocal: String!
+    description: String!
+    languages: [BibleLanguage!]!
+    attribution: BibleAttribution!
+    relatedSystemId: String
+}
+
+"A provider edition attached to an exact Bosca Bible version and variant"
+type BibleSource {
+    id: UUID!
+    configurationId: UUID!
+    provider: String!
+    providerBibleId: String!
+    metadataId: UUID!
+    metadataVersion: Int!
+    variant: String!
+    kind: BibleSourceKind!
+    name: String!
+    nameLocal: String!
+    abbreviation: String!
+    attribution: BibleAttribution!
+    allowedUses: [BibleContentUse!]!
+    version: Long!
+    created: DateTime!
+    modified: DateTime!
+}
+
+input AddProviderBibleInput {
+    configurationId: UUID!
+    providerBibleId: String!
+    variant: String!
+    "Uses reviewed by an administrator; an empty list grants no use"
+    allowedUses: [BibleContentUse!]!
+}
+
+input AddProviderAudioInput {
+    configurationId: UUID!
+    providerBibleId: String!
+    "Audio sources may permit only PLAYBACK; an empty list grants no use"
+    allowedUses: [BibleContentUse!]!
+}
+
+enum BibleSourceKind {
+    TEXT
+    AUDIO
+}
+
+enum BibleContentUse {
+    DISPLAY
+    AI_CONTEXT
+    TEXT_TO_SPEECH
+    INDEXING
+    EXPORT
+    PLAYBACK
+}
+
+extend type Content {
+    bibleProviders: BibleProviders!
+}
+
+extend type ContentMutation {
+    bibleProviders: BibleProvidersMutation!
+}

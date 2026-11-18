@@ -1,0 +1,20 @@
+<component tag="system-utilities">
+  <prop name="initial" type="bosca.system.ui.SystemUtilitiesModel" required />
+  <script server provides="model">bosca.system.ui.SystemUtilitiesModel(initial.admin, initial.feedback)</script>
+  <island name="system-utilities" :key='"utilities"'><page-shell fill><page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" title="Utilities" subtitle="System utility operations" /><div class="system-content" data-bml-scroll="system-content">
+    <system-feedback :feedback="model.feedback" />
+    <if !model.admin><alert>Administrator access is required.</alert><else>
+      <card :padded="false" title="Clear cache"><div class="utility-row"><span class="utility-icon"><icon name="trash" :size="18" /></span><p>Clear server caches and persisted GraphQL queries.</p><button @click='model.execute("clear-cache", false, ctx)'>Clear cache</button></div></card>
+      <card :padded="false" title="Clear CDN cache"><div class="utility-row"><span class="utility-icon"><icon name="globe" :size="18" /></span><p>Invalidate the configured CDN cache so content is fetched from the origin again.</p><button @click='model.execute("clear-cdn-cache", false, ctx)'>Clear CDN cache</button></div></card>
+      <card :padded="false" title="Expire all jobs"><div class="utility-row"><span class="utility-icon dangerous"><icon name="clock" :size="18" /></span><p>Expire pending jobs across all queues so they can be processed again.</p><confirm-dialog title="Expire all jobs?" description="Expired jobs can be processed again. This may increase system load." triggerLabel="Expire all jobs" :triggerIconOnly="false"><form @submit='model.execute("expire-all-jobs", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><checkbox name="confirmed" label="Expire jobs across all queues" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Expire all jobs</button></form-actions></form></confirm-dialog></div></card>
+      <card :padded="false" title="Clear job locks"><div class="utility-row"><span class="utility-icon dangerous"><icon name="key" :size="18" /></span><p>Release distributed job locks across all queues when jobs cannot recover themselves.</p><confirm-dialog title="Clear job locks?" description="Active jobs may still hold these locks. Release all locks only when recovery is needed." triggerLabel="Clear job locks" :triggerIconOnly="false"><form @submit='model.execute("clear-job-locks", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><checkbox name="confirmed" label="Release job locks across all queues" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Clear job locks</button></form-actions></form></confirm-dialog></div></card>
+    </if>
+  </div></page-shell></island>
+  <style scoped>
+    .utility-row { display: flex; align-items: center; gap: 16px; padding: 16px; }
+    .utility-icon { display: flex; align-items: center; justify-content: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: var(--r-sm); color: var(--fg-2); background: var(--bg-2); }
+    .utility-icon.dangerous { color: var(--err); background: color-mix(in oklch, var(--err) 12%, transparent); }
+    .utility-row p { flex: 1; min-width: 0; margin: 0; color: var(--fg-2); font-size: 12.5px; line-height: 1.5; }
+    @media (max-width: 600px) { .utility-row { flex-wrap: wrap; } .utility-row p { flex-basis: calc(100% - 52px); } }
+  </style>
+</component>

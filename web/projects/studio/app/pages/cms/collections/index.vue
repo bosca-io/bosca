@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
-import type { GlassTableColumn, OverflowMenuItem, SelectOption } from '@bosca/ui'
+import type { GlassTableColumn, OverflowMenuItem } from '@bosca/ui'
 
 const { accent } = useCurrentSubsystem()
 const { useAsyncQuery, query: gqlQuery, mutation: gqlMutation } = useGraphQL()
@@ -86,8 +86,10 @@ const filter = computed(() => {
   return parts.join(' AND ')
 })
 
+const sort = computed(() => searchQuery.value ? [] : ['published:desc'])
+
 const collectionsGql = gql`
-  query GetAllCollections($query: String!, $filter: String!, $limit: Int!, $offset: Int!) {
+  query GetAllCollections($query: String!, $filter: String!, $limit: Int!, $offset: Int!, $sort: [String!]) {
     search {
       search(query: {
         query: $query
@@ -95,6 +97,7 @@ const collectionsGql = gql`
         storageSystemName: "Admin Search Index"
         limit: $limit
         offset: $offset
+        sort: $sort
       }) {
         documents {
           collection {
@@ -175,6 +178,7 @@ const { data, status, refresh } = useAsyncQuery<{
   filter,
   limit,
   offset,
+  sort,
 })
 
 const collections = computed<SearchCollection[]>(() =>
@@ -295,48 +299,41 @@ async function confirmDelete() {
 // ── Create collection ────────────────────────────────────────────────────────
 const createGql = gql`
   mutation CreateCollection($collection: CollectionInput!) {
-    content { collection { add(collection: $collection) { id } } }
+    content { collection { add(collection: $collection, setReady: true) { id } } }
   }
 `
 
-const COLLECTION_TYPE_OPTIONS: SelectOption[] = [
-  { value: 'STANDARD', label: 'Standard' },
-  { value: 'FOLDER', label: 'Folder' },
-  { value: 'QUEUE', label: 'Queue' },
+const COLLECTION_TYPE_ITEMS: OverflowMenuItem[] = [
+  { id: 'STANDARD', label: 'Standard', icon: 'boxes' },
+  { id: 'FOLDER', label: 'Folder', icon: 'folder' },
+  { id: 'QUEUE', label: 'Queue', icon: 'list' },
 ]
 
-const showCreate = ref(false)
-const createName = ref('')
-const createType = ref('STANDARD')
-const createSaving = ref(false)
-const createError = ref('')
-
-function openCreate() {
-  createName.value = ''
-  createType.value = 'STANDARD'
-  createError.value = ''
-  createSaving.value = false
-  showCreate.value = true
+// Placeholder names by type; the editor's Details panel is where naming happens.
+const DEFAULT_NAMES: Record<string, string> = {
+  STANDARD: 'New Collection',
+  FOLDER: 'New Folder',
+  QUEUE: 'New Queue',
 }
-useCreateFromQuery(openCreate)
 
-async function onCreateCollection() {
-  const name = createName.value.trim()
-  if (!name || createSaving.value) return
+const createMenuOpen = ref(false)
+const createSaving = ref(false)
+
+useCreateFromQuery(() => { createMenuOpen.value = true })
+
+async function onCreateCollection(collectionType: string) {
+  if (createSaving.value) return
   createSaving.value = true
-  createError.value = ''
   try {
     const result = await gqlMutation<{ content: { collection: { add: { id: string } } } }>(
       createGql,
-      { collection: { name, collectionType: createType.value } },
+      { collection: { name: DEFAULT_NAMES[collectionType] ?? 'New Collection', collectionType } },
     )
-    const newId = result.content.collection.add.id
-    showCreate.value = false
     toast.success('Collection created')
-    router.push(`/cms/collections/${newId}`)
+    router.push(`/cms/collections/${result.content.collection.add.id}`)
   } catch (e) {
-    /* eslint-disable @typescript-eslint/no-explicit-any */
-    createError.value = (e as unknown as any)?.message || 'Failed to create collection'
+    console.error('Failed to create collection', e)
+    toast.error('Failed to create collection')
   } finally {
     createSaving.value = false
   }
@@ -365,12 +362,21 @@ const columns: GlassTableColumn[] = [
         @tab="activeTab = $event"
       >
         <template #actions>
-          <Button
-            primary
-            icon="plus"
-            size="sm"
-            :accent="accent"
-            @click="openCreate">New Collection</Button>
+          <OverflowMenu
+            v-model:open="createMenuOpen"
+            :items="COLLECTION_TYPE_ITEMS"
+            @select="onCreateCollection"
+          >
+            <template #default="{ toggle }">
+              <Button
+                primary
+                icon="plus"
+                size="sm"
+                :accent="accent"
+                :disabled="createSaving"
+                @click="toggle">New Collection</Button>
+            </template>
+          </OverflowMenu>
         </template>
       </PageHeader>
     </template>
@@ -547,40 +553,6 @@ const columns: GlassTableColumn[] = [
     @confirm="confirmDelete"
   />
 
-  <!-- New collection modal -->
-  <Modal
-    v-if="showCreate"
-    title="New Collection"
-    icon="boxes"
-    width="440px"
-    :accent="accent"
-    @close="showCreate = false">
-    <div class="create-form">
-      <TextInput
-        v-model="createName"
-        label="Name"
-        placeholder="Collection name"
-        autofocus
-        @keydown.enter="onCreateCollection" />
-      <Select
-        v-model="createType"
-        :options="COLLECTION_TYPE_OPTIONS"
-        label="Type" />
-    </div>
-    <p v-if="createError" class="create-error">{{ createError }}</p>
-    <template #footer>
-      <span class="filter-spacer" />
-      <Button size="sm" @click="showCreate = false">Cancel</Button>
-      <Button
-        size="sm"
-        primary
-        :accent="accent"
-        :disabled="!createName.trim() || createSaving"
-        @click="onCreateCollection">
-        {{ createSaving ? 'Creating…' : 'Create' }}
-      </Button>
-    </template>
-  </Modal>
 </template>
 
 <style scoped>
@@ -799,18 +771,6 @@ const columns: GlassTableColumn[] = [
 
 .action-btn:hover {
   background: var(--bg-3);
-}
-
-.create-form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.create-error {
-  font-size: 12px;
-  color: var(--err);
-  margin: 8px 0 0;
 }
 
 </style>

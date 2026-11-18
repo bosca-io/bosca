@@ -1,0 +1,47 @@
+<component tag="icon-actions">
+  <prop name="id" type="String" required />
+  <script server provides="actions" scope="server-session">bosca.design.example.IconActions(id)</script>
+  <script server provides="replacement" scope="server-session">bosca.design.example.IconActions(id + "-replacement")</script>
+  <card title="Icon actions">
+    <island name="actions" :key="id">
+      <p :data-action-count="actions.id">Count { actions.count }</p>
+      <p :id='actions.id + "-hint"'>Icon labels describe each action.</p>
+      <if actions.visible>
+        <div class="actions">
+          <icon-button icon="plus" :label="actions.label" @click="actions.increment" ref="increment"
+                       :aria-describedby='actions.id + "-hint"' :data-icon-action="actions.id" class="ghost" />
+          <icon-button icon="plus" label="Small action" size="xs" @click="actions.increment" :data-xs-action="actions.id" />
+          <icon-button icon="plus" label="Unavailable action" disabled @click="actions.increment" :data-disabled-action="actions.id" />
+          <icon-link icon="external" label="Read details" href="#link-target" rel="help" :data-icon-link="actions.id" />
+        </div>
+        <form @submit="actions.save(form.name)" :data-icon-form="actions.id">
+          <field label="Name"><input name="name" value="Ada" required /></field>
+          <icon-button icon="save" label="Save name" type="submit" name="submitAction" value="save" :data-icon-submit="actions.id" />
+        </form>
+      </if>
+      <div class="actions">
+        <button @click="actions.rename" :data-rename="actions.id">Update label</button>
+        <button @click="actions.toggle" :data-toggle-actions="actions.id">Toggle actions</button>
+      </div>
+      <p :data-icon-result="actions.id">Saved { actions.savedName } ({ actions.saves })</p>
+    </island>
+    <div class="actions">
+      <for placement in listOf("top", "bottom", "left", "right")>
+        <tooltip :content='"Placed " + placement' :placement="placement" delay="0" :data-placement="placement">
+          <button :data-placed="placement">{ placement }</button>
+        </tooltip>
+      </for>
+      <tooltip content="Delayed hint" delay="350"><button :data-delayed="id">Delayed hint</button></tooltip>
+    </div>
+    <div class="tooltip-clip">
+      <tooltip content="A themed tooltip outside a clipped container" placement="bottom" delay="0">
+        <button :data-clipped="id">Clipped container</button>
+      </tooltip>
+    </div>
+    <tooltip content="Replacement hint" delay="0">
+      <island name="replacement" :key='id + "-replacement"'>
+        <button @click="replacement.increment" :data-replacement="replacement.id">Replacement { replacement.count }</button>
+      </island>
+    </tooltip>
+  </card>
+</component>

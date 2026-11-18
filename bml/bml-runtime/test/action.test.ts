@@ -620,6 +620,59 @@ describe("live-island actions", () => {
     expect(body.method).toBe("share")
   })
 
+  it.each(["submit", "click"])("flushes enhanced drafts once before resolving %s form arguments", async eventName => {
+    setup({ client: true })
+    const form = document.createElement("form")
+    const input = document.createElement("input")
+    input.name = "draft"
+    input.value = "stale"
+    const trigger = eventName === "submit" ? form : document.createElement("button")
+    if (trigger !== form) { trigger.setAttribute("type", "button"); form.append(trigger) }
+    trigger.dataset.bmlStateKey = "counterModel"
+    trigger.dataset.bmlMethod = "save"
+    trigger.dataset.bmlEvent = eventName
+    trigger.dataset.bmlArgs = '[{"__bmlField":"draft"},{"__bmlField":"draft"}]'
+    form.append(input); document.body.append(form)
+    const flush = vi.fn(() => { input.value = "current draft" })
+    form.addEventListener("bml:form-serialize", flush)
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ state: '{"count":1}', html: "<span>Saved</span>" }), { status: 200 }))
+    vi.stubGlobal("fetch", fetchMock)
+    bindActions()
+    trigger.dispatchEvent(new Event(eventName, { bubbles:true, cancelable:true }))
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    expect(flush).toHaveBeenCalledOnce()
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
+    expect(body.args).toEqual(["current draft", "current draft"])
+  })
+
+  it.each([{ values: [] as string[] }, { values: ["git", "system"] }])("submits every multi-select choice as JSON form text: $values", async ({ values }) => {
+    setup({ client: true })
+    const form = document.createElement("form")
+    form.dataset.bmlStateKey = "counterModel"
+    form.dataset.bmlMethod = "save"
+    form.dataset.bmlEvent = "submit"
+    form.dataset.bmlArgs = '[{"__bmlField":"subsystems"}]'
+    const select = document.createElement("select")
+    select.name = "subsystems"
+    select.multiple = true
+    for (const value of ["git", "system", "cms"]) {
+      const option = document.createElement("option")
+      option.value = value
+      option.textContent = value
+      option.selected = values.includes(value)
+      select.append(option)
+    }
+    form.append(select)
+    document.body.append(form)
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ state: '{"count":1}', html: "<span>Saved</span>" }), { status: 200 }))
+    vi.stubGlobal("fetch", fetchMock)
+    bindActions()
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))
+    expect(body.args).toEqual([JSON.stringify(values)])
+  })
+
   it("binds arbitrary DOM events emitted by the compiler", async () => {
     setup({ client: true })
     const input = document.createElement("input")

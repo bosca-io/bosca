@@ -19,6 +19,7 @@ class GitHubUsersModel(
     var principal: String = "",
     var message: String = "",
     var failed: Boolean = false,
+    var noticeSequence: Int = 0,
 ) {
     fun label(user: GitUiPrincipalsData.Security.Principals.All): String {
         val profile =
@@ -92,6 +93,7 @@ class GitHubUsersModel(
         failed = false
         try {
             block()
+            if (message.isNotBlank()) noticeSequence += 1
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

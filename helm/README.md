@@ -78,6 +78,154 @@ kubelet-identity copies. Source-chart/custom-image development can supply
 `global.kit.runtime` metadata. `release.sh package --kit-images FILE` accepts a
 validated pre-resolved catalog for offline packaging tests or an alternate build.
 
+## Controller-managed TensorFlow Serving
+
+TF Serving runs only through the Kubernetes controller. With `provisioning.enabled: false` (the default),
+the standalone chart creates no resources. With it enabled, the chart creates a `ServingModelProfile`
+and its ServiceAccount. The controller discovers exported generations and maintains separate
+ServingModel resources, Pods and version-specific Services. The chart supplies resource, scheduling,
+security, artifact and health-check settings through the profile's native pod template.
+
+In `bosca-services`, use `tf-serving.provisioning.enabled` to enable this chart. This is the only switch;
+the former `tf-serving.enabled` value no longer controls it. There is no shared TF Serving Deployment,
+polling sidecar, Service or PVC. Keep the controller running to provision and reconcile model instances.
+
+Publish matched controller, model-loader, server and runner images from this revision before enabling
+provisioning. Earlier loader images do not support init downloads, and earlier controller images do not
+reconcile ServingModels. Deployment-owned values must select the updated images.
+
+When upgrading an existing release, the new chart removes its old TF Serving Deployment and shared
+Service, including when provisioning is disabled. To move traffic before removing that deployment:
+
+1. Install the new controller image and both ServingModel CRDs. When upgrading an existing Helm release,
+   apply the new CRD files from `helm/bosca-kubernetes-controller/crds/` explicitly; Helm does not upgrade CRDs.
+2. Install the profile as a separate `tf-serving` chart release with a distinct `fullnameOverride`,
+   `provisioning.enabled: true`, and deployment-owned resources and credentials. Every version gets its own
+   per-Pod storage; shared PVCs are unsupported. The profile defaults to one candidate and a 120-second drain.
+   Configure `loader.secrets.boscaToken` with administrator or matching artifact push permissions for terminal
+   serving claims and failure reports; the artifacts pull token remains read-only. `provisioning.failureGraceSeconds` defaults
+   to 600 seconds after an observed candidate failure. Use the same distributed lock backend on controller
+   and runner. Before queuing activation, the controller claims the selection revision on the ServingModel
+   so delayed retirement deletes fail their Kubernetes resource-version precondition.
+3. Wait for the current active generation's ServingModel and exact model status endpoints to become ready.
+4. Configure `RECOMMENDATIONS_CONTEXT_MODEL_URL_TEMPLATE` on both server and runner to match the profile,
+   for example `http://tf-serving-model-{version}.models.svc:8501` for namespace `models` and the default prefix.
+   Roll out these applications after the active version's endpoint is available.
+5. After all consumers have moved, upgrade the original release to remove its old TF Serving resources.
+   If that release contains only TF Serving, it can instead be uninstalled. Keep the new profile release.
+   Subsequent context activations validate their own candidate endpoint and switch the active version
+   without restarting another version's Pod.
+
+Plan capacity for the active models plus `provisioning.maxCandidates` additional Pods. Candidates wait if
+this capacity is occupied by another candidate or a draining version. Failed discovery preserves loaded
+instances. See the [controller lifecycle](../kubernetes/README.md#controller-managed-serving-models) for details.
+
+Resource and scheduling overrides use the ordinary chart values. For `bosca-services`, put them under
+`tf-serving`; for a standalone `tf-serving` release, omit that outer key:
+
+```yaml
+tf-serving:
+  provisioning:
+    enabled: true
+    maxCandidates: 1
+  resources:
+    requests:
+      memory: 6Gi
+    limits:
+      memory: 6Gi
+  loader:
+    resources:
+      requests:
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+```
+
+These resources apply to each model Pod. `loader.resources` controls the download init container;
+`nodeSelector`, `affinity`, `tolerations`, `livenessProbe`, and `readinessProbe` pass into the same native
+pod template. A profile change affects newly created ServingModels. Existing instances retain their
+captured settings, so a Helm resource change does not restart the active model. For an existing polling
+installation, follow the separate-release migration above before upgrading its release.
+
+Configure the version endpoint in both application charts through Helm values. This example uses
+namespace `bosca` and the default `tf-serving-model-` Service prefix:
+
+```yaml
+bosca-server:
+  appConfig:
+    tfServing:
+      contextModelUrlTemplate: "http://tf-serving-model-{version}.bosca.svc:8501"
+bosca-runner:
+  appConfig:
+    tfServing:
+      contextModelUrlTemplate: "http://tf-serving-model-{version}.bosca.svc:8501"
+```
+
+The application charts retain the `RECOMMENDATIONS_CONTEXT_MODEL_URL_TEMPLATE` and
+`RECOMMENDATIONS_TF_SERVING_URL` environment defaults when these Helm fields are not overridden.
+`appConfig.tfServing` also accepts the other serving settings, such as `url` and `timeoutSeconds`.
+
+## Container memory and heap sizing
+
+Set memory requests, memory limits and `maxRAMPercentage` in your deployment's
+values file. The server defaults to 65 percent; Atlas, runner, Git, artifacts,
+collector and Kubernetes controller default to 75 percent. The percentage sets
+maximum heap size relative to the container memory limit; leave room for memory
+used outside the heap.
+
+For the services umbrella chart:
+
+```yaml
+bosca-server:
+  maxRAMPercentage: 65
+  resources:
+    requests:
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+bosca-atlas-server:
+  maxRAMPercentage: 70
+  resources:
+    requests:
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+bosca-runner:
+  maxRAMPercentage: 75
+  workers:
+    default:
+      resources:
+        requests:
+          memory: 2Gi
+        limits:
+          memory: 2Gi
+```
+
+Standalone chart values omit the service-name wrapper. Runner memory is set per
+worker under `workers.<name>.resources`; its `maxRAMPercentage` applies to every
+worker. Percentages accept integers or fractional values such as `62.5`.
+
+## Design Library site
+
+`bml-design-catalog` serves the interactive Design Library catalog as a GraalVM native executable
+on port 9093. Enable the optional services dependency and supply a hostname in the deployment's
+own values file:
+
+```yaml
+bml-design-catalog:
+  enabled: true
+  gateway:
+    enabled: true
+    hostnames: [design.example.com]
+```
+
+With the shared Gateway enabled, the services chart adds its TLS listener, HTTPS route and HTTP
+redirect. The image and chart use the selected release tag, with normal registry/tag overrides.
+The catalog needs no Bosca API, database or infrastructure credentials. Its examples keep state
+in one process; the chart defaults to one replica and Recreate rollouts. Restarts reset demo state.
+See the [catalog deployment guide](../bml/bml-design-catalog/README.md#deployment) for local image
+builds and standalone Service deployment.
+
 ## Bible usage worker
 
 The runner chart enables `fumsQueueRunner` for API.Bible usage reports. If your
@@ -89,7 +237,7 @@ charts expose `appConfig.fumsTransformEnabled`; the runner defaults to `false`.
 Enable it on the runner only when it handles FUMS event processing instead of the
 collector. `FUMS_TRANSFORM_ENABLED` overrides this setting on those applications.
 
-## Distributed cache and locks
+## Infrastructure backends and Dragonfly backups
 
 The infrastructure chart pins Dragonfly to `v2.0.2`. Set `redis.image` in your
 deployment's infrastructure values to override the full image reference:
@@ -102,27 +250,57 @@ redis:
 The chart passes this image to the Dragonfly operator through `spec.image`.
 Apply it with the existing infrastructure release name, namespace and values file.
 
-Starting with services chart `0.1.3`, server, runner, collector, artifacts server,
-Git server, and Kubernetes controller charts expose `appConfig.cacheType` and
-`appConfig.distributedLockType`, each accepting `nats` or `redis`. In the services
-umbrella, set these under each service's values. For example:
+The server, runner, collector, Atlas, artifacts server, Git server, and Kubernetes
+controller charts expose backend selections under `appConfig`. For example:
 
 ```yaml
 bosca-server:
   appConfig:
+    natsEnabled: false
+    jobQueueFactory: redis
+    pubsubType: redis
+    counterType: redis
+    liveSessionsType: redis
     cacheType: redis
     distributedLockType: redis
     redisHost: redis
     redisPort: 6379
 ```
 
-`redisHost` names a Service in the release namespace. Apply the same backend and
-Redis endpoint settings to every service sharing caches or locks. All six charts
-default to NATS for both backends. These settings do not change job queues,
-pub/sub, or counters.
+`redisHost` names a Service in the release namespace. A Redis connection is rendered
+when any backend selects Redis. Distributed locks default to Redis; the other backend defaults remain NATS; an empty
+`liveSessionsType` follows `pubsubType`. `natsEnabled` controls the NATS connection,
+monitoring configuration and token environment variable. Domain implementations
+that directly require NATS still need a NATS connection; these options only select
+the configurable infrastructure backends.
 
-When changing an existing deployment's lock backend, stop all consumers of the
-shared locks before starting them with the new configuration. NATS and Redis
+Server and runner charts expose `appConfig.analyticsProcessorEnabled` (defaults
+false and true, respectively). The collector's `appConfig.eventRepositoryType`
+selects `nats` or direct `iceberg` storage. `appConfig.iceberg.s3` configures the
+warehouse bucket separately from content storage, and
+`secrets.icebergS3.secretName` supplies existing warehouse object-storage
+credentials. Without that Secret, the collector retains its content-storage
+credential environment variables.
+
+The infrastructure chart exposes Dragonfly's `redis.snapshot`, `redis.extraArgs`
+and `redis.env`. Native snapshots may use a persistent volume or an S3 URI. For
+S3 RDB snapshots, set `snapshot.dir`, `snapshot.cron`, `--dbfilename=dump` and
+`--df_snapshot_format=false`, plus endpoint flags and credential Secret references
+in `env`. Dragonfly loads its latest native snapshot on startup.
+
+`redis.backup.enabled` adds a CronJob that archives the RDB object named by
+`redis.backup.bucket` and `snapshotKey`. It copies to `archivePrefix` hourly by
+default and deletes archive objects older than `retentionDays` (default seven).
+The job uses `redis.env` for existing credentials and `redis.backup.endpoint` for
+the object-store endpoint. Its retention only covers the archive prefix; the
+latest restore snapshot remains separate. All backup resources are rendered by
+the chart, without a post-renderer.
+
+NATS distributed locking has been removed. Set `appConfig.distributedLockType: redis` in every
+application chart and configure the same Redis endpoint/database for services sharing locks.
+Remove any `DISTRIBUTED_LOCK_TYPE=nats` environment overrides. PostgreSQL locking is not implemented.
+When upgrading a deployment that used NATS locks, stop all consumers of the shared locks before
+starting them with the new images and configuration. NATS and Redis
 locks do not coordinate with each other during a rolling transition.
 
 ## Pipeline encryption key
@@ -141,47 +319,129 @@ use that same fallback; moving stored secrets to a different key requires an
 explicit re-encryption migration. Restart all affected pods after changing a
 shared environment ConfigMap.
 
-## Git API and BML UI
+## Optional Git backend
 
-`bosca-git-server` runs the API on 8091 and the BML UI on 8093 in one pod.
-Both share the existing `git.<domain>` public origin. Chart version 0.1.2 adds
-the UI listener configuration, Service port, startup probe and path routing.
-For the services chart, set these values in the deployment's operations repository:
+`bosca-git-server` serves only the Git API and transports on 8091. Its image,
+Service and probes have no UI listener. Use an image built from this revision.
+Set `appConfig.gitUrl` for canonical transport URLs and `appConfig.uiUrl` for the
+external UI origin (default `https://atlas.<domain>`). Its Git hostname route
+redirects known UI pages/assets to that external origin and sends API/transport
+requests to 8091. Authentication return origins follow the UI URL; provider
+callbacks remain on the configured Git API URL.
+
+Git shares the existing database, storage, JWT and pipeline key. It has no runtime
+Atlas, Git UI or artifact registry dependencies. Registered migrations still run
+at startup. The standalone artifacts chart remains available on 8084.
+
+## Bosca Atlas
+
+`bosca-atlas-server` serves Git, artifact protocols and the composed `/graphql` API on
+8094, with the optional BML UI on 8095. Enable it explicitly in deployment-owned
+values. This combined example replaces the separate Git and registry pods:
+
+```yaml
+global:
+  domain: example.com
+bosca-git-server:
+  enabled: false
+bosca-artifacts-server:
+  enabled: false
+bosca-atlas-server:
+  enabled: true
+  gateway:
+    hostnames: [atlas.example.com]
+    gitHostnames: [git.example.com]
+    registryHostnames: [artifacts.example.com]
+  appConfig:
+    databaseUrl: jdbc:postgresql://postgres:5432/bosca
+    artifactsUrl: https://artifacts.example.com
+```
+
+Supply the existing database/storage/auth environment and initialization Secret,
+and pre-create the Atlas
+PostgreSQL credential Secret (`pg-creds-bosca-atlas-server` by default), as with the
+other server charts. Atlas must use the same database, storage, JWT, realm and
+`PIPELINE_SECRET_KEY` as the main server and runner. Its `SECURITY_ENCRYPTION_KEY`
+is read from `secrets.cfg.secretName` / `secrets.cfg.key` (defaults: `cfg` / `secret`)
+and must also match the main server and runner. The services umbrella reuses the
+existing Secret; standalone installs can set `secrets.cfg.create: false` to reuse
+it or supply its value through `secrets.cfg.value` when creating it. The umbrella
+defaults Atlas's embedded workers/listeners/scheduler off because the platform runner already owns
+them. A standalone chart defaults to embedded workers; `runner.enabled`,
+`runner.queues`, `runner.concurrency`, `runner.listeners` and `runner.scheduler`
+select that responsibility.
+
+Atlas rollouts always use `RollingUpdate` with `maxUnavailable: 0` and a positive
+`maxSurge`, so a replacement must become ready before the last available pod stops.
+Static replicas and HPA bounds have a floor of one. Its disruption budget is
+enabled by default with `minAvailable: 1`; a larger integer minimum can be selected.
+These protections also apply when older values contain `maxUnavailable: 1` or
+`strategy.type: Recreate`. A single replica can still be interrupted by a process
+or worker failure. Its disruption budget blocks voluntary eviction until another
+replica is available; worker maintenance needs a second replica first.
+
+The shared Gateway adds TLS listeners, certificates and HTTPS redirects for all
+three configured hostname lists. Atlas UI pages/actions/assets use 8095; GraphQL,
+Git smart HTTP/LFS/raw files, webhooks, CI files and registry protocols use 8094.
+The Git alias preserves transport URLs and redirects Git UI pages to Atlas.
+The registry alias rewrites raw/Maven/npm/Helm/ML file paths into Atlas's existing
+`/_artifacts` namespace, avoiding Git raw-file ambiguity. Docker `/v2` paths stay
+unchanged. Atlas's own file UI also uses `/_artifacts`.
+
+To run dedicated backends, enable their existing charts and select their Service
+names in Atlas. Git remains backend-only; all UI stays on Atlas:
 
 ```yaml
 bosca-git-server:
   enabled: true
   gateway:
-    hostnames: [git.example.com]
-  appConfig:
-    gitUrl: https://git.example.com
+    hostnames: []
+bosca-artifacts-server:
+  enabled: true
+  gateway:
+    hostnames: []
+bosca-atlas-server:
+  backends:
+    git:
+      serviceName: bosca-bosca-git-server
+      port: 8091
+    artifacts:
+      serviceName: bosca-bosca-artifacts-server
+      port: 8084
 ```
 
-The existing Git TLS listener and certificate serve both applications. The
-HTTPRoute sends known UI pages, `/_bml` endpoints and `/_git` assets/subscriptions
-to 8093. Other paths stay on 8091: smart HTTP, LFS, raw files, GraphQL/WebSockets,
-OAuth callbacks, webhooks and CI artifacts. Matching UI repository IDs explicitly
-keeps clone URLs such as `/repositories/project.git/info/refs` on the API.
-The route uses regular-expression matching supported by the chart's Cilium Gateway.
-Git and services chart version `0.1.4` splits the matchers to fit Envoy's default
-RE2 program-size limit of 100 and Gateway API's limit of eight matches per rule.
+Use the actual release's Service names. Atlas's routes own all configured public
+hostnames. Git transports, raw files, CI files and webhooks go to the selected Git
+backend; registry protocols go to the selected artifacts backend. Shared
+`/graphql` and authentication stay on Atlas. Embedded UI file proxies use the
+selected registry endpoint automatically. For a separate UI, also set that UI's
+`appConfig.artifactsEndpoint` to the registry's private URL. Empty backend Service
+names select Atlas itself; disable the dedicated charts when falling back. A
+backend's own Gateway route is only needed when it owns a separate hostname; avoid
+duplicate routes for the same host.
 
-Custom public origins use `appConfig.gitUrl`. It also configures Git UI links,
-auth returns and passkey origins; defaults derive from `appConfig.domain`, falling
-back to `global.domain`. Remove the former Git chart's `appConfig.studioUrl`
-setting. Studio's own configuration continues to use its existing origin.
+For a separate UI, enable `bosca-atlas-ui-server`, set the backend's `ui.enabled`
+to false and `ui.serviceName` to that UI's Kubernetes Service name. `ui.port` is the
+UI Service port (8095 by default). The UI chart's `appConfig.graphqlEndpoint`
+selects the Atlas API; its default targets Atlas in the same release. Set
+`appConfig.artifactsEndpoint` only when UI file requests use another registry,
+and `appConfig.artifactsUrl` for its public protocol origin. The backend's Gateway
+route still owns the public Atlas hostname. UI and API replicas/HPA scale independently.
+The same backend chart can run workers or registry REST separately by selecting
+`roles.api`, `roles.git`, `roles.artifacts`, `ui.enabled` and `runner.enabled`, with
+`gateway.enabled: false` for workers. Embedded UI requires the API role.
 
-Register `<gitUrl>/oauth2/google/callback` with the Google provider and supply
-`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` through the Git pod's environment
-sources. `ui.authCookiePrefix` can select a prefix configured under
-`appConfig.authCookiePrefixes` for the shared Git hostname. The default uses the
-existing `_bat` cookies.
+Register `https://atlas.example.com/oauth2/google/callback` with the Google provider
+and supply its client credentials through the existing environment sources. Custom
+origins use `appConfig.atlasUrl` and `appConfig.gitUrl`. Use Atlas/Atlas UI images
+built from the matching release; image publication is separate from chart rendering.
 
-Deploy the chart with a Git image built from the same revision. Git applies its
-registered V49 migration at startup before serving PR queries. Preserve the
-shared pipeline encryption key during the rollout. API readiness still checks
-its dependencies; the UI startup probe waits for the second listener before
-admitting traffic. A failed listener stops the combined host.
+Routing verification:
+
+```sh
+python3 helm/tests/test_atlas_routes.py
+helm unittest helm/bosca-atlas-server helm/bosca-atlas-ui-server helm/bosca-services
+```
 
 ## Maintainer release process
 
@@ -199,7 +459,7 @@ chart job before the images are published, rerun the chart release after the
 image jobs finish.
 
 Bosca application `appVersion` defaults and explicit Bosca image tags (including
-the model loader sidecar) also use the release tag. Bosca images are identified
+the model loader init container) also use the release tag. Bosca images are identified
 by their default `image.registry: ghcr.io/bosca-io/bosca`. Publish the image
 releases for that tag before deploying the charts. Deployment values can still
 override image tags. Upstream images such as TensorFlow Serving and Text

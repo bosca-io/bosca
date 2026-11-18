@@ -4,7 +4,7 @@ import bosca.cli.BoscaCliCommand
 import com.github.ajalt.clikt.core.Context
 
 class CiCommand : BoscaCliCommand(name = "ci") {
-    override fun help(context: Context) = "CI/CD pipeline operations — agents, runs, and secrets"
+    override fun help(context: Context) = "CI/CD pipelines, agents, runs, and secrets"
     override fun run() = Unit
 }
 

@@ -20,7 +20,13 @@ Services:
 {{- end }}
 {{- if index .Values "bosca-git-server" "enabled" }}
   - bosca-git-server API/transport: :{{ index .Values "bosca-git-server" "service" "port" }}
-  - bosca-git-server BML UI: :{{ index .Values "bosca-git-server" "ui" "port" }}
+{{- end }}
+
+{{- if index .Values "bosca-atlas-server" "enabled" }}
+  - bosca-atlas-server API/transport: :8094 (embedded UI: :8095 when enabled)
+{{- end }}
+{{- if index .Values "bosca-atlas-ui-server" "enabled" }}
+  - bosca-atlas-ui-server: :8095
 {{- end }}
 
 Verify:

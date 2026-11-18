@@ -1,0 +1,27 @@
+<component tag="dashboard-item">
+  <prop name="itemId" type="String" required />
+  <prop name="label" type="String" required />
+  <html:section class="dashboard-item" role="group" :data-dashboard-item="itemId" :aria-label="label" {...attrs}>
+    <div class="dashboard-item-heading">
+      <strong>{ label }</strong>
+      <div class="dashboard-handles" hidden>
+        <html:button type="button" data-dashboard-handle="move" :aria-label='"Move " + label'>Move</html:button>
+        <html:button type="button" data-dashboard-handle="resize" :aria-label='"Resize " + label'>Resize</html:button>
+      </div>
+    </div>
+    <div class="dashboard-item-content"><slot /></div>
+  </html:section>
+  <style scoped>
+    .dashboard-item { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid var(--control-border, var(--line)); border-radius: var(--r-md); background: var(--dashboard-item-bg, var(--bg-1)); color: var(--fg-1); overflow: hidden; }
+    .dashboard-item-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+    strong { overflow-wrap: anywhere; font: 600 13px/1.5 var(--font-sans); }
+    .dashboard-handles { display: flex; flex-wrap: wrap; gap: 8px; }
+    .dashboard-handles[hidden] { display: none; }
+    button { min-height: var(--control-height-xs, 26px); padding: 3px 8px; border: 1px solid var(--control-border, var(--line)); border-radius: var(--r-sm); background: var(--bg-2); color: var(--fg-1); font: 12px/1.4 var(--font-sans); touch-action: none; }
+    button[data-dashboard-handle=move] { cursor: grab; }
+    button[data-dashboard-handle=resize] { cursor: nwse-resize; }
+    button:disabled { cursor: default; }
+    button:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
+    .dashboard-item-content { flex: 1; min-width: 0; min-height: 0; padding: var(--dashboard-item-padding, 16px); overflow: auto; overscroll-behavior: contain; }
+  </style>
+</component>

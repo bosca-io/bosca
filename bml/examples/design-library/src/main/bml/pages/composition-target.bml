@@ -1,0 +1,6 @@
+<page route="/composition-target">
+  <html lang="en">
+    <head><meta charset="utf-8" /><title>File destination</title></head>
+    <body><page-shell><h1 data-file-destination>File destination</h1></page-shell></body>
+  </html>
+</page>

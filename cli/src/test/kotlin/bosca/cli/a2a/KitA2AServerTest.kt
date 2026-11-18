@@ -106,20 +106,24 @@ class KitA2AServerTest {
         val http = OkHttpClient()
         server.start(wait = false)
         try {
-            val response = http.newCall(a2aRequest(endpoint, " ")).execute().use { httpResponse ->
-                assertEquals(200, httpResponse.code)
-                GraphQLJson.parseToJsonElement(httpResponse.body.string()).jsonObject
-            }
-            assertEquals(
-                "rejected",
-                response.getValue("result").jsonObject.getValue("status").jsonObject
-                    .getValue("state").jsonPrimitive.content,
-            )
+            // Repeated immediate rejections exercise subscription setup and stream closure.
+            repeat(200) {
+                val response = http.newCall(a2aRequest(endpoint, " ")).execute().use { httpResponse ->
+                    assertEquals(200, httpResponse.code)
+                    GraphQLJson.parseToJsonElement(httpResponse.body.string()).jsonObject
+                }
+                assertEquals(
+                    "rejected",
+                    response.getValue("result").jsonObject.getValue("status").jsonObject
+                        .getValue("state").jsonPrimitive.content,
+                )
 
-            http.newCall(a2aRequest(endpoint, " ", method = "message/stream")).execute().use { streamResponse ->
-                assertEquals(200, streamResponse.code)
-                assertTrue(streamResponse.header("Content-Type").orEmpty().startsWith("text/event-stream"))
-                assertTrue("rejected" in streamResponse.body.string())
+                http.newCall(a2aRequest(endpoint, " ", method = "message/stream")).execute().use { streamResponse ->
+                    assertEquals(200, streamResponse.code)
+                    assertTrue(streamResponse.header("Content-Type").orEmpty().startsWith("text/event-stream"))
+                    val body = streamResponse.body.string()
+                    assertTrue("rejected" in body, "Expected a rejected task in the stream: $body")
+                }
             }
         } finally {
             server.stop(0, 0)

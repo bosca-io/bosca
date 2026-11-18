@@ -1,0 +1,37 @@
+<page route="/overlays">
+  <catalog-document title="Dialogs and popovers" description="Modal forms, retained drafts and native disclosure panels." current="/overlays">
+    <p class="page-intro">Edit a name, try a rejected confirmation or open a retained draft. The filter popover submits its own local form. Each palette keeps its own state and colors.</p>
+    <div class="catalog-grid">
+      <div class="catalog-palette-dark" data-overlay-palette="dark"><card title="Dark palette"><overlay-example id="dark" /></card></div>
+      <div class="catalog-palette-light" data-overlay-palette="light"><card title="Light palette"><overlay-example id="light" /></card></div>
+    </div>
+    <card title="Dialog sizes"><div class="catalog-stack">
+      <p class="example-note">Small, regular and large dialogs fit within the viewport. Projected forms use a scrolling body and a separate action footer.</p>
+      <div class="example-actions">
+        <for size in listOf("sm", "md", "lg")>
+          <dialog :title='"Size " + size' :triggerLabel='"Open " + size' :size="size" :data-dialog-size="size">
+            <div class="modal-fields"><p class="example-note">The width is supplied by the shared component.</p></div>
+            <footer class="modal-footer"><button ref="cancel">Close size example</button></footer>
+          </dialog>
+        </for>
+      </div>
+    </div></card>
+    <card title="Trigger variants"><div class="catalog-stack">
+      <p class="example-note">Text, link, block and icon triggers share the same modal behavior and accessible name.</p>
+      <div class="example-actions">
+        <for style in listOf("button", "plain", "block", "link", "ghost")>
+          <dialog :title='"Trigger " + style' :triggerLabel='"Open " + style' :triggerStyle="style" triggerIcon="more"
+                  :triggerIconOnly='style == "ghost"' :data-dialog-style="style">
+            <div class="modal-fields"><p class="example-note">The caller chooses the trigger presentation.</p></div>
+            <footer class="modal-footer"><button ref="cancel">Close trigger example</button></footer>
+          </dialog>
+        </for>
+        <dialog title="Unavailable dialog" triggerLabel="Unavailable" triggerDisabled data-disabled-dialog />
+      </div>
+    </div></card>
+    <card title="Use in your application"><div class="catalog-stack" id="overlay-authoring">
+      <p class="catalog-description">The caller owns form values, validation and outcomes. Stable preservation keys keep draft DOM through surrounding updates; change the key when replacing preserved child content. A new open request reopens a dismissed dialog. Popovers remain native details disclosures without scripts; modal triggers need the browser runtime.</p>
+      <a class="catalog-link" href="/components/overlays">Dialog, confirmation and popover APIs</a>
+    </div></card>
+  </catalog-document>
+</page>

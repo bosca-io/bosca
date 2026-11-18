@@ -1,0 +1,18 @@
+<component tag="artifacts-feedback">
+  <prop name="feedback" type="bosca.artifacts.ui.ArtifactFeedback" required />
+  <div class="artifact-stack" :data-next-href="feedback.nextHref">
+    <if feedback.message.isNotBlank()>
+      <alert :tone='if (feedback.failed) "error" else "success"'>{ feedback.message }</alert>
+    </if>
+    <if feedback.runHref.isNotBlank()>
+      <form-actions align="start">
+        <button-link :href="feedback.runHref" icon="play">View pipeline run</button-link>
+      </form-actions>
+    </if>
+  </div>
+  <script client scoped>
+      const navigate = () => { const next = ctx.root.dataset.nextHref; if (next) location.assign(next); };
+      ctx.onUpdate(navigate);
+      navigate();
+    </script>
+</component>

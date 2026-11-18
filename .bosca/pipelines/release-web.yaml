@@ -64,10 +64,14 @@ jobs:
   publish-bml-runtime:
     runner: linux
     timeout: 15m
+    needs: [publish-web]
     artifacts:
       - type: npm
         namespace: "@bosca"
         coordinate: "bml:${{ version }}"
+      - type: npm
+        namespace: "@bosca"
+        coordinate: "bml-auth-ui:${{ version }}"
     steps:
       - name: Checkout
         uses: checkout
@@ -93,12 +97,23 @@ jobs:
       - name: Build BML Runtime
         working-directory: bml/bml-runtime
         run: npm run build
+      - name: Check BML npm Packages
+        run: node --test scripts/release/bml-packages.test.mjs
       - name: Publish BML Runtime
         working-directory: bml/bml-runtime
         run: |
           registry="${BOSCA_REGISTRY_URL%/}/npm/"
           npm config set "//${registry#*://}:_authToken" "$BOSCA_REGISTRY_TOKEN"
           npm publish --registry "$registry"
+      - name: Prepare BML Authentication UI
+        run: |
+          package_dir="$(mktemp -d)/bml-auth-ui"
+          node scripts/release/prepare-bml-auth-ui.mjs "$RELEASE_VERSION" "$package_dir"
+          echo "BML_AUTH_UI_PACKAGE=$package_dir" >> "$BOSCA_ENV"
+        env:
+          RELEASE_VERSION: ${{ version }}
+      - name: Publish BML Authentication UI
+        run: npm publish "$BML_AUTH_UI_PACKAGE" --registry "${BOSCA_REGISTRY_URL%/}/npm/"
 
   notify:
     runner: linux
@@ -111,7 +126,7 @@ jobs:
         if: needs.publish-web.result == 'success' && needs.publish-bml-runtime.result == 'success'
         with:
           channel: slack
-          message: "Web ${{ ref }} published successfully — web packages and BML browser runtime deployed"
+          message: "Web ${{ ref }} published successfully — web packages, BML browser runtime and authentication UI deployed"
       - name: Notify Failure
         uses: notify
         if: needs.publish-web.result != 'success' || needs.publish-bml-runtime.result != 'success'

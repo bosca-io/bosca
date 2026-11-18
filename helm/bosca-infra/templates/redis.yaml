@@ -12,6 +12,17 @@ spec:
     - "--cluster_mode=emulated"
     - "--lock_on_hashtags"
     - "--default_lua_flags=allow-undeclared-keys"
+    {{- with .Values.redis.extraArgs }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.redis.snapshot }}
+  snapshot:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.redis.env }}
+  env:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   resources:
     requests:
       cpu: {{ .Values.redis.resources.requests.cpu | default "512m" | quote }}

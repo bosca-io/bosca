@@ -1,0 +1,4 @@
+<page route="/system/integrations/bible" requireAuth>
+  <script server provides="page">bosca.system.ui.systemBible()</script>
+  <system-layout title="Bible providers" :admin="page.admin"><system-bible :initial="page" /></system-layout>
+</page>

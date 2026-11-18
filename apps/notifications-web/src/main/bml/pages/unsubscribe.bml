@@ -1,6 +1,6 @@
 {# One-click unsubscribe (/unsubscribe?token=…): confirms, then stops all optional email for the
    recipient the token identifies. Push and per-type control live on /preferences — one link away,
-   same token. The confirm button is a @click island action; the island re-renders into the done
+   same token. The confirmation form uses a declarative island action; the island re-renders into the done
    state. #}
 <page route="/unsubscribe">
   <script server provides="branding">
@@ -29,29 +29,18 @@
             <else>
               <p class="sub">Stop all optional email from { unsub.brand }? Essential account and
               security messages are still delivered.</p>
-              <if unsub.failed>
-                <p class="status error">We couldn't unsubscribe you — please try again.</p>
-              </if>
-              <div class="actions">
-                <button class="primary" type="button" @click="unsub.confirm()">Unsubscribe from all optional email</button>
-              </div>
+              <form class="actions" @submit="unsub.confirm()">
+                <button primary type="submit">Unsubscribe from all optional email</button>
+              </form>
             </if>
+            <toast id="unsubscribe-outcome" :message='if (unsub.failed) "We could not unsubscribe you — please try again." else ""'
+              :sequence="unsub.messageId" tone="error" />
           </island>
           <p class="alt"><a href="/preferences?token={ page.token }">Manage individual preferences instead</a></p>
         </if>
       </div>
     </main>
 
-    {# This page's styles — the confirm action and the alternative link. #}
-    <style>
-      .actions {
-        margin-top: 18px;
-      }
 
-      .alt {
-        margin: 18px 0 0;
-        font-size: 14px;
-      }
-    </style>
   </site-layout>
 </page>

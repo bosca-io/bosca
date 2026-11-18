@@ -1,0 +1,4 @@
+<page route="/system/storage" requireAuth>
+  <script server provides="page">bosca.system.ui.systemStorage()</script>
+  <system-layout title="Storage systems" :admin="page.admin"><system-storage :initial="page" /></system-layout>
+</page>

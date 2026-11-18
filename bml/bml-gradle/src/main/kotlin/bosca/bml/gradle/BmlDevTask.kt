@@ -12,12 +12,7 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.TaskAction
-import org.gradle.deployment.internal.Deployment
-import org.gradle.deployment.internal.DeploymentHandle
 import org.gradle.deployment.internal.DeploymentRegistry
-import org.gradle.process.internal.ExecHandle
-import org.gradle.process.internal.ExecHandleState
-import org.gradle.process.internal.JavaExecHandleBuilder
 import org.gradle.process.internal.JavaExecHandleFactory
 import org.gradle.work.DisableCachingByDefault
 import java.nio.charset.StandardCharsets
@@ -32,7 +27,7 @@ import javax.inject.Inject
  *
  * The task returns after registering the forked JVM with Gradle's deployment registry. Gradle then
  * enters continuous-build mode itself and watches the inputs of this task and its dependencies.
- * Each successful rebuild publishes an immutable application-output snapshot to a persistent JVM;
+ * Each successful rebuild publishes immutable application and BML library outputs to a persistent JVM;
  * that JVM swaps the generated site state without restarting Netty. This is deliberately a Gradle task
  * rather than a shell watcher so it works identically from the command line and IntelliJ's Gradle
  * runner and watches the real task graph instead of a hard-coded list of source directories.
@@ -44,7 +39,7 @@ abstract class BmlDevTask : DefaultTask() {
     @get:Classpath
     abstract val classpath: ConfigurableFileCollection
 
-    /** Application class/resource directories copied into each isolated reload generation. */
+    /** Application outputs and compiled BML libraries copied into each isolated reload generation. */
     @get:Classpath
     abstract val reloadClasspath: ConfigurableFileCollection
 
@@ -142,40 +137,50 @@ abstract class BmlDevTask : DefaultTask() {
     }
 
     private fun publishGeneration(): String {
-        val roots = reloadClasspath.files.filter { it.isDirectory }.map { it.toPath() }.sortedBy { it.toString() }
+        val roots = reloadClasspath.files.filter { it.exists() }.map { it.toPath() }.distinct()
+        check(roots.isNotEmpty()) { "BML development requires compiled application outputs" }
         val clientRoot = clientDirectory.get().asFile.takeIf { it.isDirectory }?.toPath()
         val digestRoots = (roots + listOfNotNull(clientRoot)).distinct()
         val digest = MessageDigest.getInstance("SHA-256")
-        digestRoots.forEachIndexed { index, root ->
-            Files.walk(root).use { paths ->
-                paths.filter(Files::isRegularFile).sorted().forEach { file ->
-                    digest.update(index.toString().toByteArray(StandardCharsets.UTF_8))
-                    digest.update(0.toByte())
-                    digest.update(root.relativize(file).toString().toByteArray(StandardCharsets.UTF_8))
-                    digest.update(0.toByte())
-                    Files.newInputStream(file).use { input ->
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            digest.update(buffer, 0, count)
-                        }
-                    }
+        fun digestFile(index: Int, name: String, file: java.nio.file.Path) {
+            digest.update(index.toString().toByteArray(StandardCharsets.UTF_8))
+            digest.update(0.toByte())
+            digest.update(name.toByteArray(StandardCharsets.UTF_8))
+            digest.update(0.toByte())
+            Files.newInputStream(file).use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
                 }
             }
+        }
+        digestRoots.forEachIndexed { index, root ->
+            if (Files.isDirectory(root)) Files.walk(root).use { paths ->
+                paths.filter(Files::isRegularFile).sorted().forEach { file ->
+                    digestFile(index, root.relativize(file).toString(), file)
+                }
+            } else digestFile(index, root.fileName.toString(), root)
         }
         val id = digest.digest().joinToString("") { "%02x".format(it) }
         val generations = generationDirectory.get().asFile.toPath()
         val target = generations.resolve(id)
+        val entries = roots.mapIndexed { index, root ->
+            "classpath-$index" + if (Files.isDirectory(root)) "" else ".jar"
+        }
         if (!Files.isDirectory(target)) {
             Files.createDirectories(generations)
             val temporary = generations.resolve(".$id-${System.nanoTime()}")
             Files.createDirectories(temporary)
             try {
-                roots.forEach { root ->
-                    Files.walk(root).use { paths ->
+                roots.forEachIndexed { index, root ->
+                    val snapshot = temporary.resolve(entries[index])
+                    if (!Files.isDirectory(root)) {
+                        Files.copy(root, snapshot)
+                    } else Files.walk(root).use { paths ->
                         paths.forEach { source ->
-                            val destination = temporary.resolve(root.relativize(source).toString())
+                            val destination = snapshot.resolve(root.relativize(source).toString())
                             if (Files.isDirectory(source)) Files.createDirectories(destination)
                             else {
                                 Files.createDirectories(destination.parent)
@@ -191,7 +196,9 @@ abstract class BmlDevTask : DefaultTask() {
         }
 
         val marker = generationMarker.get().asFile.toPath()
-        val markerContents = "$id\n${target.toAbsolutePath()}\n"
+        val markerContents = "$id\n" + entries.joinToString("\n", postfix = "\n") {
+            target.resolve(it).toAbsolutePath().toString()
+        }
         if (!Files.isRegularFile(marker) || Files.readString(marker) != markerContents) {
             Files.createDirectories(marker.parent)
             val temporaryMarker = marker.resolveSibling("${marker.fileName}.tmp")
@@ -219,27 +226,4 @@ abstract class BmlDevTask : DefaultTask() {
 
     @get:Inject
     protected abstract val javaExecHandleFactory: JavaExecHandleFactory
-}
-
-/** Gradle deployment handle that owns the forked BML server JVM. */
-open class BmlApplicationHandle @Inject constructor(
-    private val builder: JavaExecHandleBuilder,
-) : DeploymentHandle {
-    private var process: ExecHandle? = null
-
-    @Synchronized
-    override fun isRunning(): Boolean = process?.state == ExecHandleState.STARTED
-
-    @Synchronized
-    override fun start(deployment: Deployment) {
-        val status = deployment.status()
-        if (status.failure != null || isRunning()) return
-        process = builder.build().start()
-    }
-
-    @Synchronized
-    override fun stop() {
-        process?.abort()
-        process = null
-    }
 }

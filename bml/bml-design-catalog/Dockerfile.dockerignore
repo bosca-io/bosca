@@ -1,0 +1,5 @@
+**
+!artifacts/
+!artifacts/*/
+!artifacts/*/bml-design-catalog-native/
+!artifacts/*/bml-design-catalog-native/bml-design-catalog

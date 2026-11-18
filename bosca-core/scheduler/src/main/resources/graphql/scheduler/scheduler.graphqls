@@ -32,7 +32,7 @@ enum ScheduledJobPrincipalState {
     ACTIVE
 }
 
-"A scheduled job definition that configures recurring or on-demand background task execution using cron expressions. Jobs reference a job definition by name and pass parameters to it."
+"A scheduled job definition that runs a background task on a cron schedule. Jobs reference a job definition by name and pass parameters to it, and can also be triggered immediately."
 type ScheduledJob {
     "The unique identifier of this scheduled job."
     id: UUID!
@@ -44,8 +44,8 @@ type ScheduledJob {
     jobName: String!
     "The parameters passed to the job definition on each execution, stored as JSON."
     jobParameters: JSON!
-    "The cron expression defining the schedule (e.g. '0 0 * * *' for daily at midnight). Null if the job is only triggered manually or by events."
-    cronExpression: String
+    "The required cron expression defining the schedule (e.g. '0 0 * * *' for daily at midnight)."
+    cronExpression: String!
     "Whether this scheduled job is enabled and will be executed on its schedule."
     enabled: Boolean!
     "Whether multiple instances of this job are allowed to run concurrently. If false, overlapping runs are skipped."
@@ -70,7 +70,7 @@ type ScheduledJob {
     principalConfirmedBy: UUID
     "The timestamp of the last execution of this scheduled job. Null if the job has never been executed."
     lastRunAt: DateTime
-    "The timestamp of the next planned execution based on the cron expression. Null if the job is disabled or has no cron expression."
+    "The timestamp of the next planned execution based on the cron expression, when available."
     nextRunAt: DateTime
     "Retrieve a paginated and filtered list of execution history entries for this scheduled job."
     history(
@@ -136,8 +136,8 @@ input ScheduledJobInput {
     jobName: String!
     "The parameters to pass to the job definition on each execution, stored as JSON."
     jobParameters: JSON!
-    "The cron expression defining the schedule (e.g. '0 0 * * *' for daily at midnight). Null for manually-triggered-only jobs."
-    cronExpression: String
+    "The required cron expression defining the schedule (e.g. '0 0 * * *' for daily at midnight)."
+    cronExpression: String!
     "Whether this scheduled job should be enabled upon creation. Defaults to false if not specified."
     enabled: Boolean
     "Whether multiple instances of this job are allowed to run concurrently. Defaults to false if not specified."

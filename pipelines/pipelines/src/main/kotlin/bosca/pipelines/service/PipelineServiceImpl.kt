@@ -161,6 +161,9 @@ class PipelineServiceImpl(
         settings.mapNotNull { (stored?.get(it.name) as? JsonPrimitive)?.contentOrNull?.let(UUID::parse) } + listOfNotNull(node.rollbackPipeline)
     }
 
+    override suspend fun getByNames(names: List<String>): List<Pipeline> =
+        if (names.isEmpty()) emptyList() else repository.getByNames(names).map { toPipeline(it) }
+
     override suspend fun getBroken(): List<BrokenPipeline> = repository.getAll().mapNotNull { record ->
         try {
             graphJson().decodeFromJsonElement(PipelineGraph.serializer(), record.graph)

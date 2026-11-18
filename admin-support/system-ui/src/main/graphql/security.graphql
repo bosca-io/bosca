@@ -1,0 +1,25 @@
+query SystemPrincipals($offset: Long!, $includeDeleted: Boolean!, $query: String) { security { principals { all(limit: 26, offset: $offset, includeDeleted: $includeDeleted, query: $query) { id verified primaryProfileId deletedAt credentials { type identifier } profiles { id name } groups { id name type } } } } }
+query SystemPrincipal($id: UUID!) { security { principals { principal(id: $id) { id verified anonymous deletedAt primaryProfileId created modified lastLogin credentials { type identifier originator lastOriginator } profiles { id name deletedAt } groups { id name description type } } } } }
+mutation SystemMarkPrincipalDeleted($id: UUID!) { security { admin { markPrincipalDeleted(id: $id) { id deletedAt } } } }
+mutation SystemRestorePrincipal($id: UUID!) { security { admin { restorePrincipal(id: $id) { id deletedAt } } } }
+mutation SystemDeletePrincipal($id: UUID!) { security { admin { deletePrincipal(id: $id) } } }
+query SystemPersonas { profiles { studioPersonas { all { id name description subsystemIds enabled created modified } } } }
+query SystemPersona($id: UUID!) { profiles { studioPersonas { persona(id: $id) { id name description subsystemIds enabled created modified } } } }
+mutation SystemCreatePersona($input: StudioPersonaInput!) { profiles { studioPersonas { create(input: $input) { id } } } }
+mutation SystemUpdatePersona($input: StudioPersonaInput!) { profiles { studioPersonas { update(input: $input) { id } } } }
+mutation SystemDeletePersona($id: UUID!) { profiles { studioPersonas { delete(id: $id) } } }
+mutation SystemAssignPersona($personaId: UUID!, $profileId: UUID!) { profiles { studioPersonas { assignToProfile(personaId: $personaId, profileId: $profileId) } } }
+query SystemMyTokens($offset: Long!) { security { apiTokens { my(limit: 26, offset: $offset) { ...SystemTokenFields } } } }
+query SystemPrincipalTokens($principalId: UUID!, $offset: Long!) { security { apiTokens { forPrincipal(principalId: $principalId, limit: 26, offset: $offset) { ...SystemTokenFields } } } }
+fragment SystemTokenFields on ApiToken { id principalId name description tokenPrefix scopes allowedGroups expiresAt lastUsedAt lastUsedIp revokedAt active }
+query SystemToken($id: Long!) { security { apiTokens { token(id: $id) { ...SystemTokenFields } } } }
+query SystemTokenScopes { security { apiTokens { availableScopes { name description } } } }
+mutation SystemCreateToken($input: ApiTokenInput!) { security { apiTokens { create(input: $input) { apiToken { id } rawToken } } } }
+mutation SystemCreatePrincipalToken($principalId: UUID!, $input: ApiTokenInput!) { security { apiTokens { createForPrincipal(principalId: $principalId, input: $input) { apiToken { id } rawToken } } } }
+mutation SystemEditToken($id: Long!, $name: String, $description: String, $scopes: [String!], $clearScopes: Boolean!) { security { apiTokens { edit(id: $id, name: $name, description: $description, scopes: $scopes, clearScopes: $clearScopes) { id } } } }
+mutation SystemRevokeToken($id: Long!) { security { apiTokens { revoke(id: $id) } } }
+mutation SystemDeleteToken($id: Long!) { security { apiTokens { delete(id: $id) } } }
+query SystemTokenOwners($query: String!) { search { search(query: {query: $query, filter: ["_type = \"profile\""], storageSystemName: "Admin Search Index", limit: 20, offset: 0}) { documents { profile { id name principal { id } } } } } }
+query SystemPasskeys { security { passkeys { current { credentialId name createdAt lastUsedAt transports } } } }
+mutation SystemDeletePasskey($credentialId: String!) { security { passkeys { delete(credentialId: $credentialId) } } }
+query SystemScopeNamespaces { artifactsAdmin { namespaces { name repositories { name type versions { version } } } } }

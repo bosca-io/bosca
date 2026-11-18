@@ -1,0 +1,57 @@
+<component tag="system-backups">
+  <prop name="initial" type="bosca.system.ui.SystemBackupsModel" required />
+  <script server provides="model">bosca.system.ui.SystemBackupsModel(initial.admin, initial.offset, initial.entries, initial.hasNext, initial.mode, initial.targetId, initial.includeFiles, initial.strategy, initial.confirmed, initial.dialogRequest, initial.feedback)</script>
+  <island name="system-backups" :key='"backups"'>
+    <page-shell fill>
+      <page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" title="Backups" :subtitle='model.entries.size.toString() + if (model.entries.size == 1) " backup on this page" else " backups on this page"'>
+        <if model.admin><button @click="model.refresh(ctx)">Refresh</button><button primary icon="plus" @click.coalesce='model.prepare("create", "")'>Create backup</button></if>
+      </page-heading>
+      <div class="system-content" data-bml-scroll="system-content">
+        <if !model.admin><alert>Administrator access is required.</alert><else>
+          <system-feedback :feedback="model.feedback" />
+          <dialog @dialogdismiss.coalesce="model.cancel()" title="Create backup" triggerLabel="Create backup" :showTrigger="false" :forceOpen='model.mode == "create"' :openRequest='if (model.mode == "create") model.dialogRequest.toString() else ""' :completed='model.mode != "create"'>
+            <form @submit="model.create(form.includeFiles, ctx)" class="modal-form">
+              <form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><checkbox name="includeFiles" label="Include files from object storage" :checked="model.includeFiles" /></form-body>
+              <form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" primary>Create backup</button></form-actions>
+            </form>
+          </dialog>
+          <dialog @dialogdismiss.coalesce="model.cancel()" title="Restore backup" triggerLabel="Restore backup" :showTrigger="false" :forceOpen='model.mode == "restore"' :openRequest='if (model.mode == "restore") model.dialogRequest.toString() else ""' :completed='model.mode != "restore"'>
+            <form @submit="model.restore(model.targetId, form.strategy, form.confirmed, ctx)" class="modal-form">
+              <form-body padded class="modal-fields">
+                <if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if>
+                <p>Restore data from backup <code>{ model.targetId }</code>.</p>
+                <field label="Conflict strategy"><select name="strategy" label="Conflict strategy">
+                  <option value="SKIP" :selected='model.strategy == "SKIP"'>Skip — keep existing data</option>
+                  <option value="OVERWRITE" :selected='model.strategy == "OVERWRITE"'>Overwrite — replace with backup</option>
+                  <option value="FAIL" :selected='model.strategy == "FAIL"'>Fail — abort on conflict</option>
+                </select></field>
+                <checkbox name="confirmed" label="Restore this backup using the selected conflict strategy" :checked="model.confirmed" required />
+              </form-body>
+              <form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" primary>Restore backup</button></form-actions>
+            </form>
+          </dialog>
+          <dialog @dialogdismiss.coalesce="model.cancel()" title="Delete backup?" triggerLabel="Delete backup" :showTrigger="false" :forceOpen='model.mode == "delete"' :openRequest='if (model.mode == "delete") model.dialogRequest.toString() else ""' :completed='model.mode != "delete"'>
+            <form @submit="model.delete(model.targetId, form.confirmed, ctx)" class="modal-form">
+              <form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><p>The backup record and its stored archive will be deleted.</p><checkbox name="confirmed" label="Permanently delete this backup" :checked="model.confirmed" required /></form-body>
+              <form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Delete backup</button></form-actions>
+            </form>
+          </dialog>
+          <card title="Backups" :padded="false">
+            <if model.entries.isEmpty()><empty-state message="No backups." /><else>
+              <table-scroll label="Backups"><table><thead><tr><th>Status</th><th>Files</th><th>Created</th><th>Modified</th><th>ID</th><th>Actions</th></tr></thead><tbody>
+                <for backup in model.entries><tr :data-backup-id="backup.id">
+                  <td><badge :tone='when (backup.status.uppercase()) { "COMPLETED" -> "success"; "FAILED" -> "error"; "RUNNING" -> "info"; else -> "warning" }'>{ backup.status.uppercase() }</badge><if !backup.error.isNullOrBlank()><p class="system-detail">{ backup.error.orEmpty() }</p></if></td>
+                  <td>{ if (backup.includeFiles) "Included" else "Not included" }</td>
+                  <td><time :value="backup.created" format="MMM d, yyyy HH:mm 'UTC'" inheritTypography /></td><td><time :value="backup.modified" format="MMM d, yyyy HH:mm 'UTC'" inheritTypography /></td>
+                  <td><code>{ backup.id.take(8) }</code><copy :value="backup.id" label="Copy backup ID" /></td>
+                  <td><div class="system-actions"><if backup.status.equals("completed", ignoreCase = true)><button @click.coalesce='model.prepare("restore", backup.id)'>Restore</button></if><icon-button icon="trash" label="Delete backup" @click.coalesce='model.prepare("delete", backup.id)' /></div></td>
+                </tr></for>
+              </tbody></table></table-scroll>
+            </if>
+            <pagination :page="model.offset.toLong() / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" />
+          </card>
+        </if>
+      </div>
+    </page-shell>
+  </island>
+</component>

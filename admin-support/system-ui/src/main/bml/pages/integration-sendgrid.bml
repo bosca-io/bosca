@@ -1,0 +1,4 @@
+<page route="/system/integrations/sendgrid" requireAuth>
+  <script server provides="page">bosca.system.ui.systemEmail("sendgrid")</script>
+  <system-layout :title="page.title" :admin="page.admin"><system-email :initial="page" /></system-layout>
+</page>

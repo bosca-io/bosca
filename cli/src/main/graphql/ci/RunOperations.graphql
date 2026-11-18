@@ -60,6 +60,28 @@ query ListPipelineRuns($repositoryId: UUID!, $offset: Long, $limit: Int) {
     }
 }
 
+query ListPipelineRunsForPipeline($repositoryId: UUID!, $pipelineId: UUID!, $offset: Long, $limit: Int) {
+    git {
+        pipelines(repositoryId: $repositoryId, id: $pipelineId) {
+            id
+            runs(offset: $offset, limit: $limit) {
+                id
+                pipelineId
+                repositoryId
+                commitSha
+                ref
+                triggerType
+                status
+                number
+                created
+                started
+                finished
+                durationSeconds
+            }
+        }
+    }
+}
+
 query GetPipelineLogs($stepId: UUID!, $offset: Int, $limit: Int) {
     git {
         pipelineLogs(stepId: $stepId, offset: $offset, limit: $limit) {

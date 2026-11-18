@@ -2,10 +2,10 @@
   <prop name="title" type="String" required />
   <prop name="message" type="String" required />
   <git-layout :title="title" :signedIn="false">
-    <ui-page>
-      <ui-page-heading :title="title" />
+    <page-shell>
+      <page-heading :trail='listOf(bosca.design.model.NavigationItem("Git", "", false))' :title="title" />
       <p>{ message }</p>
       <a href="/repositories">Browse repositories</a>
-    </ui-page>
+    </page-shell>
   </git-layout>
 </component>

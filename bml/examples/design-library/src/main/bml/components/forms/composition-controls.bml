@@ -1,0 +1,48 @@
+<component tag="composition-controls">
+  <prop name="id" type="String" required />
+  <script server provides="composition" scope="server-session">bosca.design.example.CompositionState(id)</script>
+  <card :title='"Composition " + id'>
+    <island name="composition" :key="id">
+      <div :data-composition="composition.id" :data-fail-next="composition.failNext">
+        <div class="actions">
+          <button @click="composition.update()" :data-composition-update="composition.id">Update { composition.updates }</button>
+          <button @click="composition.fill()" :data-composition-fill="composition.id">Set draft</button>
+          <button @click="composition.prepareFailure()" :data-comment-fail="composition.id">Reject next comment</button>
+          <button @click="composition.toggleLocked()" :data-comment-lock="composition.id">Toggle permission</button>
+          <button @click="composition.toggle()" :data-composition-toggle="composition.id">Toggle controls</button>
+        </div>
+        <if composition.mounted>
+          <tree :label='"Local files " + composition.id' heading="Local files" local :preserveKey='"files-" + composition.id' :data-local-tree="composition.id" class="fixture-local-scroll">
+            <tree-item path="src" label="Source" directory expanded />
+            <tree-item path="src/lib" label="Library" directory expanded :depth="1" />
+            <tree-item path="src/lib/helper.ts" label="helper.ts" href="#helper" :depth="2" />
+            <tree-item path="src/main.kt" label="main.kt" href="#main" :depth="1" selected />
+            <tree-item path="docs" label="Documents" directory />
+            <tree-item path="docs/guide.md" label="Guide" href="#guide" :depth="1" />
+            <tree-item path="LICENSE" label="License" href="/composition-target" class="file-link" data-file-link />
+            <tree-item path="long.txt" label="A long file name that wraps across the available width in a narrow tree" href="#long" wrap />
+          </tree>
+          <tree :label='"Server files " + composition.id' heading="Server files" embedded :data-server-tree="composition.id">
+            <tree-item path="remote" label="Remote" directory :expanded="composition.expanded" @click="composition.toggleDirectory()"
+                       :data-bml-preserve='"remote-directory-" + composition.id' :data-remote-directory="composition.id" />
+            <if composition.expanded>
+              <tree-item path="remote/loaded.txt" label="Loaded file" href="#loaded" :depth="1" :data-bml-preserve='"remote-file-" + composition.id' />
+            </if>
+          </tree>
+          <form @submit="composition.save(form.body)" :data-comment-form="composition.id">
+            <comment-editor :id='"comment-" + composition.id + "-" + composition.revision' :label='"Comment " + composition.id'
+                            :value="composition.value" :error="composition.error" :submitDisabled="composition.locked"
+                            :hint='if (composition.locked) "Comments are locked" else ""' :data-comment="composition.id"
+                            spellcheck="false" describedBy="comment-context">
+              <button type="button" :data-comment-aux="composition.id">Attach</button>
+              <button type="button" disabled>Unavailable</button>
+              <button type="submit" :data-comment-submit="composition.id">Post comment</button>
+            </comment-editor>
+            <button type="reset" :data-comment-reset="composition.id">Reset draft</button>
+          </form>
+        </if>
+        <p :data-comment-result="composition.id">Saved { composition.saved } ({ composition.submissions })</p>
+      </div>
+    </island>
+  </card>
+</component>

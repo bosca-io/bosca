@@ -1,0 +1,32 @@
+<component tag="notifications">
+  <prop name="id" type="String" required />
+  <script server provides="notice" scope="server-session">bosca.design.example.NoticeState(id)</script>
+  <card title="Notifications">
+    <island name="notice" :key="id">
+      <div class="actions">
+        <button @click="notice.success" :data-success-notice="notice.id">Save</button>
+        <button @click="notice.info" :data-info-notice="notice.id">Information</button>
+        <button @click="notice.warning" :data-warning-notice="notice.id">Warning</button>
+        <button @click="notice.failureNotice" :data-error-notice="notice.id">Error notification</button>
+        <button @click="notice.timed" :data-timed-notice="notice.id">Timed notice</button>
+        <button @click="notice.brief" :data-brief-notice="notice.id">Brief notice</button>
+        <button @click="notice.longNotice" :data-long-notice="notice.id">Long notice</button>
+      </div>
+      <div class="actions">
+        <button @click="notice.update" :data-update-notice="notice.id">Unrelated update</button>
+        <button @click="notice.repeatSequence" :data-repeat-notice="notice.id">Same sequence</button>
+        <button @click="notice.olderSequence" :data-older-notice="notice.id">Older sequence</button>
+        <button @click="notice.emptyNotice" :data-empty-notice="notice.id">Empty notice</button>
+        <button @click="notice.fail" :data-fail-notice="notice.id">Failed action</button>
+        <button @click="notice.toggle" :data-toggle-notice="notice.id">Toggle notification</button>
+      </div>
+      <p :data-notice-updates="notice.id">Updates { notice.updates }</p>
+      <if notice.error.isNotBlank()><alert :data-notice-error="notice.id">{ notice.error }</alert></if>
+      <input :data-bml-preserve='"notice-focus-" + notice.id' :data-notice-focus="notice.id" aria-label="Work in progress" value="Keep typing" />
+      <if notice.mounted>
+        <toast :id='"notice-" + notice.id' :message="notice.message" :sequence="notice.sequence"
+               :tone="notice.tone" :duration="notice.duration" :data-notice="notice.id" class="fixture-notice" />
+      </if>
+    </island>
+  </card>
+</component>

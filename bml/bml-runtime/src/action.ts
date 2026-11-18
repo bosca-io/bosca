@@ -172,12 +172,19 @@ function resolveArgs(el: HTMLElement): unknown[] {
   } catch {
     return []
   }
+  const form = el instanceof HTMLFormElement ? el : el.closest("form")
+  if (form && parsed.some(arg => arg && typeof arg === "object" && "__bmlField" in (arg as Record<string, unknown>))) {
+    // Enhanced controls flush their pending drafts before any declarative action reads form fields.
+    form.dispatchEvent(new Event("bml:form-serialize", { bubbles: true }))
+  }
   return parsed.map((arg) => {
     if (arg && typeof arg === "object" && "__bmlField" in (arg as Record<string, unknown>)) {
       const name = String((arg as Record<string, unknown>).__bmlField)
-      const form = el instanceof HTMLFormElement ? el : el.closest("form")
       const field = form?.elements.namedItem(name)
       if (field instanceof HTMLInputElement && field.type === "checkbox") return field.checked
+      if (field instanceof HTMLSelectElement && field.multiple) {
+        return JSON.stringify(Array.from(field.selectedOptions, option => option.value))
+      }
       const value = (field as { value?: unknown } | null | undefined)?.value
       return value === undefined ? "" : String(value)
     }

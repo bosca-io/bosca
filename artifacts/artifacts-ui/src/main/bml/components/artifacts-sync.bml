@@ -1,0 +1,140 @@
+<component tag="artifacts-sync">
+  <prop name="initial" type="bosca.artifacts.ui.ArtifactSyncModel" required />
+  <script server provides="model">bosca.artifacts.ui.ArtifactSyncModel(initial.repositoryId, initial.destinations, initial.secrets, initial.history, initial.offset, initial.hasNext, tags = initial.tags, tagOffset = initial.tagOffset, tagCount = initial.tagCount)</script>
+  <island name="artifacts-sync" :key="initial.repositoryId">
+    <div class="artifact-stack">
+      <artifacts-feedback :feedback="model.feedback" />
+      <card title="GitHub Container Registry sync" description="Copy tagged Docker images to the configured registry destinations.">
+        <div class="artifact-stack">
+          <form-actions align="start">
+            <button @click='model.edit("")' icon="plus">Add destination</button>
+          </form-actions>
+          <for destination in model.destinations>
+            <section class="artifact-row">
+              <div>
+                <strong>{ destination.key }</strong>
+                <p>{ destination.remoteRepository } · { if (destination.enabled) "Enabled" else "Disabled" }</p>
+                <p>Token secret: { destination.tokenSecretName }</p>
+              </div>
+              <button @click="model.edit(destination.id)">Edit destination</button>
+              <confirm-dialog title="Delete sync destination?" description="Sync records will be removed. Source and remote images are kept." triggerLabel="Delete destination">
+                <form @submit="model.delete(destination.id, destination.version, form.confirmed, ctx)">
+                  <form-body padded>
+                    <checkbox name="confirmed" label="Delete this destination" required />
+                  </form-body>
+                  <form-actions bordered>
+                    <button size="sm" data-dialog-close>Cancel</button>
+                    <button type="submit" size="sm" class="danger">Delete destination</button>
+                  </form-actions>
+                </form>
+              </confirm-dialog>
+              <if destination.enabled>
+                <form @submit="model.push(destination.id, form.tag, ctx)">
+                  <form-body>
+                    <field label="Tag to push">
+                      <select name="tag" required>
+                        <option value="">Choose a tag</option>
+                        <for tag in model.tags>
+                          <option :value="tag.name">{ tag.name }</option>
+                        </for>
+                      </select>
+                    </field>
+                    <form-actions align="start">
+                      <button type="submit">Push image</button>
+                    </form-actions>
+                  </form-body>
+                </form>
+              </if>
+            </section>
+          </for>
+          <pagination label="Image tag pages" :page="model.tagOffset / 15 + 1" :hasPrevious="model.tagOffset != 0L" :hasNext="model.tagsHasNext">
+            <if model.tagOffset != 0L>
+              <button @click="model.tagsPage(-1, ctx)">Previous tags</button>
+            </if>
+            <if model.tagsHasNext>
+              <button @click="model.tagsPage(1, ctx)">Next tags</button>
+            </if>
+          </pagination>
+          <if model.editing>
+            <h3>{ if (model.draft.id.isBlank()) "New destination" else "Edit destination" }</h3>
+            <form @submit="model.save(form.key, form.remoteRepository, form.username, form.tokenSecretName, form.enabled, ctx)">
+              <form-body>
+                <field label="Destination name">
+                  <input name="key" type="text" :value="model.draft.key" :readonly="false" required />
+                </field>
+                <field label="GHCR image path">
+                  <input name="remoteRepository" type="text" :value="model.draft.remoteRepository" :readonly="false" required />
+                </field>
+                <field label="Token owner username">
+                  <input name="username" type="text" :value="model.draft.username" :readonly="false" required />
+                </field>
+                <field label="Token secret">
+                  <select name="tokenSecretName" required>
+                    <option value="">Choose a secret</option>
+                    <if model.draft.tokenSecretName.isNotBlank() && model.draft.tokenSecretName !in model.secrets>
+                      <option :value="model.draft.tokenSecretName" selected>{ model.draft.tokenSecretName } (missing)</option>
+                    </if>
+                    <for name in model.secrets>
+                      <option :value="name" :selected="model.draft.tokenSecretName == name">{ name }</option>
+                    </for>
+                  </select>
+                </field>
+                <checkbox name="enabled" label="Enable synchronization" :checked="model.draft.enabled" />
+                <form-actions>
+                  <button @click="model.cancel()">Cancel</button>
+                  <button type="submit" primary>Save destination</button>
+                </form-actions>
+              </form-body>
+            </form>
+          </if>
+          <details>
+            <disclosure-heading>Add or replace a token secret</disclosure-heading>
+            <form @submit="model.saveSecret(form.secretName, form.secretValue, ctx)">
+              <form-body>
+                <field label="Secret name">
+                  <input name="secretName" required />
+                </field>
+                <field label="Token">
+                  <input type="password" name="secretValue" autocomplete="new-password" required />
+                </field>
+                <form-actions align="start">
+                  <button type="submit">Save token secret</button>
+                </form-actions>
+              </form-body>
+            </form>
+          </details>
+        </div>
+      </card>
+      <card title="Sync status">
+        <div class="artifact-stack">
+          <form-actions align="start">
+            <button @click="model.refresh(ctx)">Refresh sync status</button>
+          </form-actions>
+          <if model.history.isEmpty()>
+            <empty-state icon="refresh" message="No sync records on this page." compact />
+          </if>
+          <for sync in model.history>
+            <section class="artifact-row">
+              <div>
+                <strong>{ sync.tag }</strong>
+                <p>{ model.destinationLabel(sync.destinationId) }</p>
+                <p>{ sync.digest }</p>
+                <p>Attempts: { sync.attempts } · Last synced: { sync.synced.ifBlank { "Not yet synced" } }</p>
+                <p>{ sync.error }</p>
+              </div>
+              <button @click="model.retry(sync.id, ctx)">Retry sync</button>
+            </section>
+          </for>
+          <pagination label="Sync history pages" :page="model.offset / 15 + 1" :hasPrevious="model.offset != 0L" :hasNext="model.hasNext">
+            <if model.offset != 0L>
+              <button @click="model.historyPage(-1, ctx)">Previous syncs</button>
+            </if>
+            <if model.hasNext>
+              <button @click="model.historyPage(1, ctx)">Next syncs</button>
+            </if>
+          </pagination>
+        </div>
+      </card>
+    </div>
+  </island>
+</component>

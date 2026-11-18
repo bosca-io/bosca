@@ -43,3 +43,44 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  - it: configures S3 snapshots and existing credentials without a volume
+    set:
+      redis.snapshot:
+        dir: s3://backups/redis/latest
+        cron: "* * * * *"
+      redis.extraArgs:
+        - --dbfilename=dump
+        - --df_snapshot_format=false
+      redis.env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef: { name: backup-s3, key: access-key }
+    asserts:
+      - equal:
+          path: spec.snapshot.dir
+          value: s3://backups/redis/latest
+      - equal:
+          path: spec.snapshot.cron
+          value: "* * * * *"
+      - contains:
+          path: spec.args
+          content: --df_snapshot_format=false
+      - equal:
+          path: spec.env[0].valueFrom.secretKeyRef.name
+          value: backup-s3
+      - notExists:
+          path: spec.snapshot.persistentVolumeClaimSpec
+
+  - it: supports a persistent snapshot volume when selected
+    set:
+      redis.snapshot:
+        cron: "*/5 * * * *"
+        persistentVolumeClaimSpec:
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests: { storage: 10Gi }
+    asserts:
+      - equal:
+          path: spec.snapshot.persistentVolumeClaimSpec.accessModes
+          value: [ReadWriteOnce]

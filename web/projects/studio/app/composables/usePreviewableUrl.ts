@@ -14,6 +14,8 @@ export interface PreviewableItem {
   id: string
   slug?: string | null
   languageTag?: string | null
+  /** The guide step being viewed, when previewing from inside a guide. */
+  step?: string | number | null
 }
 
 // Deployment-level configuration; fetched once and shared across all callers.
@@ -29,7 +31,8 @@ export function resetPreviewableUrlCache() {
 /**
  * Resolves the `preview.url` configuration and opens content previews in a
  * new tab. The configuration value is a URL template supporting `{slug}`,
- * `{id}` and `{languageTag}` placeholders. When the configuration is absent,
+ * `{id}`, `{languageTag}` and `{step}` placeholders (`{step}` is the viewed
+ * guide step's id, empty outside a guide step). When the configuration is absent,
  * `canPreview` stays false and callers should hide their preview affordance.
  */
 export function usePreviewableUrl() {
@@ -62,6 +65,7 @@ export function usePreviewableUrl() {
       .replace('{slug}', item.slug || '')
       .replace('{id}', item.id)
       .replace('{languageTag}', item.languageTag || '')
+      .replace('{step}', item.step == null ? '' : String(item.step))
   }
 
   function openPreview(item: PreviewableItem) {

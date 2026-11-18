@@ -23,6 +23,7 @@ import bosca.storage.model.StorageSystem
 import bosca.storage.model.StorageSystemInput
 import bosca.storage.service.StorageSystemService
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.slf4j.LoggerFactory
 
 object StorageSystemsMutation
@@ -68,6 +69,12 @@ class StorageSystemsMutationController(
     ): Boolean {
         groups.verifyHasAdminGroup(authenticationContext)
         val deleteFirst = deleteFirst ?: false
+        if (storageName == "git-code") {
+            provide<JobConfigurationEnqueuer>("reindex-all").enqueue(buildJsonObject {
+                put("storage", buildJsonObject { put("name", storageName) })
+            })
+            return true
+        }
         if (metadata == null || metadata) {
             MetadataIndexJob(
                 deleteFirst = deleteFirst,
@@ -101,7 +108,9 @@ class StorageSystemsMutationController(
                 }
             ).enqueue(indexJobQueue, ProfileIndexExecutor::class)
         }
-        enqueueByName("reindex-all", buildJsonObject {})
+        if (storageName == null) {
+            enqueueByName("reindex-all", buildJsonObject {})
+        }
         return true
     }
 

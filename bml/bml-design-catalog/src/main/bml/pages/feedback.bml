@@ -1,0 +1,15 @@
+<page route="/feedback">
+  <catalog-document title="Feedback" description="Clipboard actions, tooltip descriptions and repeatable notifications." current="/feedback">
+    <p class="page-intro">Try copying a value, focus a tooltip trigger and issue the same notification again. Both palettes use the same components and keep independent state.</p>
+    <div class="catalog-palette-dark" data-feedback-palette="dark"><card title="Dark palette"><feedback-example id="dark" /></card></div>
+    <div class="catalog-palette-light" data-feedback-palette="light"><card title="Light palette"><feedback-example id="light" /></card></div>
+    <card title="Clipped tooltip"><div class="catalog-stack">
+      <div class="catalog-tooltip-clip"><tooltip content="A long description can escape its clipped ancestor, wrap within the viewport and stay open while its text is hovered." placement="right" data-feedback-clipped><button size="sm">Hover or focus</button></tooltip></div>
+      <p class="example-note">The description opens in the native top layer. Escape dismisses it without moving focus.</p>
+    </div></card>
+    <card title="Use in your application"><div class="catalog-stack">
+      <p class="catalog-description">Handle copyresult in the application and issue each toast with a new sequence. Descriptions and clipboard values remain ordinary text. Copy fields keep their readonly native input available without scripts.</p>
+      <a class="catalog-link" href="/components/feedback#ref-copy">Copy, tooltip and notification APIs with complete authoring</a>
+    </div></card>
+  </catalog-document>
+</page>

@@ -2,10 +2,40 @@ package bosca.bml.codegen
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /** The i18n manifest's pure halves: static-call scanning and JSON rendering. */
 class BmlI18nManifestTest {
+    @Test
+    fun `catalog merging retains concrete markup and diagnoses both source origins`() {
+        val authored = BmlI18nEntry("shared", "Hello {name}",
+            placeholders = listOf(BmlI18nPlaceholder("name", "user.name")),
+            origin = BmlI18nOrigin.ELEMENT, file = "example:design:1.0!/bml/label.bml", line = 4)
+        val bare = authored.copy(message = null, origin = BmlI18nOrigin.FUNCTION, file = "home.bml", line = 8)
+        val function = bare.copy(message = authored.message)
+        assertEquals(listOf(authored), mergeI18nEntries(listOf(bare, function, authored, bare)))
+        assertEquals(listOf(authored), mergeI18nEntries(listOf(authored, function)))
+        for (other in listOf(function.copy(message = "Changed"),
+            authored.copy(message = null, pluralForms = mapOf("OTHER" to "Hello"), file = "other.bml"))) {
+            val error = assertFailsWith<IllegalArgumentException> { mergeI18nEntries(listOf(authored, other)) }
+            assertTrue("shared" in error.message.orEmpty())
+            assertTrue("${authored.file}:4" in error.message.orEmpty())
+            assertTrue("${other.file}:${other.line}" in error.message.orEmpty())
+        }
+    }
+
+    @Test
+    fun `same line components retain ownership of repeated markup keys`() {
+        val document = bosca.bml.parser.BmlParser.parse("""
+            <component tag="one"><p t="shared">Same</p><span t="only.one">One</span></component><component tag="two"><p t="shared">Same</p><span t="only.two">Two</span></component>
+        """.trimIndent()).document
+        val generator = BmlCodeGenerator("example", "Labels", "labels.bml")
+        val result = generator.generate(document)
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.toString())
+        assertEquals(setOf("shared", "only.one"), generator.componentI18n.getValue("one").map { it.key }.toSet())
+        assertEquals(setOf("shared", "only.two"), generator.componentI18n.getValue("two").map { it.key }.toSet())
+    }
 
     @Test
     fun `scans every static t() call with line numbers`() {

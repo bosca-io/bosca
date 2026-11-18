@@ -43,7 +43,11 @@
         </div>
       </form>
       <p class="row-meta">Created <local-date-time :value="profile.created"/> · Last changed <local-date-time :value="profile.modified"/></p>
-      <if profile.message != null><toast-message :message="profile.message" :failed="profile.failed" :id="profile.messageId"/></if>
+      <toast-message :preserveKey='"profile-details-notice-" + profile.id' :message="profile.message" :failed="profile.failed" :id="profile.messageId"/>
     </section>
   </island>
+  <script client scoped>
+    import { profileDetails } from "@client/helpers/profile-details"
+    profileDetails(ctx)
+  </script>
 </component>

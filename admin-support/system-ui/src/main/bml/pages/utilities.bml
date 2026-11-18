@@ -1,0 +1,4 @@
+<page route="/system/utilities" requireAuth>
+  <script server provides="page">bosca.system.ui.systemUtilities()</script>
+  <system-layout title="Utilities" :admin="page.admin"><system-utilities :initial="page" /></system-layout>
+</page>

@@ -278,10 +278,12 @@ class SecurityServiceImplTest {
             coEvery { securityConfiguration.get() } returns config
             coEvery { principalRepository.getPrincipals(2, 3) } returns emptyList()
             coEvery { principalRepository.getPrincipals(4, 5, true) } returns emptyList()
+            coEvery { principalRepository.findPrincipals("reader", 25, 26, false) } returns emptyList()
 
             assertEquals(3600, service.getMaxTokenAgeInSeconds())
             assertEquals(emptyList(), service.getPrincipals(2, 3))
             assertEquals(emptyList(), service.getPrincipals(4, 5, true))
+            assertEquals(emptyList(), service.findPrincipals("reader", 25, 26, false))
         }
     }
 

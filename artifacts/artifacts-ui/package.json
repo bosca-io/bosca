@@ -1,0 +1,17 @@
+{
+  "name": "@bosca/artifacts-ui-client",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bosca/auth-client-browser": "file:../../web/packages/auth",
+    "@bosca/bml": "file:../../bml/bml-runtime",
+    "@bosca/bml-auth-ui": "file:../../bml/bml-auth-ui"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "typescript": "^5.6.3"
+  }
+}

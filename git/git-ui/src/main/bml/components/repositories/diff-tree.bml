@@ -1,9 +1,9 @@
 <component tag="git-diff-tree">
   <prop name="entries" type="List<bosca.git.ui.DiffTreeEntry>" required />
   <nav aria-label="Changed file tree">
-    <ui-tree label="Changed files" local embedded>
+    <tree label="Changed files" local embedded>
       <for entry in entries>
-        <ui-tree-item
+        <tree-item
           :path="entry.path"
           :label="entry.name"
           :href="entry.href"
@@ -12,7 +12,7 @@
           :expanded="entry.directory"
         />
       </for>
-    </ui-tree>
+    </tree>
   </nav>
   <style scoped>
     nav {

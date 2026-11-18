@@ -154,12 +154,13 @@ class SwarmDeployCommand : SwarmAction(name = "deploy") {
     override fun help(context: Context) = "Deploy generated stacks to an initialized Swarm over SSH"
     private val output by option("--output", help = "Generated bundle directory")
     private val skipPublicCheck by option("--skip-public-check", help = "Skip public HTTPS readiness checks").flag()
+    private val registryLogin by option("--registry-login", help = "Log in to active image registries using configured credentials before deployment").flag()
     override fun run() = runBlocking {
         val (path, config) = configuration(deploy = true)
         try {
             val resolved = resolveSwarmKit(config)
             withDeploymentBundle(resolved, path, output) { rendered ->
-                deploySwarm(resolved, rendered, skipPublicCheck)
+                deploySwarm(resolved, rendered, skipPublicCheck, registryLogin)
             }
         } catch (e: CancellationException) {
             throw e
@@ -172,6 +173,7 @@ class SwarmDeployCommand : SwarmAction(name = "deploy") {
 class SwarmSetupTokensCommand : SwarmAction(name = "setup-tokens") {
     override fun help(context: Context) = "Create service tokens after the initial deployment and apply them"
     private val skipPublicCheck by option("--skip-public-check", help = "Skip public HTTPS readiness checks").flag()
+    private val registryLogin by option("--registry-login", help = "Log in to active image registries using configured credentials before deployment").flag()
 
     override fun run() = runBlocking {
         val path = sourcePath()
@@ -189,8 +191,9 @@ class SwarmSetupTokensCommand : SwarmAction(name = "setup-tokens") {
                 echo("Service tokens are already configured; applying the site stacks")
             }
             try {
-                withDeploymentBundle(updated, path, null) { rendered ->
-                    deploySwarm(updated, rendered, skipPublicCheck)
+                val resolved = resolveSwarmKit(updated)
+                withDeploymentBundle(resolved, path, null) { rendered ->
+                    deploySwarm(resolved, rendered, skipPublicCheck, registryLogin)
                 }
             } catch (e: CancellationException) {
                 throw e

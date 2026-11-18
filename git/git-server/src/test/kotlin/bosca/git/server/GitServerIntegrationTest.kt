@@ -2,6 +2,7 @@ package bosca.git.server
 
 import bosca.bml.graphql.GraphQLClientFactory
 import bosca.bml.project.CompiledProject
+import bosca.bml.project.ContentDigest
 import bosca.bml.render.BmlPageRenderer
 import bosca.bml.render.RenderContext
 import bosca.bml.server.BmlServer
@@ -10,6 +11,7 @@ import bosca.server.config.ApplicationConfig
 import bosca.server.netty.NettyServerEngine
 import bosca.test.resources.SharedNatsContainer
 import bosca.test.resources.SharedPostgreSQLContainer
+import bosca.test.resources.SharedValkeyContainer
 import java.io.File
 import java.net.ServerSocket
 import java.net.URI
@@ -29,7 +31,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 
-/** Exercises both production listeners in one process with isolated PostgreSQL and NATS. */
+/** Exercises the backend through a separate HTTP UI client with isolated PostgreSQL, NATS, and Redis. */
 class GitServerIntegrationTest {
     private fun JsonElement.at(vararg fields: String): JsonElement =
         fields.fold(this) { value, field -> value.jsonObject.getValue(field) }
@@ -77,19 +79,37 @@ class GitServerIntegrationTest {
     fun `HTTP API authenticates browser SSR actions file delivery and subscription relay`() = verify("_bat")
 
     @Test
-    fun `custom cookie prefix works through UI and API listeners`() = verify("_git_review")
+    fun `custom cookie prefix works with an independent UI host`() = verify("_git_review")
 
     private fun verify(cookiePrefix: String) {
         val postgres = SharedPostgreSQLContainer().withDatabaseName("git_http_ui")
         val nats = SharedNatsContainer()
+        val redis = SharedValkeyContainer()
         val directory = kotlin.io.path.createTempDirectory("git-http-ui").toFile()
         val storageDirectory = File(directory, "storage")
         var process: Process? = null
+        var uiProcess: Process? = null
         var apiPort: Int? = null
         var uiListenerPort: Int? = null
+        val nativeBinary = System.getenv("GIT_SERVER_TEST_BINARY")?.takeIf(String::isNotBlank)?.let(::File)
+        val artifacts = System.getProperty("gitServer.test.artifacts")?.let { File(it, cookiePrefix).apply { mkdirs() } }
         try {
+            val executable = nativeBinary?.let { binary ->
+                val copy = binary.copyTo(File(directory, binary.name))
+                assertTrue(copy.setExecutable(true), copy.path)
+                val digest = fileDigest(binary)
+                assertEquals(digest, fileDigest(copy))
+                artifacts?.let { output ->
+                    File(output, "executable.txt").writeText("name=${binary.name}\nbytes=${binary.length()}\nsha256=$digest\n")
+                    verifyGitServerNativeResources(
+                        File(requireNotNull(System.getProperty("gitServer.native.resourceReport"))), output,
+                    )
+                }
+                copy.absolutePath
+            }
             postgres.start()
             nats.start()
+            redis.start()
             val port = ServerSocket(0).use { it.localPort }
             apiPort = port
             val apiOrigin = "http://localhost:$port"
@@ -118,7 +138,9 @@ class GitServerIntegrationTest {
                     "\ninitialization:\n  password:\n    admin: local-admin-password\n    sa: local-sa-password\n"
             )
             val log = File(directory, "server.log")
-            val executable = System.getenv("GIT_SERVER_TEST_BINARY")?.takeIf(String::isNotBlank)
+            if (executable != null) {
+                assertEquals(setOf(File(executable).name, config.name), directory.listFiles().orEmpty().map { it.name }.toSet())
+            }
             val command =
                 if (executable == null) {
                     listOf(
@@ -135,11 +157,11 @@ class GitServerIntegrationTest {
             process =
                 ProcessBuilder(command)
                     .apply {
+                        directory(directory)
                         environment()
                             .putAll(
                                 mapOf(
                                     "GIT_HTTP_PORT" to port.toString(),
-                                    "GIT_UI_HTTP_PORT" to uiPort.toString(),
                                     "BML_AUTH_COOKIE_PREFIX" to cookiePrefix,
                                     "BML_GRAPHQL_ENDPOINT" to "http://127.0.0.1:1/graphql",
                                     "GIT_DEVELOPMENT" to "true",
@@ -150,6 +172,11 @@ class GitServerIntegrationTest {
                                     "NATS_USERNAME" to nats.username,
                                     "NATS_PASSWORD" to nats.password,
                                     "NATS_TOKEN" to "",
+                                    "DISTRIBUTED_LOCK_TYPE" to "redis",
+                                    "REDIS_HOST" to redis.host,
+                                    "REDIS_PORT" to redis.firstMappedPort.toString(),
+                                    "REDIS_DATABASE" to redis.database.toString(),
+                                    "REDIS_NAMESPACE" to redis.namespace,
                                     "APP_URL" to origin,
                                     "GIT_URL" to apiOrigin,
                                     "GIT_UI_URL" to origin,
@@ -197,6 +224,15 @@ class GitServerIntegrationTest {
                 ready,
                 "Git server failed to start. Log: ${log.absolutePath}\n${log.readText().takeLast(12_000)}",
             )
+            ServerSocket(uiPort).use { assertTrue(it.isBound, "Git must not bind the UI listener") }
+            val uiConfig = File(directory, "ui.yaml")
+            uiConfig.writeText("bosca:\n  server:\n    port: $uiPort\nbml:\n  graphqlEndpoint: $apiOrigin/graphql\n  authCookiePrefix: $cookiePrefix\n")
+            uiProcess = ProcessBuilder(
+                File(System.getProperty("java.home"), "bin/java").absolutePath,
+                "--enable-native-access=ALL-UNNAMED", "-cp",
+                requireNotNull(System.getProperty("gitUiTestClasspath")),
+                "bosca.git.ui.server.ApplicationKt", "-config=${uiConfig.absolutePath}",
+            ).directory(directory).redirectErrorStream(true).redirectOutput(File(directory, "ui.log")).start()
             val uiDeadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
             var uiReady = false
             while (process.isAlive && System.nanoTime() < uiDeadline) {
@@ -227,19 +263,44 @@ class GitServerIntegrationTest {
                 assertFalse(result.containsKey("errors"), result.toString())
                 return result.getValue("data").jsonObject
             }
-            assertEquals(200, request("/login").statusCode())
+            val loginPage = request("/login")
+            assertEquals(200, loginPage.statusCode())
+            val designStyles = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(loginPage.body())
+                .map { it.groupValues[1].replace("&amp;", "&") }
+                .filter { it.startsWith("/_bml/content/") && it.substringBefore('?').endsWith(".css") }
+                .map { request(it).also { response -> assertEquals(200, response.statusCode()) }.body() }
+                .joinToString("\n")
+            assertFalse("/_git/" in designStyles)
             val designFonts =
-                Regex("url\\((/_git/fonts/[^)]+)\\)")
-                    .findAll(request("/_bml/app.css").body())
+                Regex("""url\(["']?(/_bml/content/[^)"']+\.woff2)["']?\)""")
+                    .findAll(designStyles)
                     .map { it.groupValues[1] }
                     .toList()
             assertEquals(11, designFonts.size)
-            designFonts.forEach { path ->
-                val font = request(path)
+            assertEquals(designFonts.distinct(), designFonts)
+            val prefix = "bml/applications/bml.generated/"
+            val manifest = requireNotNull(javaClass.classLoader.getResourceAsStream(prefix + "client-manifest.json"))
+                .use { Json.decodeFromString(bosca.bml.library.BmlClientManifest.serializer(), it.readAllBytes().decodeToString()) }
+            val expectedFonts = manifest.files.filter { it.path.endsWith(".woff2") }.associateBy { it.digest }
+            assertEquals(11, expectedFonts.size)
+            val servedDigests = linkedSetOf<String>()
+            val fontDigests = designFonts.associateWith { path ->
+                val uri = URI.create(origin + path)
+                val font = client.send(HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(15)).build(),
+                    HttpResponse.BodyHandlers.ofByteArray())
                 assertEquals(200, font.statusCode(), path)
                 assertEquals("font/woff2", font.headers().firstValue("Content-Type").orElse(""))
-                assertTrue(font.body().startsWith("wOF2"), path)
+                assertEquals("wOF2", font.body().take(4).toByteArray().decodeToString(), path)
+                val digest = ContentDigest.sha256(font.body())
+                val resource = prefix + expectedFonts.getValue(digest).path
+                val expected = requireNotNull(javaClass.classLoader.getResourceAsStream(resource)) { resource }
+                    .use { it.readAllBytes() }
+                assertTrue(expected.contentEquals(font.body()), path)
+                servedDigests += digest
+                JsonPrimitive(digest)
             }
+            assertEquals(expectedFonts.keys, servedDigests)
+            artifacts?.let { File(it, "font-sha256.json").writeText(JsonObject(fontDigests).toString()) }
             val signup =
                 graphql(
                     """
@@ -1301,17 +1362,46 @@ class GitServerIntegrationTest {
             )
             assertFalse("graphql proxy upstream unreachable" in log.readText(), log.readText())
         } finally {
+            uiProcess?.destroy()
+            val uiStopped = uiProcess?.waitFor(30, TimeUnit.SECONDS) ?: true
+            if (!uiStopped) uiProcess?.destroyForcibly()?.waitFor(10, TimeUnit.SECONDS)
             process?.destroy()
             val stopped = process?.waitFor(45, TimeUnit.SECONDS) ?: true
             if (!stopped) process.destroyForcibly().waitFor(10, TimeUnit.SECONDS)
             try {
-                assertTrue(stopped, "Git host did not shut down both listeners gracefully")
+                assertTrue(stopped && uiStopped, "Git backend and independent UI must stop gracefully")
                 apiPort?.let { ServerSocket(it).use { socket -> assertTrue(socket.isBound) } }
                 uiListenerPort?.let { ServerSocket(it).use { socket -> assertTrue(socket.isBound) } }
             } finally {
-                nats.stop()
-                postgres.stop()
+                try {
+                    val log = File(directory, "server.log")
+                    if (artifacts != null && log.isFile) log.copyTo(File(artifacts, "server.log"), overwrite = true)
+                    val uiLog = File(directory, "ui.log")
+                    if (artifacts != null && uiLog.isFile) uiLog.copyTo(File(artifacts, "ui.log"), overwrite = true)
+                } finally {
+                    try {
+                        try {
+                            redis.stop()
+                        } finally {
+                            nats.stop()
+                        }
+                    } finally {
+                        try {
+                            postgres.stop()
+                        } finally {
+                            if (nativeBinary != null) java.nio.file.Files.walk(directory.toPath()).use { paths ->
+                                paths.sorted(Comparator.reverseOrder()).forEach { java.nio.file.Files.delete(it) }
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+
+    private fun fileDigest(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        java.security.DigestInputStream(file.inputStream(), digest).use { it.transferTo(java.io.OutputStream.nullOutputStream()) }
+        return java.util.HexFormat.of().formatHex(digest.digest())
     }
 }

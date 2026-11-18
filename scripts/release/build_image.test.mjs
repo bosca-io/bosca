@@ -13,6 +13,7 @@ function fixture(t, overrides = {}) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, 'scripts/release'), { recursive: true });
   mkdirSync(join(root, 'bin'));
+  mkdirSync(join(root, 'bml/bml-runtime'), { recursive: true });
   const script = join(root, 'scripts/release/build-image.sh');
   copyFileSync(fileURLToPath(new URL('build-image.sh', import.meta.url)), script);
   mkdirSync(join(root, 'ai/kit/runtime/claude'), { recursive: true });
@@ -21,6 +22,7 @@ function fixture(t, overrides = {}) {
   }
   const executable = (path, text) => writeFileSync(join(root, path), text, { mode: 0o755 });
   executable('bin/uname', '#!/bin/bash\ncase "$1" in -s) echo "${TEST_OS:-Linux}";; -m) echo x86_64;; esac\n');
+  executable('bin/npm', '#!/bin/bash\nprintf "npm %s\\n" "$*" >> "$COMMAND_LOG"\n');
   executable('bin/docker', `#!/bin/bash
 printf 'docker %s\n' "$*" >> "$COMMAND_LOG"
 if [[ "$*" == *'-f - '* ]]; then cat > "$COPY_STAGE"; fi
@@ -44,6 +46,17 @@ case "$*" in
   *:analytics:analytics-collector:nativeCompile*)
     mkdir -p analytics/analytics-collector/build/native/nativeCompile
     printf native > analytics/analytics-collector/build/native/nativeCompile/analytics-collector ;;
+  *:git:git-server:nativeCompile*)
+    mkdir -p git/git-server/build/native/nativeCompile
+    printf native > git/git-server/build/native/nativeCompile/bosca-git-server ;;
+  *:server:atlas-server:nativeCompile*|*:server:atlas-ui-server:nativeCompile*)
+    for application in atlas-server atlas-ui-server; do
+      mkdir -p server/$application/build/native/nativeCompile
+      printf native > server/$application/build/native/nativeCompile/bosca-$application
+    done ;;
+  *:bml:bml-design-catalog:nativeCompile*)
+    mkdir -p bml/bml-design-catalog/build/native/nativeCompile
+    printf native > bml/bml-design-catalog/build/native/nativeCompile/bml-design-catalog ;;
   *:cli:nativeCompile*)
     mkdir -p cli/build/native/nativeCompile
     printf native-cli > cli/build/native/nativeCompile/bosca ;;
@@ -91,6 +104,46 @@ test('other native images do not receive the server property', t => {
   assert.equal(commands[0], 'gradle --no-daemon --no-configuration-cache :analytics:analytics-collector:nativeCompile');
   assert.equal(commands.length, 2);
 });
+
+for (const image of ['atlas-server', 'atlas-ui-server']) {
+  test(`${image} prepares BML and stages the matching native binary`, t => {
+    const f = fixture(t), commands = f.build(image);
+    assert.equal(commands[0], 'npm ci --no-audit --no-fund');
+    assert.equal(commands[1], `gradle --no-daemon --no-configuration-cache :server:${image}:nativeCompile`);
+    assert(commands[2].includes(`server/${image}/Dockerfile`));
+    assert.equal(f.read(`server/artifacts/release-test/${image}-native/bosca-${image}`), 'native');
+  });
+}
+
+test('design catalog stages its native executable without pushing', t => {
+  const f = fixture(t);
+  assert.deepEqual(f.build('bml-design-catalog'), [
+    'npm ci --no-audit --no-fund',
+    'gradle --no-daemon --no-configuration-cache :bml:bml-design-catalog:nativeCompile',
+    'docker build --platform linux/amd64 -f bml/bml-design-catalog/Dockerfile ' +
+      '-t example.invalid/bosca/bml-design-catalog:test --build-arg ARTIFACT_SHA=release-test bml',
+  ]);
+  assert.equal(f.read('bml/artifacts/release-test/bml-design-catalog-native/bml-design-catalog'), 'native');
+});
+
+test('Git builds only the backend native image', t => {
+  const f = fixture(t);
+  assert.deepEqual(f.build('git-server'), [
+    'gradle --no-daemon --no-configuration-cache :git:git-server:nativeCompile',
+    'docker build --platform linux/amd64 -f git/git-server/Dockerfile ' +
+      '-t example.invalid/bosca/git-server:test --build-arg ARTIFACT_SHA=release-test git',
+  ]);
+  assert.equal(f.read('git/artifacts/release-test/git-server-native/bosca-git-server'), 'native');
+});
+
+for (const image of ['git-server', 'bml-design-catalog']) {
+  test(`${image} rejects a non-Linux host before installation or staging`, t => {
+    const f = fixture(t, { TEST_OS: 'Darwin' }), result = f.run(image);
+    assert.notEqual(result.status, 0);
+    assert(result.stderr.includes('Linux x86_64 host'));
+    assert.throws(() => f.read('commands'), { code: 'ENOENT' });
+  });
+}
 
 for (const family of ['codex', 'claude']) {
   test(`${family} runtime uses this checkout's native CLI and passes the image gate before publishing`, t => {

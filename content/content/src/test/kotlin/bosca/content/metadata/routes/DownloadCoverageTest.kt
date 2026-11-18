@@ -414,6 +414,75 @@ class DownloadCoverageTest {
     }
 
     @Test
+    fun `execute adds media extensions to extensionless download names`() = runTest {
+        val cases = listOf(
+            "audio/mp3" to "mp3",
+            "audio/mpeg" to "mp3",
+            "Audio/MPEG; charset=utf-8" to "mp3",
+            "audio/wav" to "wav",
+            "audio/x-wav" to "wav",
+            "video/mp4" to "mp4",
+            "image/png" to "png",
+            "image/svg+xml" to "svg",
+        )
+        for ((contentType, extension) in cases) {
+            val (call, recorded) = recordedCall(
+                queryParameters = mapOf("id" to testId.toString(), "filename" to "true"),
+            )
+            val md = metadata(name = "Generated media", contentType = contentType, contentLength = 2L)
+            coEvery { metadataService.getById(testId) } returns md
+            coEvery { metadataPermissionEvaluator.isContentAllowed(authenticationContext, md, PermissionAction.VIEW) } returns true
+            coEvery { objectService.getPath(md, null) } returns objectPath()
+            coEvery { objectService.getInputStream(any()) } returns ByteArrayInputStream("ok".toByteArray())
+
+            executeRoute(call, authenticationContext)
+
+            assertEquals("attachment; filename=\"Generated media.$extension\"", recorded.headers[HttpHeaders.ContentDisposition], contentType)
+            assertEquals(ContentType.parse(contentType), recorded.contentType)
+            assertEquals("ok", recorded.streamed.toString())
+        }
+    }
+
+    @Test
+    fun `execute preserves existing extensions and non-media names`() = runTest {
+        for ((name, contentType) in listOf("audio.MP3" to "audio/mpeg", "photo.jpg" to "image/jpeg", "Document" to "text/plain")) {
+            val (call, recorded) = recordedCall(
+                queryParameters = mapOf("id" to testId.toString(), "download" to "true"),
+            )
+            val md = metadata(name = name, contentType = contentType, contentLength = 2L)
+            coEvery { metadataService.getById(testId) } returns md
+            coEvery { metadataPermissionEvaluator.isContentAllowed(authenticationContext, md, PermissionAction.VIEW) } returns true
+            coEvery { objectService.getPath(md, null) } returns objectPath()
+            coEvery { objectService.getInputStream(any()) } returns ByteArrayInputStream("ok".toByteArray())
+
+            executeRoute(call, authenticationContext)
+
+            assertEquals("attachment; filename=\"$name\"", recorded.headers[HttpHeaders.ContentDisposition])
+        }
+    }
+
+    @Test
+    fun `file route adds mp3 extension using supplementary content type`() = runTest {
+        val (call, recorded) = recordedCall(
+            queryParameters = mapOf("id" to testId.toString(), "supplementaryId" to supplementaryId.toString(), "download" to "true"),
+            uri = "/content/file?id=$testId&supplementaryId=$supplementaryId&download=true",
+        )
+        val md = metadata(contentType = "text/plain")
+        val supp = supplementary(name = "MP3 File", contentType = "audio/mp3", contentLength = 2L)
+        coEvery { metadataService.getById(testId) } returns md
+        coEvery { metadataPermissionEvaluator.isContentAllowed(authenticationContext, md, PermissionAction.VIEW) } returns true
+        coEvery { metadataService.getSupplementaryById(supplementaryId) } returns supp
+        coEvery { objectService.getPath(md, supplementaryId) } returns objectPath()
+        coEvery { objectService.getInputStream(any()) } returns ByteArrayInputStream("ok".toByteArray())
+
+        executeRoute(call, authenticationContext, DownloadFile(metadataService, metadataPermissionEvaluator, objectService, urlSigner))
+
+        assertEquals("attachment; filename=\"MP3 File.mp3\"", recorded.headers[HttpHeaders.ContentDisposition])
+        assertEquals(ContentType.parse("audio/mp3"), recorded.contentType)
+        assertEquals("ok", recorded.streamed.toString())
+    }
+
+    @Test
     fun `execute sets content disposition header when filename requested`() = runTest {
         val (call, recorded) = recordedCall(
             queryParameters = mapOf(

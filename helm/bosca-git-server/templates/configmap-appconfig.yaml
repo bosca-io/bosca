@@ -27,26 +27,32 @@ data:
       type: {{ .Values.appConfig.cacheType }}
 
     jobQueue:
-      factory: nats
+      factory: {{ .Values.appConfig.jobQueueFactory }}
 
     pubsub:
-      type: nats
+      type: {{ .Values.appConfig.pubsubType }}
+
+    liveSessions:
+      type: {{ .Values.appConfig.liveSessionsType | default .Values.appConfig.pubsubType }}
 
     distributedLock:
       type: {{ .Values.appConfig.distributedLockType }}
 
-    {{- if or (eq .Values.appConfig.cacheType "redis") (eq .Values.appConfig.distributedLockType "redis") }}
+    {{- if has "redis" (list .Values.appConfig.cacheType .Values.appConfig.distributedLockType .Values.appConfig.jobQueueFactory .Values.appConfig.pubsubType .Values.appConfig.counterType .Values.appConfig.liveSessionsType) }}
     redis:
       host: {{ .Values.appConfig.redisHost }}.{{ .Release.Namespace }}.svc.cluster.local
       port: {{ .Values.appConfig.redisPort }}
     {{- end }}
 
     counter:
-      type: nats
+      type: {{ .Values.appConfig.counterType }}
 
+    {{- if .Values.appConfig.natsEnabled }}
     nats:
       url: nats://{{ .Values.appConfig.natsHost }}.{{ .Release.Namespace }}.svc.cluster.local:4222
       token: $NATS_TOKEN
+
+    {{- end }}
 
     jwt:
       domain: {{ include "bosca-common.domain" . | quote }}
@@ -66,16 +72,18 @@ data:
 
     security:
       autoVerify: {{ .Values.appConfig.autoVerify }}
+      encryption:
+        key: $SECURITY_ENCRYPTION_KEY
 
     analyticsServer:
       appId: bosca-git-server
       url: http://{{ .Release.Name }}-bosca-collector.{{ .Release.Namespace }}.svc.cluster.local:8080
 
     app:
-      url: {{ include "bosca-git-server.gitUrl" . | quote }}
+      url: {{ include "bosca-git-server.uiUrl" . | quote }}
       welcome-url: "${WELCOME_EMAIL_URL:}"
       allowed-origins:
-        {{- range (prepend .Values.appConfig.appAllowedOrigins (include "bosca-git-server.gitUrl" .) | uniq) }}
+        {{- range (prepend .Values.appConfig.appAllowedOrigins (include "bosca-git-server.uiUrl" .) | uniq) }}
         - {{ . | quote }}
         {{- end }}
 
@@ -94,22 +102,18 @@ data:
             - https://www.googleapis.com/auth/userinfo.email
           enabled: {{ .Values.appConfig.googleEnabled }}
       redirects:
-        {{- range (prepend .Values.appConfig.oauth2Redirects (include "bosca-git-server.gitUrl" .) | uniq) }}
+        {{- range (prepend .Values.appConfig.oauth2Redirects (include "bosca-git-server.uiUrl" .) | uniq) }}
         - {{ . | quote }}
         {{- end }}
 
     webauthn:
       extraOrigins:
-        - {{ include "bosca-git-server.gitUrl" . | quote }}
+        - {{ include "bosca-git-server.uiUrl" . | quote }}
 
     git:
       url: {{ include "bosca-git-server.gitUrl" . | quote }}
       ui:
-        url: {{ include "bosca-git-server.gitUrl" . | quote }}
-        auth-cookie-prefix: {{ .Values.ui.authCookiePrefix | quote }}
-        server:
-          port: {{ .Values.ui.port }}
-          development: false
+        url: {{ include "bosca-git-server.uiUrl" . | quote }}
       push:
         rate-limit:
           enabled: {{ .Values.appConfig.pushRateLimit.enabled }}

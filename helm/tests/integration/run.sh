@@ -77,7 +77,7 @@ echo "[2/8] Static validation..."
 for chart in helm/bosca-common helm/bosca-server helm/bosca-runner helm/bosca-studio \
   helm/bosca-kubernetes-controller helm/bosca-artifacts-server helm/bosca-git-server \
   helm/bosca-collector helm/bosca-io \
-  helm/bosca-gateway helm/bml-message-server helm/notifications-web helm/profiles-web \
+  helm/bosca-gateway helm/bml-message-server helm/notifications-web helm/profiles-web helm/bml-design-catalog \
   helm/text-embeddings-inference helm/bosca-infra helm/bosca-services; do
   helm dependency update "$chart" >/dev/null 2>&1 || true
   if helm lint "$chart" --set global.domain=test.local --set appConfig.domain=test.local \
@@ -94,7 +94,7 @@ helm unittest helm/bosca-server helm/bosca-runner helm/bosca-studio \
   helm/bosca-kubernetes-controller helm/bosca-artifacts-server \
   helm/bosca-git-server helm/bosca-collector \
   helm/bosca-io helm/bosca-gateway helm/bml-message-server \
-  helm/notifications-web helm/profiles-web helm/text-embeddings-inference \
+  helm/notifications-web helm/profiles-web helm/bml-design-catalog helm/text-embeddings-inference \
   helm/bosca-services helm/bosca-infra >/dev/null 2>&1 \
   && pass "unit tests" || fail "unit tests"
 

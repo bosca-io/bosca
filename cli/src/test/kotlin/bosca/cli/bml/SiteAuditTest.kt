@@ -13,6 +13,28 @@ import kotlin.test.assertTrue
 
 /** Drives [SiteAudit] against a MockWebServer serving a page with assets. */
 class SiteAuditTest {
+    @Test
+    fun `audits shared module cycles once and includes nested compressed payloads`() {
+        MockWebServer().use { server ->
+            val html = """<script type="module" src="/entry.js"></script><link rel="modulepreload" href="/shared.js">"""
+            val entry = "import './shared.js'; export { value } from './nested.js'; import('./unused.js');"
+            val shared = "import './entry.js'; export const shared = true;"
+            val nested = "export const value = '" + "nested payload".repeat(100) + "';"
+            server.enqueue(MockResponse.Builder().body(html).addHeader("Content-Type", "text/html").build())
+            // Link discovery precedes scripts, matching browser preload deduplication.
+            server.enqueue(MockResponse.Builder().body(shared).addHeader("Content-Type", "text/javascript").build())
+            server.enqueue(MockResponse.Builder().body(entry).addHeader("Content-Type", "text/javascript").build())
+            server.enqueue(MockResponse.Builder().body(gzip(nested)).addHeader("Content-Type", "text/javascript").addHeader("Content-Encoding", "gzip").build())
+            server.start()
+            val report = SiteAudit(OkHttpClient()).audit(server.url("/").toString(), listOf("/")).routes.single()
+            assertEquals(listOf("/", "/shared.js", "/entry.js", "/nested.js"), report.resources.map { it.url.toHttpUrl().encodedPath })
+            assertEquals(4, report.requestCount)
+            assertTrue(report.resources.all { it.status == 200 })
+            val last = report.resources.last()
+            assertEquals(nested.length.toLong(), last.decodedBytes)
+            assertTrue(last.transferBytes < last.decodedBytes)
+        }
+    }
 
     private val http = OkHttpClient()
 

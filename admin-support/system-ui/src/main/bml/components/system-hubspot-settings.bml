@@ -1,0 +1,22 @@
+<component tag="system-hubspot-settings">
+  <prop name="initial" type="bosca.system.ui.SystemHubSpotModel" required />
+  <script server provides="model">bosca.system.ui.SystemHubSpotModel(initial.admin, initial.draft, initial.loaded, initial.hasToken, initial.feedback)</script>
+  <island name="system-hubspot-settings" :key='"hubspot"'>
+    <system-feedback :feedback="model.feedback" />
+    <form id="system-hubspot-settings" class="system-stack" data-hubspot-settings @submit="model.save(form.token, form.clearToken, form.associationTypeId, form.associationCategory, form.listIds, form.subscriptionIds, form.genericExpression, form.organizationExpression, ctx)">
+      <card title="General"><form-body>
+        <field label="API token"><input type="password" name="token" :value="model.draft.token" autocomplete="new-password" :placeholder='if (model.hasToken) "Stored token — leave blank to keep" else "HubSpot private app token"' /></field>
+        <checkbox name="clearToken" label="Clear stored token" :checked="model.draft.clearToken" />
+        <field label="Contact to company association type ID"><input name="associationTypeId" type="number" min="1" step="1" :value="model.draft.associationTypeId" required /></field>
+        <field label="Contact to company association category"><input name="associationCategory" :value="model.draft.associationCategory" required /></field>
+        <field label="Auto-add to list IDs" hint="New contacts are added to these HubSpot lists."><select name="listIds" label="List IDs" multiple searchable allowCustom><for id in model.draft.listIds><option :value="id" selected>{ id }</option></for></select></field>
+        <field label="Auto-subscribe to subscription IDs" hint="New contacts are subscribed to these communication preferences."><select name="subscriptionIds" label="Subscription IDs" multiple searchable allowCustom><for id in model.draft.subscriptionIds><option :value="id" selected>{ id }</option></for></select></field>
+      </form-body></card>
+      <card title="JSONata expressions" description="Map Bosca profiles to HubSpot contacts and companies"><form-body>
+        <field label="Generic profile expression"><code-editor name="genericExpression" language="javascript" label="Generic profile expression" :value="model.draft.genericExpression" /></field>
+        <field label="Organization profile expression"><code-editor name="organizationExpression" language="javascript" label="Organization profile expression" :value="model.draft.organizationExpression" /></field>
+      </form-body></card>
+
+    </form>
+  </island>
+</component>

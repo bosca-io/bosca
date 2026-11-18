@@ -37,4 +37,14 @@ class KotlinCodeScannerTest {
         assertFalse("text" in result || '"' in result, result)
         assertEquals("+ x", result.trim())
     }
+
+    @Test
+    fun `keeps simple string templates in regular and raw strings while ignoring escaped dollars`() {
+        val regular = code("\"prefix ${'$'}state ${'$'}{other.count} \\${'$'}ignored\"")
+        assertTrue("state" in regular && "other.count" in regular, regular)
+        assertFalse("prefix" in regular || "ignored" in regular, regular)
+        val raw = code("\"\"\"prefix ${'$'}state ${'$'}_state2\"\"\"")
+        assertTrue("state" in raw && "_state2" in raw, raw)
+        assertFalse("prefix" in raw, raw)
+    }
 }

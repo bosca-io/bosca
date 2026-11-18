@@ -2,6 +2,10 @@ package bosca.search.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 @Serializable
 data class IndexConfiguration(
@@ -15,7 +19,21 @@ data class IndexConfiguration(
     val embedders: List<IndexEmbedder> = emptyList(),
     val chat: IndexChatConfiguration? = null,
     val chatSettings: List<IndexChatSettingsConfiguration> = emptyList(),
-)
+    /** Exact, case-sensitive values of either the custom `type` or document kind `_type` to omit. */
+    val excludeTypes: Set<String> = emptySet(),
+    /** Case-sensitive prefixes of `contentType` to omit, such as `image/`. */
+    val excludeContentTypePrefix: List<String> = emptyList(),
+) {
+    /** Whether this index excludes a document based on its top-level type fields. */
+    fun excludes(document: JsonElement): Boolean {
+        val fields = document as? JsonObject ?: return false
+        fun value(name: String): String? = (fields[name] as? JsonPrimitive)?.contentOrNull
+        return value("type") in excludeTypes || value("_type") in excludeTypes ||
+            value("contentType")?.let { contentType ->
+                excludeContentTypePrefix.any { contentType.startsWith(it) }
+            } == true
+    }
+}
 
 @Serializable
 data class IndexEmbedder(

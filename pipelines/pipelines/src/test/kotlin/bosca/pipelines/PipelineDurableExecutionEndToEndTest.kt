@@ -2,6 +2,7 @@
 
 package bosca.pipelines
 
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionPool
@@ -13,7 +14,6 @@ import bosca.cache.CacheManager
 import bosca.cache.RequestCacheSerializer
 import bosca.di.ProviderRegistry
 import bosca.di.provides
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.graphql.Batch
 import bosca.pipelines.configuration.PipelinesRuntimeConfiguration
 import bosca.pipelines.model.Pipeline
@@ -96,6 +96,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import bosca.test.resources.SharedPostgreSQLContainer
+import bosca.test.resources.SharedValkeyContainer
 import bosca.test.resources.SharedNatsContainer
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -486,18 +487,41 @@ class PipelineDurableExecutionEndToEndTest {
     }
 
     @Test
+    fun `named pipeline lookup excludes unrelated unsupported graphs and deleted pipelines`() = withDb {
+        val supported = graphJson.encodeToJsonElement(PipelineGraph.serializer(), PipelineGraph(listOf(InputNode("input", acceptedType = "JSON"))))
+        transaction {
+            pipelineRepository.add(PipelineRecord(name = "artifact sync", acceptedInputType = "JSON", graph = supported))
+            val deleted = pipelineRepository.add(PipelineRecord(name = "deleted sync", acceptedInputType = "JSON", graph = supported))
+            pipelineRepository.softDelete(deleted.id)
+            pipelineRepository.add(PipelineRecord(
+                name = "profile signals", acceptedInputType = "JSON",
+                graph = json.parseToJsonElement("""{"nodes":[{"id":"compute","type":"recommendations.computeProfileSignals"}]}"""),
+            ))
+            pipelineRepository.add(PipelineRecord(
+                name = "prayer comment notification", acceptedInputType = "JSON",
+                graph = json.parseToJsonElement("""{"nodes":[{"id":"send","type":"prayer.notification.comment"}]}"""),
+            ))
+        }
+        val records = pipelineRepository.getByNames(listOf("artifact sync", "deleted sync", "missing"))
+        assertEquals(listOf("artifact sync"), records.map { it.name })
+        assertEquals("input", graphJson.decodeFromJsonElement(PipelineGraph.serializer(), records.single().graph).nodes.single().id)
+    }
+
+    @Test
     fun `scheduled run resumes through successive backing jobs on the real queue`() = scheduledBackingJobs(fail = false)
 
     @Test
     fun `scheduled run leaves suspended state when backing work terminally fails`() = scheduledBackingJobs(fail = true)
 
     private fun scheduledBackingJobs(fail: Boolean) {
+        val lockRedis = SharedValkeyContainer()
         val nats = SharedNatsContainer()
         nats.start()
+        lockRedis.start()
         try {
             val natsPool = nats.newConnectionPool(1)
             val queue = NatsJobQueueFactory(
-                natsPool, json, NatsDistributedLockFactory(natsPool), null, emptyList(), processExpiredJobs = false,
+                natsPool, json, RedisDistributedLockFactory(lockRedis.newConnectionPool()), null, emptyList(), processExpiredJobs = false,
             ).create("scheduled-pipeline-${UUID.random()}")
             RegisterJobsConfiguration()
             provides<CacheManager> { mockk(relaxed = true) }
@@ -562,6 +586,7 @@ class PipelineDurableExecutionEndToEndTest {
             assertTrue(withResult { service.listActive(0, 50) }.none { it.id == run.id })
             assertEquals(expected, withResult { runLogRepository.listForPipeline(pipelineId, 0, 10) }.single().outcome)
         } finally {
+            lockRedis.stop()
             nats.stop()
         }
     }
@@ -1483,6 +1508,7 @@ class PipelineDurableExecutionEndToEndTest {
 
         override suspend fun get(id: UUID): Pipeline? = registry[id]
         override suspend fun getAll(): List<Pipeline> = error("unused")
+        override suspend fun getByNames(names: List<String>): List<Pipeline> = registry.values.filter { it.name in names }
         override suspend fun getBroken(): List<bosca.pipelines.model.BrokenPipeline> = emptyList()
         override suspend fun getByKey(key: String): Pipeline? = error("unused")
         override suspend fun acceptingInput(typeNames: Set<String>): List<Pipeline> = error("unused")

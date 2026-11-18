@@ -6,11 +6,14 @@ import bosca.di.MissingObjectProvider
 import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provideProvider
+import bosca.git.service.ProducedArtifactVerifier
+import bosca.git.service.RequiredArtifactVerifier
 import bosca.pipelines.PipelineEventDispatcher
 import bosca.scheduler.service.SchedulerService
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class ApplicationProvidersTest {
 
@@ -31,5 +34,14 @@ class ApplicationProvidersTest {
         gitServerProviderRegistrars().forEach { it.register() }
 
         assertFalse(provideProvider<PipelineEventDispatcher>() is MissingObjectProvider<*>)
+    }
+
+    @Test
+    fun `standalone Git leaves registry verification to importing hosts`() {
+        ProviderRegistry.clear()
+        gitServerProviderRegistrars().forEach { it.register() }
+
+        assertTrue(provideProvider<ProducedArtifactVerifier>() is MissingObjectProvider<*>)
+        assertTrue(provideProvider<RequiredArtifactVerifier>() is MissingObjectProvider<*>)
     }
 }

@@ -1,0 +1,4 @@
+<page route="/system/jobs" requireAuth>
+  <script server provides="page">bosca.system.ui.systemPage("jobs")</script>
+  <system-layout :title="page.title" :admin="page.admin"><system-list :initial="page" /></system-layout>
+</page>

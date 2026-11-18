@@ -1,0 +1,85 @@
+<component tag="system-list">
+  <prop name="initial" type="bosca.system.ui.SystemPage" required />
+  <script server provides="model">bosca.system.ui.SystemPage(initial.kind, initial.admin, initial.offset, initial.search, initial.status, initial.source, initial.rows, initial.hasNext, initial.draft, groupType = initial.groupType, history = initial.history, totalCount = initial.totalCount, lastAction = initial.lastAction, lastActionId = initial.lastActionId, feedback = initial.feedback)</script>
+  <island name="system-list" :key="initial.kind">
+    <page-shell fill>
+      <page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" :title="model.title" :subtitle='if (model.kind == "jobs") model.historySummary else ""'><if model.admin && model.kind == "groups"><dialog title="New group" triggerLabel="New group" primary icon="users" triggerIcon="plus" :forceOpen='model.feedback.failed && model.lastAction == "createGroup"' :completed='!model.feedback.failed && model.feedback.message == "Group created."'>
+              <form @submit="model.createGroup(form.name, form.description, form.type, ctx)" class="modal-form">
+                <form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><field label="Name"><input name="name" :value="model.draft.name" required autofocus /></field><field label="Description"><input name="description" :value="model.draft.description" multiline :rows="2" /></field><field label="Type"><select label="Type" name="type"><option value="PRINCIPAL" :selected='model.draft.type == "PRINCIPAL"'>Principal</option><option value="SYSTEM" :selected='model.draft.type == "SYSTEM"'>System</option></select></field></form-body>
+                <form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" primary>Create</button></form-actions>
+              </form>
+            </dialog></if><if model.admin && model.kind == "scheduler"><button-link href="/system/scheduler/new" primary icon="plus">New scheduled job</button-link></if></page-heading>
+      <div class="system-content" data-bml-scroll="system-content">
+        <if !model.admin><alert>Administrator access is required.</alert><else>
+          <system-feedback :feedback="model.feedback" />
+          <form method="get" :action="model.href" class="system-actions system-list-filters" :data-list-kind="model.kind">
+            <if model.kind == "groups"><field label="Group type"><select label="Group type" name="groupType"><for value in bosca.system.ui.graphql.GroupType.entries><option :value="value.name" :selected="value.name == model.groupType">{ value.name }</option></for></select></field><field label="Search groups"><search-input name="search" :value="model.search" label="Search groups" placeholder="Search groups…" size="md" :autofocus="false" /></field></if>
+            <if model.kind == "jobs">
+              <field label="Status"><select label="Status" name="status"><option value="">All statuses</option><for value in bosca.system.ui.graphql.ExecutionStatus.entries><option :value="value.name" :selected="value.name == model.status">{ value.name }</option></for></select></field>
+              <field label="Source"><select label="Source" name="source"><option value="">All sources</option><for value in bosca.system.ui.graphql.JobHistorySource.entries><option :value="value.name" :selected="value.name == model.source">{ value.name }</option></for></select></field>
+            </if>
+            <button type="submit">Refresh</button>
+          </form>
+
+
+          <card :title='if (model.kind == "jobs") "Job history" else model.title' :padded="false">
+            <if model.rows.isEmpty()><empty-state message="No entries found." /></if>
+            <if model.kind == "jobs">
+              <for job in model.history><details class="system-history-entry" name="job-execution" :data-job-history="job.id">
+                <disclosure-heading framed><span class="job-summary"><span class="job-summary-info"><strong>{ job.name ?: job.jobId }</strong><span>{ job.source.name } · <time :value="job.triggeredAt" format="MMM d, yyyy HH:mm:ss 'UTC'" inheritTypography /></span></span><span class="job-summary-time"><if job.completedAt != null><time :value="job.completedAt.orEmpty()" format="MMM d, yyyy HH:mm:ss 'UTC'" inheritTypography /><else-if job.delayedUntil != null>Delayed → <time :value="job.delayedUntil.orEmpty()" format="MMM d, yyyy HH:mm:ss 'UTC'" inheritTypography /></if></span><badge class="job-summary-status" :tone='when (job.status.name) { "COMPLETED" -> "success"; "FAILED" -> "error"; "RUNNING" -> "info"; "PENDING" -> "warning"; else -> "neutral" }'>{ job.status.name }</badge></span></disclosure-heading>
+                <div class="system-history-details"><dl>
+                  <dt>Status</dt><dd>{ job.status.name }</dd><dt>Source</dt><dd>{ job.source.name }</dd>
+                  <dt>Triggered</dt><dd><time :value="job.triggeredAt" format="MMM d, yyyy HH:mm:ss 'UTC'" inheritTypography /></dd>
+                  <dt>Scheduled</dt><dd><time :value="job.scheduledFor" format="MMM d, yyyy HH:mm:ss 'UTC'" inheritTypography /></dd>
+                  <dt>Completed</dt><dd>{ job.completedAt ?: "—" }</dd><if job.delayedUntil != null><dt>Delayed until</dt><dd>{ job.delayedUntil.orEmpty() }</dd></if>
+                  <dt>Catch-up</dt><dd>{ if (job.wasCatchUp) "Yes" else "No" }</dd><if job.parentJobId != null><dt>Parent job</dt><dd>{ job.parentJobId.orEmpty() }</dd></if>
+                  <dt>History ID</dt><dd>{ job.id }<copy :value="job.id" label="Copy history ID" /></dd><dt>Job ID</dt><dd>{ job.jobId }<copy :value="job.jobId" label="Copy job ID" /></dd>
+                </dl>
+                <if !job.errorMessage.isNullOrBlank()><alert tone="error"><pre class="system-history-error">{ job.errorMessage.orEmpty() }</pre></alert></if>
+                <if job.status.name in listOf("PENDING", "RUNNING")><confirm-dialog :completed="!model.feedback.failed && model.feedback.message.isNotBlank()" :forceOpen='model.feedback.failed && model.lastAction == "cancel" && model.lastActionId == job.id' title="Cancel execution?" description="Cancel this active job execution." triggerLabel="Cancel execution" :triggerIconOnly="false"><form @submit='model.action(job.id, "cancel", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><checkbox name="confirmed" label="Cancel this execution" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Cancel execution</button></form-actions></form></confirm-dialog></if>
+                </div>
+              </details></for>
+            <else><table-scroll :label="model.title"><table><thead><tr><th>Name</th><if model.kind == "scheduler"><th>Cron</th><th>Enabled</th><th>Last run</th><th>Next run</th><else><th>Description</th><th>Type</th></if><th>Actions</th></tr></thead><tbody>
+              <for row in model.rows><tr>
+                <td><if model.kind == "groups"><span class="group-name-copy"><span class="group-name">{ row.title }</span><copy :value="row.id" label="Copy group ID" size="xs" ghost :showStatus="false" /></span><else><if model.kind == "scheduler"><div class="schedule-name"><a :href='"/system/scheduler/" + row.id'>{ row.title }</a><if row.detail.isNotBlank()><span>{ row.detail }</span></if></div><else>{ row.title }</if></if></td>
+                <if model.kind == "scheduler"><td><code>{ row.cron ?: "—" }</code></td><td><badge :tone='if (row.enabled) "success" else "neutral"'>{ row.status }</badge></td><td><if row.lastRun != null><time :value="row.lastRun.orEmpty()" format="MMM d, yyyy HH:mm" inheritTypography /><else>—</if></td><td><if row.nextRun != null><time :value="row.nextRun.orEmpty()" format="MMM d, yyyy HH:mm" inheritTypography /><else>—</if></td><else><td class="system-detail">{ row.detail }</td><td><badge :tone='if (row.status == "SYSTEM") "accent" else "neutral"'>{ row.status }</badge></td></if>
+                <td><div class="system-actions">
+                  <if model.kind == "scheduler">
+                    <form @submit='model.action(row.id, if (row.enabled) "disable" else "enable", true, ctx)'><button type="submit">{ if (row.enabled) "Disable" else "Enable" }</button></form>
+                    <confirm-dialog :completed="!model.feedback.failed && model.feedback.message.isNotBlank()" description="This starts a new execution using the scheduled job settings." icon="play" :triggerIconOnly="false" :forceOpen='model.feedback.failed && model.lastAction == "trigger" && model.lastActionId == row.id' title="Trigger scheduled job?" triggerLabel="Run now"><form @submit='model.action(row.id, "trigger", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><checkbox name="confirmed" label="Run this job now" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" primary>Run now</button></form-actions></form></confirm-dialog>
+                  </if>
+                  <if model.kind != "jobs" || row.enabled>
+                    <confirm-dialog :completed="!model.feedback.failed && model.feedback.message.isNotBlank()" description="The selected entry will be deleted, or its active execution cancelled." :triggerIconOnly="false" :forceOpen='model.feedback.failed && model.lastActionId == row.id && model.lastAction == if (model.kind == "jobs") "cancel" else "delete"' :title='if (model.kind == "jobs") "Cancel execution?" else "Delete entry?"' :triggerLabel='if (model.kind == "jobs") "Cancel execution" else "Delete"'>
+                      <form @submit='model.action(row.id, if (model.kind == "jobs") "cancel" else "delete", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><checkbox name="confirmed" label="Confirm this action" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Confirm</button></form-actions></form>
+                    </confirm-dialog>
+                  </if>
+                </div></td>
+              </tr></for>
+            </tbody></table></table-scroll></if>
+            <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" />
+          </card>
+        </if>
+      </div>
+    </page-shell>
+  </island>
+  <style scoped>
+    .schedule-name { display:flex; flex-direction:column; gap:3px; }
+    .schedule-name a { color:var(--fg-0); font-weight:500; }
+    .schedule-name > span { color:var(--fg-3); font-size:11px; }
+    .group-name-copy { display:inline-flex; align-items:center; gap:8px; }
+    .group-name { color:var(--fg-0); font-weight:500; }
+    .job-summary { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; }
+    .job-summary-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+    .job-summary-info strong { color: var(--fg-0); font: 500 12.5px/1.5 var(--font-mono); overflow-wrap: anywhere; }
+    .job-summary-info > span { color: var(--fg-3); font-size: 11px; }
+    .job-summary-time { color: var(--fg-2); font: 11px/1.5 var(--font-mono); text-align: right; }
+    @media (max-width: 600px) { .job-summary { flex-wrap: wrap; gap: 8px; } .job-summary-time { display: none; } }
+
+    .system-history-entry { border-bottom: 1px solid var(--line); }
+    .system-history-details { padding: 16px; }
+    .system-history-details dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 18px; margin: 0 0 16px; font-size: 12px; }
+    .system-history-details dt { color: var(--fg-3); }
+    .system-history-details dd { margin: 0; overflow-wrap: anywhere; }
+    .system-history-error { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 var(--font-mono); }
+  </style>
+</component>

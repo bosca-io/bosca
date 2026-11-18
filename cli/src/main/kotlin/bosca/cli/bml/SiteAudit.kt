@@ -1,5 +1,6 @@
 package bosca.cli.bml
 
+import bosca.bml.codegen.clientModuleImports
 import kotlinx.serialization.Serializable
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -13,6 +14,8 @@ import java.util.zip.GZIPInputStream
  * each one, and records real transfer bytes (as served, compressed), decoded bytes, and timing.
  * Works against any HTTP site, so a BML deployment can be measured 1:1 against sites built on
  * other stacks.
+ * Static ESM imports and re-exports are followed once per URL, including shared chunks. Dynamic
+ * imports and import-map bare specifiers require browser execution and are not fetched.
  *
  * Deliberately not fetched: assets referenced from *inside* CSS (fonts, background images) — a
  * browser downloads only the subsets/branches it actually needs (e.g. `unicode-range` font
@@ -64,18 +67,29 @@ class SiteAudit(private val http: OkHttpClient) {
         val resources = mutableListOf(page.resource)
         var cssRefs = 0
         val html = page.body?.toString(Charsets.UTF_8).orEmpty()
-        for (assetUrl in discoverAssets(html, pageUrl)) {
+        val queued = ArrayDeque(discoverAssets(html, pageUrl))
+        val seen = mutableSetOf(pageUrl.toString())
+        while (queued.isNotEmpty()) {
+            val assetUrl = queued.removeFirst()
+            if (!seen.add(assetUrl)) continue
             val fetched = fetch(assetUrl, categorize(assetUrl, null))
             resources += fetched.resource
             if (fetched.resource.category == Category.CSS) {
                 cssRefs += CSS_URL_REF.findAll(fetched.body?.toString(Charsets.UTF_8).orEmpty())
                     .count { !it.groupValues[1].startsWith("data:") }
             }
+            if (fetched.resource.category == Category.JS && fetched.resource.status in 200..299) {
+                val owner = fetched.url ?: continue
+                clientModuleImports(fetched.body?.toString(Charsets.UTF_8).orEmpty()).forEach { path ->
+                    if (path.startsWith(".") || path.startsWith("/") || path.startsWith("http://") || path.startsWith("https://"))
+                        owner.resolve(path)?.let { queued.add(it.toString()) }
+                }
+            }
         }
         return RouteAudit(route, resources, cssRefs)
     }
 
-    private class Fetched(val resource: Resource, val body: ByteArray?)
+    private class Fetched(val resource: Resource, val body: ByteArray?, val url: HttpUrl? = null)
 
     /**
      * Fetches [url] with an explicit `Accept-Encoding: gzip` — setting the header ourselves makes
@@ -98,7 +112,7 @@ class SiteAudit(private val http: OkHttpClient) {
                 val resolved = categorize(url, response.header("Content-Type"), category)
                 Fetched(
                     Resource(url, resolved, response.code, raw.size.toLong(), decoded.size.toLong(), millis),
-                    decoded,
+                    decoded, response.request.url,
                 )
             }
         } catch (_: Exception) {

@@ -1,0 +1,28 @@
+<component tag="system-integrations">
+  <prop name="initial" type="bosca.system.ui.SystemIntegrationsModel" required />
+  <script server provides="model">bosca.system.ui.SystemIntegrationsModel(initial.admin, initial.cards, initial.feedback)</script>
+  <island name="system-integrations" :key='"integrations"'>
+    <page-shell fill><page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" title="Integrations" subtitle="Connect and configure external services"><button-link href="/system/integrations/email">Choose email provider</button-link><if model.admin><button @click="model.refresh(ctx)">Refresh</button></if></page-heading>
+      <div class="system-content" data-bml-scroll="system-content"><if !model.admin><alert>Administrator access is required.</alert><else>
+        <system-feedback :feedback="model.feedback" />
+        <div class="integration-grid"><for integration in model.cards><card :padded="false"><a class="integration-link" :href="integration.href">
+          <div class="integration-header"><span class="integration-icon"><icon :name="integration.icon" :size="16" /></span><div class="integration-copy"><strong>{ integration.name }</strong><p>{ integration.description }</p></div></div>
+          <div class="integration-footer"><badge :tone='if (integration.configured) "success" else "neutral"'>{ if (integration.configured) "Connected" else "Not configured" }</badge><span class="integration-cta">Configure<icon name="chevron-right" :size="12" /></span></div>
+        </a></card></for></div>
+      </if></div>
+    </page-shell>
+  </island>
+  <style scoped>
+    .integration-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 14px; }
+    .integration-link { display: flex; flex-direction: column; gap: 14px; height: 100%; padding: 16px; box-sizing: border-box; color: inherit; text-decoration: none; }
+    .integration-link:hover { background: var(--bg-2); text-decoration: none; }
+    .integration-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .integration-header { display: flex; align-items: start; gap: 12px; }
+    .integration-icon { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex: 0 0 32px; border-radius: var(--r-sm); color: var(--accent); background: color-mix(in oklch, var(--accent) 14%, var(--bg-2)); border: 1px solid color-mix(in oklch, var(--accent) 26%, transparent); }
+    .integration-copy { min-width: 0; display: grid; gap: 2px; }
+    .integration-copy strong { font-size: 14px; font-weight: 600; color: var(--fg-0); }
+    .integration-copy p { margin: 0; font-size: 12px; line-height: 1.4; color: var(--fg-3); }
+    .integration-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; }
+    .integration-cta { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 540; color: var(--fg-2); }
+  </style>
+</component>

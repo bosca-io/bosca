@@ -1,13 +1,13 @@
 <component tag="git-pull-heading">
   <prop name="page" type="bosca.git.ui.PullPage" required />
-  <ui-page-heading
+  <page-heading
     :title="page.pull.title"
     icon="pull"
     :iconColor="bosca.git.ui.pullStatusColor(page.pull.status.name)"
     :badge="page.pull.status.name.lowercase()"
     :badgeColor="bosca.git.ui.pullStatusColor(page.pull.status.name)"
     :subtitle='"#" + page.pull.number + " · " + page.pull.sourceBranch + " → " + page.pull.targetBranch'
-    :trail='listOf(bosca.git.ui.components.NavigationItem("Pull Requests", "/pulls", false))'
+    :trail='listOf(bosca.design.model.NavigationItem("Git", "", false), bosca.design.model.NavigationItem("Pull Requests", "/pulls", false))'
     :crumb='"#" + page.pull.number'
   >
     <if page.canEdit>
@@ -15,11 +15,11 @@
     </if>
     <if page.canReview>
       <a class="button-link" :href='page.href + "&view=reviews&review=true"'>
-        <span class="review-icon"><ui-icon name="eye" :size="14" /></span>
+        <span class="review-icon"><icon name="eye" :size="14" /></span>
         Review
       </a>
     </if>
-  </ui-page-heading>
+  </page-heading>
   <style scoped>
     .review-icon {
       display: inline-flex;

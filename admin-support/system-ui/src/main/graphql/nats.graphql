@@ -1,0 +1,116 @@
+
+  query SystemGetNatsAdminOverview {
+    natsAdmin {
+      serverInfo {
+        serverId serverName version host port
+        maxConnections maxPayload uptime
+        mem cpu connections totalConnections subscriptions slowConsumers
+        inMsgs outMsgs inBytes outBytes
+        jetstream {
+          config { maxMemory maxStorage storeDir }
+          stats {
+            memory storage reservedMemory reservedStorage accounts haAssets
+            api { total errors }
+          }
+        }
+      }
+      connections(limit: 100) {
+        numConnections total
+        connections {
+          cid kind type ip port start lastActivity rtt
+          uptime idle pendingBytes
+          inMsgs outMsgs inBytes outBytes subscriptions
+          name lang version
+        }
+      }
+      jetStreamInfo {
+        memory storage streams consumers messages bytes
+        api { total errors }
+      }
+      jetStreamStreams {
+        name created
+        state { messages bytes firstSeq lastSeq consumerCount numSubjects numDeleted }
+        cluster { leader }
+      }
+      clusterRoutes {
+        numRoutes
+        routes {
+          rid remoteId remoteName didSolicit isConfigured
+          ip port pendingSize inMsgs outMsgs inBytes outBytes subscriptions
+        }
+      }
+      subscriptionsInfo {
+        numSubscriptions numCache numInserts numRemoves numMatches
+        cacheHitRate maxFanout avgFanout
+      }
+      keyValueStores {
+        bucket entryCount bytes ttl maxBytes maxValueSize history
+      }
+    }
+  }
+
+
+  query SystemGetJetStreamConsumers($streamName: String!) {
+    natsAdmin {
+      jetStreamConsumers(streamName: $streamName) {
+        name streamName created
+        delivered { consumerSeq streamSeq }
+        ackFloor { consumerSeq streamSeq }
+        numAckPending numRedelivered numWaiting numPending
+        cluster { leader }
+      }
+    }
+  }
+
+
+  query SystemGetKeyValueEntries($bucket: String!, $keyFilter: String, $valueSearch: String) {
+    natsAdmin {
+      keyValueEntries(bucket: $bucket, keyFilter: $keyFilter, valueSearch: $valueSearch) {
+        key value revision created operation
+      }
+    }
+  }
+
+
+  query SystemGetStreamMessages($streamName: String!, $limit: Int, $subjectFilter: String, $fromSeq: Long, $toSeq: Long, $dataSearch: String) {
+    natsAdmin {
+      streamMessages(streamName: $streamName, limit: $limit, subjectFilter: $subjectFilter, fromSeq: $fromSeq, toSeq: $toSeq, dataSearch: $dataSearch) {
+        subject sequence timestamp data
+        headers { key values }
+      }
+    }
+  }
+
+
+  mutation SystemPutKvEntry($bucket: String!, $key: String!, $value: String!) {
+    natsAdmin {
+      putKeyValueEntry(bucket: $bucket, key: $key, value: $value) {
+        key value revision created operation
+      }
+    }
+  }
+
+
+  mutation SystemDeleteKvEntry($bucket: String!, $key: String!) {
+    natsAdmin { deleteKeyValueEntry(bucket: $bucket, key: $key) }
+  }
+
+
+  mutation SystemPurgeKvDeletes($bucket: String!) {
+    natsAdmin { purgeKeyValueDeletes(bucket: $bucket) }
+  }
+
+
+  mutation SystemPurgeStream($streamName: String!) {
+    natsAdmin { purgeStream(streamName: $streamName) }
+  }
+
+
+  mutation SystemPurgeStreamDeletes($streamName: String!) {
+    natsAdmin { purgeStreamDeletes(streamName: $streamName) }
+  }
+
+
+  mutation SystemDeleteStreamMessage($streamName: String!, $sequence: Long!) {
+    natsAdmin { deleteStreamMessage(streamName: $streamName, sequence: $sequence) }
+  }

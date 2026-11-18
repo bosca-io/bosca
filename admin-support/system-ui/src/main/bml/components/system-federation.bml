@@ -1,0 +1,46 @@
+<component tag="system-federation">
+  <prop name="initial" type="bosca.system.ui.SystemFederationModel" required />
+  <script server provides="model">bosca.system.ui.SystemFederationModel(initial.admin, initial.peers, initial.draft, initial.mode, initial.targetId, initial.targetName, initial.nextSecret, initial.dialogRequest, initial.feedback)</script>
+  <island name="system-federation" :key='"federation"'>
+    <page-shell fill><page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" title="Federation" :subtitle='model.peers.size.toString() + if (model.peers.size == 1) " active peer" else " active peers"'>
+      <if model.admin><button @click="model.refresh(ctx)">Refresh</button><button primary icon="plus" @click.coalesce='model.prepare("register", "")'>Register peer</button></if>
+    </page-heading><div class="system-content" data-bml-scroll="system-content">
+      <if !model.admin><alert>Administrator access is required.</alert><else>
+        <system-feedback :feedback="model.feedback" />
+        <dialog @dialogdismiss.coalesce="model.cancel()" title="Register federation peer" triggerLabel="Register peer" :showTrigger="false" :forceOpen='model.mode == "register"' :openRequest='if (model.mode == "register") model.dialogRequest.toString() else ""' :completed='model.mode != "register"'>
+          <form @submit="model.register(form.name, form.natsUrl, form.apiUrl, form.secret, ctx)" class="modal-form"><form-body padded class="modal-fields">
+            <if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if>
+            <field label="Name"><input name="name" :value="model.draft.name" placeholder="Bosca Production" required /></field>
+            <field label="NATS URL" hint="Leaf-node URL used to relay messages to this peer."><input name="natsUrl" :value="model.draft.natsUrl" placeholder="nats://peer.example.org:4222" required /></field>
+            <field label="API URL" hint="Base URL of the peer's federation REST API."><input name="apiUrl" type="url" :value="model.draft.apiUrl" placeholder="https://peer.example.org" required /></field>
+            <field label="Shared secret" hint="Used to authenticate peer handshakes and stored encrypted."><input name="secret" type="password" :value="model.draft.secret" autocomplete="new-password" required /></field>
+          </form-body><form-actions bordered class="modal-footer"><button @click="model.cancel()">Cancel</button><button type="submit" primary>Register peer</button></form-actions></form>
+        </dialog>
+        <dialog @dialogdismiss.coalesce="model.cancel()" :title='"Update secret for " + model.targetName' triggerLabel="Update shared secret" :showTrigger="false" :forceOpen='model.mode == "secret"' :openRequest='if (model.mode == "secret") model.dialogRequest.toString() else ""' :completed='model.mode != "secret"'>
+          <form @submit="model.setSecret(model.targetId, form.secret, ctx)" class="modal-form"><form-body padded class="modal-fields">
+            <if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if>
+            <field label="Shared secret"><input name="secret" type="password" :value="model.nextSecret" autocomplete="new-password" placeholder="Enter a new shared secret" /></field>
+            <p>Enter the secret configured on both peers. Leave it blank to clear the stored secret.</p>
+          </form-body><form-actions bordered class="modal-footer"><button @click="model.cancel()">Cancel</button><button type="submit" primary>Save shared secret</button></form-actions></form>
+        </dialog>
+        <dialog @dialogdismiss.coalesce="model.cancel()" :title='"Deactivate " + model.targetName + "?"' triggerLabel="Deactivate peer" :showTrigger="false" :forceOpen='model.mode == "deactivate"' :openRequest='if (model.mode == "deactivate") model.dialogRequest.toString() else ""' :completed='model.mode != "deactivate"'>
+          <form @submit="model.deactivate(model.targetId, form.confirmed, ctx)" class="modal-form"><form-body padded class="modal-fields">
+            <if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if>
+            <p>Channel federation links to this peer will stop synchronizing.</p>
+            <checkbox name="confirmed" label="Deactivate this federation peer" required />
+          </form-body><form-actions bordered class="modal-footer"><button @click="model.cancel()">Cancel</button><button type="submit" class="danger">Deactivate peer</button></form-actions></form>
+        </dialog>
+        <card title="Federation peers" :padded="false">
+          <p class="federation-intro">Messages are relayed through NATS leaf nodes. The API URL is used for handshake and control-plane requests, and shared secrets are stored in encrypted configuration.</p>
+          <if model.peers.isEmpty()><empty-state message="No federation peers registered." /><else>
+            <table-scroll label="Federation peers"><table><thead><tr><th>Peer</th><th>NATS URL</th><th>API URL</th><th>Registered</th><th>Actions</th></tr></thead><tbody><for peer in model.peers><tr :data-federation-peer="peer.id">
+              <td>{ peer.name }</td><td class="system-detail">{ peer.natsUrl }</td><td class="system-detail">{ peer.apiUrl }</td><td><if peer.createdAt != null><time :value="peer.createdAt.orEmpty()" format="MMM d, yyyy 'UTC'" inheritTypography /><else>—</if></td>
+              <td><div class="system-actions"><button icon="key" @click.coalesce='model.prepare("secret", peer.id)'>Update shared secret</button><button @click.coalesce='model.prepare("deactivate", peer.id)'>Deactivate</button></div></td>
+            </tr></for></tbody></table></table-scroll>
+          </if>
+        </card>
+      </if>
+    </div></page-shell>
+  </island>
+  <style scoped>.federation-intro { margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--line); color: var(--fg-3); font-size: 12px; line-height: 1.5; }</style>
+</component>

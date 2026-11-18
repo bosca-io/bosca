@@ -41,7 +41,7 @@ query GitUiRepositoryPullList(
     }
   }
 }
-query GitUiPull($id: UUID!) {
+query GitUiPull($id: UUID!, $mergeDetails: Boolean!) {
   git {
     pullRequest: pullRequestById(id: $id) {
       deleteBranchOnMerge
@@ -55,8 +55,8 @@ query GitUiPull($id: UUID!) {
       sourceBranch
       targetBranch
       authorId
-      mergeable
-      failingStatusChecks
+      mergeable @include(if: $mergeDetails)
+      failingStatusChecks @include(if: $mergeDetails)
       created
       updated
       sourceRepositoryId
@@ -65,7 +65,7 @@ query GitUiPull($id: UUID!) {
       mergedAt
       mergeSha
       mergeBaseSha
-      conflictingFiles
+      conflictingFiles @include(if: $mergeDetails)
       assignees {
         id
         name

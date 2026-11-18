@@ -18,8 +18,8 @@ import bosca.test.resources.SharedPostgreSQLContainer
 /**
  * Class-scoped Testcontainers infrastructure for database-backed content tests.
  *
- * Containers are started once per test class. [reset] rebuilds the migrated schema, clears cache
- * entries, and recreates the lightweight client pools between test methods.
+ * [reset] migrates once per class, then copies the pristine database between test methods. Copies
+ * preserve the schema, seed rows, and sequence values while cache entries and client pools are reset.
  */
 internal class ContentTestInfrastructure(
     private val includePostgres: Boolean = true,
@@ -27,6 +27,7 @@ internal class ContentTestInfrastructure(
 
     private lateinit var natsContainer: SharedNatsContainer
     private lateinit var postgresContainer: SharedPostgreSQLContainer
+    private var databaseTemplate: SharedPostgreSQLContainer? = null
     private lateinit var natsPool: NatsConnectionPool
 
     lateinit var connectionPool: ConnectionPool
@@ -68,8 +69,17 @@ internal class ContentTestInfrastructure(
             if (::connectionPool.isInitialized) {
                 connectionPool.close()
             }
+            val template = databaseTemplate
+            if (template == null) {
+                connectionPool = createConnectionPool()
+                resetTestDatabase(connectionPool)
+                connectionPool.close()
+                databaseTemplate = postgresContainer.copy()
+            } else {
+                postgresContainer.stop()
+                postgresContainer = template.copy()
+            }
             connectionPool = createConnectionPool()
-            resetTestDatabase(connectionPool)
         }
     }
 
@@ -100,6 +110,10 @@ internal class ContentTestInfrastructure(
         }
         cleanup {
             if (::postgresContainer.isInitialized) postgresContainer.stop()
+        }
+        cleanup {
+            databaseTemplate?.stop()
+            databaseTemplate = null
         }
 
         failure?.let { throw it }

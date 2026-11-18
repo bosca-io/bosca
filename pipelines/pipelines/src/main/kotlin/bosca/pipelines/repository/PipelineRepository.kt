@@ -13,6 +13,10 @@ interface PipelineRepository {
     @Query("select * from pipelines.pipelines where deleted_at is null order by name")
     suspend fun getAll(): List<PipelineRecord>
 
+    /** Returns active pipelines matching the supplied names. */
+    @Query("select * from pipelines.pipelines where name = any(:names) and deleted_at is null order by name")
+    suspend fun getByNames(names: List<String>): List<PipelineRecord>
+
     @Query("select * from pipelines.pipelines where id = :id and deleted_at is null")
     suspend fun getById(id: UUID): PipelineRecord?
 

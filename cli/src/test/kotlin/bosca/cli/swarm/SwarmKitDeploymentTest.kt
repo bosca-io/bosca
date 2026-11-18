@@ -52,6 +52,15 @@ class SwarmKitDeploymentTest {
             val siteStack = siteStack(resolved, enabled)
             @Suppress("UNCHECKED_CAST")
             val siteServices = siteStack["services"] as Map<String, Map<String, Any>>
+            for (serviceName in listOf("server", "runner")) {
+                @Suppress("UNCHECKED_CAST")
+                val environment = siteServices.getValue(serviceName)["environment"] as Map<String, String>
+                assertEquals(enabled.secrets.kitController, environment["BOSCA_SWARM_CONTROLLER_TOKEN"])
+            }
+            @Suppress("UNCHECKED_CAST")
+            val runnerEnvironment = siteServices.getValue("runner")["environment"] as Map<String, String>
+            assertEquals("-XX:MaxRAMPercentage=75.0", runnerEnvironment["JAVA_OPTS"])
+            assertContains(siteServices.getValue("server")["command"] as List<*>, "-XX:MaxRAMPercentage=65.0")
             for ((serviceName, definition) in siteServices) {
                 @Suppress("UNCHECKED_CAST")
                 val networks = definition["networks"] as Map<String, Any>

@@ -10,6 +10,8 @@ plugins {
 
 apply(plugin = "com.android.kotlin.multiplatform.library")
 
+val iosEnabled = gradle.extra["iosEnabled"] as Boolean
+
 kotlin {
     compilerOptions {
         freeCompilerArgs.add("-opt-in=kotlin.uuid.ExperimentalUuidApi")
@@ -58,13 +60,15 @@ kotlin {
         binaries.executable()
     }
 
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64()
-    ).forEach {
-        it.binaries.framework {
-            baseName = "BoscaBibleDomSharedKit"
-            isStatic = true
+    if (iosEnabled) {
+        listOf(
+            iosArm64(),
+            iosSimulatorArm64()
+        ).forEach {
+            it.binaries.framework {
+                baseName = "BoscaBibleDomSharedKit"
+                isStatic = true
+            }
         }
     }
 

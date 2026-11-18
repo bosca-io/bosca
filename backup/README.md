@@ -18,6 +18,19 @@ Run these commands from the **workspace root**. `backup` is part of the root Gra
 
 This is a single-module library published as a Maven artifact consumed by the main Bosca server. Backup and restore operations run as jobs (`BackupJob`/`RestoreJob`) using an executor pattern. Each backup records a `BackupManifest` with metadata about backed-up tables and records. Restore operations use a configurable `ConflictStrategy` for handling existing data. `BackupTableDefinition` describes which tables to include and how to serialize them. GraphQL controllers provide admin access to backup and restore operations.
 
+Export includes installed relations from the table catalog within one repeatable-read snapshot,
+so deployments can omit optional modules. Restore uses PostgreSQL's record conversion for UUID,
+timestamp, enum, array and JSON column values. Conflict strategies use the table's configured
+primary key; other insertion errors fail and roll back the restore transaction. The replication
+role change is transaction-local and ends on commit or rollback.
+
+Atlas composes this module and its dedicated `backup` queue. Its production-host acceptance test
+verifies archive contents, file inclusion, all conflict strategies and deletion:
+
+```bash
+./gradlew :server:atlas-server:test --tests bosca.atlas.server.AtlasBackupsIntegrationTest -Patlas.backups.browser=true
+```
+
 ## Dependencies
 
 - `io.bosca:core` -- Bosca Core (platform framework)

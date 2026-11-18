@@ -1,0 +1,10 @@
+<page route="/auth/verify">
+  <git-auth-layout title="Check your email.">
+    <auth-heading
+      eyebrow="Verify your account"
+      title="Check your email."
+      sub="Follow the verification link to finish creating your account."
+    />
+    <auth-verify-form />
+  </git-auth-layout>
+</page>

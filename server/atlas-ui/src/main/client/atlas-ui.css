@@ -1,0 +1,15 @@
+/* Studio home launcher layout; subsystem controls own their presentation in the design library. */
+.atlas-home { min-height:100dvh; background:radial-gradient(72% 52% at 12% -8%,color-mix(in oklch,var(--brand-accent) 22%,transparent),transparent 60%),radial-gradient(58% 46% at 100% 0%,color-mix(in oklch,#5ec5ff 13%,transparent),transparent 65%),linear-gradient(180deg,color-mix(in oklch,var(--brand-accent) 5%,var(--bg-0)),var(--bg-0) 42%); }
+.atlas-home-inner { width:100%; max-width:1080px; margin-inline:auto; padding:32px 40px 64px; display:flex; flex-direction:column; gap:28px; }
+.atlas-home-header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.atlas-home-brand { display:flex; align-items:center; gap:10px; color:var(--fg-0); font-size:15px; font-weight:600; text-decoration:none; }
+.atlas-home-brand:hover { opacity:.7; text-decoration:none; }
+.atlas-home-brand > span:last-child { font-size:14px; font-weight:500; color:var(--fg-2); }
+.atlas-brand-separator { width:1px; height:16px; background:var(--fg-3); }
+.atlas-home-actions { display:flex; align-items:center; gap:8px; }
+.atlas-home-intro { margin-top:8px; }
+.atlas-home-intro h1 { margin:0 0 6px; font-size:30px; line-height:1.1; letter-spacing:-.02em; font-weight:600; color:var(--fg-0); }
+.atlas-home-intro p { margin:0; font-size:14.5px; color:var(--fg-2); }
+.atlas-category { margin:0 0 10px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; color:var(--fg-3); }
+.atlas-home-main { display:flex; flex-direction:column; gap:28px; }
+@media(max-width:640px) { .atlas-home-inner { padding:24px 20px 48px; } .atlas-home-intro h1 { font-size:25px; } }

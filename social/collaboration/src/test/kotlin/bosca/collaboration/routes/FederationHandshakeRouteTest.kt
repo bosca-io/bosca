@@ -16,6 +16,7 @@ import bosca.serialization.UUID
 import bosca.server.HttpStatusCode
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
@@ -52,6 +53,7 @@ class FederationHandshakeRouteTest {
 
     @BeforeTest
     fun setup() {
+        every { inboundListener.exists } returns true
         val listener = mockk<FederationInboundListener>(relaxed = true)
         coEvery { inboundListener.get() } returns listener
         service = FederationServiceImpl(

@@ -51,14 +51,15 @@ class ApiTokensControllerTest {
             }
             assertFailsWith<SecurityException> { mutationController.create(auth, ApiTokenInput("token")) }
             assertFailsWith<SecurityException> { mutationController.createForPrincipal(auth, principalId, ApiTokenInput("token")) }
-            assertFailsWith<SecurityException> { mutationController.edit(auth, 1, null, null, listOf("security:manage")) }
-            assertFailsWith<SecurityException> { mutationController.edit(auth, 2, "name", null, null) }
+            assertFailsWith<SecurityException> { mutationController.edit(auth, 1, null, null, listOf("security:manage"), clearScopes = false) }
+            assertFailsWith<SecurityException> { mutationController.edit(auth, 2, "name", null, null, clearScopes = false) }
+            assertFailsWith<SecurityException> { mutationController.edit(auth, 2, null, null, null, clearScopes = true) }
             assertFailsWith<SecurityException> { mutationController.revoke(auth, 1) }
             assertFailsWith<SecurityException> { mutationController.revokeAll(auth) }
             assertFailsWith<SecurityException> { mutationController.revokeAllForPrincipal(auth, UUID.random()) }
             assertFailsWith<SecurityException> { mutationController.delete(auth, 1) }
         }
-        coVerify(exactly = 0) { apiTokenService.editToken(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { apiTokenService.editToken(any(), any(), any(), any(), any(), any()) }
         coVerify(exactly = 0) { apiTokenService.createToken(any(), any(), any()) }
         coVerify(exactly = 0) { apiTokenService.revokeToken(any(), any()) }
         coVerify(exactly = 0) { apiTokenService.deleteToken(any(), any()) }
@@ -314,7 +315,7 @@ class ApiTokensControllerTest {
         assertFailsWith<SecurityException> { mutationController.revoke(auth, 1) }
         assertFailsWith<SecurityException> { mutationController.revokeAll(auth) }
         assertFailsWith<SecurityException> { mutationController.revokeAllForPrincipal(auth, principalId) }
-        assertFailsWith<SecurityException> { mutationController.edit(auth, 1, null, null, null) }
+        assertFailsWith<SecurityException> { mutationController.edit(auth, 1, null, null, null, clearScopes = false) }
         assertFailsWith<SecurityException> { mutationController.delete(auth, 1) }
     }
 
@@ -366,7 +367,7 @@ class ApiTokensControllerTest {
         val auth = authenticatedContext(principalId)
         val updated = createApiTokenCredential(42, name = "Updated")
         coEvery {
-            apiTokenService.editToken(42, "Updated", "Description", listOf("content:view"), principalId)
+            apiTokenService.editToken(42, "Updated", "Description", listOf("content:view"), principalId, clearScopes = false)
         } returns updated
         coEvery { apiTokenService.deleteToken(42, principalId) } returns Unit
 
@@ -375,8 +376,7 @@ class ApiTokensControllerTest {
             42,
             "Updated",
             "Description",
-            listOf("content:view"),
-        )
+            listOf("content:view"), clearScopes = false)
         assertEquals("Updated", token.attrs.name)
         assertEquals(true, mutationController.delete(auth, 42))
     }

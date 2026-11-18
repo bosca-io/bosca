@@ -1,0 +1,5 @@
+<page route="/workspaces">
+  <catalog-document title="Workspaces" description="Read a document or open its source. Full screen keeps your place." current="/workspaces" fill>
+    <workspace-example />
+  </catalog-document>
+</page>

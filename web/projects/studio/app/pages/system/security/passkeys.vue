@@ -64,7 +64,7 @@ async function registerPasskey() {
   }
   registering.value = true
   try {
-    await ($auth as unknown as { registerPasskey: (_name: string) => Promise<void> }).registerPasskey(newName.value.trim())
+    await $auth.registerPasskey(newName.value.trim())
     toast.success('Passkey registered successfully')
     showRegister.value = false
     newName.value = ''

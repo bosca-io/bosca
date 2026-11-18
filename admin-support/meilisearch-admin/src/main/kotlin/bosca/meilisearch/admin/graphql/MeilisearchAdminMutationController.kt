@@ -101,6 +101,12 @@ class MeilisearchAdminMutationController(
         return service.resetEmbedders(uid)
     }
 
+    @Field
+    suspend fun removeEmbedder(authorization: AuthenticationContext, uid: String, name: String): MeilisearchTask {
+        groupEvaluator.verifyHasAdminGroup(authorization)
+        return service.removeEmbedder(uid, name)
+    }
+
     // ── Documents ──
 
     @Field

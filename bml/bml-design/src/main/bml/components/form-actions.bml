@@ -1,0 +1,11 @@
+<component tag="form-actions">
+  <prop name="bordered" type="Boolean" default="false" />
+  <prop name="align" type="String" default="end" />
+  <div class="form-actions" :data-bordered="bordered" :data-align="align" {...attrs}><slot /></div>
+  <style scoped>
+    .form-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:10px; min-width:0; }
+    .form-actions[data-align="start"] { justify-content:flex-start; }
+    .form-actions[data-align="between"] { justify-content:space-between; }
+    .form-actions[data-bordered] { padding:12px 18px; border-top:1px solid var(--line); background:var(--bg-2); }
+  </style>
+</component>

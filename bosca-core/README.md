@@ -40,6 +40,10 @@ Run these commands from the **workspace root**. `bosca-core` is part of the root
 ./gradlew :bosca-core:core:test :bosca-core:security:test  # Focused tests
 ```
 
+Database tests can use `SharedPostgreSQLContainer.copy()` to create a started, independent copy
+of a migrated fixture, including its seed data and sequence values. Close the source fixture's
+connections before copying it, and stop every copy and its source when the test class finishes.
+
 ## Local Infrastructure
 
 From the workspace root:
@@ -76,3 +80,11 @@ dependencies {
 ```
 
 Published `io.bosca:*` coordinates used by existing catalogs also resolve to these local projects in the root build.
+
+## Distributed locks
+
+`DistributedLockFactory` uses Redis, with atomic token-checked renewal and release.
+Set `distributedLock.type: redis` (the default) and configure the Redis connection.
+NATS is supported for messaging and caching, but not distributed locks. PostgreSQL
+locking is not implemented. To migrate from NATS locks, stop all lock consumers together,
+update their configuration and images, and restart them against the same Redis database.

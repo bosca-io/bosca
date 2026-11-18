@@ -2,6 +2,7 @@
 /.docker/
 /.bosca-compose-install.json
 /data/
+/compose.yaml
 /dist/
 /config/nginx.conf
 /config/nginx-bootstrap.conf

@@ -61,3 +61,5 @@ suspend fun <T : Any> provide(): T
 fun <T : Any> provideBlocking(): T
 fun <T : Any> provideLazy(): Lazy<T>
 ```
+
+Singleton initialization has a 60-second deadline, including dependency resolution. Caller cancellation still interrupts initialization, and a failed initialization can be retried on the next resolution.

@@ -36,27 +36,3 @@ class FederationController(
         return federationService.getFederatedChannels(localChannelId)
     }
 }
-
-@TypeController
-class FederationPeerController(
-    private val federationService: FederationService,
-) : GraphQLController<FederationPeer> {
-
-    @Field
-    suspend fun federatedChannels(peer: FederationPeer): List<FederatedChannel> {
-        // The service exposes per-local-channel queries; the per-peer rollup
-        // isn't part of the interface yet, so this resolver currently returns
-        // an empty list. We'll add it when peer-level dashboards need it.
-        return emptyList()
-    }
-}
-
-@TypeController
-class FederatedChannelController(
-    private val federationService: FederationService,
-) : GraphQLController<FederatedChannel> {
-
-    @Field
-    suspend fun peer(channel: FederatedChannel): FederationPeer? =
-        federationService.getPeer(channel.peerId)
-}

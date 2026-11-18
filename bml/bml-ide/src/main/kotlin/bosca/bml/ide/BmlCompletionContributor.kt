@@ -53,14 +53,14 @@ class BmlCompletionContributor : CompletionContributor() {
 
     private object TagNameProvider : CompletionProvider<CompletionParameters>() {
         override fun addCompletions(params: CompletionParameters, ctx: ProcessingContext, result: CompletionResultSet) {
-            val project = params.position.project
             SPECIAL_TAGS.forEach {
                 result.addElement(LookupElementBuilder.create(it).bold().withTypeText("bml"))
             }
-            BmlComponentDecls.all(project).map { it.tag }.distinct().forEach {
-                result.addElement(LookupElementBuilder.create(it).withTypeText("component"))
+            val components = BmlComponentDecls.all(params.originalFile).associateBy { it.tag }
+            components.values.forEach {
+                result.addElement(LookupElementBuilder.create(it.tag).withTypeText(it.origin))
             }
-            HTML_TAGS.forEach {
+            HTML_TAGS.filter { it !in components }.forEach {
                 result.addElement(LookupElementBuilder.create(it).withTypeText("html"))
             }
         }
@@ -70,7 +70,7 @@ class BmlCompletionContributor : CompletionContributor() {
         override fun addCompletions(params: CompletionParameters, ctx: ProcessingContext, result: CompletionResultSet) {
             val tag = enclosingTagName(params.position) ?: return
             // A custom component: offer its declared props, both as a literal (`label=`) and bound (`:label=`).
-            val props = BmlComponentDecls.propsOf(params.position.project, tag)
+            val props = BmlComponentDecls.propsOf(params.originalFile, tag)
             if (props.isNotEmpty()) {
                 props.forEach {
                     result.addElement(LookupElementBuilder.create(it).withTypeText("prop"))
@@ -122,7 +122,7 @@ class BmlCompletionContributor : CompletionContributor() {
         }
 
         val SPECIAL_TAGS = listOf(
-            "page", "route", "template", "component", "slot", "island", "fallback", "prop", "data", "inject",
+            "import", "page", "route", "template", "component", "slot", "island", "fallback", "prop", "data", "inject",
             "for", "if", "else", "else-if", "contract", "script", "style",
         )
         val HTML_TAGS = listOf(
@@ -140,6 +140,7 @@ class BmlCompletionContributor : CompletionContributor() {
         val COMPONENT_SCOPES = listOf("page", "site")
         val ISLAND_RENDER_MODES = listOf("request", "prerender", "deferred")
         val ATTRS_BY_TAG = mapOf(
+            "import" to listOf("library", "as"),
             "prop" to listOf("name", "type", "required", "default"),
             "component" to listOf("tag", "scope"),
             "island" to listOf("name", "client", "render", "hydrate", "key"),

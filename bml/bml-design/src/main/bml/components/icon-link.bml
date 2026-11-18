@@ -1,0 +1,44 @@
+<component tag="icon-link">
+  <prop name="icon" type="String" required />
+  <prop name="label" type="String" required />
+  <prop name="href" type="String" required />
+  <a class="button-link icon-only" :href="href" :aria-label="label" :title="label" :data-tooltip-content="label" {...attrs}>
+    <icon :name="icon" :size="14" />
+  </a>
+  <style scoped>
+    .button-link {
+      box-sizing: border-box;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: none;
+      width: var(--control-height-sm);
+      height: var(--control-height-sm);
+      padding: 0;
+      border: 1px solid var(--control-border, var(--line-2));
+      border-radius: var(--control-radius, var(--r-sm));
+      background: var(--control-bg, var(--bg-2));
+      color: var(--fg-1);
+      font-size: 12.5px;
+      font-weight: 500;
+      line-height: normal;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .button-link:hover {
+      background: var(--bg-3);
+    }
+    .button-link.primary {
+      color: var(--fg-0);
+      border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+    }
+    .button-link:focus-visible {
+      outline: var(--focus-width) solid var(--accent);
+      outline-offset: var(--focus-offset);
+    }
+  </style>
+  <script client scoped>
+    import { attachTooltip } from "@client/helpers/tooltip";
+    attachTooltip(ctx);
+  </script>
+</component>

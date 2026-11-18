@@ -38,6 +38,9 @@ gateway:
   gatewayNamespace: ""
   hostnames: []
 
+# Maximum heap as a percentage of the container memory limit.
+maxRAMPercentage: 75
+
 resources:
   requests:
     cpu: 100m
@@ -61,10 +64,16 @@ appConfig:
   realm: ""
   databaseUrl: ""
   databaseMaxConnections: 100
+  natsEnabled: true
   natsHost: nats
-  # Distributed cache and lock backends: nats or redis.
+  jobQueueFactory: nats
+  pubsubType: nats
+  counterType: nats
+  # Empty follows pubsubType.
+  liveSessionsType: ""
+  # Distributed cache backend: nats or redis. Distributed locks use redis.
   cacheType: nats
-  distributedLockType: nats
+  distributedLockType: redis
   # Redis Service in the release namespace, used when either backend is redis.
   redisHost: redis
   redisPort: 6379

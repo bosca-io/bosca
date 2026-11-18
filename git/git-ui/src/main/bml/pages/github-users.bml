@@ -3,17 +3,17 @@
     bosca.git.ui.gitHubUsersPage()
   </script>
   <git-layout title="GitHub user mappings">
-    <ui-page>
-      <ui-page-heading
+    <page-shell>
+      <page-heading
         title="GitHub User Mappings"
         subtitle="Map GitHub users to Bosca principals"
-        :trail='listOf(bosca.git.ui.components.NavigationItem("Settings", "", false))'
+        :trail='listOf(bosca.design.model.NavigationItem("Git", "", false), bosca.design.model.NavigationItem("Settings", "", false))'
       />
       <if model.allowed>
         <git-github-users :initial="model" />
       <else>
-        <ui-alert>Administrator access is required.</ui-alert>
+        <alert>Administrator access is required.</alert>
       </if>
-    </ui-page>
+    </page-shell>
   </git-layout>
 </page>

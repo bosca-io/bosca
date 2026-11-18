@@ -25,9 +25,12 @@ spec:
             type: RegularExpression
             value: {{ . | quote }}
         {{- end }}
-      backendRefs:
-        - name: {{ include "bosca-common.fullname" $ }}
-          port: {{ $.Values.ui.port }}
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            hostname: {{ (urlParse (include "bosca-git-server.uiUrl" $)).hostname | quote }}
+            statusCode: 302
     {{- end }}
     - matches:
         - path:

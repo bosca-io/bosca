@@ -1,5 +1,6 @@
 package bosca.cli.swarm
 
+import bosca.cli.compose.installedComposeNginx
 import com.sun.net.httpserver.HttpServer
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -41,6 +42,18 @@ class SwarmGitRoutingTest {
         "/repositories", "/repositories/$id", "/repositories/$id/settings", "/repositories/$id/github",
         "/pulls/$id?view=files", "/pipelines/$id", "/ci-agents/$id", "/settings/github",
         "/_bml/app.css", "/_bml/app.js", "/_bml/js/repository.page.js",
+        "/_bml/content/design-${"a".repeat(64)}.css",
+        "/_bml/content/app-${"b".repeat(64)}.js",
+        "/_bml/content/geist-latin-${"c".repeat(64)}.woff2",
+        "/_bml/global/logo-ABCDEFGH.svg",
+        "/_bml/js/chunks/chunk-ABCDEFGH.js",
+        "/_bml/js/deploy/${"d".repeat(64)}/index.page-ABCDEFGH.js",
+        "/_bml/js/deploy/${"d".repeat(64)}/chunks/chunk-ABCDEFGH.js",
+        "/_bml/js/deploy/${"d".repeat(64)}/chunks/lazy-ABCDEFGH.js",
+        "/_bml/js/deploy/${"d".repeat(64)}/libraries/${"a".repeat(64)}/chunks/chunk-ABCDEFGH.js",
+        "/_bml/libraries/${"a".repeat(64)}/styles/design.css?_ts=fixture",
+        "/_bml/libraries/${"a".repeat(64)}/chunks/chunk-ABCDEFGH.js",
+        "/_bml/libraries/${"a".repeat(64)}/fonts/geist-latin.woff2",
         "/_bml/action", "/_bml/deferred/repository", "/_bml/contract/markdown/preview",
         "/_git/fonts/geist.woff2", "/_git/subscriptions",
     )
@@ -65,7 +78,7 @@ class SwarmGitRoutingTest {
     }
 
     @Test
-    fun `Caddy and nginx route both listeners on one Git host and preserve requests`() {
+    fun `Caddy and nginx route Atlas UI and the independent Git backend and preserve requests`() {
         assumeTrue("Docker is required for routing integration", DockerClientFactory.instance().isDockerAvailable)
         val executor = Executors.newVirtualThreadPerTaskExecutor()
         fun backend(listener: String): HttpServer = HttpServer.create(InetSocketAddress("0.0.0.0", 0), 0).apply {
@@ -91,14 +104,14 @@ class SwarmGitRoutingTest {
             Testcontainers.exposeHostPorts(api.address.port, ui.address.port)
             val apiUpstream = "host.testcontainers.internal:${api.address.port}"
             val uiUpstream = "host.testcontainers.internal:${ui.address.port}"
-            val config = SwarmConfig(sites = listOf(SwarmSite("site1", "localhost", "Test", "test@localhost", 1)))
-            val gitBlock = caddyfile(config).substringAfter("git.localhost {\n")
+            val config = SwarmConfig(sites = listOf(SwarmSite("site1", "localhost", "Test", "test@localhost", 1, gitServer = SwarmStandaloneServer(true))))
+            val gitBlock = caddyfile(config).substringAfter("atlas.localhost {\n")
                 .substringBefore("\n\nartifacts.localhost {")
-                .replace("site1-git:8091", apiUpstream).replace("site1-git:8093", uiUpstream)
+                .replace("site1-git:8091", apiUpstream).replace("site1-atlas:8094", apiUpstream).replace("site1-atlas:8095", uiUpstream)
             val swarm = "{\n    auto_https off\n}\nhttp://git.localhost {\n$gitBlock"
             val local = Files.readString(workspace.resolve("deployments/local/Caddyfile"))
-                .replace("git-server:8091", apiUpstream).replace("git-server:8093", uiUpstream)
-            for ((name, contents, port) in listOf(Triple("swarm", swarm, 80), Triple("compose", local, 8091))) {
+                .replace("git-server:8091", apiUpstream).replace("atlas-server:8094", apiUpstream).replace("atlas-server:8095", uiUpstream)
+            for ((name, contents, port) in listOf(Triple("swarm", swarm, 80), Triple("compose", local, 8094))) {
                 val file = directory.resolve("$name.Caddyfile")
                 Files.writeString(file, contents)
                 GenericContainer(config.images.getValue("caddy")).apply {
@@ -111,12 +124,12 @@ class SwarmGitRoutingTest {
                     assertRoutes(proxy.host, proxy.getMappedPort(port))
                 }
             }
-            val template = Files.readString(workspace.resolve("deployments/bosca-compose/config/nginx.conf.template"))
-            val map = template.substringBefore("server {")
-            val nginxGit = ("server {" + template.substringAfter("server_name @@GIT_DOMAIN@@;").let {
+            val template = installedComposeNginx(directory.resolve("nginx-install"))
+            val map = template.substringBefore("server {").replace("127.0.0.1:8094", apiUpstream)
+            val nginxGit = ("server {" + template.substringAfter("server_name atlas.example.test;").substringBefore("\nserver {").let {
                 "\n    listen 80;\n    server_name git.localhost;" + it
-            }).replace("http://127.0.0.1:@@GIT_PORT@@", "http://$apiUpstream")
-                .replace("http://127.0.0.1:@@GIT_UI_PORT@@", "http://$uiUpstream")
+            }).replace("http://127.0.0.1:8094", "http://$apiUpstream")
+                .replace("http://127.0.0.1:8095", "http://$uiUpstream")
                 .lineSequence().filterNot { it.trim().startsWith("ssl_") }.joinToString("\n")
             val nginx = directory.resolve("nginx.conf")
             Files.writeString(nginx, "events {}\nhttp {\n$map\n$nginxGit\n}\n")

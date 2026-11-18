@@ -1,0 +1,70 @@
+<component tag="input">
+  <prop name="size" type="String" default="md" />
+  <prop name="mono" type="Boolean" default="false" />
+  <prop name="type" type="String" default="text" />
+  <prop name="ref" type="String" default="" />
+  <prop name="value" type="String" default="" />
+  <prop name="required" type="Boolean" default="false" />
+  <prop name="multiline" type="Boolean" default="false" />
+  <prop name="rows" type="Int" default="4" />
+  <if multiline>
+    <html:textarea
+      :class='"input multiline size-" + size + " " + (if (mono) "mono " else "")'
+      :ref="ref.takeIf(String::isNotBlank)"
+      :required="required"
+      :rows="rows"
+      {...attrs}
+    >{ value }</html:textarea>
+  <else>
+  <html:input
+    :class='"input size-" + size + " " + (if (mono) "mono " else "")'
+    :type="type"
+    :ref="ref.takeIf(String::isNotBlank)"
+    :value="value"
+    :required="required"
+    {...attrs}
+  />
+  </if>
+  <style scoped>
+    .input.mono {
+      font-family: var(--font-mono);
+    }
+    .input {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
+      font: inherit;
+      color: var(--fg-0);
+      background: var(--control-bg, var(--bg-2));
+      border: 1px solid var(--control-border, var(--line-2));
+      border-radius: var(--control-radius, var(--r-sm));
+      height: var(--control-height-md);
+      padding: 0 10px;
+      font-size: 13px;
+      line-height: normal;
+      outline: none;
+    }
+    .input.size-sm {
+      height: var(--control-height-sm);
+      font-size: 12.5px;
+    }
+    .input::placeholder {
+      color: var(--fg-3);
+    }
+    .input.multiline {
+      height: auto;
+      min-height: var(--control-height-md);
+      padding: 8px 12px;
+      resize: vertical;
+      line-height: 1.5;
+    }
+    .input:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 15%, transparent);
+    }
+  </style>
+</component>

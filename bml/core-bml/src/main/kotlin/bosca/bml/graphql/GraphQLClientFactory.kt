@@ -124,6 +124,20 @@ class GraphQLClientFactory(
         }
     }
 
+    /** Forwards JSON to a sibling API route with the caller's bearer and origin, without following redirects. */
+    suspend fun forwardPost(path: String, body: String, token: String?, requestOrigin: String?): ForwardedResponse {
+        val request = Request.Builder().url(origin + path).post(body.toRequestBody(JSON_MEDIA_TYPE))
+            .header("Accept", "application/json")
+            .apply {
+                token?.let { header("Authorization", if (it.startsWith("Bearer ")) it else "Bearer $it") }
+                requestOrigin?.let { header("Origin", it) }
+            }.build()
+        redirectlessClient.newCall(request).await().use { response ->
+            val headers = response.headers("Set-Cookie").map { "Set-Cookie" to it }
+            return ForwardedResponse(response.code, headers, response.header("Content-Type"), response.body.bytes())
+        }
+    }
+
     /**
      * Forwards a raw `{query, variables, operationName}` request [body] to [endpoint] untouched,
      * attaching the caller's [token] as a bearer, and returns the upstream status, session cookies,

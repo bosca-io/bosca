@@ -66,30 +66,36 @@ data:
         password: $DATABASE_PASSWORD
         maxConnections: {{ .Values.appConfig.databaseMaxConnections | default 100 }}
 
+    {{- if .Values.appConfig.natsEnabled }}
     nats:
       url: nats://{{ .Values.appConfig.natsHost }}.{{ .Release.Namespace }}.svc.cluster.local:4222
       token: $NATS_TOKEN
+
+    {{- end }}
 
     cache:
       type: {{ .Values.appConfig.cacheType }}
 
     jobQueue:
-      factory: nats
+      factory: {{ .Values.appConfig.jobQueueFactory }}
 
     pubsub:
-      type: nats
+      type: {{ .Values.appConfig.pubsubType }}
+
+    liveSessions:
+      type: {{ .Values.appConfig.liveSessionsType | default .Values.appConfig.pubsubType }}
 
     distributedLock:
       type: {{ .Values.appConfig.distributedLockType }}
 
-    {{- if or (eq .Values.appConfig.cacheType "redis") (eq .Values.appConfig.distributedLockType "redis") }}
+    {{- if has "redis" (list .Values.appConfig.cacheType .Values.appConfig.distributedLockType .Values.appConfig.jobQueueFactory .Values.appConfig.pubsubType .Values.appConfig.counterType .Values.appConfig.liveSessionsType) }}
     redis:
       host: {{ .Values.appConfig.redisHost }}.{{ .Release.Namespace }}.svc.cluster.local
       port: {{ .Values.appConfig.redisPort }}
     {{- end }}
 
     counter:
-      type: nats
+      type: {{ .Values.appConfig.counterType }}
 
     analyticsServer:
       appId: bosca-artifacts-server

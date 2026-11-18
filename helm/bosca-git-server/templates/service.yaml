@@ -11,9 +11,5 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
-    - port: {{ .Values.ui.port }}
-      targetPort: ui
-      protocol: TCP
-      name: ui
   selector:
     {{- include "bosca-common.selectorLabels" . | nindent 4 }}

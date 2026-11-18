@@ -15,11 +15,11 @@ import kotlin.test.assertTrue
 
 class SwarmBackendTest {
     @Test
-    fun `each backend is independently configured across every Bosca service and can be switched back`() {
+    fun `backend selection retains Redis locking across every Bosca service`() {
         val directory = Files.createTempDirectory("swarm-backend-test-")
         try {
             val defaults = SwarmConfig(sites = (1..5).map {
-                SwarmSite("site$it", "site$it.example.invalid", "Site $it", "noreply@site$it.example.invalid", it)
+                SwarmSite("site$it", "site$it.example.invalid", "Site $it", "noreply@site$it.example.invalid", it, gitServer = SwarmStandaloneServer(true), artifactsServer = SwarmStandaloneServer(true))
             }).withSecrets()
             val config = defaults.copy(sites = defaults.sites.mapIndexed { index, site ->
                 when (index) {
@@ -34,6 +34,7 @@ class SwarmBackendTest {
             saveConfig(path, config)
             val loaded = loadConfig(path)
             assertEquals(config, loaded)
+            assertTrue(loaded.sites.all { it.distributedLockBackend == "redis" })
             assertEquals(listOf("redis", "nats", "nats", "nats", "nats"), loaded.sites.map { it.cacheBackend })
             assertEquals(listOf("nats", "redis", "nats", "nats", "nats"), loaded.sites.map { it.pubsubBackend })
             val bundle = renderSwarm(loaded, directory.resolve("generated"))
@@ -43,7 +44,7 @@ class SwarmBackendTest {
                 val applications = mapOf(
                     "server" to "server/bosca-server", "runner" to "server/bosca-runner",
                     "git" to "git/git-server", "collector" to "analytics/analytics-collector",
-                    "artifacts" to "artifacts/artifacts-server",
+                    "artifacts" to "artifacts/artifacts-server", "atlas" to "server/atlas-server",
                 )
                 applications.forEach { (service, module) ->
                     val environment = services.getValue(service).jsonObject.getValue("environment").jsonObject
@@ -51,7 +52,7 @@ class SwarmBackendTest {
                     val process = ProcessBuilder(
                         Path.of(System.getProperty("java.home"), "bin/java").toString(),
                         "-cp", System.getProperty("java.class.path"), SwarmBackendProbe::class.java.name,
-                        Path.of("../$module/src/main/resources/application.yaml").toAbsolutePath().toString(),
+                        Path.of("../$module/src/main/resources/${if (service == "atlas") "atlas-server" else "application"}.yaml").toAbsolutePath().toString(),
                     ).redirectErrorStream(true).apply { environment().putAll(environment) }.start()
                     val output = process.inputStream.bufferedReader().readText()
                     assertEquals(0, process.waitFor(), output)
@@ -68,11 +69,15 @@ class SwarmBackendTest {
                     assertEquals("6379", result.getValue("redis.port").jsonPrimitive.content, service)
                     assertEquals(site.redisDatabase.toString(), result.getValue("redis.database").jsonPrimitive.content, service)
                     assertEquals("${site.id}_", result.getValue("redis.namespace").jsonPrimitive.content, service)
+                    if (service in setOf("server", "runner", "git", "atlas")) {
+                        assertEquals(site.secrets.securityEncryption,
+                            result.getValue("security.encryption.key").jsonPrimitive.content, service)
+                    }
                 }
             }
             saveConfig(path, loaded.copy(sites = loaded.sites.map { it.copy(
                 cacheBackend = "nats", pubsubBackend = "nats", jobQueueBackend = "nats",
-                distributedLockBackend = "nats", counterBackend = "nats",
+                distributedLockBackend = "redis", counterBackend = "nats",
             ) }))
             val restored = loadConfig(path)
             assertEquals(defaults, restored)
@@ -94,7 +99,7 @@ class SwarmBackendTest {
             "counterBackend" to { site, backend -> site.copy(counterBackend = backend) },
         )
         setters.forEach { (setting, setter) ->
-            listOf("", "Redis", "rabbitmq").forEach { backend ->
+            (listOf("", "Redis", "rabbitmq") + if (setting == "distributedLockBackend") listOf("nats") else emptyList()).forEach { backend ->
                 val failure = assertFailsWith<IllegalArgumentException> {
                     config.copy(sites = config.sites.map { setter(it, backend) }).validate()
                 }
@@ -135,6 +140,9 @@ object SwarmBackendProbe {
         val config = ApplicationConfig.loadFromFile(args.single())
         val keys = listOf("cache.type", "jobQueue.factory", "pubsub.type", "distributedLock.type", "counter.type",
             "redis.host", "redis.port", "redis.database", "redis.namespace")
-        println("BACKEND=" + JsonObject(keys.associateWith { JsonPrimitive(config.property(it).getString()) }))
+        println("BACKEND=" + JsonObject(keys.associateWith { JsonPrimitive(config.property(it).getString()) } +
+            listOfNotNull(config.propertyOrNull("security.encryption.key")?.let {
+                "security.encryption.key" to JsonPrimitive(it.getString())
+            })))
     }
 }

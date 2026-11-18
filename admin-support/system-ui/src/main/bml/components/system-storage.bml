@@ -1,0 +1,46 @@
+<component tag="system-storage">
+  <prop name="initial" type="bosca.system.ui.SystemStorageModel" required />
+  <script server provides="model">bosca.system.ui.SystemStorageModel(initial.admin, initial.systems, initial.models, initial.draft, initial.editingId, initial.editing, initial.editorRequest, initial.feedback, initial.reindexTarget, initial.reindexRequest, initial.reindexDraft)</script>
+  <island name="system-storage" :key='"storage"'><page-shell fill><page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" title="Storage Systems" :subtitle='model.systems.size.toString() + " systems"'><if model.admin><button icon="refresh" @click.coalesce='model.prepareReindex("")'>Reindex all</button><button primary icon="plus" @click.coalesce="model.newEntry()">New storage system</button></if></page-heading>
+    <div class="system-content" data-bml-scroll="system-content"><system-feedback :feedback="model.feedback" /><if !model.admin><alert>Administrator access is required.</alert><else>
+      <dialog @dialogdismiss.coalesce="model.cancel()" :title='if (model.editingId.isBlank()) "New storage system" else "Edit storage system"' triggerLabel="Storage editor" :showTrigger="false" :forceOpen="model.editing" :openRequest="model.editorRequest.toString()" :completed="!model.editing" icon="database" data-storage-editor-dialog>
+        <form data-storage-editor @submit="model.save(form.name, form.description, form.type, form.configuration, form.modelValues, ctx)" class="modal-form"><input type="hidden" name="modelValues" :value="model.draft.modelsJson" /><form-body padded class="modal-fields">
+          <field label="Name"><input name="name" :value="model.draft.name" required /></field><field label="Description"><input name="description" :value="model.draft.description" /></field>
+          <field label="Type"><select label="Type" name="type"><option value="SEARCH" :selected='model.draft.type == "SEARCH"'>Search</option><option value="VECTOR" :selected='model.draft.type == "VECTOR"'>Vector</option><option value="SUPPLEMENTARY" :selected='model.draft.type == "SUPPLEMENTARY"'>Supplementary</option></select></field>
+          <field label="Configuration"><json-editor name="configuration" label="Storage configuration" mode="text" :text="model.draft.configuration" :mainMenuBar="false" :navigationBar="false" :statusBar="false" :askToFormat="false" class="storage-configuration" /></field>
+          <div class="storage-models"><div class="storage-models-header"><h3>Models</h3><button icon="plus" size="sm" data-storage-model-action @click="model.addModel(form.name, form.description, form.type, form.configuration, form.modelValues)">Add model</button></div><for entry in model.draft.models><div class="storage-model-row" :data-storage-model-row="entry.key">
+            <field label="Model"><select label="Model" :name='"modelId_" + entry.key' searchable required><option value="">Choose a model</option><for option in model.modelOptions.entries><option :value="option.key" :selected="option.key == entry.modelId">{ option.value }</option></for><if entry.modelId.isNotBlank() && !model.modelOptions.containsKey(entry.modelId)><option :value="entry.modelId" selected>{ entry.modelId }</option></if></select></field>
+            <field label="Model configuration"><json-editor :name='"modelConfiguration_" + entry.key' label="Model configuration" mode="text" :text="entry.configuration" :mainMenuBar="false" :navigationBar="false" :statusBar="false" :askToFormat="false" class="storage-model-configuration" /></field>
+            <icon-button icon="trash" :label='"Remove model " + entry.modelId.ifBlank { "entry" }' size="xs" class="ghost danger" data-storage-model-action @click="model.removeModel(entry.key, form.name, form.description, form.type, form.configuration, form.modelValues)" />
+          </div></for></div>
+        </form-body><form-actions bordered class="modal-footer"><button @click="model.cancel()">Cancel</button><button type="submit" primary>Save storage system</button></form-actions></form>
+      </dialog>
+      <dialog @dialogdismiss.coalesce="model.cancelReindex()" :title='if (model.reindexTarget.isNullOrBlank()) "Reindex all storage systems" else "Reindex " + model.reindexTarget' triggerLabel="Reindex" :showTrigger="false" :forceOpen="model.reindexTarget != null" :openRequest="model.reindexRequest.toString()" :completed="model.reindexTarget == null"><form @submit="model.reindex(model.reindexTarget.orEmpty(), form.deleteFirst, form.metadata, form.collections, form.profiles, form.confirmed, ctx)" class="modal-form"><form-body padded class="modal-fields"><checkbox name="metadata" label="Metadata" :checked="model.reindexDraft.metadata" /><checkbox name="collections" label="Collections" :checked="model.reindexDraft.collections" /><checkbox name="profiles" label="Profiles" :checked="model.reindexDraft.profiles" />
+    <checkbox name="deleteFirst" label="Delete existing index data first (clean rebuild)" :checked="model.reindexDraft.deleteFirst" />
+    <p class="system-muted">A clean rebuild removes existing index data. Search results remain incomplete until rebuilding finishes.</p>
+    <checkbox name="confirmed" label="Start reindexing the selected content" :checked="model.reindexDraft.confirmed" required />
+  </form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" primary>Reindex</button></form-actions></form></dialog>
+      <card :padded="false" data-storage-list><if model.systems.isEmpty()><empty-state message="No storage systems configured." /><else><table-scroll label="Storage systems"><table><thead><tr><th>Name</th><th>Type</th><th>Description</th><th>Models</th><th>Actions</th></tr></thead><tbody><for system in model.systems><tr><td class="storage-name">{ system.name }</td><td><badge :tone='when (system.type.name) { "SEARCH" -> "info"; "VECTOR" -> "purple"; "SUPPLEMENTARY" -> "success"; else -> "neutral" }'>{ system.type.name }</badge></td><td class="storage-description">{ system.description }</td><td class="storage-model-count">{ system.models.size }</td><td><div class="system-actions">
+        <icon-button icon="edit" :label='"Edit " + system.name' size="xs" class="ghost" data-storage-edit @click.coalesce="model.edit(system.id, ctx)" />
+        <icon-button icon="refresh" :label='"Reindex " + system.name' size="xs" class="ghost" @click.coalesce="model.prepareReindex(system.name)" />
+        <confirm-dialog title="Delete storage system?" :description='"Delete " + system.name + "? This cannot be undone."' triggerLabel="Delete storage system" triggerStyle="ghost"><form @submit="model.delete(system.id, form.confirmed, ctx)" class="modal-form"><form-body padded class="modal-fields"><checkbox name="confirmed" label="Permanently delete this storage system" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Delete storage system</button></form-actions></form></confirm-dialog>
+      </div></td></tr></for></tbody></table></table-scroll></if></card>
+    </if></div>
+  </page-shell></island>
+  <style scoped>
+    .storage-name { color:var(--fg-0); font-weight:500; }
+    .storage-description { color:var(--fg-3); }
+    .storage-model-count { font-family:var(--font-mono); text-align:center; }
+    .storage-models { display:flex; flex-direction:column; gap:10px; }
+    .storage-models-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .storage-models-header h3 { margin:0; font-size:12px; font-weight:600; color:var(--fg-2); }
+    .storage-model-row { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) 24px; gap:8px; align-items:start; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--bg-1); }
+    @media (max-width:600px) {
+      .storage-model-row { grid-template-columns:minmax(0, 1fr) 24px; }
+    }
+  </style>
+  <script client scoped>
+    import { mountStorageModelFields } from "@client/storage-model-fields";
+    mountStorageModelFields(ctx);
+  </script>
+</component>

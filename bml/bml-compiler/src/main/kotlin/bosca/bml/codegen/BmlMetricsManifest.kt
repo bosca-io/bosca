@@ -6,11 +6,15 @@ package bosca.bml.codegen
  * page carries a `<script client>` or a live state), [componentTags] the components the page
  * references directly.
  */
-data class BmlPageMeta(
+data class BmlPageMeta @JvmOverloads constructor(
     val objectName: String,
     val route: String,
     val clientModule: String?,
     val componentTags: List<String>,
+    /** Ordered bridges for each reachable library's global scripts. */
+    val globalModules: List<String> = emptyList(),
+    /** Separately linked library CSS paths, relative to the application resource root. */
+    val libraryStyles: List<String> = emptyList(),
 )
 
 /**
@@ -39,6 +43,7 @@ data class BmlComponentMeta @JvmOverloads constructor(
  * ```
  * bml-metrics⇥1
  * P⇥<object>⇥<route>⇥<pageJs|->⇥<css tags csv|->⇥<component js csv|->
+ * A⇥<object>⇥<library stylesheet resource path>
  * ```
  * The css/js columns are the page's **transitive** component closure, resolved here at compile
  * time with the same semantics the server uses to link assets: every closure component with
@@ -75,7 +80,7 @@ object BmlMetricsManifest {
             for (page in pages.sortedBy { it.objectName }) {
                 val closure = closure(page.componentTags, byTag)
                 val cssTags = closure.filter { byTag[it]?.styles?.isNotBlank() == true }.sorted()
-                val componentJs = closure.mapNotNull { byTag[it]?.clientModule }
+                val componentJs = page.globalModules + closure.mapNotNull { byTag[it]?.clientModule }
                     .filterNot { it == page.clientModule }
                     .distinct()
                     .sorted()
@@ -84,6 +89,9 @@ object BmlMetricsManifest {
                     .append('\t').append(csv(cssTags))
                     .append('\t').append(csv(componentJs))
                     .append('\n')
+                page.libraryStyles.distinct().forEach { path ->
+                    append("A\t").append(page.objectName).append('\t').append(path).append('\n')
+                }
             }
         }
     }

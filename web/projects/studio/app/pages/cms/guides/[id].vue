@@ -3,6 +3,7 @@ import gql from 'graphql-tag'
 import type { Metadata, Profile } from '~/types/graphql'
 import type { OverflowMenuItem } from '@bosca/ui'
 import { getWorkflowState } from '~/utils/workflowStatus'
+import { localDayKey, pageForDay } from '~/utils/guideCalendar'
 
 const route = useRoute()
 const router = useRouter()
@@ -186,7 +187,7 @@ const profile = computed<Profile>(() => {
 })
 
 const guide = computed(() => (guideMetadata.value as Record<string, unknown> | undefined)?.guide as Record<string, unknown> | null ?? null)
-const steps = computed<Array<{ id: string; metadata: Record<string, unknown>; [key: string]: unknown }>>(() => (guide.value?.steps as Array<{ id: string; metadata: Record<string, unknown>; [key: string]: unknown }>) ?? [])
+const steps = computed<Array<{ id: string; date?: string | null; metadata: Record<string, unknown>; [key: string]: unknown }>>(() => (guide.value?.steps as Array<{ id: string; date?: string | null; metadata: Record<string, unknown>; [key: string]: unknown }>) ?? [])
 const guideType = computed(() => (guide.value?.type as string) ?? 'LINEAR')
 const isCalendar = computed(() => guideType.value === 'CALENDAR' || guideType.value === 'CALENDAR_PROGRESS')
 const templateSteps = computed(() => {
@@ -217,13 +218,28 @@ const activeMetadata = computed<Metadata | null>(() => {
   return (stepResult.value?.content?.metadata as Metadata) ?? null
 })
 
+// Calendar guides open on the editor's "today", which only the browser knows
+// (see onMounted). Hold the editor back until that landing step has loaded,
+// so the introduction's editor isn't built — and its collaboration session
+// opened — only to be torn down a moment later.
+const landingReady = ref(!isCalendar.value)
+watch(
+  [() => (stepResult.value?.content?.metadata as Metadata | undefined)?.id, stepStatus],
+  ([id, status]) => {
+    if (!landingReady.value && (id === stepId.value || status === 'error')) landingReady.value = true
+  },
+)
+
 const activeWorkflow = computed(() => (activeMetadata.value as Metadata & { workflow?: Record<string, unknown> | null })?.workflow ?? null)
 const wfState = computed(() => getWorkflowState(activeWorkflow.value))
 const canPublish = computed(() => wfState.value !== 'published' && !activeWorkflow.value?.pending)
 const canUnpublish = computed(() => wfState.value === 'published' && !activeWorkflow.value?.pending)
 
 const documentName = computed(() => {
-  return contentEditorRef.value?.documentName ?? activeMetadata.value?.name ?? guideMetadata.value?.name ?? ''
+  // The editor reports an empty title while the guide is untitled (the H1
+  // shows its "Title..." placeholder); fall back to the metadata name so the
+  // header doesn't sit on the "Loading…" fallback for a loaded guide.
+  return contentEditorRef.value?.documentName || activeMetadata.value?.name || guideMetadata.value?.name || ''
 })
 
 const hasUnsavedChanges = computed(() => contentEditorRef.value?.hasUnsavedChanges ?? false)
@@ -245,8 +261,42 @@ watch(currentPage, (page) => {
 })
 
 // When the step row overflows and scrolls, keep the active step button visible.
+// Jumps — landing on today (onMounted) or picking a day from the calendar —
+// are instant rather than animated, and put the previous step at the strip's
+// left edge so the chosen step sits near the start with the steps after it in
+// view. Clicking a step in the strip only nudges it into view.
+let anchorNextStep = false
+
+function anchorActiveStep() {
+  const strip = navPagesRef.value
+  const active = strip?.querySelector<HTMLElement>('.guide-nav-btn.active')
+  if (!strip || !active) return
+  const anchor = (active.previousElementSibling as HTMLElement | null) ?? active
+  // 'instant' overrides the strip's CSS `scroll-behavior: smooth`, which
+  // would otherwise animate even a direct scroll position change.
+  strip.scrollTo({
+    left: strip.scrollLeft + anchor.getBoundingClientRect().left - strip.getBoundingClientRect().left,
+    behavior: 'instant',
+  })
+}
+
+/** Jumps to a page and anchors it in the strip (see above). */
+function jumpToPage(page: number) {
+  if (page === currentPage.value) {
+    anchorActiveStep()
+    return
+  }
+  anchorNextStep = true
+  currentPage.value = page
+}
+
 watch(currentPage, async () => {
   await nextTick()
+  if (anchorNextStep) {
+    anchorNextStep = false
+    anchorActiveStep()
+    return
+  }
   navPagesRef.value
     ?.querySelector<HTMLElement>('.guide-nav-btn.active')
     ?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
@@ -288,10 +338,24 @@ function onStepsWheel(e: WheelEvent) {
   }
 }
 
+const preview = usePreviewableUrl()
+
 onMounted(() => {
   updateStepScrollState()
   window.addEventListener('resize', updateStepScrollState)
-  loadPersonas(); loadFeatures()
+  loadPersonas(); loadFeatures(); preview.load()
+  // Editors open calendar guides to work on the current entry, so land on
+  // today's step (or the latest earlier one) instead of the introduction.
+  // Runs client-side only: "today" must come from the user's clock, not the
+  // server's.
+  if (isCalendar.value && currentPage.value === 1) {
+    const page = pageForDay(steps.value, localDayKey())
+    if (page !== 1) {
+      jumpToPage(page)
+      return
+    }
+  }
+  landingReady.value = true
 })
 
 onBeforeUnmount(() => {
@@ -374,6 +438,15 @@ async function onUnpublish() {
     toast.success('Unpublished')
     await refreshAll()
   } catch { toast.error('Failed to unpublish') }
+}
+
+// Previews open the guide by its slug, plus the step on screen (`{step}` in
+// preview.url) so a site can show that step — e.g. a calendar guide's day.
+// The introduction page sends no step.
+function onPreview() {
+  const m = guideMetadata.value
+  if (!m) return
+  preview.openPreview({ id: m.id, slug: m.slug, languageTag: m.languageTag, step: activeStep.value?.id })
 }
 
 async function onAddStep() {
@@ -667,6 +740,12 @@ async function onOverflowAction(id: string) {
             :accent="accent"
             :disabled="!activeMetadata?.ready"
             @click="onPublish">Publish</Button>
+          <Button
+            v-if="preview.canPreview.value && guideMetadata"
+            size="sm"
+            icon="eye"
+            :accent="accent"
+            @click="onPreview">Preview</Button>
           <MetadataLanguageMenu
             v-if="guideMetadata"
             :metadata-id="guideMetadata.id"
@@ -688,6 +767,12 @@ async function onOverflowAction(id: string) {
 
     <!-- Guide navigation -->
     <div v-if="guideMetadata" class="guide-nav">
+      <GuideCalendarNav
+        v-if="isCalendar"
+        :steps="steps"
+        :current-page="currentPage"
+        @select="jumpToPage"
+      />
       <button
         v-if="hasStepOverflow"
         class="guide-nav-action"
@@ -770,7 +855,7 @@ async function onOverflowAction(id: string) {
 
     <!-- Content editor — keyed by metadata ID so it fully remounts on navigation -->
     <GuideContentEditor
-      v-if="activeMetadata"
+      v-if="activeMetadata && landingReady"
       ref="contentEditorRef"
       :key="activeMetadata.id"
       :metadata="activeMetadata"

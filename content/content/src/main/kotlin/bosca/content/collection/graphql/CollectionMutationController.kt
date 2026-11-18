@@ -779,6 +779,18 @@ class CollectionMutationController(
     }
 
     @Field
+    suspend fun setLabels(
+        authentication: AuthenticationContext,
+        id: UUID,
+        labels: List<String>,
+    ): Boolean {
+        val collection = service.getById(id) ?: return false
+        permissionEvaluator.verifyAllowed(authentication, collection, PermissionAction.EDIT)
+        service.setLabels(id, labels)
+        return true
+    }
+
+    @Field
     suspend fun setTemplate(
         authentication: AuthenticationContext,
         collectionId: UUID,

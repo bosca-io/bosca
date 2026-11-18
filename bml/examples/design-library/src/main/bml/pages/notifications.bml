@@ -1,0 +1,18 @@
+<page route="/notifications">
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Notifications</title>
+    </head>
+    <body>
+      <page-shell>
+        <h1>Notifications</h1>
+        <div class="themes">
+          <div class="light notices-theme" data-palette="light"><notifications id="light" /></div>
+          <div class="purple notices-theme" data-palette="purple"><notifications id="purple" /></div>
+        </div>
+      </page-shell>
+    </body>
+  </html>
+</page>

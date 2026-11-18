@@ -1,0 +1,53 @@
+<component tag="copy-field">
+  <prop name="value" type="String" required />
+  <prop name="label" type="String" required />
+  <prop name="copyLabel" type="String" default="Copy value" />
+  <div class="copy-field" {...attrs}>
+    <field :label="label">
+      <div class="copy-field-row">
+        <div class="copy-field-value">
+          <input ref="value" :value="value" :aria-label="label" size="sm" mono readonly />
+        </div>
+        <copy :value="value" :label="copyLabel" :showStatus="false" />
+      </div>
+    </field>
+    <p ref="error" class="copy-error" role="alert" hidden>
+      Clipboard access is unavailable. Select and copy the value.
+    </p>
+  </div>
+  <style scoped>
+    .copy-field {
+      min-width: 0;
+    }
+    .copy-field-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .copy-error[hidden] {
+      display: none;
+    }
+    .copy-field-value {
+      flex: 1;
+      min-width: 0;
+    }
+    .copy-error {
+      margin: 8px 0 0;
+      color: var(--fg-2);
+      font-size: 12px;
+    }
+  </style>
+  <script client scoped>
+    const input = ctx.ref<HTMLInputElement>("value");
+    if (input) ctx.on(input, "focus", () => input.select());
+    ctx.on<CustomEvent<{ copied: boolean }>>(ctx.root, "copyresult", (event) => {
+      const error = ctx.ref<HTMLElement>("error");
+      if (error) error.hidden = event.detail.copied;
+      if (!event.detail.copied && input) {
+        input.focus({ preventScroll: true });
+        input.select();
+      }
+    });
+  </script>
+</component>

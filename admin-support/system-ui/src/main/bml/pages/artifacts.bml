@@ -1,0 +1,6 @@
+<page route="/system/artifacts" requireAuth>
+  <script server>
+    ctx.redirectTo = "/artifacts/namespaces"
+    ctx.redirectPermanent = true
+  </script>
+</page>

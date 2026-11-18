@@ -45,8 +45,8 @@ private fun stack(
 internal enum class Placement(val constraint: String) {
     /** The manager, which holds every bind-mounted data directory. */
     STATEFUL("node.labels.bosca_data == true"),
-    /** The workers, so application load never competes with PostgreSQL for memory. */
-    APPLICATION("node.labels.bosca_data != true"),
+    /** Hosts selected as workers, including the manager when it is also listed as a worker. */
+    APPLICATION("node.labels.bosca_application == true"),
     /** One worker that keeps the recommendation model volume shared by the loader and TensorFlow Serving. */
     MODELS("node.labels.bosca_ml == true"),
 }
@@ -70,7 +70,7 @@ private fun deploy(
     configDigest: String? = null,
 ) = buildMap {
     put("placement", mapOf("constraints" to listOf(placement.constraint)))
-    put("restart_policy", mapOf("condition" to "on-failure"))
+    put("restart_policy", mapOf("condition" to "any"))
     limits?.let { put("resources", mapOf("limits" to mapOf("memory" to it.memory))) }
     if (rolling) put("update_config", mapOf("order" to "start-first", "failure_action" to "rollback", "monitor" to "30s"))
     configDigest?.let { put("labels", mapOf("io.bosca.config-sha256" to it)) }
@@ -124,7 +124,7 @@ internal fun validateServiceUrls(services: Map<String, Any>, internalAliases: Se
         "BML_MESSAGE_SERVER_URL", "ANALYTICS_SERVER_URL", "BOSCA_EMBEDDINGS_URL", "ML_TRAINER_URL",
         "RECOMMENDATIONS_TF_SERVING_URL", "API_URL", "COLLABORATION_URL", "GRAPHQL_URL", "NUXT_API_URL",
         "NUXT_WS_URL", "NUXT_GRAPHQL_URL", "NUXT_APOLLO_CLIENTS_DEFAULT_HTTP_ENDPOINT",
-        "BML_GRAPHQL_ENDPOINT", "ARTIFACTS_URL", "BOSCA_URL",
+        "BML_GRAPHQL_ENDPOINT", "BML_ARTIFACTS_ENDPOINT", "ARTIFACTS_URL", "BOSCA_URL",
     )
     for ((serviceName, definition) in services) {
         val environment = (definition as? Map<*, *>)?.get("environment") as? Map<*, *> ?: continue
@@ -339,25 +339,29 @@ internal fun siteEnvironment(config: SwarmConfig, site: SwarmSite): Map<String, 
     )
 }
 
-/** Uses the applications' bundled defaults and changes only the site's explicit redirect list. */
+/** Uses bundled defaults, the site's initialization passwords and explicit redirect policy. */
 private fun siteApplicationConfigs(site: SwarmSite): Map<String, String> {
-    val redirects = site.oauthRedirects
-    if (redirects == null && !site.kit.enabled) return emptyMap()
-    return listOf("server", "runner").associateWith { application ->
+    val applications = if (site.oauthRedirects == null && !site.kit.enabled) listOf("atlas") else listOf("server", "runner", "atlas")
+    return applications.filter { it != "runner" || site.runnerServer.enabled }.associateWith { application ->
         val yaml = Yaml(DumperOptions().apply { defaultFlowStyle = DumperOptions.FlowStyle.BLOCK })
         val resource = "/swarm/application-$application.yaml"
-        var applicationConfig = checkNotNull(SwarmConfig::class.java.getResourceAsStream(resource)) {
+        val config = checkNotNull(SwarmConfig::class.java.getResourceAsStream(resource)) {
             "Missing Swarm application template: $resource"
         }.use { checkNotNull(yaml.load<Any>(it) as? Map<*, *>) }
-        if (redirects != null) {
-            val oauth2 = checkNotNull(applicationConfig["oauth2"] as? Map<*, *>)
-            applicationConfig = applicationConfig + ("oauth2" to (oauth2 + ("redirects" to redirects)))
+        val overrides = buildMap<String, Any> {
+            if (application == "atlas") put("initialization", mapOf("password" to mapOf(
+                "admin" to "\$INIT_ADMIN_PASSWORD", "sa" to "\$INIT_SA_PASSWORD",
+            )))
+            site.oauthRedirects?.let { redirects ->
+                val oauth2 = checkNotNull(config["oauth2"] as? Map<*, *>)
+                put("oauth2", oauth2 + ("redirects" to redirects))
+            }
+            if (site.kit.enabled && application in setOf("server", "runner")) put("kit", mapOf(
+                "harness" to swarmJson.encodeToString(bosca.ai.kit.harness.KitHarnessDeployment.serializer(), kitDeployment(site)),
+                "swarm" to mapOf("controller" to mapOf("url" to "http://${site.id}-kit-controller:8083", "token" to "\$BOSCA_SWARM_CONTROLLER_TOKEN")),
+            ))
         }
-        if (site.kit.enabled) applicationConfig = applicationConfig + ("kit" to mapOf(
-            "harness" to swarmJson.encodeToString(bosca.ai.kit.harness.KitHarnessDeployment.serializer(), kitDeployment(site)),
-            "swarm" to mapOf("controller" to mapOf("url" to "http://${site.id}-kit-controller:8083", "token" to "\$BOSCA_SWARM_CONTROLLER_TOKEN")),
-        ))
-        yaml.dump(applicationConfig)
+        yaml.dump(config + overrides)
     }
 }
 
@@ -381,8 +385,9 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
     val root = config.dataRoot
     val env = siteEnvironment(config, site)
     val applicationConfigs = siteApplicationConfigs(site)
+    val atlasOwnsListeners = site.atlas.servers.runner && !site.runnerServer.enabled
     val server = "http://${name}-server:8080"
-    val artifacts = "http://${name}-artifacts:8084"
+    val artifacts = if (site.artifactsServer.enabled) "http://${name}-artifacts:8084" else "http://${name}-atlas:8094/_artifacts"
     val studio = "https://${hosts.studio}"
     // Mirrors the bosca-studio chart's ConfigMap. Studio appends /graphqlws to the bare WebSocket origin.
     val studioEnv = mapOf(
@@ -421,61 +426,80 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
         "ARTIFACTS_URL" to artifacts, "ARTIFACTS_NAMESPACE" to "model",
         "ARTIFACTS_API_TOKEN" to site.ml.artifactsPushToken, "ARTIFACTS_PULL_API_TOKEN" to site.ml.artifactsPullToken,
     )
-    fun bosca(image: String, environment: Map<String, String>, port: Int, startPeriod: String, limits: Limits?) =
-        service(images.getValue(image), deploy(Placement.APPLICATION, limits, rolling = true), mapOf(
-            "environment" to environment + if (site.kit.enabled && image in setOf("server", "runner")) mapOf("BOSCA_SWARM_CONTROLLER_TOKEN" to site.secrets.kitController) else emptyMap(),
-            "healthcheck" to healthcheck(bashHttpCheck(port, "/api/v1/live"), startPeriod),
-        ) + (applicationConfigs[image]?.let {
-            mapOf(
-                "command" to listOf("-config=/config/application.yaml"),
-                "configs" to listOf(mapOf("source" to "$image-application", "target" to "/config/application.yaml", "mode" to 292)),
-            )
-        } ?: emptyMap()))
+    fun bosca(
+        image: String,
+        environment: Map<String, String>,
+        port: Int,
+        startPeriod: String,
+        limits: Limits?,
+        heapPercent: Int = 75,
+        healthPath: String = "/api/v1/live",
+    ): Map<String, Any> {
+        // The message server's Crema class loading requires Serial GC; the other images use G1.
+        val heapOption = if (image == "bml") "-XX:MaximumHeapSizePercent=$heapPercent"
+            else "-XX:MaxRAMPercentage=$heapPercent.0"
+        // The released runner uses a Gradle JVM launcher; native executables take their options as arguments.
+        val jvm = image == "runner"
+        val arguments = buildList {
+            if (!jvm) add(heapOption)
+            if (image in applicationConfigs) add("-config=/config/application.yaml")
+        }
+        return service(images.getValue(image), deploy(Placement.APPLICATION, limits, rolling = true), buildMap {
+            val kitEnvironment = if (site.kit.enabled && image in setOf("server", "runner"))
+                mapOf("BOSCA_SWARM_CONTROLLER_TOKEN" to site.secrets.kitController) else emptyMap()
+            put("environment", environment + kitEnvironment + if (jvm) mapOf("JAVA_OPTS" to heapOption) else emptyMap())
+            put("healthcheck", healthcheck(bashHttpCheck(port, healthPath), startPeriod))
+            if (arguments.isNotEmpty()) put("command", arguments)
+            if (image in applicationConfigs) {
+                put("configs", listOf(mapOf("source" to "$image-application", "target" to "/config/application.yaml", "mode" to 292)))
+            }
+        })
+    }
     val services = (mapOf(
-        // Default memory limits follow the production Helm values; the runner has none there either.
+        // Default memory limits follow the production Helm values.
         "server" to bosca("server", env + mapOf("GIT_SYNC_LISTENERS" to "false", "SCHEDULER_ENABLED" to "true"),
-            8080, "150s", Limits(site.serverMemory)),
-        // The runner binds its port only after migrations and package installs finish.
-        // Its bundled application.yaml enables the FUMS delivery worker.
-        "runner" to bosca("runner", env + mapOf("BOSCA_SERVER_PORT" to "8080", "GIT_SYNC_LISTENERS" to "true", "SCHEDULER_ENABLED" to "false",
-            "ANALYTICS_PROCESSOR_ENABLED" to "true"), 8080, "300s", null),
+            8080, "150s", Limits(site.serverMemory), heapPercent = 65),
         "collector" to bosca("collector", env + mapOf("BOSCA_SERVER_PORT" to "8081",
             "FUMS_TRANSFORM_ENABLED" to site.fumsEnabled.toString()), 8081, "120s", Limits("512M")),
-        "git" to bosca("git", env + mapOf(
-            "GIT_HTTP_PORT" to "8091", "GIT_UI_HTTP_PORT" to "8093",
-            "GIT_UI_URL" to "https://${hosts.git}", "APP_URL" to "https://${hosts.git}",
-            "APP_ALLOWED_ORIGIN" to "https://${hosts.git}", "WEBAUTHN_EXTRA_ORIGIN" to "https://${hosts.git}",
-            "OAUTH2_ALLOWED_REDIRECT" to "https://${hosts.git}",
-            "OAUTH2_GOOGLE_REDIRECT" to "https://${hosts.git}/oauth2/google/callback",
-            "OAUTH2_GOOGLE_ADMIN_REDIRECT" to "https://${hosts.git}/oauth2/google/callback",
-        ), 8091, "120s", Limits("4G")).plus(mapOf(
+        "atlas" to bosca("atlas", env + mapOf(
+            "ATLAS_DEVELOPMENT" to "false", "ATLAS_HTTP_PORT" to "8094", "ATLAS_UI_HTTP_PORT" to "8095",
+            "ATLAS_API_ENABLED" to site.atlas.servers.api.toString(),
+            "ATLAS_GIT_ENABLED" to site.atlas.servers.git.toString(),
+            "ATLAS_ARTIFACTS_ENABLED" to site.atlas.servers.artifacts.toString(),
+            "ATLAS_UI_ENABLED" to site.atlas.servers.ui.toString(),
+            "ATLAS_RUNNER_ENABLED" to site.atlas.servers.runner.toString(),
+            "ATLAS_RUNNER_LISTENERS_ENABLED" to atlasOwnsListeners.toString(),
+            "ATLAS_SYNC_LISTENERS_ENABLED" to atlasOwnsListeners.toString(),
+            "ATLAS_SCHEDULER_ENABLED" to atlasOwnsListeners.toString(),
+            "GIT_UI_URL" to "https://${hosts.atlas}", "APP_URL" to "https://${hosts.atlas}",
+            "APP_ALLOWED_ORIGIN" to "https://${hosts.atlas}", "WEBAUTHN_EXTRA_ORIGIN" to "https://${hosts.atlas}",
+            "OAUTH2_ALLOWED_REDIRECT" to "https://${hosts.atlas}",
+            "OAUTH2_GOOGLE_REDIRECT" to "https://${hosts.atlas}/oauth2/google/callback",
+            "OAUTH2_GOOGLE_ADMIN_REDIRECT" to "https://${hosts.atlas}/oauth2/google/callback",
+            "ATLAS_ARTIFACTS_URL" to "https://${hosts.artifacts}",
+            "BML_ARTIFACTS_ENDPOINT" to if (site.artifactsServer.enabled) "http://${name}-artifacts:8084" else "",
+        ), 8094, "150s", Limits("4G")).plus(mapOf(
             "healthcheck" to healthcheck(listOf("CMD", "bash", "-c",
-                bashHttpCheck(8091, "/api/v1/live").last() + " && " +
-                    bashHttpCheck(8093, "/api/v1/ready").last()), "120s"),
+                bashHttpCheck(8094, "/api/v1/live").last() +
+                    if (!site.atlas.servers.ui) "" else " && " + bashHttpCheck(8095, "/api/v1/ready").last()), "150s"),
         )),
-        "artifacts" to bosca("artifacts", env + mapOf("BOSCA_SERVER_PORT" to "8084", "ANALYTICS_APP_ID" to "bosca-artifacts-server"),
-            8084, "120s", Limits("2G")),
         // The message server binds its port only after fetching and validating every seed project.
         "bml-message-server" to bosca("bml", bmlEnv, 9093, "300s", Limits("1G")),
         "studio" to service(images.getValue("studio"), deploy(Placement.APPLICATION, Limits("1536M"), rolling = true), mapOf(
             "environment" to studioEnv,
             "healthcheck" to healthcheck(httpGetCheck("wget", "http://127.0.0.1:3000/health"), "60s", interval = "20s"),
         )),
-        "profiles-web" to service(images.getValue("profiles-web"), deploy(Placement.APPLICATION, Limits("512M"), rolling = true), mapOf(
-            "environment" to (mapOf(
+        "profiles-web" to bosca("profiles-web", mapOf(
                 "BML_GRAPHQL_ENDPOINT" to "$server/graphql",
                 "PROFILES_WEB_PUBLIC_URL" to "https://${hosts.profiles}",
                 "PROFILES_WEB_COOKIE_DOMAIN" to site.profilesWeb.cookieDomain.ifBlank { hosts.root },
             ) + webBrandEnvironment(site.mailFromName, site.profilesWeb.brandName,
-                site.profilesWeb.logoUrl, site.profilesWeb.primaryColor, site.profilesWeb.accentColor)),
-            "healthcheck" to healthcheck(bashHttpCheck(9095, "/login"), "30s"),
-        )),
-        "notifications-web" to service(images.getValue("notifications-web"), deploy(Placement.APPLICATION, Limits("512M"), rolling = true), mapOf(
-            "environment" to (mapOf("BML_GRAPHQL_ENDPOINT" to "$server/graphql") +
+                site.profilesWeb.logoUrl, site.profilesWeb.primaryColor, site.profilesWeb.accentColor),
+            9095, "30s", Limits("512M"), healthPath = "/login"),
+        "notifications-web" to bosca("notifications-web", mapOf("BML_GRAPHQL_ENDPOINT" to "$server/graphql") +
                 webBrandEnvironment(site.mailFromName, site.notificationsWeb.brandName,
-                    site.notificationsWeb.logoUrl, site.notificationsWeb.primaryColor, site.notificationsWeb.accentColor)),
-            "healthcheck" to healthcheck(bashHttpCheck(9094, "/"), "30s"),
-        )),
+                    site.notificationsWeb.logoUrl, site.notificationsWeb.primaryColor, site.notificationsWeb.accentColor),
+            9094, "30s", Limits("512M"), healthPath = "/"),
         "recommendation-trainer" to service(images.getValue("recommendation-trainer"),
             deploy(Placement.MODELS, Limits("4G")), mapOf(
             // Exports are staged in the container filesystem, like the Kubernetes Job's emptyDir.
@@ -495,7 +519,30 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
             "configs" to listOf(mapOf("source" to "tf-serving-serve", "target" to "/config/serve.sh", "mode" to 365)),
             "healthcheck" to healthcheck(bashTcpCheck(8501), "60s"),
         )),
-    ) + if (site.rootImage.isNotBlank()) mapOf(
+    ) + buildMap<String, Map<String, Any>> {
+        // The standalone runner binds its port after migrations and package installs finish.
+        // Its bundled application.yaml enables the FUMS delivery worker.
+        if (site.runnerServer.enabled) put("runner", bosca("runner", env + mapOf(
+            "BOSCA_SERVER_PORT" to "8080", "GIT_SYNC_LISTENERS" to "true", "SCHEDULER_ENABLED" to "false",
+            "ANALYTICS_PROCESSOR_ENABLED" to "true"), 8080, "300s", Limits(site.runnerMemory)))
+        if (site.gitServer.enabled) put("git", bosca("git", env + mapOf(
+            "GIT_HTTP_PORT" to "8091",
+            "GIT_UI_URL" to "https://${hosts.atlas}", "APP_URL" to "https://${hosts.atlas}",
+            "APP_ALLOWED_ORIGIN" to "https://${hosts.atlas}", "WEBAUTHN_EXTRA_ORIGIN" to "https://${hosts.atlas}",
+            "OAUTH2_ALLOWED_REDIRECT" to "https://${hosts.atlas}",
+            "OAUTH2_GOOGLE_REDIRECT" to "https://${hosts.git}/oauth2/google/callback",
+            "OAUTH2_GOOGLE_ADMIN_REDIRECT" to "https://${hosts.git}/oauth2/google/callback",
+        ), 8091, "120s", Limits("1G")))
+        if (site.artifactsServer.enabled) put("artifacts", bosca("artifacts", env + mapOf("BOSCA_SERVER_PORT" to "8084", "ANALYTICS_APP_ID" to "bosca-artifacts-server"),
+            8084, "120s", Limits("2G")))
+        if (site.atlasUiServer.enabled) put("atlas-ui", bosca("atlas-ui", mapOf(
+            "ATLAS_UI_HTTP_PORT" to "8095", "BML_GRAPHQL_ENDPOINT" to "http://${name}-atlas:8094/graphql",
+            "ATLAS_ARTIFACTS_URL" to "https://${hosts.artifacts}",
+            "BML_ARTIFACTS_ENDPOINT" to if (site.artifactsServer.enabled) "http://${name}-artifacts:8084" else "",
+        ), 8095, "60s", Limits("512M")).plus(mapOf(
+            "healthcheck" to healthcheck(bashHttpCheck(8095, "/api/v1/ready"), "60s"),
+        )))
+    } + if (site.rootImage.isNotBlank()) mapOf(
         "root-web" to service(site.rootImage, deploy(Placement.APPLICATION, rolling = true), mapOf(
             "environment" to (mapOf("BML_GRAPHQL_ENDPOINT" to "$server/graphql") + site.rootEnv),
         )),
@@ -572,6 +619,13 @@ internal fun caddyfile(config: SwarmConfig) = config.sites.joinToString("\n\n", 
 """, postfix = "\n") { site ->
     val name = site.id
     val hosts = site.hosts
+    val uiBackend = if (site.atlasUiServer.enabled) "$name-atlas-ui:8095" else if (site.atlas.servers.ui) "$name-atlas:8095" else null
+    val gitBackend = if (site.gitServer.enabled) "$name-git:8091" else if (site.atlas.servers.git) "$name-atlas:8094" else null
+    val registryBackend = if (site.artifactsServer.enabled) "$name-artifacts:8084" else if (site.atlas.servers.artifacts) "$name-atlas:8094" else null
+    fun proxy(matcher: String, backend: String?): String {
+        val prefix = matcher.takeIf(String::isNotEmpty)?.let { "$it " }.orEmpty()
+        return if (backend == null) "respond ${prefix}404" else "reverse_proxy $prefix$backend"
+    }
     val serverHosts = if (site.rootImage.isBlank()) hosts.server else hosts.server.drop(1)
     val website = if (site.rootImage.isBlank()) "" else """${hosts.root}, ${hosts.www} {
     @server path ${pathPrefix("/graphql", "/oauth2", "/api/v1", "/files", "/content", "/graphqlws")}
@@ -607,13 +661,25 @@ ${hosts.analytics} {
 ${hosts.git} {
     @gitUi path_regexp git_ui "${gitUiPathPattern()}"
     route {
-        reverse_proxy @gitUi ${name}-git:8093
-        reverse_proxy ${name}-git:8091
+        ${if (uiBackend != null) "redir @gitUi https://${hosts.atlas}{uri} 302" else "respond @gitUi 404"}
+        ${proxy("", gitBackend)}
+    }
+}
+
+${hosts.atlas} {
+    @atlasUi path_regexp atlas_ui "${atlasUiPathPattern()}"
+    @gitBackend path_regexp git_backend "${gitBackendPathPattern()}"
+    @registry path ${pathPrefix("/v2", "/raw", "/maven", "/npm", "/helm", "/ml")}
+    route {
+        ${proxy("@atlasUi", uiBackend)}
+        ${proxy("@gitBackend", gitBackend)}
+        ${proxy("@registry", registryBackend)}
+        ${if (site.atlas.servers.api) "reverse_proxy $name-atlas:8094" else "respond 404"}
     }
 }
 
 ${hosts.artifacts} {
-    reverse_proxy ${name}-artifacts:8084
+${if (site.artifactsServer.enabled || registryBackend == null) "" else "    @files path_regexp registry_files ^/(raw|maven|npm|helm|ml)(/.*)?$\n    uri @files path_regexp ^ /_artifacts\n"}    ${proxy("", registryBackend)}
 }
 
 ${hosts.notifications} {

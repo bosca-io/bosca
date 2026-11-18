@@ -5,7 +5,7 @@
   </script>
   <island name="git-tag-create" :key="model.page.id + model.page.ref">
     <div class="tag-create" :data-next-href="model.nextHref">
-      <ui-dialog
+      <dialog
         title="New Tag"
         triggerLabel="New Tag"
         triggerIcon="plus"
@@ -16,24 +16,24 @@
         <form class="modal-form" @submit="model.createTag(form.name, form.source, form.tagMessage, ctx)">
           <div class="modal-fields">
             <if model.failed>
-              <ui-alert tone="error">{ model.message }</ui-alert>
+              <alert tone="error">{ model.message }</alert>
             </if>
-            <ui-field label="Tag name">
-              <ui-input name="name" :value="model.name" placeholder="1.0.0" required />
-            </ui-field>
-            <ui-field label="Target ref" hint="Branch name, tag name, or commit SHA.">
-              <ui-input name="source" :value="model.source" required />
-            </ui-field>
-            <ui-field label="Message" hint="Optional annotation for this tag.">
+            <field label="Tag name">
+              <input name="name" :value="model.name" placeholder="1.0.0" required />
+            </field>
+            <field label="Target ref" hint="Branch name, tag name, or commit SHA.">
+              <input name="source" :value="model.source" required />
+            </field>
+            <field label="Message" hint="Optional annotation for this tag.">
               <textarea name="tagMessage" rows="3">{ model.tagMessage }</textarea>
-            </ui-field>
+            </field>
           </div>
           <footer class="modal-footer">
-            <ui-button ref="cancel">Cancel</ui-button>
-            <ui-button type="submit" primary>Create tag</ui-button>
+            <button ref="cancel">Cancel</button>
+            <button type="submit" primary>Create tag</button>
           </footer>
         </form>
-      </ui-dialog>
+      </dialog>
     </div>
   </island>
   <style scoped>

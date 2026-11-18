@@ -32,6 +32,7 @@ Bosca owns the entire tag vocabulary. Full grammar: [grammar.md](grammar.md).
 | `<slot [name]>` | component children; named slots currently use the default children and emit a warning |
 | `<component tag="…" [scope="page\|site"]>` | declare a custom tag or override a built-in; live state has page lifetime by default or site lifetime explicitly |
 | `<prop name type [required] [default\|:default]>` | a typed component input |
+| `<import library="group:artifact" [as="alias"]/>` | select exports from a resolved binary library, globally in `imports.bml` or at file scope |
 | `<for item in expr>` / `<for (i, item) in expr>` | iteration |
 | `<if expr> … <else-if expr> … <else> … </if>` | Kotlin conditionals (one `</if>`; bare separators) |
 | `<if flag="key" [variation="name" \| :when="expr"]>` | feature-flag boolean, variation, or full-evaluation condition |
@@ -112,9 +113,39 @@ tag — reach the native element via the `html:` namespace.
 - Custom tags (`<component tag="card">`) register a new tag with typed `<prop>`s.
 - **Protected** tags (the special set above) cannot be overridden — it's a compile error.
 
+### Forwarding component attributes
+
+Use `{...attrs}` on the element that should receive additional caller attributes:
+
+```bml
+<component tag="button">
+  <prop name="loading" type="Boolean" default="false"/>
+  <html:button class="button" :disabled="loading" {...attrs}><slot/></html:button>
+</component>
+```
+
+The compiler supplies `attrs` from the caller's inputs, excluding declared props and internal
+action markers. Component authors do not maintain prop exclusion lists. A caller's `id`, `name`,
+`aria-*`, `data-*`, and other undeclared attributes reach the explicit target. Nothing is forwarded
+to surrounding labels or layout elements unless they also use the spread.
+
+Classes from the target and caller are combined into one attribute. Other explicit target
+attributes take precedence regardless of spread placement, including `null` or `false` to omit
+an inherited attribute. Declare a prop when callers should control a value that the component
+also renders; for example, declare `disabled` and bind `:disabled="disabled || loading"`.
+Native `ref` becomes `data-bml-ref`, and attribute values are HTML-escaped when written.
+
+Spreads also work on component calls, so a wrapper can use `<button class="compact" {...attrs}/>`.
+Each receiving component consumes its own declared props. An explicitly declared prop or server
+binding named `attrs` takes precedence over the compiler's default binding. As with other
+component inputs, outer attributes are not captured by independently rendered island bodies.
+Declarative action markers continue to follow the component root.
+
 ## Resolution order
 
-`<name>` resolves: special tag → registered custom/override → built-in HTML → error.
+`<name>` resolves: protected syntax → local component/override → unprefixed library export → native HTML/SVG → error.
+Aliased imports use `<alias:name>`. Two different unaliased libraries exporting the same name produce
+a diagnostic; alias one to disambiguate.
 The `html:` namespace always resolves to the native HTML handler, bypassing overrides.
 
 ## Scoped styles

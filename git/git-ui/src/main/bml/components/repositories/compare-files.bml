@@ -10,21 +10,21 @@
   <island name="git-compare-files" :key='page.id + ":" + page.base + "..." + page.head'>
     <git-diff-workspace :entries="model.files">
       <for file in model.diff>
-        <section class="diff-file" :id="file.anchor" :data-path="file.path">
+        <html:section class="diff-file" :id="file.anchor" :data-path="file.path">
           <git-diff-file-header :file="file">
             <if file.hasHiddenLines>
-              <ui-icon-button icon="unfold" size="xs" label="Show all lines" @click="model.expandFile(file.path, ctx)" />
+              <icon-button icon="unfold" size="xs" label="Show all lines" @click="model.expandFile(file.path, ctx)" />
             </if>
             <if file.hasRevealedLines>
-              <ui-icon-button icon="fold" size="xs" label="Hide unchanged lines" @click="model.collapseContext(file.path)" />
+              <icon-button icon="fold" size="xs" label="Hide unchanged lines" @click="model.collapseContext(file.path)" />
             </if>
             <if file.newPath != null>
-              <ui-icon-link icon="external" label="View file" :href="model.fileHref(file.path)" />
+              <icon-link icon="external" label="View file" :href="model.fileHref(file.path)" />
             </if>
           </git-diff-file-header>
           <div class="diff-file-body" :id='file.anchor + "-body"'>
             <if model.contextFile == file.path && model.contextMessage.isNotBlank()>
-              <ui-alert>{ model.contextMessage }</ui-alert>
+              <alert>{ model.contextMessage }</alert>
             </if>
             <if file.emptyTextChange>
               <p class="diff-notice">{ file.emptyTextLabel }</p>
@@ -48,7 +48,7 @@
                     </git-diff-gap>
                   </for>
                   <if !section.hunk.complete>
-                    <ui-alert>Showing { section.hunk.lines.size } of { section.hunk.totalLineCount } diff lines.</ui-alert>
+                    <alert>Showing { section.hunk.lines.size } of { section.hunk.totalLineCount } diff lines.</alert>
                   </if>
                   <for line in section.hunk.displayLines>
                     <git-diff-line :line="line" />
@@ -66,7 +66,7 @@
               </div>
             </if>
           </div>
-        </section>
+        </html:section>
       </for>
     </git-diff-workspace>
   </island>

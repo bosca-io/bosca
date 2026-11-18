@@ -1,0 +1,4 @@
+<page route="/system/backups" requireAuth>
+  <script server provides="page">bosca.system.ui.systemBackups()</script>
+  <system-layout title="Backups" :admin="page.admin"><system-backups :initial="page" /></system-layout>
+</page>

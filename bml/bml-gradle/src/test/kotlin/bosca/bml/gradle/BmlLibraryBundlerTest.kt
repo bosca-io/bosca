@@ -58,7 +58,7 @@ class BmlLibraryBundlerTest {
                 ${if (skipBundling) "tasks.named('bmlBundleClient') { enabled = false }" else ""}
             """.trimIndent())
             fun runner(vararg tasks: String) = GradleRunner.create().withProjectDir(project).withPluginClasspath()
-                .withArguments(*tasks, "--configuration-cache", "--no-build-cache", "--stacktrace", "--max-workers=2")
+                .withArguments(*tasks, "--configuration-cache", "--no-build-cache", "--no-watch-fs", "--stacktrace", "--max-workers=2")
             val publish = "publishMavenPublicationToFixtureRepository"
             val binary = File(fixture.repository, "example/design/1.0/design-1.0.jar")
 

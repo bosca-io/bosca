@@ -13,10 +13,8 @@ const props = defineProps<{
   onRunTool: (_attribute: AttributeState, _tool: TemplateAttributeTool) => void
 }>()
 
-const dateValue = ref('')
-
-function msToDateTimeLocal(ms: number | null): string {
-  if (!ms) return ''
+function msToDateTimeLocal(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return ''
   const d = new Date(ms)
   const pad = (n: number) => n.toString().padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
@@ -27,17 +25,15 @@ function dateTimeLocalToMs(v: string): number | null {
   return new Date(v).getTime()
 }
 
-function syncFromAttribute() {
-  dateValue.value = msToDateTimeLocal(props.attribute.dateTimeValue)
-}
-
-watch(() => props.attribute.changeRef.value, syncFromAttribute)
-onMounted(syncFromAttribute)
-
-watch(dateValue, (v) => {
-  // AttributeState.dateTimeValue is a class setter that updates the Yjs doc, not a plain prop
-  // eslint-disable-next-line vue/no-mutating-props
-  props.attribute.dateTimeValue = dateTimeLocalToMs(v)
+// Rendering and remote updates only read the stored timestamp. Write through
+// the setter on user input so formatting to minute precision cannot alter it.
+const dateValue = computed({
+  get: () => msToDateTimeLocal(props.attribute.dateTimeValueRaw),
+  set: (v: string) => {
+    // AttributeState.dateTimeValue is a class setter that updates the Yjs doc, not a plain prop
+    // eslint-disable-next-line vue/no-mutating-props
+    props.attribute.dateTimeValue = dateTimeLocalToMs(v)
+  },
 })
 </script>
 

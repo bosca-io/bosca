@@ -1,0 +1,37 @@
+<component tag="system-packages">
+  <prop name="initial" type="bosca.system.ui.SystemPackageModel" required />
+  <script server provides="model">bosca.system.ui.SystemPackageModel(initial.admin, initial.data, initial.feedback, initial.tab, initial.failureTarget)</script>
+  <island name="system-packages" :key="model.admin.toString()">
+    <page-shell fill><page-heading :trail="bosca.system.ui.systemTrail(ctx.requestPath)" title="Packages" :subtitle="model.summary"><button @click="model.refresh(ctx)">Refresh</button></page-heading><div class="system-content" :data-bml-scroll='"system-content-" + model.tab'>
+      <if !model.admin><alert>Administrator access is required.</alert><else>
+        <system-feedback :feedback="model.feedback" />
+        <tabs label="Packages" :items="model.tabs" />
+        <if model.tab == "packages">
+        <if model.data?.packages?.all.orEmpty().isEmpty()><empty-state message="No packages available." /></if>
+        <for pkg in model.data?.packages?.all.orEmpty()>
+          <card :padded="false" :data-package-key="pkg.key"><section-heading :title="pkg.name"><code class="package-key">{ pkg.key }</code><badge>{ model.installedCount(pkg).toString() + " / " + pkg.versions.size + " versions installed" }</badge></section-heading>
+            <for version in pkg.versions><details class="package-version" open :data-package-version="version.version" :data-bml-disclosure='"package-" + pkg.key + "-" + version.version'><disclosure-heading>{ version.version }<badge :tone='if (model.versionInstalled(version)) "success" else "neutral"'>{ if (model.versionInstalled(version)) "All installers installed" else "Available" }</badge></disclosure-heading>
+              <if !model.versionInstalled(version) && version.installers.isNotEmpty()>
+              <confirm-dialog :completed="!model.feedback.failed && model.feedback.message.isNotBlank()" description="The selected installers will run against this Atlas deployment." icon="package" :triggerIconOnly="false" :forceOpen='model.feedback.failed && model.failureTarget == model.installationKey(pkg.key, version.version, "", "")' title="Install package version?" triggerLabel="Install package"><form @submit='model.install(pkg.key, version.version, "", "", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><checkbox name="confirmed" label="Run this package installation" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" primary>Install</button></form-actions></form></confirm-dialog>
+              </if>
+              <if version.installers.isEmpty()><p>No installers in this version.</p></if>
+              <for installer in version.installers><div class="package-installer"><span>{ installer.name + " " + installer.version }</span><badge>{ if (version.installed.any { it.name == installer.name && it.version == installer.version }) "Installed" else "Available" }</badge>
+                <if version.installed.none { it.name == installer.name && it.version == installer.version }>
+                <confirm-dialog :completed="!model.feedback.failed && model.feedback.message.isNotBlank()" description="The selected installers will run against this Atlas deployment." icon="package" :triggerIconOnly="false" :forceOpen="model.feedback.failed && model.failureTarget == model.installationKey(pkg.key, version.version, installer.name, installer.version)" title="Run installer?" triggerLabel="Run installer"><form @submit="model.install(pkg.key, version.version, installer.name, installer.version, form.confirmed, ctx)" class="modal-form"><form-body padded class="modal-fields"><if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if><checkbox name="confirmed" label="Run this installer" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" primary>Run installer</button></form-actions></form></confirm-dialog>
+                </if>
+              </div></for>
+            </details></for>
+          </card>
+        </for>
+        <else><card title="Installation history" :padded="false"><if model.data?.packages?.history.orEmpty().isEmpty()><empty-state message="No installation history." /><else><table-scroll label="Installation history"><table><thead><tr><th>Package</th><th>Version</th><th>Installed</th></tr></thead><tbody><for entry in model.data?.packages?.history.orEmpty()><tr><td>{ entry.key }</td><td>{ entry.version }</td><td><time :value="entry.created" format="MMM d, yyyy HH:mm:ss 'UTC'" inheritTypography /></td></tr></for></tbody></table></table-scroll></if></card></if>
+      </if>
+    </div></page-shell>
+  </island>
+  <style scoped>
+    .package-key { color: var(--fg-4); font-size: 11px; font-family: var(--font-mono); }
+    .package-version { padding: 4px 16px 14px; border-bottom: 1px solid var(--line); }
+    .package-version:last-child { border-bottom: 0; }
+    .package-installer { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--line); margin-top: -1px; }
+    .package-installer > span:first-child { font: 12px/1.5 var(--font-mono); flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  </style>
+</component>

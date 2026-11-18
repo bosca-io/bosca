@@ -1,0 +1,41 @@
+<component tag="artifacts-create">
+  <prop name="initial" type="bosca.artifacts.ui.ArtifactListModel" required />
+  <script server provides="model">bosca.artifacts.ui.ArtifactListModel(initial.kind, initial.namespaceId, initial.type, initial.offset, initial.admin, namespaces = initial.namespaces, repositories = initial.repositories, namespace = initial.namespace, hasNext = initial.hasNext)</script>
+  <island name="artifacts-create" :key="initial.kind + initial.namespaceId">
+    <div>
+      <artifacts-feedback :feedback="model.feedback" />
+      <dialog :title='if (model.kind == "namespaces") "New namespace" else "New repository"' :triggerLabel='if (model.kind == "namespaces") "New namespace" else "New repository"' triggerIcon="plus" primary :forceOpen="model.feedback.failed">
+        <form @submit="model.create(form.name, form.namespaceId, form.registryType, form.public, ctx)">
+          <form-body padded>
+            <field label="Name">
+              <input name="name" :value="model.draft.name" required />
+            </field>
+            <if model.kind == "namespaces">
+              <checkbox name="public" label="Allow anonymous pull access" :checked="model.draft.public" />
+            <else>
+              <field label="Namespace">
+                <select name="namespaceId" required>
+                  <option value="">Choose a namespace</option>
+                  <for namespace in model.namespaces>
+                    <option :value="namespace.id" :selected="namespace.id == model.draft.namespaceId || namespace.id == model.namespaceId">{ namespace.name }</option>
+                  </for>
+                </select>
+              </field>
+              <field label="Registry type">
+                <select name="registryType">
+                  <for type in bosca.artifacts.ui.artifactTypes>
+                    <option :value="type" :selected="type == model.draft.type">{ type }</option>
+                  </for>
+                </select>
+              </field>
+            </if>
+          </form-body>
+          <form-actions bordered>
+            <button size="sm" data-dialog-close>Cancel</button>
+            <button type="submit" size="sm" primary>Create</button>
+          </form-actions>
+        </form>
+      </dialog>
+    </div>
+  </island>
+</component>

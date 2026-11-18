@@ -8,7 +8,7 @@
       <ul class="tree-rows">
         <for entry in entries>
           <li class="tree-row" :data-directory="entry.directory">
-            <span class="tree-icon"><ui-icon :name='if (entry.directory) "folder" else "file"' :size="14" /></span>
+            <span class="tree-icon"><icon :name='if (entry.directory) "folder" else "file"' :size="14" /></span>
             <a class="tree-name" :href="entry.href">{ entry.name }</a>
             <if entry.size != null>
               <code class="tree-size">{ bosca.git.ui.formatSize(entry.size) }</code>
@@ -20,7 +20,7 @@
                 :aria-label='"Rename " + entry.name'
                 title="Rename"
               >
-                <ui-icon name="edit" :size="12" />
+                <icon name="edit" :size="12" />
               </a>
             </if>
           </li>

@@ -137,17 +137,10 @@
   display: none;
 }
 
-/*.ProseMirror .is-empty:last-child::before {*/
-/*  content: attr(data-placeholder);*/
-/*  color: var(--fg-3);*/
-/*  font-size: 100%;*/
-/*  pointer-events: none;*/
-/*  float: left;*/
-/*  height: 0;*/
-/*}*/
-
-.ProseMirror p.is-editor-empty:first-child::before,
-.ProseMirror .is-empty:last-child::before {
+/* Every empty paragraph/heading renders its data-placeholder (the title H1
+   shows "Title..."), matching the admin editor this was ported from — the
+   previous first/last-child selectors skipped the empty title heading. */
+.ProseMirror :is(p, h1, h2, h3, h4, h5, h6).is-empty::before {
   content: attr(data-placeholder);
   color: var(--fg-3);
   pointer-events: none;

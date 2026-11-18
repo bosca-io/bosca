@@ -39,6 +39,7 @@ const TAB_GAP = 4
 
 const tabsRef = ref<HTMLElement>()
 const measureRef = ref<HTMLElement>()
+const tabActionsRef = ref<HTMLElement>()
 const tabWidths = ref<number[]>([])
 const moreWidth = ref(0)
 const availableWidth = ref(0)
@@ -48,9 +49,12 @@ function remeasure() {
   const measure = measureRef.value
   if (!container || !measure) return
   const style = getComputedStyle(container)
+  // Room taken by the optional `tab-actions` slot pinned to the row's right end.
+  const actionsWidth = tabActionsRef.value ? tabActionsRef.value.offsetWidth + TAB_GAP : 0
   availableWidth.value = container.clientWidth
     - parseFloat(style.paddingLeft || '0')
     - parseFloat(style.paddingRight || '0')
+    - actionsWidth
   const children = Array.from(measure.children) as HTMLElement[]
   moreWidth.value = children[children.length - 1]?.offsetWidth ?? 0
   tabWidths.value = children.slice(0, -1).map(el => el.offsetWidth)
@@ -63,6 +67,7 @@ function observeTabs() {
   if (tabsRef.value) resizeObserver.observe(tabsRef.value)
   // The measure row resizes when tab labels change or fonts finish loading.
   if (measureRef.value) resizeObserver.observe(measureRef.value)
+  if (tabActionsRef.value) resizeObserver.observe(tabActionsRef.value)
 }
 
 onMounted(() => {
@@ -204,6 +209,11 @@ function tabStyle(t: string) {
         </template>
       </OverflowMenu>
 
+      <!-- Optional controls pinned to the right end of the tab row -->
+      <div v-if="$slots['tab-actions']" ref="tabActionsRef" class="tab-actions">
+        <slot name="tab-actions" />
+      </div>
+
       <!-- Hidden duplicate row used purely for width measurement -->
       <div ref="measureRef" class="tabs-measure" aria-hidden="true">
         <span v-for="t in tabs" :key="t" class="tab">{{ t }}</span>
@@ -322,6 +332,13 @@ function tabStyle(t: string) {
   color: var(--fg-1);
 }
 
+.tab-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
 .tabs-measure {
   position: absolute;
   top: 0;

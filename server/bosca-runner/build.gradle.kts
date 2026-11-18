@@ -48,11 +48,9 @@ val projects = arrayOf(
     project(":git:git-jobs"),
     project(":workops:workops"),
     project(":workops:workops-jobs"),
-    // Artifacts registry impl — the git-ci requirement checker (which runs in this runner) resolves
-    // the workops RequiredArtifactVerifier, whose factory needs ArtifactRepositoryService from
-    // artifacts-base. workops only depends on core-artifacts (contracts), so the impl must be
-    // declared here explicitly, mirroring bosca-server.
+    // This runner selects the registry adapter for Git CI artifact requirements and completion.
     project(":artifacts:artifacts-base"),
+    project(":artifacts:artifacts-git"),
     project(":workops:store-pipelines"),
     project(":kubernetes:core-kubernetes"),
     project(":kubernetes:kubernetes"),

@@ -6,12 +6,12 @@ import bosca.graphql.language.BooleanValue
 import bosca.graphql.language.IntValue
 import bosca.graphql.language.StringValue
 import bosca.graphql.language.Value
-import kotlinx.datetime.Instant
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -20,7 +20,7 @@ import kotlin.uuid.Uuid
  * wiring DSL, e.g. `scalar("UUID", ExtendedScalars.Uuid)`, or wire them all from [coercings].
  *
  * Internal value types: Long → [Long], UUID → [kotlin.uuid.Uuid] (matching `bosca.serialization.UUID`),
- * DateTime → [kotlinx.datetime.Instant], JSON → a [JsonElement] (with recursive [Map] and [Iterable] compatibility
+ * DateTime → [Instant], JSON → a [JsonElement] (with recursive [Map] and [Iterable] compatibility
  * for resolver output), Upload → the transport-injected file object (input-only — Uploads arrive via multipart,
  * never in a literal or a response).
  */

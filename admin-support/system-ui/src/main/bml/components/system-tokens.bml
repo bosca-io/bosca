@@ -1,0 +1,112 @@
+<component tag="system-tokens">
+  <prop name="initial" type="bosca.system.ui.SystemTokensModel" required />
+  <script server provides="model">bosca.system.ui.SystemTokensModel(id = initial.id, admin = initial.admin, currentPrincipalId = initial.currentPrincipalId, owner = initial.owner, offset = initial.offset, tokens = initial.tokens, token = initial.token, hasNext = initial.hasNext, scopes = initial.scopes, owners = initial.owners, draft = initial.draft, rawToken = initial.rawToken, scopeType = initial.scopeType, scopePath = initial.scopePath, scopeTargets = initial.scopeTargets, scopeResourcesLoaded = initial.scopeResourcesLoaded, editorRequest = initial.editorRequest, editorCompleted = initial.editorCompleted, feedback = initial.feedback, scopeEditorOpen = initial.scopeEditorOpen, scopeEditorCompleted = initial.scopeEditorCompleted)</script>
+  <island name="system-tokens" :key='model.id?.toString() ?: "list"'>
+    <page-shell fill>
+      <page-heading :title="model.title" :subtitle='model.token?.prefix?.plus("…").orEmpty()' :trail='bosca.system.ui.systemSecurityTrail(if (model.id == null) "" else "API tokens", "/system/security/tokens")'>
+        <if model.id == null && model.canCreate && model.rawToken.isBlank()><button primary icon="plus" data-token-create-trigger @click.coalesce="model.openCreate()">Create token</button></if>
+        <if model.canEdit><button icon="edit" data-token-edit-trigger @click.coalesce="model.openEdit()">Edit</button></if>
+        <for token in listOfNotNull(model.token)>
+          <if token.active && token.revokedAt == null><confirm-dialog title="Revoke API token?" description="The token will stop authenticating immediately." triggerLabel="Revoke token" icon="close" :triggerIconOnly="false"><form @submit='model.change(token.id, "revoke", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><checkbox name="confirmed" label="Revoke this token" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Revoke</button></form-actions></form></confirm-dialog></if>
+          <if token.revokedAt != null><confirm-dialog title="Delete API token?" description="Permanently remove this revoked token's record." triggerLabel="Delete token" icon="trash" :triggerIconOnly="false"><form @submit='model.change(token.id, "delete", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><checkbox name="confirmed" label="Delete this token record" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Delete</button></form-actions></form></confirm-dialog></if>
+        </for>
+      </page-heading>
+      <div class="system-content" data-bml-scroll="system-content">
+        <system-feedback :feedback="model.feedback" />
+        <if model.rawToken.isNotBlank()><card title="Copy your new token"><p>This value is shown only after creation and cannot be retrieved again.</p><copy-field :value="model.rawToken" label="API token" /><button @click="model.dismissToken()">I have saved the token</button></card></if>
+        <if model.id == null>
+          <card :padded="false">
+            <section-heading title="Tokens"><if model.admin><form method="get" action="/system/security/tokens"><system-token-owner-picker name="owner" label="Filter by owner" :options="model.ownerOptions" :value="model.owner" /></form></if></section-heading>
+            <if model.tokens.isEmpty()><empty-state message="No API tokens." /><else>
+              <table-scroll label="API tokens"><table><thead><tr><th>Name</th><th>Status</th><th>Scopes</th><th>Expires</th><th>Last used</th><th>Actions</th></tr></thead><tbody>
+                <for token in model.tokens><tr>
+                  <td><a :href="token.href">{ token.name }</a><p class="system-muted mono">{ token.prefix + "…" }</p></td>
+                  <td><badge :tone="token.tone">{ token.status }</badge></td>
+                  <td><if token.scopes.isNullOrEmpty()><span class="system-muted">Unrestricted</span><else>{ token.scopes.orEmpty().take(3).joinToString(", ") }<if token.scopes.orEmpty().drop(3).isNotEmpty()><span class="system-muted">{ " +" + (token.scopes.orEmpty().size - 3) + " more" }</span></if></if></td>
+                  <td><if token.expiresAt != null><time :value="token.expiresAt.orEmpty()" /><else>Never</if></td>
+                  <td><if token.lastUsedAt != null><time :value="token.lastUsedAt.orEmpty()" /><else>Never</if></td>
+                  <td><div class="system-actions"><copy :value="token.id.toString()" label="Copy token ID" :showStatus="false" />
+                    <if token.active && token.revokedAt == null><confirm-dialog title="Revoke API token?" description="The token will stop authenticating immediately." triggerLabel="Revoke token" icon="close"><form @submit='model.change(token.id, "revoke", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><checkbox name="confirmed" label="Revoke this token" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Revoke</button></form-actions></form></confirm-dialog></if>
+                    <if token.revokedAt != null><confirm-dialog title="Delete API token?" description="Permanently remove this revoked token's record." triggerLabel="Delete token" icon="trash"><form @submit='model.change(token.id, "delete", form.confirmed, ctx)' class="modal-form"><form-body padded class="modal-fields"><checkbox name="confirmed" label="Delete this token record" required /></form-body><form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" class="danger">Delete</button></form-actions></form></confirm-dialog></if>
+                  </div></td>
+                </tr></for>
+              </tbody></table></table-scroll>
+            </if>
+            <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" />
+          </card>
+        <else>
+          <if model.token == null><empty-state message="Token not found." /><else><for token in listOfNotNull(model.token)>
+            <div class="token-details">
+              <card :padded="false"><section-heading title="Details"><badge :tone="token.tone">{ token.status }</badge></section-heading>
+                <div class="token-detail-grid">
+                  <if !token.description.isNullOrBlank()><div class="token-detail-wide"><h3 class="token-detail-label">Description</h3><p class="token-detail-value">{ token.description.orEmpty() }</p></div></if>
+                  <copy-field :value="token.id.toString()" label="Token ID" /><copy-field :value="token.principalId" label="Principal ID" />
+                  <div><h3 class="token-detail-label">Expires</h3><div class="token-detail-value"><if token.expiresAt != null><time inheritTypography :value="token.expiresAt.orEmpty()" /><else>Never</if></div></div>
+                  <div><h3 class="token-detail-label">Last used</h3><div class="token-detail-value"><if token.lastUsedAt != null><time inheritTypography :value="token.lastUsedAt.orEmpty()" /><else>Never</if></div></div>
+                  <if token.lastUsedIp != null><div><h3 class="token-detail-label">Last used IP</h3><p class="token-detail-value mono">{ token.lastUsedIp }</p></div></if>
+                  <if token.revokedAt != null><div><h3 class="token-detail-label">Revoked at</h3><time inheritTypography :value="token.revokedAt.orEmpty()" /></div></if>
+                </div>
+              </card>
+              <card title="Scopes"><if token.scopes.isNullOrEmpty()><p class="system-muted">Unrestricted — this token has all permissions of the owning principal.</p><else><div class="token-tags"><for scope in token.scopes.orEmpty()><badge>{ scope }</badge></for></div></if></card>
+              <if !token.allowedGroups.isNullOrEmpty()><card title="Allowed groups"><div class="token-tags"><for group in token.allowedGroups.orEmpty()><badge><span class="mono">{ group }</span></badge></for></div></card></if>
+            </div>
+          </for></if>
+        </if>
+      </div>
+      <if model.rawToken.isBlank() && (model.id == null && model.canCreate || model.canEdit)>
+        <dialog :title='if (model.id == null) "Create API token" else "Edit token"' triggerLabel="Token editor" :showTrigger="false" :openRequest="model.editorOpenRequest" :completed="model.editorCompleted" :data-bml-preserve='"token-editor-" + model.editorRequest' :returnFocus='if (model.id == null) "[data-token-create-trigger]" else "[data-token-edit-trigger]"' data-token-editor>
+          <form class="modal-form" @submit="model.save(form.name, form.description, form.selectedScopes, form.selectedOwner, form.expires, ctx)">
+            <form-body padded class="modal-fields token-editor-fields">
+              <if model.id == null>
+                <field label="Owner"><system-token-owner-picker name="selectedOwner" :options="model.ownerOptions" :value="model.draft.owner" :canSearch="model.admin" /></field>
+              </if>
+              <field label="Name"><input name="name" :value="model.draft.name" required /></field>
+              <field label="Description"><input name="description" multiline :rows="2" :value="model.draft.description" /></field>
+              <if model.id == null>
+                <field label="Expires (UTC)" hint="Defaults to 90 days. Clear for no expiration."><input type="datetime-local" name="expires" :value="model.draft.expires" /></field>
+              <else><input type="hidden" name="selectedOwner" :value="model.draft.owner" /><input type="hidden" name="expires" value="" /></if>
+              <div class="token-scope-summary"><h3>Scopes</h3><if model.draft.scopes.isEmpty()><p>Unrestricted — all permissions</p><else><div class="token-scope-tags"><for scope in model.draft.scopes><badge>{ scope }</badge></for></div></if><div><button icon="key" data-token-scopes-trigger @click.coalesce="model.openScopes(form.name, form.description, form.selectedScopes, form.selectedOwner, form.expires)">{ if (model.draft.scopes.isEmpty()) "Configure scopes" else "Edit scopes" }</button></div></div>
+              <dialog @dialogdismiss.coalesce="model.applyScopes(form.name, form.description, form.selectedScopes, form.selectedOwner, form.expires)" title="Configure scopes" icon="key" triggerLabel="Scope editor" :showTrigger="false" :openRequest="model.scopeOpenRequest" :completed="model.scopeEditorCompleted" :data-bml-preserve='"token-scopes-" + model.editorRequest' returnFocus="[data-token-scopes-trigger]" :data-scopes-active="model.scopeEditorOpen" data-token-scope-builder>
+                <div class="modal-form"><form-body padded class="modal-fields">
+                  <field label="Scopes" hint="Leave empty for unrestricted access. Select catalogued scopes or enter a custom scope."><select name="selectedScopes" label="Token scopes" multiple searchable allowCustom><for choice in model.scopeOptions.entries><option :value="choice.key" :selected="choice.key in model.draft.scopes">{ choice.value }</option></for></select></field>
+                  <div class="scope-registry-section"><h3>Artifact registry</h3>
+                    <div><button @click="model.scopeResources(form.name, form.description, form.selectedScopes, form.selectedOwner, form.expires, ctx)">Load registry targets</button></div>
+                    <field label="Registry type"><select label="Registry type" name="scopeType"><for value in listOf("*", "docker", "helm", "maven", "npm", "raw", "ml")><option :value="value" :selected="value == model.scopeType">{ if (value == "*") "Any type" else value }</option></for></select></field>
+                    <field label="Path" hint="A namespace/repository path; wildcards such as namespace/* are supported."><select label="Path" name="scopePath" searchable allowCustom><for choice in (model.scopePaths + mapOf(model.scopePath to model.scopePath)).entries><option :value="choice.key" :selected="choice.key == model.scopePath">{ choice.value }</option></for></select></field>
+                    <field label="Version"><select label="Version" name="scopeVersion" searchable allowCustom><for value in model.scopeVersions><option :value="value">{ if (value == "*") "Any version" else value }</option></for></select></field>
+                    <field label="Actions"><select label="Actions" name="scopeActions" multiple><option value="pull" selected>Pull</option><option value="push">Push</option><option value="admin">Admin</option></select></field>
+                    <form-actions align="start"><button @click="model.selectScopeTarget(form.name, form.description, form.selectedScopes, form.selectedOwner, form.expires, form.scopeType, form.scopePath)">Update target choices</button><button @click="model.addScope(form.name, form.description, form.selectedScopes, form.selectedOwner, form.expires, form.scopeType, form.scopePath, form.scopeVersion, form.scopeActions)">Add scope rule</button></form-actions>
+                  </div>
+                  <if model.feedback.failed><alert tone="error">{ model.feedback.message }</alert></if>
+                </form-body><form-actions bordered class="modal-footer"><button primary @click="model.applyScopes(form.name, form.description, form.selectedScopes, form.selectedOwner, form.expires)">Done</button></form-actions></div>
+              </dialog>
+              <if model.feedback.failed><system-feedback :feedback="model.feedback" :notify="false" /></if>
+            </form-body>
+            <form-actions bordered class="modal-footer"><button data-dialog-close>Cancel</button><button type="submit" primary>{ if (model.id == null) "Create token" else "Save token" }</button></form-actions>
+          </form>
+        </dialog>
+      </if>
+    </page-shell>
+  </island>
+  <style scoped>
+    .token-scope-summary { display:flex; flex-direction:column; gap:8px; }
+    .token-scope-summary h3 { margin:0; font-size:12px; font-weight:600; color:var(--fg-2); }
+    .token-scope-summary p { margin:0; font-size:12px; color:var(--fg-3); }
+    .token-scope-tags { display:flex; flex-wrap:wrap; gap:6px; }
+    .token-details { display:flex; flex-direction:column; gap:14px; max-width:1000px; }
+    .token-detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding:14px 16px; }
+    .token-detail-wide { grid-column:span 2; }
+    .token-detail-label { margin:0 0 3px; color:var(--fg-3); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+    .token-detail-value { margin:0; color:var(--fg-0); font-size:13px; overflow-wrap:anywhere; }
+    .token-tags { display:flex; flex-wrap:wrap; gap:6px; }
+    .scope-registry-section { display:flex; flex-direction:column; gap:14px; padding-top:14px; border-top:1px solid var(--line); }
+    .scope-registry-section h3 { margin:0; color:var(--fg-2); font-size:12px; font-weight:600; }
+    .mono { font-family:var(--font-mono); }
+    @media(max-width:600px) { .token-detail-grid { grid-template-columns:minmax(0,1fr); } .token-detail-wide { grid-column:auto; } }
+  </style>
+  <script client scoped>
+    ctx.on<Event>(ctx.root, "change", event => {
+      if (event.target instanceof HTMLSelectElement && event.target.name === "owner") event.target.form?.requestSubmit();
+    });
+  </script>
+</component>

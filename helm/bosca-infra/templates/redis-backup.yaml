@@ -1,0 +1,61 @@
+{{- if and .Values.redis.enabled .Values.redis.backup.enabled }}
+{{- $backup := .Values.redis.backup }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redis-backup
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+spec:
+  schedule: {{ $backup.schedule | quote }}
+  timeZone: {{ $backup.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          containers:
+            - name: archive
+              image: {{ $backup.image | quote }}
+              command: [/bin/sh, -ec]
+              args:
+                - |
+                  set -eu
+                  export AWS_PAGER=""
+                  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+                  aws --endpoint-url "$S3_ENDPOINT" s3 cp "$SNAPSHOT_URI" "$ARCHIVE_URI/$stamp.rdb" --only-show-errors
+                  cutoff=$(date -u -d "$RETENTION_DAYS days ago" +%Y-%m-%dT%H:%M:%SZ)
+                  # Archive keys are generated timestamps without whitespace.
+                  expired=$(aws --endpoint-url "$S3_ENDPOINT" s3api list-objects-v2 \
+                    --bucket "$BACKUP_BUCKET" --prefix "$ARCHIVE_PREFIX/" \
+                    --query "Contents[?LastModified<\`$cutoff\`].Key" --output text)
+                  for key in $expired; do
+                    [ "$key" = None ] && continue
+                    aws --endpoint-url "$S3_ENDPOINT" s3api delete-object --bucket "$BACKUP_BUCKET" --key "$key" >/dev/null
+                  done
+              env:
+                {{- with .Values.redis.env }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+                - name: S3_ENDPOINT
+                  value: {{ $backup.endpoint | quote }}
+                - name: SNAPSHOT_URI
+                  value: {{ printf "s3://%s/%s" $backup.bucket $backup.snapshotKey | quote }}
+                - name: BACKUP_BUCKET
+                  value: {{ $backup.bucket | quote }}
+                - name: ARCHIVE_PREFIX
+                  value: {{ $backup.archivePrefix | quote }}
+                - name: ARCHIVE_URI
+                  value: {{ printf "s3://%s/%s" $backup.bucket $backup.archivePrefix | quote }}
+                - name: RETENTION_DAYS
+                  value: {{ $backup.retentionDays | quote }}
+              resources:
+                {{- toYaml $backup.resources | nindent 16 }}
+{{- end }}

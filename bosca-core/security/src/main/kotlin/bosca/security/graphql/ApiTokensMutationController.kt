@@ -99,9 +99,10 @@ class ApiTokensMutationController(
         name: String?,
         description: String?,
         scopes: List<String>?,
+        clearScopes: Boolean,
     ): ApiToken {
         val principalId = authentication.requireInteractivePrincipal().id
-        val updated = apiTokenService.editToken(id, name, description, scopes, principalId)
+        val updated = apiTokenService.editToken(id, name, description, scopes, principalId, clearScopes)
         return updated.toApiToken()
     }
 

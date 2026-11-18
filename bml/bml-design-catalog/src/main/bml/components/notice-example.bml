@@ -1,0 +1,9 @@
+<component tag="notice-example">
+  <prop name="id" type="String" required />
+  <script server provides="notice" scope="server-session">bosca.design.catalog.CatalogNotice(id)</script>
+  <island name="notice" :key="id">
+    <button @click="notice.notify" :data-catalog-notify="notice.id">Show notification</button>
+    <toast :id='"notice-" + notice.id' :message='if (notice.sequence > 0) "Example saved." else ""'
+           :sequence="notice.sequence" tone="success" :data-catalog-toast="notice.id" />
+  </island>
+</component>

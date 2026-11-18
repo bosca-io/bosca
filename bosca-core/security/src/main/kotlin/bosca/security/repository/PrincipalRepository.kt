@@ -32,6 +32,20 @@ interface PrincipalRepository {
     @Query("select * from principals where (:includeDeleted or deleted_at is null) order by id limit :limit offset :offset")
     suspend fun getPrincipals(offset: Long, limit: Int, includeDeleted: Boolean): List<Principal>
 
+    /** Filters principal IDs and credential identifiers before applying the requested offset. */
+    @Query("""
+        select p.* from principals p
+        where (:includeDeleted or p.deleted_at is null)
+          and (strpos(lower(p.id::text), lower(:query)) > 0
+            or exists (
+                select 1 from principal_credentials c
+                where c.principal = p.id
+                  and strpos(lower(coalesce(c.attributes->>'identifier', '')), lower(:query)) > 0
+            ))
+        order by p.id limit :limit offset :offset
+    """)
+    suspend fun findPrincipals(query: String, offset: Long, limit: Int, includeDeleted: Boolean): List<Principal>
+
     @Query("select * from principals where id = any (:id)")
     suspend fun getPrincipalsById(id: List<UUID>): List<Principal>
 

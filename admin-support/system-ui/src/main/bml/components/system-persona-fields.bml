@@ -1,0 +1,12 @@
+<component tag="system-persona-fields">
+  <prop name="draft" type="bosca.system.ui.SystemPersonaDraft" required />
+  <prop name="options" type="Map<String, String>" required />
+  <prop name="editing" type="Boolean" default="false" />
+  <form-body :padded="!editing" {...attrs}>
+    <field label="Name"><input name="name" :value="draft.name" required autofocus /></field>
+    <field label="Description"><input name="description" multiline :rows="2" :value="draft.description" /></field>
+    <field label="Subsystems" hint="Select the Studio subsystems this persona grants access to."><select name="subsystemIds" label="Subsystems" multiple searchable><for choice in (options).entries><option :value="choice.key" :selected="choice.key in draft.subsystems">{ choice.value }</option></for></select></field>
+    <slot />
+    <if editing><checkbox name="enabled" label="Enabled" :checked="draft.enabled" /><else><input type="hidden" name="enabled" value="true" /></if>
+  </form-body>
+</component>

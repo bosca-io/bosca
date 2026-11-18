@@ -22,6 +22,7 @@ import kotlin.reflect.KClass
 
 @Serializable
 enum class JobStatus {
+    /** Not yet queued, or awaiting confirmation of initial NATS publication. */
     UNINITIALIZED,
     PENDING,
     RUNNING,

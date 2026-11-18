@@ -1,0 +1,2 @@
+/* Studio's Git subsystem uses a slate accent. */
+.git-document { --accent:#64748b; --shell-accent:#64748b; }

@@ -62,6 +62,10 @@ jobs:
         run: node --test helm/scripts/kit-images.test.mjs
       - name: Test Git gateway routing
         run: python3 helm/tests/test_git_routes.py
+      - name: Test Atlas gateway routing
+        run: python3 helm/tests/test_atlas_routes.py
+      - name: Test controller-managed model serving
+        run: python3 helm/tests/test_tf_serving_provisioning.py
       - name: Package charts
         run: bash helm/scripts/release.sh package --version "${RELEASE_REF#refs/tags/}" --output .helm-release-packages
         env:

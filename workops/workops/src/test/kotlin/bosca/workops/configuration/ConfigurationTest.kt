@@ -29,7 +29,6 @@ import bosca.workops.service.ProgramService
 import bosca.workops.service.ProjectPermissionEvaluator
 import bosca.workops.service.ProjectRepositoryService
 import bosca.workops.service.ProjectService
-import bosca.workops.service.RegistryProducedArtifactVerifier
 import bosca.workops.service.ReleaseNotesService
 import bosca.workops.service.ReleaseService
 import bosca.workops.service.RequirementPermissionEvaluator
@@ -54,9 +53,6 @@ class ConfigurationTest {
     @Test
     fun `provider factories expose the declared adapters and singleton helpers`() {
         assertIs<WorkOpsMigration>(configuration.migration())
-        val artifacts = mockk<ArtifactRepositoryService>()
-        assertIs<RegistryProducedArtifactVerifier>(configuration.producedArtifactVerifier(artifacts))
-        assertIs<RegistryProducedArtifactVerifier>(configuration.requiredArtifactVerifier(artifacts))
         assertIs<WorkflowEvaluator>(configuration.workflowEvaluator())
         val firstSecret = configuration.hmacSecret()
         val secondSecret = configuration.hmacSecret()

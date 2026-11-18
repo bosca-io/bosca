@@ -1,0 +1,7 @@
+<component tag="system-console-payload">
+  <prop name="value" type="String?" :default="null" />
+  <prop name="name" type="String" default="payload" />
+  <prop name="label" type="String" default="Payload" />
+  <script server provides="parsed">bosca.system.ui.systemConsoleJson(value)</script>
+  <if parsed != null><json-editor :name="name" :label="label" :value="parsed ?: kotlinx.serialization.json.JsonNull" readOnly mode="text" /><else><pre class="console-sql">{ value?.takeIf(String::isNotEmpty) ?: "(empty)" }</pre></if>
+</component>

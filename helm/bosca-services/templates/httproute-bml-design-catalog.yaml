@@ -1,0 +1,24 @@
+{{- $catalog := index .Values "bml-design-catalog" -}}
+{{- if and .Values.gateway.enabled $catalog.enabled $catalog.gateway.enabled $catalog.gateway.hostnames }}
+{{- $name := include "bosca-common.fullname" (dict "Chart" (dict "Name" "bml-design-catalog") "Release" .Release "Values" $catalog) }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $name | quote }}
+  labels:
+    app.kubernetes.io/part-of: bosca
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.name | default "bosca-gateway" | quote }}
+      port: 443
+  hostnames:
+    {{- toYaml $catalog.gateway.hostnames | nindent 4 }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ $name | quote }}
+          port: {{ $catalog.service.port | default 9093 }}
+{{- end }}

@@ -51,7 +51,7 @@ import bosca.server.installer.DefaultGitEmailPipelinesInstaller
 import bosca.server.installer.DefaultSocialNotificationPipelinesInstaller
 import bosca.server.installer.DefaultTransactionalEmailPipelinesInstaller
 import bosca.server.installer.DefaultIndexPipelinesInstaller
-import bosca.server.installer.DefaultArtifactSyncPipelinesInstaller
+import bosca.artifacts.installer.DefaultArtifactSyncPipelinesInstaller
 import bosca.lock.DistributedLockFactory
 import bosca.observability.ErrorCapture
 import bosca.analytics.livesessions.LiveSessionsService

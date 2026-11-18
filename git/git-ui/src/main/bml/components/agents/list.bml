@@ -1,22 +1,22 @@
 <component tag="git-agent-list">
   <prop name="page" type="bosca.git.ui.AgentPage" required />
-  <section class="agent-list">
+  <html:section class="agent-list">
     <form method="get" class="filter-bar">
       <div class="status-filter">
-        <ui-select name="status" label="Status" size="sm">
+        <select name="status" label="Status" size="sm">
           <option value="">Status</option>
           <for status in bosca.git.ui.graphql.GitAgentStatus.entries>
             <option :value="status.name" :selected="status.name == page.status">
               { status.name.lowercase().replaceFirstChar(Char::uppercase) }
             </option>
           </for>
-        </ui-select>
+        </select>
       </div>
       <span class="filter-spacer"></span>
       <code class="count-label">{ page.agents.size } agents</code>
     </form>
-    <ui-card :padded="false">
-      <ui-section-heading title="Build Agents" subtitle="Registered runners and orchestrators that execute pipeline jobs" />
+    <card :padded="false">
+      <section-heading title="Build Agents" subtitle="Registered runners and orchestrators that execute pipeline jobs" />
       <div class="glass-table">
         <div class="gt-header agent-columns" aria-hidden="true">
           <span>Agent</span>
@@ -34,7 +34,7 @@
               <li class="gt-row agent-row" :style='"--status-color: " + bosca.git.ui.statusColor(agent.status.name)'>
                 <span class="gt-cell agent-name-cell">
                   <span class="agent-icon">
-                    <ui-icon :name='if (agent.mode.name == "ORCHESTRATOR") "workflow" else "settings"' :size="14" />
+                    <icon :name='if (agent.mode.name == "ORCHESTRATOR") "workflow" else "settings"' :size="14" />
                   </span>
                   <span class="agent-copy">
                     <a class="gt-row-link agent-name" :href='"/ci-agents/" + bosca.git.ui.encode(agent.id)'>{ agent.name }</a>
@@ -59,19 +59,19 @@
                 <span class="gt-cell"><git-status-badge :status="agent.status.name" /></span>
                 <span class="gt-cell gt-muted heartbeat">
                   <if agent.lastHeartbeat != null>
-                    <time :datetime="agent.lastHeartbeat" :title="agent.lastHeartbeat">{ bosca.git.ui.heartbeatAge(agent.lastHeartbeat) }</time>
+                    <html:time :datetime="agent.lastHeartbeat" :title="agent.lastHeartbeat">{ bosca.git.ui.heartbeatAge(agent.lastHeartbeat) }</html:time>
                   <else>
                     never
                   </if>
                 </span>
-                <span class="agent-arrow"><ui-icon name="chevron" :size="12" /></span>
+                <span class="agent-arrow"><icon name="chevron" :size="12" /></span>
               </li>
             </for>
           </ul>
         </if>
       </div>
-    </ui-card>
-  </section>
+    </card>
+  </html:section>
   <style scoped>
     .agent-list {
       display: flex;

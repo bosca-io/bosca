@@ -1,0 +1,17 @@
+<component tag="tooltip">
+  <prop name="content" type="String" required />
+  <prop name="placement" type="String" default="top" />
+  <prop name="delay" type="Int" default="200" />
+  <span class="tooltip-trigger" :data-tooltip-content="content" :data-tooltip-placement="placement" :data-tooltip-delay="delay" {...attrs}>
+    <slot />
+  </span>
+  <style scoped>
+    .tooltip-trigger {
+      display: inline-flex;
+    }
+  </style>
+  <script client scoped>
+    import { attachTooltip } from "@client/helpers/tooltip";
+    attachTooltip(ctx, () => ctx.root.querySelector<HTMLElement>("button, a, [tabindex]") ?? ctx.root);
+  </script>
+</component>

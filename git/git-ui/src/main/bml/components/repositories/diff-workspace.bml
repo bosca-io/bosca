@@ -6,16 +6,16 @@
         <h2>Changed files</h2>
         <span class="file-count">{ entries.count { !it.directory } }</span>
         <span class="sidebar-actions">
-          <ui-tooltip content="Collapse all files">
-            <button class="sidebar-action" type="button" aria-label="Collapse all files" data-diff-collapse-all>
-              <ui-icon name="fold" :size="13" />
-            </button>
-          </ui-tooltip>
-          <ui-tooltip content="Expand all files">
-            <button class="sidebar-action" type="button" aria-label="Expand all files" data-diff-expand-all>
-              <ui-icon name="unfold" :size="13" />
-            </button>
-          </ui-tooltip>
+          <tooltip content="Collapse all files">
+            <html:button class="sidebar-action" type="button" aria-label="Collapse all files" data-diff-collapse-all>
+              <icon name="fold" :size="13" />
+            </html:button>
+          </tooltip>
+          <tooltip content="Expand all files">
+            <html:button class="sidebar-action" type="button" aria-label="Expand all files" data-diff-expand-all>
+              <icon name="unfold" :size="13" />
+            </html:button>
+          </tooltip>
         </span>
       </header>
       <div class="sidebar-tree"><git-diff-tree :entries="entries" /></div>
@@ -30,10 +30,10 @@
       ></div>
     </aside>
     <div class="diff-column"><slot /></div>
-    <button ref="top" class="back-to-top" type="button" aria-label="Back to top" hidden>
-      <ui-icon name="arrow-up" :size="14" />
+    <html:button ref="top" class="back-to-top" type="button" aria-label="Back to top" hidden>
+      <icon name="arrow-up" :size="14" />
       <span>Top</span>
-    </button>
+    </html:button>
   </div>
   <style scoped>
     /* Review workspace: resizable sticky file tree beside the diff column. */

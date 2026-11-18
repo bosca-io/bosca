@@ -1,0 +1,19 @@
+<component tag="deep-tree-example">
+  <prop name="id" type="String" required />
+  <div class="catalog-stack">
+    <div class="catalog-tree-frame">
+      <tree :label='"Thirteen-level files, " + id + " palette"' local :data-deep-tree="id">
+        <for depth in 0..11>
+          <tree-item :path='(0..depth).joinToString("/") { "level-" + (it + 1) }'
+                     :label='"Level " + (depth + 1)' directory expanded :depth="depth" />
+        </for>
+        <tree-item path="level-1/level-2/level-3/level-4/level-5/level-6/level-7/level-8/level-9/level-10/level-11/level-12/example.bml"
+                   label="veryLongComponentIdentifierThatRemainsReadableWithoutSpaces.bml"
+                   href="/components/content#ref-tree-item" :depth="12" selected wrap />
+        <tree-item path="unavailable" label="Unavailable folder" directory disabled />
+        <tree-item path="guide.md" label="Tree guide" href="/foundation" />
+      </tree>
+    </div>
+    <p class="example-note">All thirteen levels are present. Move through the folders with arrow keys, or use Home and End. The selected file remains selected while focus moves.</p>
+  </div>
+</component>

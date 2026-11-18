@@ -1,0 +1,18 @@
+<component tag="bosca-mark">
+  <svg width="22" height="22" viewBox="0 0 512 512" fill="none" aria-label="Bosca" role="img" {...attrs}>
+    <path d="M256 262L491 138L256 21L21 138L256 262Z" class="face-top" />
+    <path d="M491 138L256 262V498L491 372V138Z" class="face-right" />
+    <path d="M21 138L256 262V498L21 372V138Z" class="face-left" />
+  </svg>
+  <style scoped>
+    .face-top {
+      fill: var(--mark-top);
+    }
+    .face-right {
+      fill: var(--mark-right);
+    }
+    .face-left {
+      fill: var(--mark-left);
+    }
+  </style>
+</component>

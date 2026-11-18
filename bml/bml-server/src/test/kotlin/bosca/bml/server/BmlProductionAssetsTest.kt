@@ -28,6 +28,24 @@ class BmlProductionAssetsTest {
     ).associateBy { it.tag }
 
     @Test
+    fun `library globals create a bundle for a static page and ordering changes its cache token`() {
+        fun bundled(styles: List<String>) = object : BmlPageRenderer, bosca.bml.render.BmlBundledPage {
+            override val route = "/"
+            override val assets = bosca.bml.library.BmlApplicationAssets(
+                "app", mapOf("/" to styles), mapOf("/" to listOf("BmlLibraries_Home.js")),
+            ) { null }
+            override suspend fun render(ctx: RenderContext) = Unit
+        }
+        val first = bundled(listOf("/_bml/libraries/base/theme.css", "/_bml/libraries/wrapper/theme.css"))
+        assertEquals("index.page.js", BmlProductionAssets.plan(listOf(first), emptyMap()).pageJsFile["/"])
+        val second = bundled(first.assets.stylesByRoute.getValue("/").reversed())
+        fun token(page: BmlPageRenderer) = bmlDeploymentCacheToken(
+            bosca.bml.project.CompiledProject(name = "assets", version = "1"), listOf(page), emptyList(), null, null, null,
+        )
+        kotlin.test.assertNotEquals(token(first), token(second))
+    }
+
+    @Test
     fun `shared set is the styled intersection of every page's closure`() {
         val plan = BmlProductionAssets.plan(
             listOf(

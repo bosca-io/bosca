@@ -1,5 +1,6 @@
 package bosca.search.model
 
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -7,6 +8,37 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class IndexConfigurationTest {
+
+    @Test
+    fun `exclusions default to empty when reading existing configurations`() {
+        val config = Json.decodeFromString(IndexConfiguration.serializer(), """{"indexName":"default"}""")
+        assertTrue(config.excludeTypes.isEmpty())
+        assertTrue(config.excludeContentTypePrefix.isEmpty())
+        assertFalse(config.excludes(Json.parseToJsonElement("""{"_type":"metadata","type":"episode"}""")))
+    }
+
+    @Test
+    fun `exclusions round trip and match custom types document kinds and content prefixes`() {
+        val config = IndexConfiguration(
+            name = "public",
+            excludeTypes = setOf("episode", "profile"),
+            excludeContentTypePrefix = listOf("image/", "video/"),
+        )
+        assertEquals(config, Json.decodeFromString(IndexConfiguration.serializer(), Json.encodeToString(IndexConfiguration.serializer(), config)))
+        for (document in listOf(
+            """{"type":"episode"}""",
+            """{"_type":"profile"}""",
+            """{"contentType":"image/jpeg"}""",
+            """{"contentType":"video/mp4"}""",
+        )) assertTrue(config.excludes(Json.parseToJsonElement(document)), document)
+        for (document in listOf(
+            """{"type":"Episode","_type":"metadata","contentType":"text/plain"}""",
+            """{"type":"episodes","_type":"collection"}""",
+            """{"type":null,"_type":null,"contentType":null}""",
+            """{"type":{},"contentType":[]}""",
+            "{}", "null",
+        )) assertFalse(config.excludes(Json.parseToJsonElement(document)), document)
+    }
 
     @Test
     fun `IndexConfiguration stores name`() {

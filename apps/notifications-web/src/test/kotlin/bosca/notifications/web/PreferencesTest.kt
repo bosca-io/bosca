@@ -105,11 +105,13 @@ class PreferencesTest {
 
         val html = context.writer.toString()
         assertEquals(2, Regex("""role="switch"""").findAll(html).count(), html)
-        assertTrue("""aria-checked="true"""" in html, html)
-        assertTrue("""aria-checked="false"""" in html, html)
-        assertTrue("""aria-label="Email notifications for Marketing &amp; updates"""" in html, html)
-        assertTrue("""aria-label="Push notifications for Marketing &amp; updates"""" in html, html)
-        assertEquals(2, Regex("""class="switch-thumb"""").findAll(html).count(), html)
+        val inputs = Regex("""<input\b[^>]*>""").findAll(html).map { it.value }.toList()
+        assertEquals(2, inputs.size, html)
+        assertEquals(1, inputs.count { Regex("""\schecked(?:\s|>)""").containsMatchIn(it) }, html)
+        assertTrue("""aria-labelledby="email-channel preference-marketing"""" in html, html)
+        assertTrue("""aria-labelledby="push-channel preference-marketing"""" in html, html)
+        assertTrue("""id="preference-marketing">Marketing &amp; updates</span>""" in html, html)
+        assertTrue(inputs.all { "type=\"checkbox\"" in it && "data-bml-c=\"bml-696f2e626f7363613a626d6c2d64657369676e-switch\"" in it }, html)
         assertFalse(">On</button>" in html, html)
         assertFalse(">Off</button>" in html, html)
     }

@@ -6,7 +6,7 @@
       :label='if (page.owner.id == "all") page.owner.name else page.owner.label'
       compact
     />
-    <ui-icon-button type="submit" icon="refresh" label="Refresh pipelines" />
+    <icon-button type="submit" icon="refresh" label="Refresh pipelines" />
   </form>
   <script client scoped>
     ctx.on(ctx.root, "ownerselected", () =>

@@ -34,13 +34,10 @@ spec:
         - name: {{ .Chart.Name }}
           image: {{ include "bosca-common.boscaImage" (dict "image" (merge (dict "tag" (default .Chart.AppVersion .Values.image.tag)) .Values.image) "global" .Values.global) }}
           imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.image }}
-          args: ["-config=/app/config/application.yaml"]
+          args: ["-XX:MaxRAMPercentage={{ .Values.maxRAMPercentage }}", "-config=/app/config/application.yaml"]
           ports:
             - name: http
               containerPort: 8091
-              protocol: TCP
-            - name: ui
-              containerPort: {{ .Values.ui.port }}
               protocol: TCP
             - name: management
               containerPort: {{ $.Values.managementPort }}
@@ -51,8 +48,6 @@ spec:
                 name: {{ . }}
             {{- end }}
           env:
-            - name: JAVA_OPTS
-              value: "-XX:MaxRAMPercentage=75.0"
             - name: HOST_IP
               valueFrom:
                 fieldRef:
@@ -77,7 +72,7 @@ spec:
                   name: {{ . }}
                   key: {{ $.Values.secrets.database.passwordKey }}
             {{- end }}
-            {{- with .Values.secrets.nats.secretName }}
+            {{- with (and .Values.appConfig.natsEnabled .Values.secrets.nats.secretName) }}
             - name: NATS_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -125,11 +120,10 @@ spec:
           # (no DB/cache/pool access) so a load spike or slow database can't trigger a restart
           # storm. NOTE: /api/v1/live exists only in images rebuilt from this workspace's
           # bosca-core — ship this chart change together with a rebuilt git-server image.
-          # The API binds before the UI. Wait for both listeners before admitting traffic.
           startupProbe:
             httpGet:
               path: /api/v1/ready
-              port: ui
+              port: http
             periodSeconds: 5
             failureThreshold: 60
           livenessProbe:

@@ -15,6 +15,7 @@ import { TokenManager } from './token_manager'
 import { startOAuthRedirect, getExchangeTokenFromUrl, getLinkTokenFromUrl, getLinkMethodsFromUrl } from './oauth'
 import { NetworkError, UnauthenticatedError, type LinkProofMethod } from './errors'
 import * as graphql from './graphql'
+import { registerPasskey, type RegisteredPasskey } from './passkeys'
 
 type EventCallback = (...args: unknown[]) => void
 
@@ -283,6 +284,11 @@ export class BoscaAuth {
       // error, etc.) means the session is effectively dead — fall
       // through to clear local state below.
     }
+    this.clearSession()
+  }
+
+  /** Clears local authentication after the server has already revoked the session; makes no network request. */
+  clearSession(): void {
     this.clearState()
     this.emit('signedOut')
   }
@@ -545,6 +551,11 @@ export class BoscaAuth {
     const groups = await graphql.getCurrentGroups(this.config.apiUrl, token)
     this._groups = groups
     return groups
+  }
+
+  /** Registers a named WebAuthn passkey using the current account session and browser authenticator. */
+  async registerPasskey(name: string, signal?: AbortSignal): Promise<RegisteredPasskey> {
+    return registerPasskey(this.config.apiUrl, () => this.getToken(), name, signal)
   }
 
   // ---------------------------------------------------------------------------

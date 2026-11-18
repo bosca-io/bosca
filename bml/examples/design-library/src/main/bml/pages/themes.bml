@@ -1,0 +1,18 @@
+<page route="/themes">
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Consumer CSS tokens</title>
+    </head>
+    <body>
+      <page-shell>
+        <h1>Consumer CSS tokens</h1>
+        <div class="themes">
+          <div data-token-theme="default"><token-controls id="default" /></div>
+          <div class="token-custom" data-token-theme="custom"><token-controls id="custom" /></div>
+        </div>
+      </page-shell>
+    </body>
+  </html>
+</page>

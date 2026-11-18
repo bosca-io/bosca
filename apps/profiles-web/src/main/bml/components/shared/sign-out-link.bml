@@ -1,0 +1,9 @@
+<component tag="sign-out-link">
+  <prop name="href" type="String" default="/login"/>
+  <prop name="label" type="String" required/>
+  <a :href="href" data-sign-out-before-navigation {...attrs}>{ label }</a>
+  <script client scoped>
+    import { signOutLink } from "@client/helpers/sign-out-link"
+    signOutLink(ctx)
+  </script>
+</component>

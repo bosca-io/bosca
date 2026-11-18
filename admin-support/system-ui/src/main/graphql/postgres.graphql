@@ -1,0 +1,141 @@
+fragment SystemPostgresTableFields on PgTableStats { schemaName tableName seqScan seqTupRead idxScan idxTupFetch
+        nTupIns nTupUpd nTupDel nTupHotUpd nLiveTup nDeadTup
+        lastVacuum lastAutovacuum lastAnalyze lastAutoanalyze
+        vacuumCount autovacuumCount analyzeCount autoanalyzeCount
+        totalSize tableSize indexSize bloatRatio }
+fragment SystemPostgresIndexFields on PgIndexStats { schemaName tableName indexName idxScan idxTupRead idxTupFetch indexSize indexDef }
+
+  query SystemGetPostgresAdminOverview {
+    postgresAdmin {
+      serverVersion
+      uptime
+      databaseStats {
+        databaseName numBackends xactCommit xactRollback
+        blksRead blksHit tupReturned tupFetched
+        tupInserted tupUpdated tupDeleted
+        conflicts tempFiles tempBytes deadlocks
+        cacheHitRatio databaseSize statsReset
+      }
+      activeQueries {
+        pid databaseName userName applicationName clientAddr
+        state query queryStart queryDurationSeconds
+        waitEventType waitEvent backendType
+      }
+      connectionPoolStats {
+        poolName maxConnections activeConnections createdConnections hasAvailableConnections
+      }
+      vacuumProgress {
+        pid databaseName schemaName tableName phase
+        heapBlksTotal heapBlksScanned heapBlksVacuumed numDeadTuples
+      }
+      locks {
+        pid lockType databaseName relationName mode
+        granted query state durationSeconds
+      }
+      replicationSlots {
+        slotName slotType active databaseName confirmedFlushLsn retainedWalBytes
+      }
+      isInRecovery
+      replicationStatus {
+        pid userName applicationName clientAddr state
+        sentLsn writeLsn flushLsn replayLsn
+        replayLagSeconds writeLagSeconds flushLagSeconds
+        syncState syncPriority
+      }
+      pgBouncerInfo {
+        available version
+        pools {
+          database user clActive clWaiting
+          svActive svIdle svUsed svLogin maxwait poolMode
+        }
+        stats {
+          database avgXactCount avgQueryCount
+          avgXactTime avgQueryTime avgWaitTime
+        }
+        databases {
+          name host port database poolSize maxConnections
+          currentConnections poolMode paused disabled
+        }
+      }
+    }
+  }
+
+
+  query SystemGetPostgresTableStats($schemaName: String) {
+    postgresAdmin {
+      tableStats(schemaName: $schemaName) {
+        ...SystemPostgresTableFields
+      }
+    }
+  }
+
+
+  query SystemGetPostgresIndexStats($schemaName: String) {
+    postgresAdmin {
+      indexStats(schemaName: $schemaName) {
+        ...SystemPostgresIndexFields
+      }
+    }
+  }
+
+
+  query SystemGetPostgresUnusedIndexes {
+    postgresAdmin {
+      unusedIndexes {
+        ...SystemPostgresIndexFields
+      }
+    }
+  }
+
+
+  query SystemGetPostgresIndexSuggestions {
+    postgresAdmin {
+      indexSuggestions {
+        schemaName tableName seqScan seqTupRead idxScan tableSize reason
+      }
+    }
+  }
+
+
+  query SystemGetPostgresSlowQueries($limit: Int, $orderBy: String) {
+    postgresAdmin {
+      slowQueries(limit: $limit, orderBy: $orderBy) {
+        query calls totalTimeMs meanTimeMs minTimeMs maxTimeMs stddevTimeMs
+        rows sharedBlksHit sharedBlksRead hitRatio
+      }
+    }
+  }
+
+
+  query SystemGetPostgresBloatedTables($minBloatPercent: Float) {
+    postgresAdmin {
+      bloatedTables(minBloatPercent: $minBloatPercent) {
+        ...SystemPostgresTableFields
+      }
+    }
+  }
+
+
+  query SystemGetPostgresTableIOStats($schemaName: String) {
+    postgresAdmin {
+      tableIOStats(schemaName: $schemaName) {
+        schemaName tableName heapBlksRead heapBlksHit
+        idxBlksRead idxBlksHit toastBlksRead toastBlksHit cacheHitRatio
+      }
+    }
+  }
+
+
+  query SystemGetPostgresSettings($filter: String) {
+    postgresAdmin {
+      settings(filter: $filter) {
+        name setting unit category shortDesc context
+        vartype source minVal maxVal pendingRestart
+      }
+    }
+  }
+
+mutation SystemCancelPgQuery($pid: Int!) { postgresAdmin { cancelQuery(pid: $pid) } }
+mutation SystemTerminatePgBackend($pid: Int!) { postgresAdmin { terminateBackend(pid: $pid) } }
+mutation SystemAnalyzePgTable($schemaName: String!, $tableName: String!) { postgresAdmin { analyzeTable(schemaName: $schemaName, tableName: $tableName) } }
+mutation SystemResetPgStatStatements { postgresAdmin { resetStatStatements } }

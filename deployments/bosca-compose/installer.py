@@ -15,23 +15,18 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent
 MARKER = ".bosca-compose-install.json"
-PACKAGE_FILES = (
-    ".gitignore", "VERSION", "README.md", "install.sh", "installer.py",
-    "package.sh", "package.py", "compose.sh", "compose.yaml",
-    "config/server.yaml", "config/git.yaml", "config/nats.conf",
-    "config/nginx.conf.template", "config/nginx-bootstrap.conf.template",
-    "config/nginx-proxy.conf", "config/certbot-deploy.sh",
-)
+PACKAGE_FILES = tuple((ROOT / "package-files.txt").read_text().splitlines())
 DATA_DIRS = (
-    "postgres", "nats", "meilisearch", "storage", "server-tmp", "git-tmp", "message-cache",
+    "postgres", "nats", "meilisearch", "storage", "server-tmp", "atlas-tmp", "git-tmp", "artifacts-tmp", "message-cache",
 )
-PORTS = {"API_PORT": "8080", "GIT_PORT": "8091", "GIT_UI_PORT": "8093", "STUDIO_PORT": "3000", "BML_PORT": "9093"}
+PORTS = {"API_PORT": "8080", "ATLAS_PORT": "8094", "ATLAS_UI_PORT": "8095", "STUDIO_PORT": "3000", "BML_PORT": "9093", "GIT_PORT": "8091", "ARTIFACTS_PORT": "8084"}
 SECRET_KEYS = (
     "DATABASE_PASSWORD", "JWT_SECRET", "SECURITY_ENCRYPTION_KEY",
     "STORAGE_URL_SIGNER_SECRET_KEY", "NATS_TOKEN", "MEILISEARCH_API_KEY",
     "INIT_ADMIN_PASSWORD", "INIT_SA_PASSWORD",
 )
-PUBLIC_KEYS = {"BOSCA_DOMAIN", "STUDIO_DOMAIN", "GIT_DOMAIN", "CERT_NAME", *PORTS}
+TOPOLOGY_FLAGS = ("SEPARATE_GIT", "SEPARATE_ARTIFACTS", "SEPARATE_UI", "ATLAS_RUNNER_ENABLED")
+PUBLIC_KEYS = {"BOSCA_DOMAIN", "STUDIO_DOMAIN", "GIT_DOMAIN", "ATLAS_DOMAIN", "ARTIFACTS_DOMAIN", "CERT_NAME", *PORTS, *TOPOLOGY_FLAGS}
 
 
 def hostname(value: str) -> str:
@@ -46,16 +41,21 @@ def hostname(value: str) -> str:
 
 
 def validate_settings(settings: dict[str, str]) -> dict[str, str]:
-    result = dict(settings)
-    for key in ("BOSCA_DOMAIN", "STUDIO_DOMAIN", "GIT_DOMAIN"):
+    result = {**{key: "false" for key in TOPOLOGY_FLAGS}, **settings}
+    for key in TOPOLOGY_FLAGS:
+        result[key] = result[key].lower()
+        if result[key] not in ("true", "false"):
+            raise ValueError(f"{key} must be true or false.")
+    for key in ("BOSCA_DOMAIN", "STUDIO_DOMAIN", "GIT_DOMAIN", "ATLAS_DOMAIN", "ARTIFACTS_DOMAIN"):
         result[key] = hostname(result[key])
     domain = result["BOSCA_DOMAIN"]
-    for key in ("STUDIO_DOMAIN", "GIT_DOMAIN"):
+    for key in ("STUDIO_DOMAIN", "GIT_DOMAIN", "ATLAS_DOMAIN", "ARTIFACTS_DOMAIN"):
         host = result[key]
         if host != domain and not host.endswith("." + domain):
-            raise ValueError("Studio and Git must share BOSCA_DOMAIN for authentication cookies.")
-    if result["STUDIO_DOMAIN"] == result["GIT_DOMAIN"]:
-        raise ValueError("Studio and Git need distinct hostnames.")
+            raise ValueError("Application hosts must share BOSCA_DOMAIN for authentication cookies.")
+    hosts = [result[key] for key in ("STUDIO_DOMAIN", "GIT_DOMAIN", "ATLAS_DOMAIN", "ARTIFACTS_DOMAIN")]
+    if len(set(hosts)) != len(hosts):
+        raise ValueError("Studio, Git, Atlas and Artifacts need distinct hostnames.")
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,62}", result["CERT_NAME"]):
         raise ValueError("CERT_NAME must contain only lowercase letters, numbers, hyphens, or underscores.")
     ports = []
@@ -72,7 +72,7 @@ def validate_settings(settings: dict[str, str]) -> dict[str, str]:
 
 def read_public_settings(directory: Path) -> dict[str, str]:
     # Read only public settings. Never source .env as shell code or inspect credential values.
-    settings = dict(PORTS)
+    settings = {**PORTS, **{key: "false" for key in TOPOLOGY_FLAGS}}
     settings["CERT_NAME"] = "bosca"
     for line in (directory / ".env").read_text().splitlines():
         key, separator, value = line.partition("=")
@@ -103,6 +103,11 @@ def write_atomic(path: Path, text: str, mode: int = 0o644) -> None:
 def render_nginx(directory: Path, settings: dict[str, str]) -> None:
     settings = validate_settings(settings)
     rendered = {}
+    settings["GIT_BACKEND_PORT"] = settings["GIT_PORT"] if settings["SEPARATE_GIT"] == "true" else settings["ATLAS_PORT"]
+    settings["REGISTRY_BACKEND_PORT"] = settings["ARTIFACTS_PORT"] if settings["SEPARATE_ARTIFACTS"] == "true" else settings["ATLAS_PORT"]
+    settings["REGISTRY_FILE_LOCATION"] = "" if settings["SEPARATE_ARTIFACTS"] == "true" else """    location ~ ^/(raw|maven|npm|helm|ml)(/|$) {
+        proxy_pass http://bosca_atlas_api/_artifacts$request_uri;
+    }"""
     for name in ("nginx.conf", "nginx-bootstrap.conf"):
         content = (directory / "config" / (name + ".template")).read_text()
         for key, value in settings.items():
@@ -114,17 +119,58 @@ def render_nginx(directory: Path, settings: dict[str, str]) -> None:
         write_atomic(directory / "config" / name, content)
 
 
+def render_compose(directory: Path, settings: dict[str, str]) -> None:
+    """Render only selected services; keep the shared database, storage and credentials in place."""
+    settings = validate_settings(settings)
+    separate_ui = settings["SEPARATE_UI"] == "true"
+    registry = "http://artifacts:8084" if settings["SEPARATE_ARTIFACTS"] == "true" else ""
+    substitutions = {
+        # Preserve the baseline's ten spare slots as optional backend pools are added.
+        "POSTGRES_MAX_CONNECTIONS": str(40 + 10 * sum(settings[key] == "true"
+                                                     for key in ("SEPARATE_GIT", "SEPARATE_ARTIFACTS"))),
+        "ATLAS_UI_PORT_BINDING": "" if separate_ui else '      - "127.0.0.1:${ATLAS_UI_PORT:-8095}:8095"',
+        "ATLAS_HEALTH_PORTS": "8094" if separate_ui else "8094 8095",
+        "ATLAS_UI_ENABLED": "false" if separate_ui else "true",
+        "ATLAS_RUNNER_ENABLED": settings["ATLAS_RUNNER_ENABLED"],
+        "BML_ARTIFACTS_ENDPOINT": registry,
+        "OPTIONAL_SERVICES": "\n".join(
+            (directory / "config" / f"{service}-service.yaml.template").read_text()
+            for flag, service in (("SEPARATE_GIT", "git"), ("SEPARATE_ARTIFACTS", "artifacts"), ("SEPARATE_UI", "atlas-ui"))
+            if settings[flag] == "true"
+        ),
+    }
+    content = (directory / "compose.yaml.template").read_text()
+    # Fragments can contain the same endpoint placeholders as the parent template.
+    content = content.replace("@@OPTIONAL_SERVICES@@", substitutions.pop("OPTIONAL_SERVICES"))
+    for key, value in substitutions.items():
+        content = content.replace("@@" + key + "@@", value)
+    if re.search(r"@@[A-Z_]+@@", content):
+        raise ValueError("Unresolved placeholders in compose.yaml.template")
+    write_atomic(directory / "compose.yaml", content)
+
+
+def render(directory: Path, settings: dict[str, str]) -> None:
+    """Refresh container and ingress definitions from this installation's public settings."""
+    render_compose(directory, settings)
+    render_nginx(directory, settings)
+
+
 def environment(settings: dict[str, str]) -> str:
     public = {
         "COMPOSE_PROJECT_NAME": "bosca",
         **settings,
         "APP_URL": "https://${STUDIO_DOMAIN}",
         "GIT_URL": "https://${GIT_DOMAIN}",
+        "ATLAS_URL": "https://${ATLAS_DOMAIN}",
+        "ARTIFACTS_URL": "https://${ARTIFACTS_DOMAIN}",
         "WS_URL": "wss://${STUDIO_DOMAIN}",
         "JWT_COOKIE_SECURE": "true",
         "BOSCA_IMAGE_REGISTRY": "ghcr.io/bosca-io/bosca",
         "SERVER_VERSION": "6.28.2",
-        "GIT_VERSION": "6.27.7",
+        "ATLAS_VERSION": "",
+        "GIT_VERSION": "",
+        "ARTIFACTS_VERSION": "",
+        "ATLAS_UI_VERSION": "${ATLAS_VERSION}",
         "STUDIO_VERSION": "6.28.4",
         "BML_MESSAGE_VERSION": "6.23.0",
         "BML_MESSAGE_ARTIFACTS_URL": "",
@@ -147,7 +193,7 @@ def install(directory: Path, settings: dict[str, str] | None, source: Path = ROO
         if installed.get("package") != "bosca-compose" or installed.get("version") != version:
             raise ValueError("An existing installation has a different package/version. See the upgrade instructions.")
         if settings and validate_settings(settings) != read_public_settings(directory):
-            raise ValueError("Existing settings differ. Edit .env and use --render-nginx to change hostnames or ports.")
+            raise ValueError("Existing settings differ. Edit .env and use --render to update the deployment.")
         return False
     if directory.exists() and (not directory.is_dir() or any(directory.iterdir())):
         raise ValueError("The installation directory must be empty; existing files will not be overwritten.")
@@ -170,7 +216,7 @@ def install(directory: Path, settings: dict[str, str] | None, source: Path = ROO
         for name in DATA_DIRS:
             (staging / "data" / name).mkdir(parents=True)
         (staging / ".docker").mkdir(mode=0o700)
-        render_nginx(staging, settings)
+        render(staging, settings)
         write_atomic(staging / MARKER, json.dumps({"package": "bosca-compose", "version": version}) + "\n", 0o600)
         staging.chmod(0o755)
         os.replace(staging, directory)
@@ -186,22 +232,30 @@ def main() -> None:
     parser.add_argument("--domain", help="shared cookie domain, for example example.com")
     parser.add_argument("--studio-domain", help="default: studio.<domain>")
     parser.add_argument("--git-domain", help="default: git.<domain>")
+    parser.add_argument("--atlas-domain", help="default: atlas.<domain>")
+    parser.add_argument("--artifacts-domain", help="default: artifacts.<domain>")
     parser.add_argument("--cert-name", help="Certbot certificate name (default: bosca)")
+    parser.add_argument("--render", action="store_true", help="regenerate Compose and nginx from public .env settings")
+    for key in TOPOLOGY_FLAGS:
+        parser.add_argument("--" + key.lower().replace("_", "-"), action="store_true", default=None)
     parser.add_argument("--render-nginx", action="store_true", help="regenerate nginx files from the installation's public .env settings")
     for key, default in PORTS.items():
         parser.add_argument("--" + key.lower().replace("_", "-"), help=f"loopback port (default: {default})")
     args = parser.parse_args()
     directory = args.directory.expanduser().resolve()
     try:
-        custom_settings = any((args.domain, args.studio_domain, args.git_domain, args.cert_name)) or any(
+        custom_settings = any((args.domain, args.studio_domain, args.git_domain, args.atlas_domain, args.artifacts_domain, args.cert_name)) or any(
             getattr(args, key.lower()) is not None for key in PORTS
         )
-        if args.render_nginx:
+        if args.render_nginx or args.render:
             if custom_settings:
-                raise ValueError("--render-nginx reads settings from .env; edit that file first.")
-            render_nginx(directory, read_public_settings(directory))
-            print(f"Rendered nginx files in {directory / 'config'}.")
+                raise ValueError("Rendering reads settings from .env; edit that file first.")
+            if any(getattr(args, key.lower()) is not None for key in TOPOLOGY_FLAGS):
+                raise ValueError("Edit topology settings in .env before rendering.")
+            (render if args.render else render_nginx)(directory, read_public_settings(directory))
+            print(f"Rendered deployment files in {directory}.")
             return
+        custom_settings = custom_settings or any(getattr(args, key.lower()) is not None for key in TOPOLOGY_FLAGS)
         if custom_settings and not args.domain:
             raise ValueError("--domain is required with custom installation settings.")
         settings = None
@@ -211,12 +265,15 @@ def main() -> None:
                 "BOSCA_DOMAIN": domain,
                 "STUDIO_DOMAIN": args.studio_domain or "studio." + domain,
                 "GIT_DOMAIN": args.git_domain or "git." + domain,
+                "ATLAS_DOMAIN": args.atlas_domain or "atlas." + domain,
+                "ARTIFACTS_DOMAIN": args.artifacts_domain or "artifacts." + domain,
                 "CERT_NAME": args.cert_name or "bosca",
                 **{key: getattr(args, key.lower()) or default for key, default in PORTS.items()},
+                **{key: str(bool(getattr(args, key.lower()))).lower() for key in TOPOLOGY_FLAGS},
             }
         created = install(directory, settings)
         print(f"Installed Bosca Compose in {directory}." if created else f"Already installed in {directory}; existing files preserved.")
-        print("Set BML_MESSAGE_ARTIFACTS_URL and BML_MESSAGE_ARTIFACTS_TOKEN in .env, then follow README.md for HTTPS and startup.")
+        print("Set ATLAS_VERSION, BML_MESSAGE_ARTIFACTS_URL and BML_MESSAGE_ARTIFACTS_TOKEN in .env, then follow README.md for HTTPS and startup.")
     except (OSError, ValueError) as error:
         parser.exit(1, f"Installation failed: {error}\n")
 

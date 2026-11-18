@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
 import type { GlassTableColumn, SelectOption , OverflowMenuItem  } from '@bosca/ui'
+import { sortFacetsByTemplateOrder, templateOrderByType } from '~/utils/templateOrder'
 
 const { accent } = useCurrentSubsystem()
 const { useAsyncQuery, query: gqlQuery, mutation: gqlMutation } = useGraphQL()
 const router = useRouter()
 const toast = useToast()
-const showAddGuide = ref(false)
-useCreateFromQuery(() => { showAddGuide.value = true })
+const createMenuOpen = ref(false)
+useCreateFromQuery(() => { createMenuOpen.value = true })
 
 const STATUS: Record<string, [string, string]> = {
   draft: ['Draft', '#6c7388'],
@@ -73,7 +74,35 @@ async function loadFacets() {
   }
 }
 
-onMounted(() => loadFacets())
+// Tabs follow the template order set on Settings → Templates; types with no
+// ordered template follow, most-used first.
+const typeOrder = ref<Map<string, number>>(new Map())
+
+const templateOrderGql = gql`
+  query GetGuideTemplateOrder {
+    content { guideTemplates { all { defaultAttributes metadata { name attributes } } } }
+  }
+`
+
+async function loadTypeOrder() {
+  try {
+    const result = await gqlQuery<{
+      content: { guideTemplates: { all: Array<{ defaultAttributes: Record<string, unknown> | null; metadata: { name: string; attributes: Record<string, unknown> | null } | null }> } }
+    }>(templateOrderGql)
+    typeOrder.value = templateOrderByType(
+      result.content.guideTemplates.all
+        .filter(t => t.metadata != null)
+        .map(t => ({ name: t.metadata!.name, attributes: t.metadata!.attributes, defaultAttributes: t.defaultAttributes })),
+    )
+  } catch (e) {
+    console.error('Failed to load template order', e)
+  }
+}
+
+onMounted(() => {
+  loadFacets()
+  loadTypeOrder()
+})
 
 // ── Tabs from type facets ────────────────────────────────────────────────────
 const activeTab = ref('All')
@@ -84,7 +113,7 @@ function formatTypeName(raw: string): string {
 }
 
 const tabs = computed(() => {
-  const facetTabs = typeFacets.value.map(f => formatTypeName(f.value))
+  const facetTabs = sortFacetsByTemplateOrder(typeFacets.value, typeOrder.value).map(f => formatTypeName(f.value))
   return ['All', ...facetTabs]
 })
 
@@ -324,13 +353,6 @@ function resetFilters() {
   searchQuery.value = ''
   activeTab.value = 'All'
 }
-
-async function onGuideCreated(id: string) {
-  showAddGuide.value = false
-  await refresh()
-  await loadFacets()
-  router.push(`/cms/guides/${id}`)
-}
 </script>
 
 <template>
@@ -354,12 +376,10 @@ async function onGuideCreated(id: string) {
             size="sm"
             icon="globe"
           />
-          <Button
-            primary
-            icon="plus"
-            size="sm"
+          <AddGuideMenu
+            v-model:open="createMenuOpen"
             :accent="accent"
-            @click="showAddGuide = true">New Guide</Button>
+          />
         </template>
       </PageHeader>
     </template>
@@ -457,15 +477,6 @@ async function onGuideCreated(id: string) {
       </SectionCard>
     </div>
   </PageShell>
-
-  <!-- Add guide modal -->
-  <AddGuideModal
-    v-if="showAddGuide"
-    :accent="accent"
-    :language-tag="selectedLanguage"
-    @close="showAddGuide = false"
-    @created="onGuideCreated"
-  />
 
   <!-- Delete confirmation -->
   <ConfirmModal

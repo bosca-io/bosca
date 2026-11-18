@@ -1,0 +1,4 @@
+query SystemFederationPeers { collaboration { federation { peers { id name natsUrl apiUrl createdAt } } } }
+mutation SystemRegisterFederationPeer($input: RegisterFederationPeerInput!) { collaboration { federation { registerPeer(input: $input) { id } } } }
+mutation SystemDeactivateFederationPeer($id: UUID!) { collaboration { federation { deactivatePeer(id: $id) } } }
+mutation SystemSetFederationSecret($id: UUID!, $secret: String) { collaboration { federation { setSharedSecret(id: $id, secret: $secret) } } }

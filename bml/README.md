@@ -7,6 +7,14 @@ server-rendered pages, interactive islands, reusable components, and email or pu
 - [Grammar](docs/grammar.md)
 - [Tag reference](docs/tag-reference.md)
 - [Islands, deferred rendering, and shared caching](docs/islands.md)
+- [Compiled component libraries](docs/libraries.md)
+- [Compiled library providers and host bindings](docs/library-providers.md)
+- [Compiled library localization](docs/library-localization.md)
+- [Compiled library client types](docs/library-client-types.md)
+- [Design library components](bml-design/README.md)
+- [Shared authentication UI](bml-auth-ui/README.md)
+- [Design library catalog](bml-design-catalog/README.md)
+- [Design library consumer example](examples/design-library/README.md)
 - [Examples](docs/examples/README.md)
 - [Performance benchmarks](docs/benchmarks.md)
 
@@ -26,12 +34,83 @@ The IntelliJ plugin is documented in [bml-ide/README.md](bml-ide/README.md).
 The TypeScript browser runtime lives in `bml-runtime/` and uses npm; install its dependencies
 there before running tasks that bundle BML client code.
 
-BML Maven libraries and the `io.bosca.bml` Gradle plugin publish with the workspace tag through
+Reusable components own their client lifecycle. Declare behavior in the component's scoped client
+script so using its tag initializes that instance automatically. Use lifecycle listeners and
+unmount cleanup for events, timers, observers and external widgets, and handle relevant BML updates.
+Consumers configure props, data and domain actions; they should not call a mount function or install
+a page-wide scanner to make a tag work. Application entries retain application-wide startup, such as
+the shared authentication session. Keep component helper modules beneath the client `helpers/`
+directory rather than registering them as global client entries.
+
+The BML Gradle-plugin suite runs independent TestKit classes in two isolated test JVMs and
+logs completed tests. Fixture builds that edit files between invocations disable filesystem
+watching while retaining configuration-cache and up-to-date checks.
+
+The Design Library catalog, consumer and Notifications Web tests launch isolated headless profiles.
+Gradle prepares Chromium through the catalog's pinned private Playwright dependency before these
+tests, so a system Chrome installation is unnecessary. The first run requires network access;
+later runs reuse Playwright's browser cache. Set `BML_DESIGN_CHROME_BINARY` to use an existing
+Chrome executable and bypass browser preparation. BML test failures print their full exception
+messages, including child-process diagnostics, directly in the Gradle log.
+The JVM CI pipeline installs Chromium through the catalog's pinned test dependency and exports
+its executable path for both suites. It does not depend on a system Chrome installation.
+Browser suites, including Notifications Web adoption, run in a dedicated phase before aggregate JVM
+validation. Within the catalog and Design Library consumer suites, independent test methods run in
+a pool sized to Gradle's worker budget while test classes remain serial. Independent suites can run
+in parallel. Each method owns its server, browser profile and cookies; focused checks use distinct
+report names. Set `-Pbml.browser.workers=1` to run methods
+serially, or choose another pool size for the available machine. CI's later JVM phase excludes these
+suites so they run once even when that phase uses a different Gradle worker count.
+Fixture JVMs size their internal pools for one check; Gradle's worker budget controls concurrent
+checks. The pinned Playwright launcher owns each isolated Chromium process tree and profile,
+including forced cleanup when the browser stops responding.
+
+Run the CI browser phase from the workspace root with
+`./gradlew -Pbosca.ios.enabled=false --parallel --max-workers=8 -Pbml.browser.workers=4 testBmlBrowser`.
+This builds and runs the chunk-cache, Notifications Web, Design Library consumer and catalog
+suites using the configured worker budget. Catalog test completions appear
+in the Gradle log. Local choices, feedback and surfaces run in their dedicated JVM
+cases; native catalog qualification retains them in its single browser entry point.
+
+Successful browser tests use Gradle's build cache across clean checkouts: code, resources,
+browser scripts, Node and Chromium versions remain inputs; absolute launch paths and the generated
+deployment identity do not. Browser preparation is up to date while its lockfile, installed
+Playwright and browser executable remain available.
+
+`./gradlew :bml:bml-server:chunkCacheBrowserTest` checks module requests across deployments
+with unchanged and changed JavaScript and a retained browser cache, for both filesystem and packaged assets.
+It covers shared, nested, lazy and compiled-library imports and runs in the CI and release browser
+phase. It uses the same managed browser and `BML_DESIGN_CHROME_BINARY` override described above.
+The browser stays open across deployments and waits for module completion through DevTools.
+Browser logs remain under `bml/bml-server/build/reports/chunk-cache-browser/` for diagnostics.
+
+BML Maven libraries and the `io.bosca.bml` and `io.bosca.bml.host` Gradle plugins publish with the workspace tag through
 the root `publishExceptFirebaseScrypt` task. This includes `bml-server`, which applications embed
 as their host library. The web release pipeline builds, tests, and publishes the `@bosca/bml`
-browser package at the same tag version. Compiled `bosca-messages` projects publish separately
+browser package and `@bosca/bml-auth-ui` at the same tag version. Authentication UI publication
+waits for the web packages (including `@bosca/auth-client-browser`) and stages registry-version
+dependencies in a temporary directory; the source package retains file dependencies for local development.
+The design library's private npm package supplies its compilation dependencies; consumers use the
+published `io.bosca:bml-design` library with its packaged client assets.
+Compiled `bosca-messages` projects publish separately
 to the `bml-message` raw-artifact namespace on workspace tags or manual runs. All three paths
 use the configured Bosca Artifacts registry.
+
+`node --test scripts/release/bml-packages.test.mjs` checks the npm tarballs and authentication
+UI dependency versions without publishing. CI and the npm release pipeline run these checks.
+Maven release tracking includes `io.bosca:bml-auth-ui` alongside the other BML libraries.
+
+Standalone applications must use the same published workspace version for the BML Gradle plugin,
+Maven libraries, `@bosca/bml`, `@bosca/bml-auth-ui`, and `@bosca/auth-client-browser`.
+Configure the Bosca Maven repository in both `pluginManagement.repositories` and
+`dependencyResolutionManagement.repositories`, and configure the `@bosca` npm scope to use the
+Artifacts server's `/npm/` registry with the CI token. Bosca CI's `setup-registry` action writes
+the Maven URL and credentials as `boscaRegistryUrl`, `boscaRegistryUsername`, and
+`boscaRegistryPassword` in Gradle user properties and exports `BOSCA_REGISTRY_URL` and
+`BOSCA_REGISTRY_TOKEN` for npm setup. A standalone consumer should resolve `io.bosca.bml` from
+that repository instead of copying the plugin into `buildSrc`, omit the workspace `includeBuild`,
+and install versioned npm dependencies instead of `file:` paths. Leave `bml.clientBundler` and
+`bml.clientRuntime` unset to use the installed `@bosca/bml` package.
 
 Client bundling resolves Node from `PATH`, then the standard Homebrew locations. For another
 installation, set `bml.nodeExecutable=/absolute/path/to/node` in your Gradle user properties

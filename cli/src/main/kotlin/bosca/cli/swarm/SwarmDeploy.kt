@@ -5,7 +5,7 @@ import java.net.URI
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 
-private fun shell(value: String) = "'" + value.replace("'", "'\\''") + "'"
+internal fun shell(value: String) = "'" + value.replace("'", "'\\''") + "'"
 
 /**
  * Runs [command], feeding it [input]. With [capture], returns standard output only: SSH and sudo write
@@ -56,7 +56,7 @@ internal var remoteShell: RemoteShell = SshRemoteShell
 private fun ssh(target: String, command: String, input: ByteArray? = null, capture: Boolean = false): String =
     remoteShell.run(target, command, input, capture)
 
-private fun script(target: String, body: String, capture: Boolean = false) =
+internal fun script(target: String, body: String, capture: Boolean = false) =
     ssh(target, "bash -se", body.toByteArray(Charsets.UTF_8), capture)
 
 private val dockerBootstrap = """set -euo pipefail
@@ -118,7 +118,7 @@ sudo -n ufw --force enable
 
 internal fun bootstrapNodes(config: SwarmConfig) {
     val manager = config.manager.ssh
-    for ((target, address) in listOf(manager to config.manager.advertiseAddress) + config.workers.map { it.ssh to it.advertiseAddress }) {
+    for ((target, address) in (listOf(manager to config.manager.advertiseAddress) + config.workers.map { it.ssh to it.advertiseAddress }).distinctBy { it.first }) {
         println("Configuring firewall on $target")
         script(target, firewallScript(config, address, target == manager))
         println("Checking Docker Engine on $target")
@@ -129,11 +129,14 @@ internal fun bootstrapNodes(config: SwarmConfig) {
         state.startsWith("inactive") -> script(manager, "sudo -n docker swarm init --advertise-addr ${shell(config.manager.advertiseAddress)}")
         state != "active true" -> error("Manager host is already in an incompatible Swarm state: $state")
     }
-    val workerToken = script(manager, "sudo -n docker swarm join-token -q worker", true)
+    val workerToken = if (config.workers.any { it.ssh != manager }) {
+        script(manager, "sudo -n docker swarm join-token -q worker", true)
+    } else ""
     for (worker in config.workers) {
         // The embeddings and TensorFlow Serving images are published for amd64 only.
         val architecture = script(worker.ssh, "uname -m", true)
         require(architecture == "x86_64") { "${worker.ssh} is $architecture; worker nodes must be x86_64 (amd64)" }
+        if (worker.ssh == manager) continue
         val workerState = script(worker.ssh, "sudo -n docker info --format '{{.Swarm.LocalNodeState}}'", true)
         when (workerState) {
             "inactive" -> {
@@ -157,6 +160,10 @@ internal fun bootstrapNodes(config: SwarmConfig) {
     }
     val nodeId = script(manager, "sudo -n docker info --format '{{.Swarm.NodeID}}'", true)
     script(manager, "sudo -n docker node update --label-add bosca_data=true ${shell(nodeId)}")
+    val applicationNodes = config.workers.map {
+        script(it.ssh, "sudo -n docker info --format '{{.Swarm.NodeID}}'", true)
+    }
+    script(manager, applicationNodeLabelScript(applicationNodes))
     // The model loader and TensorFlow Serving share a local volume, so exactly one worker carries the label.
     val modelNode = script(config.workers.first().ssh, "sudo -n docker info --format '{{.Swarm.NodeID}}'", true)
     script(manager, modelNodeLabelScript(modelNode))
@@ -187,6 +194,11 @@ internal fun verifyBootstrappedNodes(config: SwarmConfig) {
         require(nodeId.isNotBlank() && nodeId in managerNodeIds) {
             "${worker.ssh} is already in a different Swarm"
         }
+        val applicationLabel = script(manager,
+            "sudo -n docker node inspect ${shell(nodeId)} --format '{{index .Spec.Labels \"bosca_application\"}}'", true)
+        require(applicationLabel == "true") {
+            "Swarm worker ${worker.ssh} lacks bosca_application=true; run bosca swarm bootstrap first"
+        }
         if (worker.advertiseAddress.isNotEmpty()) {
             val nodeAddress = script(worker.ssh, "sudo -n docker info --format '{{.Swarm.NodeAddr}}'", true)
             require(nodeAddress == worker.advertiseAddress) {
@@ -201,6 +213,20 @@ internal fun verifyBootstrappedNodes(config: SwarmConfig) {
             }
         }
     }
+}
+
+/** Marks configured application nodes active and removes application placement from other nodes. */
+internal fun applicationNodeLabelScript(nodeIds: List<String>): String {
+    require(nodeIds.isNotEmpty() && nodeIds.all { it.matches(Regex("[A-Za-z0-9_-]+")) }) { "Invalid application node IDs" }
+    return """set -euo pipefail
+for node in ${'$'}(sudo -n docker node ls -q --filter node.label=bosca_application=true); do
+  case "${'$'}node" in
+    ${nodeIds.joinToString("|") { shell(it) }}) ;;
+    *) sudo -n docker node update --label-rm bosca_application "${'$'}node" ;;
+  esac
+done
+${nodeIds.joinToString("\n") { "sudo -n docker node update --availability active --label-add bosca_application=true ${shell(it)}" }}
+"""
 }
 
 /** Labels [modelNode] `bosca_ml=true` and removes the label from every other node. */
@@ -320,12 +346,29 @@ internal fun registryAuths(config: SwarmConfig): List<SwarmRegistryAuth> =
     (listOf(config.registryAuth) + config.sites.mapNotNull(SwarmSite::rootRegistryAuth))
         .filter { it.username.isNotBlank() }
 
-private fun registryLogin(config: SwarmConfig) {
-    for (auth in registryAuths(config)) {
+/** Selects credentials only for registries referenced by the stacks being deployed. */
+@Suppress("UNCHECKED_CAST")
+internal fun deploymentRegistryAuths(config: SwarmConfig): List<SwarmRegistryAuth> {
+    val stacks = listOf(infraStack(config), edgeStack(config)) + config.sites.map { siteStack(config, it) }
+    val registries = stacks.flatMap { stack ->
+        (stack.getValue("services") as Map<String, Map<String, Any>>).values.map {
+            swarmImageRepository(it.getValue("image") as String).substringBefore('/')
+        }
+    }.toSet()
+    return registryAuths(config).filter { auth ->
+        val server = auth.server.removePrefix("https://").removePrefix("http://").trimEnd('/')
+        val registry = if (server == "index.docker.io" || server == "index.docker.io/v1") "docker.io" else server
+        registry in registries
+    }
+}
+
+internal fun registryLogin(config: SwarmConfig) {
+    for (auth in deploymentRegistryAuths(config)) {
         val password = registryPassword(auth)
         require(password.isNotBlank()) {
             "Set a registry password for ${auth.server} in the private config or ${auth.passwordEnv} before deployment"
         }
+        println("Logging into image registry ${auth.server} on ${config.manager.ssh}")
         ssh(config.manager.ssh,
             "sudo -n docker login --username ${shell(auth.username)} --password-stdin ${shell(auth.server)}",
             (password + "\n").toByteArray())
@@ -479,13 +522,18 @@ internal fun readinessFailure(url: String, timeoutMillis: Int = 10_000): String?
 
 internal fun publicReadinessUrls(config: SwarmConfig) = config.sites.flatMap { site ->
     val hosts = site.hosts
-    if (site.rootImage.isBlank()) {
+    val urls = if (site.rootImage.isBlank()) {
         listOf("https://${hosts.root}/api/v1/ready", "https://${hosts.studio}/health",
             "https://${hosts.profiles}/login", "https://${hosts.notifications}/")
     } else {
         listOf("https://${hosts.api}/api/v1/ready", "https://${hosts.studio}/health",
             "https://${hosts.profiles}/login", "https://${hosts.notifications}/",
             "https://${hosts.root}/", "https://${hosts.www}/")
+    }
+    // A static UI login page does not establish that the API schema is ready.
+    urls + buildList {
+        if (site.atlas.servers.ui || site.atlasUiServer.enabled) add("https://${hosts.atlas}/login")
+        if (site.atlas.servers.api) add("https://${hosts.atlas}/api/v1/ready")
     }
 }
 
@@ -509,9 +557,10 @@ private fun checkPublicSites(config: SwarmConfig) {
     }
 }
 
-internal fun deploySwarm(config: SwarmConfig, bundle: Path, skipPublicCheck: Boolean) {
+internal fun deploySwarm(config: SwarmConfig, bundle: Path, skipPublicCheck: Boolean, loginRegistries: Boolean = false) {
     verifyBootstrappedNodes(config)
-    registryLogin(config)
+    val retention = prepareSwarmStorage(config)
+    if (loginRegistries) registryLogin(config)
     uploadBundle(config, bundle)
     script(config.manager.ssh,
         "sudo -n docker network inspect bosca >/dev/null 2>&1 || sudo -n docker network create --driver overlay --attachable bosca")
@@ -520,9 +569,19 @@ internal fun deploySwarm(config: SwarmConfig, bundle: Path, skipPublicCheck: Boo
     waitServices(config, expected = setOf("infra_postgres", "infra_pgbouncer", "infra_dragonfly"))
     bootstrapDatabases(config)
     config.sites.forEach { stackDeploy(config, it.id) }
+    waitServices(config, expected = config.sites.flatMap { site ->
+        buildList {
+            add("${site.id}_atlas")
+            if (site.atlasUiServer.enabled) add("${site.id}_atlas-ui")
+            if (site.gitServer.enabled) add("${site.id}_git")
+            if (site.artifactsServer.enabled) add("${site.id}_artifacts")
+        }
+    }.toSet())
     stackDeploy(config, "edge")
     waitServices(config)
     if (!skipPublicCheck) checkPublicSites(config)
+    retireReplacedAtlasServices(config)
+    finishSwarmStorage(config, retention)
     deploymentNotices(config).forEach { println("Notice: $it") }
     println("Swarm deployment is running. Verify Git, search, analytics, mail, and backups before use.")
 }
@@ -549,5 +608,24 @@ internal fun deploymentNotices(config: SwarmConfig): List<String> = buildList {
         listOf(site.ml.boscaToken, site.ml.artifactsPushToken, site.ml.artifactsPullToken).any(String::isBlank)
     }.forEach { site ->
         add("Recommendation training for ${site.id} needs ml.boscaToken, ml.artifactsPushToken and ml.artifactsPullToken.")
+    }
+}
+
+/** Retires only superseded managed services after the replacement and ingress are healthy. */
+internal fun retireReplacedAtlasServices(config: SwarmConfig) {
+    for (site in config.sites) {
+        val retired = buildList {
+            if (!site.runnerServer.enabled) add("${site.id}_runner")
+            if (!site.gitServer.enabled) add("${site.id}_git")
+            if (!site.artifactsServer.enabled) add("${site.id}_artifacts")
+            if (!site.atlasUiServer.enabled) add("${site.id}_atlas-ui")
+        }
+        for (service in retired) {
+            val existing = script(config.manager.ssh,
+                "sudo -n docker service ls --filter name=${shell(service)} --format '{{.Name}}'", true)
+            if (service in existing.lineSequence()) {
+                script(config.manager.ssh, "sudo -n docker service rm ${shell(service)}")
+            }
+        }
     }
 }

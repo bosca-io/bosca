@@ -17,13 +17,13 @@ object BmlClientAssets {
     fun scriptTag(module: String): String = scriptTag(module, null)
 
     fun scriptTag(module: String, cacheToken: String?): String =
-        """<script type="module" src="${BmlAssetUrls.versioned("$URL_PREFIX$module", cacheToken)}"></script>"""
+        """<script type="module" src="${BmlAssetUrls.module("$URL_PREFIX$module", cacheToken)}"></script>"""
 
     /** Insert the bundle's script tag just before `</body>` (or append if there is no body). */
     fun inject(html: String, module: String): String = inject(html, module, null)
 
     fun inject(html: String, module: String, cacheToken: String?): String =
-        injectUrl(html, "$URL_PREFIX$module", cacheToken)
+        injectUrl(html, BmlAssetUrls.module("$URL_PREFIX$module", cacheToken))
 
     /** Insert a deferred module `<script>` for an arbitrary [srcUrl] (e.g. the global `app.js`) before `</body>`. */
     fun injectUrl(html: String, srcUrl: String): String = injectUrl(html, srcUrl, null)

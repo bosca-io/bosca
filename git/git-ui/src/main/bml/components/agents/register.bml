@@ -5,7 +5,7 @@
   </script>
   <island name="git-agent-register" :key="page.status">
     <div class="agent-actions" :data-next-href="model.nextHref">
-      <ui-dialog
+      <dialog
         title="Register CI agent"
         triggerLabel="Register Agent"
         triggerIcon="plus"
@@ -15,15 +15,15 @@
       >
         <if model.token.isNotBlank()>
           <div class="modal-fields token-result">
-            <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
-            <ui-field
+            <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
+            <field
               label="One-time agent token"
               hint="Copy this token now. It will not be shown again."
             >
-              <input ref="token" readonly :value="model.token" aria-label="One-time agent token" />
-            </ui-field>
+              <html:input ref="token" readonly :value="model.token" aria-label="One-time agent token" />
+            </field>
             <div class="toolbar">
-              <ui-button ref="copy">Copy token</ui-button>
+              <button ref="copy">Copy token</button>
               <span ref="copyStatus" role="status" />
             </div>
             <a class="button-link" :href='"/ci-agents/" + bosca.git.ui.encode(model.agentId)'>
@@ -31,39 +31,39 @@
             </a>
           </div>
           <footer class="modal-footer">
-            <ui-button @click="model.hideToken()">Dismiss token</ui-button>
+            <button @click="model.hideToken()">Dismiss token</button>
           </footer>
         <else>
           <form class="modal-form" @submit="model.register(form.name, form.labels, form.mode, ctx)">
             <div class="modal-fields">
               <if model.failed && model.registering>
-                <ui-alert :tone='if (model.failed) "error" else "success"'>
+                <alert :tone='if (model.failed) "error" else "success"'>
                   { model.message }
-                </ui-alert>
+                </alert>
               </if>
-              <ui-field label="Name">
-                <ui-input name="name" :value="model.name" placeholder="Build runner" required />
-              </ui-field>
-              <ui-field label="Labels" hint="Separate runner labels with commas.">
-                <ui-input name="labels" :value="model.labels" placeholder="linux, arm64" />
-              </ui-field>
-              <ui-field label="Mode">
-                <ui-select name="mode">
+              <field label="Name">
+                <input name="name" :value="model.name" placeholder="Build runner" required />
+              </field>
+              <field label="Labels" hint="Separate runner labels with commas.">
+                <input name="labels" :value="model.labels" placeholder="linux, arm64" />
+              </field>
+              <field label="Mode">
+                <select name="mode">
                   <for mode in bosca.git.ui.graphql.GitAgentMode.entries>
                     <option :value="mode.name" :selected="mode.name == model.mode">
                       { mode.name.lowercase().replaceFirstChar(Char::uppercase) }
                     </option>
                   </for>
-                </ui-select>
-              </ui-field>
+                </select>
+              </field>
             </div>
             <footer class="modal-footer">
-              <ui-button ref="cancel">Cancel</ui-button>
-              <ui-button type="submit" primary>Register agent</ui-button>
+              <button ref="cancel">Cancel</button>
+              <button type="submit" primary>Register agent</button>
             </footer>
           </form>
         </if>
-      </ui-dialog>
+      </dialog>
     </div>
   </island>
   <style scoped>

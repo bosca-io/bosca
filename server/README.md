@@ -6,9 +6,16 @@ Main server assembly and background job runner for the Bosca platform. This is t
 
 | Module | Description |
 |---|---|
+| `atlas-server` | Bosca Atlas Git/CI and artifacts API/transports with optional embedded UI and workers |
+| `atlas-ui` | Shared Atlas landing/authentication routes, browser session setup, and account actions |
+| `atlas-ui-server` | Standalone BML host and HTTP/subscription/download proxies for Atlas |
 | `bosca-server` | Primary server application -- GraphQL API via Bosca Server (Netty), DI wiring, schema registration |
 | `bosca-runner` | Background job runner application -- processes async jobs using shared domain libraries |
 | `messages-pages` | Message page rendering (JTE templates) |
+
+Atlas can run as one process or as separate API, Git transport, UI, and worker processes.
+Atlas and Git own their routes and reuse the neutral BML authentication library. Atlas supplies its
+subsystem catalog when importing Git UI. See [Atlas server](atlas-server/README.md) for the module boundaries.
 
 ## Prerequisites
 
@@ -30,7 +37,12 @@ Native server builds exclude the local Kotlin scripting engine and delegate scri
 the JVM runner. `scripts/release/build-image.sh bosca-server <version>` selects this variant
 automatically. JVM server builds retain local scripting by default.
 
-Server native builds use `-O3` with Oracle GraalVM 25.4.4.1.1. This applies to the
+Native builds use Oracle GraalVM 25.5.5.0.3 (GDS stream `25i5`, JDK
+25.0.5.0.3). Set `JAVA_HOME` and `GRAALVM_HOME` to that installation and use
+`--no-daemon --no-configuration-cache` when switching native toolchains. The
+GraalVM SDK dependency uses the GraalVM version, which differs from the JDK version.
+
+Server native builds use `-O3`. This applies to the
 API server, analytics collector, artifacts server, Git server, Kubernetes controller,
 BML message server, notifications web, and profiles web. Optimization level 3 enables
 GraalVM's advanced profile inference and increases compilation time; runtime gains

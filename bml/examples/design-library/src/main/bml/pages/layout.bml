@@ -1,0 +1,52 @@
+<page route="/layout">
+  <script server>import bosca.design.model.NavigationItem</script>
+  <script server provides="layout" scope="server-session">bosca.design.example.Preferences("layout")</script>
+  <script server provides="navigation" scope="server-session">bosca.design.example.Preferences("navigation")</script>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Layout components</title>
+    </head>
+    <body class="layout-document light">
+      <app-header brand="Bosca" product="Library" href="/layout" class="fixture-header" data-app-header>
+        <island name="navigation">
+          <nav class="fixture-nav" aria-label="Example navigation">
+            <for index in 1..8>
+              <a :href='"/layout?item=" + index' :aria-current='if (index == 8) "page" else null'>Item { index }</a>
+            </for>
+          </nav>
+          <button size="sm" @click="navigation.increment" data-nav-update>Navigation updates { navigation.clicks }</button>
+        </island>
+      </app-header>
+      <page-shell class="fixture-layout-main">
+        <island name="layout">
+          <page-heading title="Layout preview" subtitle="Shared presentation" icon="folder" badge="Preview" badgeTone="purple"
+                        :trail='listOf(NavigationItem("Workspace", "/layout", false), NavigationItem("Components", "", false))'
+                        class="fixture-heading" data-page-heading>
+            <button @click="layout.increment" data-heading-action>Count { layout.clicks }</button>
+          </page-heading>
+          <panel aria-label="Panel content" class="fixture-panel" data-panel>
+            <section-heading title="Layout details" subtitle="Caller-owned actions" class="fixture-section-heading" data-section-heading>
+              <button size="sm" @click="layout.increment" data-section-action>Count { layout.clicks }</button>
+            </section-heading>
+            <section aria-label="Layout section" class="fixture-section" data-section>
+              <p>Content supplied by the consuming application.</p>
+              <details id="layout-details">
+                <disclosure-heading framed class="fixture-disclosure" data-disclosure>
+                  Read more <badge tone="info">Details</badge>
+                </disclosure-heading>
+                <p data-disclosure-body>Native details content.</p>
+              </details>
+            </section>
+          </panel>
+          <page-heading title="Standalone heading" data-empty-trail />
+          <section-heading :title='"A long heading " + "component".repeat(20)' :subtitle='"A long subtitle " + "description".repeat(12)' data-long-section-heading>
+            <button size="sm">First action</button><button size="sm">Second action</button>
+          </section-heading>
+        </island>
+        <html:section data-native-section>Native section</html:section>
+      </page-shell>
+    </body>
+  </html>
+</page>

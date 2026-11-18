@@ -4,6 +4,7 @@ import com.github.benmanes.caffeine.cache.Caffeine
 import java.time.Duration
 import bosca.cache.ServiceCache
 import bosca.cache.serializers.StringKeySerializer
+import bosca.db.connectionOrNull
 import bosca.git.dfs.BoscaDfsRepositoryManager
 import bosca.git.dfs.GitWorkDispatcher
 import bosca.git.installer.GitSearchIndexInstaller
@@ -25,6 +26,8 @@ import bosca.git.model.TreeEntryType
 import bosca.search.model.SearchQuery
 import bosca.search.service.SearchService
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -67,6 +70,7 @@ class RepositoryBrowseServiceImpl(
         .build<HistoryKey, HistoryStats>()
 
     private val tagDates = TagDateCache()
+    private val branchComparisons = BranchComparisonCache()
 
     private val treeCache = ServiceCache<String, List<TreeEntry>>(
         cacheName = "git:tree",
@@ -196,18 +200,18 @@ class RepositoryBrowseServiceImpl(
     }
 
     override suspend fun listBranches(repositoryId: UUID, includeAheadBehind: Boolean): List<BranchInfo> {
+        val context = currentCoroutineContext()
         return withRepository(repositoryId) {
             val refs = it.refDatabase.getRefsByPrefix(Constants.R_HEADS)
             val defaultRef = if (includeAheadBehind) it.refDatabase.findRef(Constants.HEAD) else null
             val defaultId = defaultRef?.objectId
+            val counts = if (defaultId == null) emptyMap() else branchComparisons.counts(
+                repositoryId, it, defaultId, refs.map { ref -> ref.objectId }.toSet(), context::ensureActive,
+            )
 
             refs.map { ref ->
                 val name = ref.name.removePrefix(Constants.R_HEADS)
-                val (ahead, behind) = if (defaultId != null && ref.objectId != defaultId) {
-                    countAheadBehind(it, ref.objectId, defaultId)
-                } else {
-                    0 to 0
-                }
+                val (ahead, behind) = counts[ref.objectId] ?: (0 to 0)
                 BranchInfo(name = name, sha = ref.objectId.name(), ahead = ahead, behind = behind)
             }
         }
@@ -474,9 +478,15 @@ class RepositoryBrowseServiceImpl(
      * synchronous and bridge to storage with `runBlocking`, so they must never run on a request
      * thread or on `Dispatchers.IO`. The block is deliberately not `suspend`: it holds a thread and
      * an open repository, so it must only do blocking JGit work.
+     * Ref callbacks borrow the caller's connection; pack reads retain their independent lifecycle.
      */
-    private suspend fun <T> withRepository(repositoryId: UUID, block: (Repository) -> T): T =
-        withContext(GitWorkDispatcher) { dfsManager.open(repositoryId).use { block(it) } }
+    private suspend fun <T> withRepository(repositoryId: UUID, block: (Repository) -> T): T {
+        val manager = connectionOrNull()
+        return withContext(GitWorkDispatcher) {
+            val repository = if (manager == null) dfsManager.open(repositoryId) else dfsManager.open(repositoryId, manager)
+            repository.use { block(it) }
+        }
+    }
 
     /**
      * Walks the indexed `content` field for the first line that contains [query]
@@ -495,36 +505,6 @@ class RepositoryBrowseServiceImpl(
             }
         }
         return null
-    }
-
-    private fun countAheadBehind(
-        repo: org.eclipse.jgit.lib.Repository,
-        branchId: ObjectId,
-        defaultId: ObjectId
-    ): Pair<Int, Int> {
-        val revWalk = RevWalk(repo)
-        try {
-            val branchCommit = revWalk.parseCommit(branchId)
-            val defaultCommit = revWalk.parseCommit(defaultId)
-
-            revWalk.reset()
-            revWalk.markStart(branchCommit)
-            revWalk.markUninteresting(defaultCommit)
-            var ahead = 0
-            for (c in revWalk) ahead++
-
-            revWalk.reset()
-            revWalk.markStart(defaultCommit)
-            revWalk.markUninteresting(branchCommit)
-            var behind = 0
-            for (c in revWalk) behind++
-
-            return ahead to behind
-        } catch (_: Exception) {
-            return 0 to 0
-        } finally {
-            revWalk.dispose()
-        }
     }
 
     private fun TreeWalk.toEntry(parentPath: String? = null): TreeEntry {

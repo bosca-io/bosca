@@ -3,15 +3,15 @@
     bosca.git.ui.pipelinePage()
   </script>
   <git-layout title="Pipelines">
-    <ui-page>
-      <ui-page-heading
+    <page-shell>
+      <page-heading :trail='listOf(bosca.design.model.NavigationItem("Git", "", false))'
         title="Pipelines"
         :subtitle='page.pipelines.size.toString() + " pipelines"'
       >
         <git-pipeline-owner :page="page" />
-      </ui-page-heading>
+      </page-heading>
       <git-pipeline-catalog :page="page" />
       <git-pipeline-trigger :page="page" />
-    </ui-page>
+    </page-shell>
   </git-layout>
 </page>

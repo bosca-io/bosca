@@ -186,7 +186,7 @@ class MainTest {
     }
 
     @Test
-    fun `minified global client preserves shared browser auth contracts and behavior markers`() {
+    fun `minified global client owns authentication without component initialization`() {
         val javascript = profilesJs(mapOf("PROFILES_WEB_COOKIE_DOMAIN" to "example.com"))
         assertTrue(
             "globalThis.profilesWebConfig = {\"cookieDomain\":\"example.com\"};" in javascript,
@@ -204,17 +204,9 @@ class MainTest {
         assertTrue("authCookiePrefix" in javascript)
         assertTrue("authReady" !in javascript, "auth initialization must not require an asynchronous factory")
         assertTrue("window.auth=" in javascript, "the shared auth client must be published for BML page modules")
-        assertTrue("profiles-toast-container" in javascript, "mutation feedback must use one global toast surface")
-        assertTrue("toast-close" in javascript, "toasts must be dismissible")
-        assertTrue("showModal" in javascript, "adding an attribute must use a modal")
-        assertTrue("data-remove-attribute" in javascript, "removal must be disabled while edits are unsaved")
-        assertTrue("data-open-remove-attribute-dialog" in javascript, "removal must require confirmation")
-        assertTrue("data-visibility-label" in javascript, "the visibility indicator must track selection changes")
-        assertTrue("Save or discard your changes before adding an attribute." in javascript)
-        assertTrue("data-sign-out-before-navigation" in javascript)
-        assertTrue(".destroy()" in javascript, "revoked sessions must clear local tokens before returning to login")
-        assertTrue("Intl.DateTimeFormat" in javascript, "server timestamps must be localized in the browser")
-        assertTrue("recentUserActions" !in javascript, "local identifiers should be mangled in production")
+        for (marker in listOf("profiles-toast-container", "toast-close", "showModal", "data-remove-attribute", "data-visibility-label", "Intl.DateTimeFormat")) {
+            assertFalse(marker in javascript, "$marker must belong to its component, not the application entry")
+        }
         assertTrue("BoscaForm" !in javascript)
         assertTrue("createApp" !in javascript)
     }
@@ -582,6 +574,7 @@ class MainTest {
                 "message" to "Sign in again.",
                 "failed" to true,
                 "id" to 7L,
+                "preserveKey" to "test-notice",
                 "actionHref" to "/login",
                 "actionLabel" to "Sign in again",
                 "actionSignOut" to true,

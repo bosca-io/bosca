@@ -32,3 +32,18 @@ dependencies {
 application {
     mainClass.set("bosca.bml.server.MainKt")
 }
+
+tasks.test {
+    filter { excludeTestsMatching("bosca.bml.server.BmlChunkCacheBrowserTest") }
+}
+
+tasks.register<Test>("chunkCacheBrowserTest") {
+    group = "verification"
+    description = "Verify deployment tokens on all module imports in a real browser with a retained cache."
+    dependsOn(tasks.testClasses)
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching("bosca.bml.server.BmlChunkCacheBrowserTest") }
+}
+
+apply(from = rootProject.file("gradle/bml-test-browser.gradle.kts"))
