@@ -1,0 +1,45 @@
+fragment ManagedPipeline on Pipeline {
+    id key name description acceptedInputType tags version graph triggered api public schedule
+    maxConcurrentRuns maxRunsPerMinute gitRepositoryId gitPath lastSyncError
+    inputSchema outputType outputSchema hasOutput
+}
+query ListManagedPipelines($offset: Int!, $limit: Int!, $search: String) {
+    pipelines { all(offset: $offset, limit: $limit, search: $search) {
+        id key name description acceptedInputType tags version triggered api public schedule
+    } }
+}
+query GetManagedPipeline($id: UUID!) { pipelines { pipeline(id: $id) { ...ManagedPipeline } } }
+query GetManagedPipelineByKey($key: String!) { pipelines { pipelineByKey(key: $key) { ...ManagedPipeline } } }
+fragment PipelineSetting on PipelineNodeSettingSlot {
+    name control label description placeholder default required secret mono language reference
+    options { value label } itemLabel group visibleWhenSetting visibleWhenEquals
+}
+fragment PipelineField on PipelineNodeFieldDescriptor { name type }
+query GetPipelineCatalog {
+    pipelines {
+        types
+        shapes { name fields { name type } }
+        nodeTypes {
+            key label category group subgroup description
+            inputs { name kind typeLabel description type schema required structure { ...PipelineField fields { ...PipelineField fields { ...PipelineField } } } }
+            outputs { name kind error type typeLabel description structure { ...PipelineField fields { ...PipelineField fields { ...PipelineField } } } }
+            settings { ...PipelineSetting fields { ...PipelineSetting fields { ...PipelineSetting } } }
+        }
+    }
+}
+query ValidateManagedPipeline($graph: JSON!) { pipelines { validateGraph(graph: $graph) { valid errors graph } } }
+mutation SaveManagedPipeline($input: PipelineInput!) { pipelines { save(input: $input) { ...ManagedPipeline } } }
+mutation DryRunManagedPipeline($id: UUID!, $eventType: String, $payload: JSON!) {
+    pipelines { dryRun(id: $id, eventType: $eventType, payload: $payload) { outputs actions errors skipped error } }
+}
+mutation RunManagedPipeline($id: UUID!, $payload: JSON!) {
+    pipelines { run(id: $id, payload: $payload) { ok runId status output error } }
+}
+query GetManagedPipelineRun($runId: UUID!) {
+    pipelines { run(runId: $runId) {
+        id pipelineId status eventName input output error createdAt modifiedAt
+        awaitingNodes { nodeId type name runId } completedNodeIds
+        nodes { nodeId status startedAt finishedAt durationMs port error output }
+        steps { nodeId title kind status depth item runId type channelType }
+    } }
+}

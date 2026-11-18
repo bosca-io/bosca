@@ -13,9 +13,11 @@ import bosca.graphql.gen.IKitChatSessionFragment
 import bosca.graphql.gen.IKitChatSessionSummaryFragment
 import bosca.graphql.gen.ListKitChatSessions
 import bosca.graphql.gen.SendKitChatMessage
+import bosca.graphql.gen.CancelKitChatSession
 import java.time.ZonedDateTime
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonElement
 
@@ -78,7 +80,17 @@ class KitApi(
         network.boscaGraphql.execute(DeleteKitChatSession, DeleteKitChatSession.Variables(id))
             .chatSessions.delete
 
-    /** Sends one turn and waits until Kit publishes its final assistant response or stops processing. */
+    /** Requests cancellation of this Kit conversation's active and queued work; true acknowledges intent, not completion. */
+    suspend fun cancelSession(id: Uuid): Boolean {
+        val session = getSession(id) ?: error("Kit session not found: $id")
+        require(session.agentKey == KIT_AGENT_KEY) { "Session $id does not belong to Kit" }
+        return requestCancellation(id)
+    }
+
+    private suspend fun requestCancellation(id: Uuid): Boolean =
+        network.boscaGraphql.execute(CancelKitChatSession, CancelKitChatSession.Variables(id)).chatSessions.cancel
+
+    /** Sends one turn and waits for a final text or harness response, or until the session stops processing. */
     suspend fun ask(
         message: String,
         sessionId: Uuid? = null,
@@ -87,12 +99,15 @@ class KitApi(
     ): KitChatTurn {
         require(message.isNotBlank()) { "Kit message must not be blank" }
         require(timeoutMillis > 0) { "Kit timeout must be positive" }
+        val control = currentCoroutineContext()[KitTurnControl]
+        control?.checkBeforeSubmission()
 
         val initial = sessionId?.let { id ->
             getSession(id) ?: error("Kit session not found: $id")
         } ?: createSession(title?.takeIf(String::isNotBlank) ?: defaultTitle(message))
         require(initial.agentKey == KIT_AGENT_KEY) { "Session ${initial.id} belongs to agent '${initial.agentKey}', not Kit" }
         check(!initial.processing) { "Kit session ${initial.id} is already processing another message" }
+        control?.checkBeforeSubmission()
 
         val accepted = network.boscaGraphql.execute(
             SendKitChatMessage,
@@ -109,12 +124,17 @@ class KitApi(
         val existingIds = initial.messages.mapTo(HashSet()) { it.id }
         val completed = withTimeoutOrNull(timeoutMillis) {
             var current = getSession(initial.id) ?: error("Kit session disappeared: ${initial.id}")
-            while (current.processing && !current.hasNewAssistantMessage(existingIds)) {
+            var cancellationSent = false
+            while (current.processing && !current.hasCompletedResponse(existingIds)) {
+                if (control?.cancellationRequested == true && !cancellationSent) {
+                    check(requestCancellation(initial.id)) { "Bosca did not accept cancellation for Kit session ${initial.id}" }
+                    cancellationSent = true
+                }
                 delay(pollIntervalMillis)
                 current = getSession(initial.id) ?: error("Kit session disappeared: ${initial.id}")
             }
             current
-        } ?: error("Timed out waiting for Kit after ${timeoutMillis / 1_000} seconds")
+        } ?: error("Timed out waiting for Kit after ${timeoutMillis / 1_000} seconds; its outcome is unconfirmed and work may still be running")
 
         return KitChatTurn(completed, completed.messages.filterNot { it.id in existingIds })
     }
@@ -133,8 +153,12 @@ class KitApi(
     private fun defaultTitle(message: String): String =
         message.lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.take(80) ?: "Kit conversation"
 
-    private fun KitChatSession.hasNewAssistantMessage(existingIds: Set<Uuid>): Boolean =
-        messages.any { it.id !in existingIds && it.isAssistantMessage() }
+    private fun KitChatSession.hasCompletedResponse(existingIds: Set<Uuid>): Boolean {
+        val fresh = messages.filterNot { it.id in existingIds }
+        val turns = fresh.harnessTurns()
+        return if (turns.isNotEmpty()) turns.all { it.status in setOf("COMPLETED", "CANCELLED", "FAILED", "INTERRUPTED") }
+        else fresh.any { it.isAssistantMessage() }
+    }
 
     private fun IKitChatSessionSummaryFragment.toSession() = KitChatSession(
         id = id,

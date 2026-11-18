@@ -245,7 +245,7 @@ class AnalyticsQueryExecuteCommand : AnalyticsSubcommand(name = "execute") {
             echo(
                 analyticsJson.encodeToString(
                     JsonElement.serializer(),
-                    recordsJson(result.records, result.cached, result.refreshedAt?.toString(), limit),
+                    recordsJson(result.records, result.cached, result.refreshedAt?.toString(), limit, result.stale, result.evidence),
                 ),
             )
         } else {

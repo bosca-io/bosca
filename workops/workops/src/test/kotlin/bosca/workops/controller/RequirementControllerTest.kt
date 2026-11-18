@@ -82,6 +82,31 @@ class RequirementControllerTest {
     )
 
     @Test
+    fun `requirement metadata requires both requirement and content visibility`() = runTest {
+        val requirement = sampleRequirement()
+        val authentication = authenticated()
+        val item = bosca.content.metadata.model.EmptyMetadata.copy(id = requirement.metadataId)
+        val metadata = mockk<bosca.content.metadata.service.MetadataService>()
+        val contentPermissions = mockk<bosca.content.security.MetadataPermissionEvaluator>()
+        val controller = RequirementTypeFieldController(statusService, priorityService, requirementService, taskService,
+            taskPermissions, profileService, profilePermissions, metadata, contentPermissions, permissionEvaluator)
+        coEvery { permissionEvaluator.isAllowed(authentication, requirement, PermissionAction.VIEW) } returns false
+        assertNull(controller.metadata(authentication, requirement))
+        coVerify(exactly = 0) { metadata.getById(any()) }
+        coEvery { permissionEvaluator.isAllowed(authentication, requirement, PermissionAction.VIEW) } returns true
+        coEvery { metadata.getById(requirement.metadataId) } returns item
+        coEvery { contentPermissions.isAllowed(authentication, item, PermissionAction.VIEW) } returns false
+        assertNull(controller.metadata(authentication, requirement))
+        coEvery { contentPermissions.isAllowed(authentication, item, PermissionAction.VIEW) } returns true
+        assertSame(item, controller.metadata(authentication, requirement))
+        coEvery { metadata.getById(requirement.metadataId) } returns item.copy(deleted = true)
+        assertNull(controller.metadata(authentication, requirement))
+        coEvery { metadata.getById(requirement.metadataId) } returns null
+        assertNull(controller.metadata(authentication, requirement))
+        assertNull(controller.metadata(authentication, requirement.copy(deletedAt = bosca.serialization.OffsetDateTime.now())))
+    }
+
+    @Test
     fun `requirement fields resolve workflow values relations and history`() = runTest {
         val task = sampleTask()
         val requirement = sampleRequirement(taskId = task.id, assigneeProfileId = profileId)
@@ -117,6 +142,7 @@ class RequirementControllerTest {
             taskPermissions,
             profileService,
             profilePermissions,
+            mockk(), mockk(), mockk(),
         )
         assertEquals(requirement.id, controller.id(requirement))
         assertEquals(requirement.key, controller.key(requirement))
@@ -152,6 +178,7 @@ class RequirementControllerTest {
             taskPermissions,
             profileService,
             profilePermissions,
+            mockk(), mockk(), mockk(),
         )
         val unlinked = sampleRequirement()
         assertNull(controller.task(authentication, unlinked))

@@ -5,8 +5,7 @@ import bosca.graphql.client.GraphQLResponse
 import bosca.graphql.client.GraphQLUpload
 import bosca.graphql.client.GraphQLUploadClient
 import bosca.graphql.client.buildMultipartForm
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -17,7 +16,13 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okhttp3.Call
+import okhttp3.Callback
+import okio.BufferedSink
+import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * The CLI's transport for the Bosca-native typed GraphQL client. Rides the CLI's existing OkHttp stack
@@ -29,6 +34,8 @@ import kotlin.coroutines.cancellation.CancellationException
  * server `401` for a still-locally-valid token it force-refreshes the session once via [onUnauthorized] and
  * retries with the new token. If no refresh is possible (a static `--token`, or an already-revoked refresh
  * token) the original `401` is surfaced as a [BoscaHttpException]. The same retry covers uploads.
+ * Each POST body is sent once per call. HTTP recovery, retry responses and redirects cannot
+ * automatically repeat it; the explicit 401 refresh path creates a new call after rejection.
  * Subscriptions are not handled here — see [BoscaWebSocketClient].
  */
 class BoscaGraphQLClient(
@@ -99,13 +106,34 @@ class BoscaGraphQLClient(
         return post(body, refreshed)
     }
 
-    private suspend fun post(body: RequestBody, bearer: String?): Response = withContext(Dispatchers.IO) {
+    private suspend fun post(body: RequestBody, bearer: String?): Response = suspendCancellableCoroutine { continuation ->
         val builder = Request.Builder()
             .url(url)
-            .post(body)
+            .post(object : RequestBody() {
+                override fun contentType() = body.contentType()
+                override fun contentLength() = body.contentLength()
+                override fun writeTo(sink: BufferedSink) = body.writeTo(sink)
+                override fun isOneShot() = true
+            })
             .header("Accept", "application/json")
         if (bearer != null) builder.header("Authorization", "Bearer $bearer")
-        http.newCall(builder.build()).execute()
+        val call = http.newCall(builder.build())
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, failure: IOException) { continuation.resumeWithException(failure) }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    // Buffer the complete GraphQL response while cancellation still owns the call.
+                    // Resuming at headers alone would leave a stalled body outside that lifetime.
+                    response.body.source().request(Long.MAX_VALUE)
+                    continuation.resume(response) { _, cancelledResponse, _ -> cancelledResponse.close() }
+                } catch (failure: IOException) {
+                    response.close()
+                    continuation.resumeWithException(failure)
+                }
+            }
+        })
     }
 
     private companion object {

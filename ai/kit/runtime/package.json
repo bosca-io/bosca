@@ -1,0 +1,12 @@
+{
+  "name": "kit-codex-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@agentclientprotocol/codex-acp": "2.2.2",
+    "@openai/codex": "0.160.1"
+  },
+  "overrides": {
+    "@openai/codex": "0.160.1"
+  }
+}

@@ -1,5 +1,7 @@
 package bosca.cli.api
 
+import bosca.ai.kit.harness.KitHarnessTurnEvent
+import bosca.graphql.client.GraphQLJson
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -20,17 +22,45 @@ data class KitResponse(
     val text: String,
     val displayEvents: List<JsonObject>,
     val images: List<KitImageReference>,
-)
+    val harnessTurns: List<KitHarnessTurnEvent>,
+    val status: String,
+) {
+    private val unconfirmed: Boolean get() = harnessTurns.any { it.status !in setOf("COMPLETED", "CANCELLED", "FAILED", "INTERRUPTED") }
+    val failed: Boolean get() = status in setOf("FAILED", "INTERRUPTED") || unconfirmed
+    val cancelled: Boolean get() = status == "CANCELLED"
+    val empty: Boolean get() = text.isBlank() && displayEvents.isEmpty() && images.isEmpty() &&
+        harnessTurns.all { it.content.isEmpty() && it.tools.isEmpty() }
+
+    val outcomeText: String? get() = when (status) {
+        "CANCELLED" -> "Kit's turn was cancelled."
+        "INTERRUPTED" -> "Kit's turn was interrupted; the outcome could not be confirmed."
+        "FAILED" -> "Kit failed to complete the request."
+        else -> if (unconfirmed) "Kit has not published a terminal outcome; its work may still be running." else null
+    }
+}
 
 fun KitChatTurn.responseContent(): KitResponse {
     val assistantMessages = messages.filter(KitChatMessage::isAssistantMessage)
+    val turns = messages.harnessTurns()
+    val text = assistantMessages.mapNotNull(KitChatMessage::textContent).joinToString("\n").trim()
     return KitResponse(
-        text = assistantMessages.mapNotNull(KitChatMessage::textContent).joinToString("\n").trim(),
+        text = text.ifBlank { turns.joinToString("\n") { it.text }.trim() },
         displayEvents = messages.mapNotNull { message -> message.event.displayEventOrNull() },
         images = assistantMessages.flatMap(KitChatMessage::imageReferences)
             .distinctBy(KitImageReference::metadataId),
+        harnessTurns = turns,
+        status = turns.lastOrNull()?.status ?: session.status.name,
     )
 }
+
+internal fun List<KitChatMessage>.harnessTurns(): List<KitHarnessTurnEvent> =
+    mapNotNull { it.event.harnessTurnOrNull() }.groupBy { it.turnId }.values.map { updates ->
+        updates.maxWith(compareBy(KitHarnessTurnEvent::generation, KitHarnessTurnEvent::epoch, KitHarnessTurnEvent::revision))
+    }
+
+internal fun JsonElement?.harnessTurnOrNull(): KitHarnessTurnEvent? =
+    (this as? JsonObject)?.takeIf { (it["type"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull == "harness-turn" }
+        ?.let { GraphQLJson.decodeFromJsonElement(KitHarnessTurnEvent.serializer(), it) }
 
 fun KitChatMessage.isAssistantMessage(): Boolean {
     if (author.equals("assistant", ignoreCase = true)) return true

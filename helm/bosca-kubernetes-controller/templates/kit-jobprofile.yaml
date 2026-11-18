@@ -1,0 +1,78 @@
+{{- $kit := dig "kit" dict (.Values.global | default dict) -}}
+{{- if $kit.enabled -}}
+{{- $profile := include "bosca-common.kitProfile" . | fromYaml -}}
+{{- $runtime := include "bosca-common.kitRuntime" . | fromYaml -}}
+{{- $family := $kit.harness | default "codex" -}}
+apiVersion: kubernetes.bosca.io/v1alpha1
+kind: JobProfile
+metadata:
+  name: {{ $profile.profile }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+spec:
+  maxParallelism: {{ $kit.maxRuntimes | default 10 }}
+  workerContainerName: worker
+  job:
+    backoffLimit: 0
+    activeDeadlineSeconds: {{ $profile.hardRuntimeSeconds | default 86400 }}
+    startupFailureGraceSeconds: 120
+    ttlSecondsAfterFinished: 0
+  podTemplate:
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        {{- toYaml (mergeOverwrite (dict "kubernetes.io/os" ($runtime.os | default "linux") "kubernetes.io/arch" ($runtime.architecture | default "amd64")) ($kit.nodeSelector | default dict)) | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ $profile.image | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml ($kit.resources | default (dict "requests" (dict "cpu" "1" "memory" "1Gi" "ephemeral-storage" "2Gi") "limits" (dict "cpu" "2" "memory" "2Gi" "ephemeral-storage" "32Gi"))) | nindent 12 }}
+          env:
+            - name: {{ ternary "OPENAI_API_KEY" "ANTHROPIC_API_KEY" (eq $family "codex") }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ dig "providerSecret" "name" (ternary "openai-token" "anthropic-token" (eq $family "codex")) $kit }}
+                  key: {{ dig "providerSecret" "key" "token" $kit }}
+          ports:
+            - name: runtime
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: runtime
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: runtime
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: state
+              mountPath: /state
+      volumes:
+        - name: workspace
+          emptyDir:
+            sizeLimit: {{ $kit.workspaceSize | default "8Gi" }}
+        - name: state
+          emptyDir:
+            sizeLimit: {{ $kit.stateSize | default "24Gi" }}
+{{- end }}

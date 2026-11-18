@@ -18,6 +18,9 @@ interface ScriptExecutionService : Service {
 
     val isRemoteEnvironment: Boolean
 
+    /** Validates unsaved source, optionally compiling without execution; infrastructure failures propagate. */
+    suspend fun validate(source: String, compile: Boolean): bosca.scripting.model.ScriptValidationResult
+
     /**
      * Compiles and executes a script, returning the result deserialized to the expected type.
      *

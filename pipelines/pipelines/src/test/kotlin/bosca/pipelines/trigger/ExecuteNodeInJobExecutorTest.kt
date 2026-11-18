@@ -64,7 +64,7 @@ class ExecuteNodeInJobExecutorTest {
     private val securityService = mockk<SecurityService>()
     private val config = mockk<PipelinesRuntimeConfiguration> { every { serviceAccount } returns "sa" }
 
-    private val executor = ExecuteNodeInJobExecutor(runService, pipelineService, resultStore, securityService, config)
+    private val executor = ExecuteNodeInJobExecutor(runService, pipelineService, resultStore)
 
     /** A node that echoes its inbound value and routes its output on a named port — enough to prove the round-trip. */
     private class EchoNode(override val id: String, private val fail: Boolean = false) : ActionNode() {
@@ -100,6 +100,7 @@ class ExecuteNodeInJobExecutorTest {
         coEvery { securityService.getPrincipalGroups(any<UUID>()) } returns emptyList()
         coEvery { runService.get(runId) } returns PipelineRun(pipelineId = UUID.random(), graphSnapshot = JsonObject(emptyMap()))
         coEvery { runService.recordNodeAttemptFailure(any(), any(), any()) } returns Unit
+        coEvery { runService.authentication(any()) } returns bosca.security.service.AuthenticationContext(null, null)
     }
 
     @AfterTest
@@ -173,19 +174,34 @@ class ExecuteNodeInJobExecutorTest {
     }
 
     @Test
-    fun `runs the backing work under the run's captured principal, not the service account`() = runTest {
-        // An on-demand run carries its caller's principal; the backing work must impersonate that
-        // principal so the caller's security context traverses the run, rather than the service account.
-        val principalId = UUID.random()
-        coEvery { runService.get(runId) } returns
-            PipelineRun(pipelineId = UUID.random(), graphSnapshot = JsonObject(emptyMap()), principalId = principalId)
-        coEvery { securityService.getPrincipalById(principalId) } returns Principal(id = principalId)
-        coEvery { pipelineService.decodeGraph(any()) } returns PipelineGraph(nodes = listOf(EchoNode("n")))
-
+    fun `backing work uses the revalidated run authority`() = runTest {
+        val authentication = bosca.security.service.AuthenticationContext(null, null)
+        coEvery { runService.authentication(any()) } returns authentication
+        val node = mockk<ActionNode>()
+        every { node.id } returns "n"
+        coEvery { node.run(match { it.authentication === authentication }, any()) } returns NodeResult.Output(null)
+        coEvery { pipelineService.decodeGraph(any()) } returns PipelineGraph(nodes = listOf(node))
         runExecutor(emptyMap())
+        coVerify(exactly = 1) { runService.authentication(any()) }
+        coVerify(exactly = 1) { node.run(match { it.authentication === authentication }, any()) }
+    }
 
-        coVerify(exactly = 1) { securityService.getPrincipalById(principalId) }
-        coVerify(exactly = 0) { securityService.getPrincipalByIdentifier(any()) }
+    @Test
+    fun `revoked authority fails the attempt and terminal runs skip backing work`() = runTest {
+        val node = mockk<ActionNode>()
+        every { node.id } returns "n"
+        coEvery { pipelineService.decodeGraph(any()) } returns PipelineGraph(nodes = listOf(node))
+        coEvery { runService.authentication(any()) } throws IllegalStateException("revoked")
+        assertFailsWith<IllegalStateException> { runExecutor(emptyMap()) }
+        coVerify(exactly = 1) { runService.recordNodeAttemptFailure(runId, "n", "revoked") }
+        coEvery { runService.get(runId) } returns PipelineRun(
+            pipelineId = UUID.random(), graphSnapshot = JsonObject(emptyMap()),
+            status = bosca.pipelines.model.PipelineRunStatus.CANCELLED,
+        )
+        runExecutor(emptyMap())
+        coVerify(exactly = 1) { runService.authentication(any()) }
+        coVerify(exactly = 0) { node.run(any(), any()) }
+        coVerify(exactly = 0) { resultStore.put(any(), any(), any(), any()) }
     }
 
     private suspend fun runExecutor(inputs: Map<String, JsonElement>) {

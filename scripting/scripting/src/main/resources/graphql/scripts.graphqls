@@ -26,14 +26,21 @@ type Script {
 }
 
 type Scripts {
-    all(type: ScriptType, includeDeleted: Boolean): [Script!]!
+    all(type: ScriptType, includeDeleted: Boolean, offset: Int, limit: Int): [Script!]!
     script(id: UUID!): Script
     scriptByKey(key: String!): Script
 }
 
+type ScriptValidationResult {
+    valid: Boolean!
+    compiled: Boolean!
+    errors: [String!]!
+}
+
 type ScriptsMutation {
+    validateScript(source: String!, compile: Boolean = false, id: UUID): ScriptValidationResult!
     addScript(script: ScriptInput!, sourceRef: SourceRefInput): Script!
-    editScript(id: UUID!, script: ScriptInput!, sourceRef: SourceRefInput): Script!
+    editScript(id: UUID!, script: ScriptInput!, sourceRef: SourceRefInput, expectedVersion: Int): Script!
     deleteScript(id: UUID!): Boolean!
     enableScript(id: UUID!): Boolean!
     disableScript(id: UUID!): Boolean!

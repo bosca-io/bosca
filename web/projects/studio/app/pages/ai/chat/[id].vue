@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
+import KitGraphQLResult from '~/components/ai/KitGraphQLResult.vue'
+import { decodeChatEvent, harnessEvent, newerHarnessEvent } from '~/utils/kitHarness'
+import type { HarnessApproval, HarnessEvent, HarnessState, HarnessSettings, HarnessContext, HarnessSourceSelection } from '~/utils/kitHarness'
 
 definePageMeta({
   // Cross-fade with the Kit landing page so arriving with a handed-off message
@@ -24,6 +27,12 @@ const sessionGql = gql`
         title
         processing
         status
+        harnessState { state cancellationRequested failure }
+        harnessApprovals
+        attachments
+        collectionAttachments
+        harnessContext { sources { kind id title ref path selected } integrations notices selectionCount }
+        harnessSettings { policyVersion effectiveProfile source canOverride choices requestedProfile notice mcpOptions { key name required } mcpServers requestedMcpServers mcpNotices capabilityVersion model reasoning modelSource reasoningSource requestedModel requestedReasoning models { value name } reasoningOptions { value name } }
         created
         modified
         messages { id sessionId author created event }
@@ -35,6 +44,111 @@ const sessionGql = gql`
 const sendGql = gql`
   mutation SendMessage($id: UUID!, $message: ChatMessageInput!) {
     chatSessions { send(sessionId: $id, message: $message) }
+  }
+`
+
+const cancelGql = gql`
+  mutation CancelKitWork($id: UUID!) { chatSessions { cancel(sessionId: $id) } }
+`
+const settingsGql = gql`
+  mutation SetKitHarnessSettings($id: UUID!, $choice: KitHarnessChoice) {
+    chatSessions { setHarnessSettings(sessionId: $id, choice: $choice) }
+  }
+`
+const contentPickerOpen = ref(false)
+const collectionPickerOpen = ref(false)
+const domainPicker = ref<'workops' | 'git' | null>(null)
+const savingContext = ref(false)
+const addContextContentGql = gql`
+  mutation AddKitContextContent($id: UUID!, $source: UUID!) {
+    chatSessions { addAttachment(id: $id, metadataId: $source) { id } }
+  }
+`
+const addContextCollectionGql = gql`
+  mutation AddKitContextCollection($id: UUID!, $source: UUID!) {
+    chatSessions { addCollectionAttachment(id: $id, collectionId: $source) { id } }
+  }
+`
+const removeContextContentGql = gql`
+  mutation RemoveKitContextContent($id: UUID!, $source: UUID!) {
+    chatSessions { removeAttachment(id: $id, metadataId: $source) { id } }
+  }
+`
+const removeContextCollectionGql = gql`
+  mutation RemoveKitContextCollection($id: UUID!, $source: UUID!) {
+    chatSessions { removeCollectionAttachment(id: $id, collectionId: $source) { id } }
+  }
+`
+const addHarnessSourceGql = gql`
+  mutation AddKitHarnessSource($id: UUID!, $source: KitContextSelection!) {
+    chatSessions { addHarnessSource(sessionId: $id, source: $source) }
+  }
+`
+const removeHarnessSourceGql = gql`
+  mutation RemoveKitHarnessSource($id: UUID!, $source: KitContextSelection!) {
+    chatSessions { removeHarnessSource(sessionId: $id, source: $source) }
+  }
+`
+const clearHarnessSourcesGql = gql`
+  mutation ClearKitHarnessSources($id: UUID!) { chatSessions { clearHarnessSources(sessionId: $id) } }
+`
+async function clearDomainContext() {
+  if (savingContext.value) return
+  savingContext.value = true
+  try { await gqlMutation(clearHarnessSourcesGql, { id: sessionId.value }); await refresh() }
+  catch { toast.error('Context selections could not be cleared.') }
+  finally { savingContext.value = false }
+}
+async function changeContext(kind: string, source: string, remove = false, ref?: string | null, path?: string | null) {
+  if (savingContext.value) return
+  savingContext.value = true
+  try {
+    const domain = ['task', 'spec', 'requirement', 'git_file'].includes(kind)
+    const operation = domain ? (remove ? removeHarnessSourceGql : addHarnessSourceGql) : kind === 'collection'
+      ? (remove ? removeContextCollectionGql : addContextCollectionGql)
+      : (remove ? removeContextContentGql : addContextContentGql)
+    await gqlMutation(operation, { id: sessionId.value, source: domain ? { kind: kind.toUpperCase(), id: source, ref, path } : source })
+    contentPickerOpen.value = false
+    collectionPickerOpen.value = false
+    domainPicker.value = null
+    await refresh()
+  } catch { toast.error('Context selection could not be saved.') }
+  finally { savingContext.value = false }
+}
+function addDomainSource(source: HarnessSourceSelection) {
+  return changeContext(source.kind.toLowerCase(), source.id, false, source.ref, source.path)
+}
+const savingSettings = ref(false)
+async function setHarnessSettings(profile: string | null, mcpServers?: string[], models?: { model: string | null; reasoning: string | null }) {
+  if (!session.value?.harnessSettings || savingSettings.value) return
+  savingSettings.value = true
+  try {
+    await gqlMutation(settingsGql, { id: sessionId.value,
+      choice: profile === null ? null : { profile, policyVersion: session.value.harnessSettings.policyVersion,
+        mcpServers: mcpServers ?? session.value.harnessSettings.requestedMcpServers,
+        capabilityVersion: session.value.harnessSettings.capabilityVersion,
+        ...(models ?? (profile === session.value.harnessSettings.effectiveProfile
+          ? { model: session.value.harnessSettings.requestedModel, reasoning: session.value.harnessSettings.requestedReasoning }
+          : {})) },
+    })
+    await refresh()
+  } catch {
+    toast.error('Harness settings could not be saved. Reload the conversation to check current choices.')
+  } finally { savingSettings.value = false }
+}
+const activateHarnessGql = gql`
+  mutation ActivateKitHarness($id: UUID!) {
+    chatSessions { activateHarness(sessionId: $id) }
+  }
+`
+const archiveHarnessGql = gql`
+  mutation ArchiveKitHarness($id: UUID!) {
+    chatSessions { archiveHarness(sessionId: $id) }
+  }
+`
+const decideGql = gql`
+  mutation DecideKitPermission($id: UUID!, $approvalId: UUID!, $optionId: String!) {
+    chatSessions { decideHarnessPermission(sessionId: $id, approvalId: $approvalId, optionId: $optionId) }
   }
 `
 
@@ -57,7 +171,7 @@ const subscribeProcessingGql = gql`
 `
 
 interface ChatSessionMessage { id: string; sessionId: string; author: string; created: string; event: unknown }
-interface ChatSession { id: string; agentKey: string; title: string; processing: boolean; status: string; created: string; modified: string; messages: ChatSessionMessage[] }
+interface ChatSession { id: string; agentKey: string; title: string; processing: boolean; status: string; created: string; modified: string; messages: ChatSessionMessage[]; harnessState?: HarnessState | null; harnessApprovals?: HarnessApproval[]; harnessSettings?: HarnessSettings | null; harnessContext?: HarnessContext | null; attachments?: string[]; collectionAttachments?: string[] }
 
 const { data, status: queryStatus, refresh } = useAsyncQuery<{
   chatSessions: { session: ChatSession | null }
@@ -105,14 +219,16 @@ interface AnalyticsInvestigationStep {
   conclusion?: string
 }
 
-type ChatMessage = ChatTextMessage | ChatVizMessage
+interface ChatHarnessMessage { id: string; kind: 'harness'; event: HarnessEvent }
+interface ChatGraphQLMessage { id: string; kind: 'graphql'; data: unknown; dataType: string; sdl: string }
+type ChatMessage = ChatTextMessage | ChatVizMessage | ChatHarnessMessage | ChatGraphQLMessage
 
 interface EventPart { text?: string; thought?: boolean; functionCall?: unknown; functionResponse?: unknown }
 interface ParsedEvent { type?: string; parts: EventPart[]; author?: string }
 
 function parseEvent(raw: unknown): ParsedEvent | null {
-  const event = typeof raw === 'string' ? JSON.parse(raw) : raw
-  if (!event?.parts) return null
+  const event = decodeChatEvent(raw)
+  if (!Array.isArray(event?.parts)) return null
   if (event.author === 'tool-request' || event.author === 'tool-display') return null
   if (event.type === '"ai.koog.prompt.message.Message.Assistant') {
     event.type = 'assistant'
@@ -120,12 +236,22 @@ function parseEvent(raw: unknown): ParsedEvent | null {
   if (event.type === '"ai.koog.prompt.message.Message.User') {
     event.type = 'user'
   }
-  return event as ParsedEvent
+  return { type: typeof event.type === 'string' ? event.type : undefined,
+    author: typeof event.author === 'string' ? event.author : undefined,
+    parts: event.parts.filter((part): part is EventPart => part !== null && typeof part === 'object'),
+  }
 }
 
 function parseMessage(m: ChatSessionMessage | null): ChatMessage | null {
   if (!m) return null
-  const raw = typeof m.event === 'string' ? JSON.parse(m.event) : m.event
+  const raw = decodeChatEvent(m.event)
+  const harness = harnessEvent(raw)
+  if (harness) return { id: m.id, kind: 'harness', event: harness }
+  if (raw?.type === 'graphql-result' && Object.hasOwn(raw, 'data')) return {
+    id: m.id, kind: 'graphql', data: raw.data,
+    dataType: typeof raw.dataType === 'string' ? raw.dataType : '',
+    sdl: typeof raw.sdl === 'string' ? raw.sdl : '',
+  }
   // A visualization turn (Kit's analytics result) — render it inline as a chart/table.
   if ((raw as { type?: string })?.type === 'tool-display') {
     const e = raw as {
@@ -162,14 +288,14 @@ function parseMessage(m: ChatSessionMessage | null): ChatMessage | null {
   const event = parseEvent(m.event)
   if (!event?.parts) return null
   const text = event.parts
-    .filter((p: EventPart) => p.text && p.text.trim().length > 0 && !p.thought && typeof p.functionCall === 'undefined' && typeof p.functionResponse === 'undefined')
+    .filter((p: EventPart) => typeof p.text === 'string' && p.text.trim().length > 0 && !p.thought && typeof p.functionCall === 'undefined' && typeof p.functionResponse === 'undefined')
     .map((p: EventPart) => p.text)
     .join('\n')
   if (!text.trim()) return null
   return {
     id: m.id,
     kind: 'text',
-    role: event.type === 'ai.koog.prompt.message.Message.Assistant' ? 'assistant' : 'user',
+    role: m.author.toLowerCase() === 'assistant' || ['assistant', 'ai.koog.prompt.message.Message.Assistant'].includes(event.type ?? '') ? 'assistant' : 'user',
     text,
   }
 }
@@ -188,18 +314,35 @@ const messages = ref<ChatMessage[]>(
 const processing = ref(Boolean(handoff))
 const input = ref('')
 const sending = ref(false)
-const seenIds = new Set<string>()
+const controlling = ref(false)
+const visibleMessages = computed(() => messages.value.filter(message => message.kind !== 'harness'
+  || message.event.text || message.event.plan.length || message.event.tools.length || message.event.content.length
+  || ['CANCELLED', 'INTERRUPTED', 'FAILED'].includes(message.event.status)))
+
+function mergeMessage(current: ChatMessage | undefined, incoming: ChatMessage): ChatMessage {
+  if (current?.kind === 'harness' && incoming.kind === 'harness') {
+    return { ...incoming, event: newerHarnessEvent(current.event, incoming.event) }
+  }
+  return incoming
+}
 
 function syncFromSession(s: ChatSession | null | undefined) {
   if (!s) return
   const parsed = (s.messages ?? [])
     .map(parseMessage)
     .filter(Boolean) as ChatMessage[]
-  for (const m of parsed) seenIds.add(m.id)
   // Preserve any optimistic turns the server hasn't echoed back yet so a freshly
   // handed-off message doesn't blink out when the (initially empty) session loads.
   const pending = messages.value.filter(m => m.id.startsWith('optimistic-'))
-  messages.value = [...parsed, ...pending]
+  const known = new Map(messages.value.map(message => [message.id, message]))
+  for (const message of parsed) {
+    if (known.has(message.id) || message.kind !== 'text' || message.role !== 'user') continue
+    const optimistic = pending.findIndex(item => item.kind === 'text' && item.text === message.text)
+    if (optimistic >= 0) pending.splice(optimistic, 1)
+  }
+  const returned = new Set(parsed.map(message => message.id))
+  const live = messages.value.filter(message => !message.id.startsWith('optimistic-') && !returned.has(message.id))
+  messages.value = [...parsed.map(message => mergeMessage(known.get(message.id), message)), ...live, ...pending]
   // Don't let that initial empty-session load clear the "thinking" state we set
   // optimistically for a handed-off message that hasn't been sent yet.
   if (parsed.length || !pending.length) {
@@ -216,9 +359,15 @@ useSubscription<{ aiChatHistory: ChatSessionMessage }>(
   (data) => {
     if (data.aiChatHistory) {
       const msg = parseMessage(data.aiChatHistory)
-      if (msg && !seenIds.has(msg.id)) {
-        seenIds.add(msg.id)
-        messages.value = [...messages.value.filter(m => !m.id.startsWith('optimistic-')), msg]
+      if (msg) {
+        const index = messages.value.findIndex(message => message.id === msg.id)
+        if (index >= 0) {
+          messages.value = messages.value.map((message, i) => i === index ? mergeMessage(message, msg) : message)
+        } else {
+          const optimistic = msg.kind === 'text' && msg.role === 'user'
+            ? messages.value.findIndex(message => message.id.startsWith('optimistic-') && message.kind === 'text' && message.text === msg.text) : -1
+          messages.value = [...messages.value.filter((_, i) => i !== optimistic), msg]
+        }
       }
     }
   },
@@ -237,17 +386,58 @@ useSubscription<{ aiChatProcessing: boolean }>(
   },
 )
 
-// Polling fallback — re-fetch session when processing, in case subscriptions miss events
+// Lifecycle reads expose idle archival and cleanup recovery without extending runtime activity.
 let pollTimer: ReturnType<typeof setInterval> | undefined
 
-watch(processing, (val) => {
-  if (val && !pollTimer) {
+const shouldPoll = computed(() => {
+  const state = session.value?.harnessState
+  return processing.value || Boolean(state?.cancellationRequested)
+    || ['STARTING', 'RESUMING', 'READY', 'STOPPING'].includes(state?.state ?? '')
+    || (state?.state === 'STOPPED' && Boolean(state.failure))
+})
+
+function updatePolling(active: boolean) {
+  if (active && !pollTimer) {
     pollTimer = setInterval(() => refresh(), 3000)
-  } else if (!val && pollTimer) {
+  } else if (!active && pollTimer) {
     clearInterval(pollTimer)
     pollTimer = undefined
   }
-})
+}
+
+// Polling starts on mount: server rendering never unmounts, so a timer started there would never be cleared.
+watch(shouldPoll, updatePolling)
+onMounted(() => updatePolling(shouldPoll.value))
+
+async function changeRuntime(activate: boolean) {
+  if (controlling.value) return
+  controlling.value = true
+  try {
+    await gqlMutation(activate ? activateHarnessGql : archiveHarnessGql, { id: sessionId.value })
+    await refresh()
+  } catch { toast.error(activate ? 'Session could not be resumed. Check its configuration and try again.' : 'Session could not be archived. Wait for pending work to finish.') }
+  finally { controlling.value = false }
+}
+
+async function cancelWork() {
+  controlling.value = true
+  try {
+    await gqlMutation(cancelGql, { id: sessionId.value })
+    await refresh()
+  } catch { toast.error('Could not request cancellation') }
+  finally { controlling.value = false }
+}
+
+async function decidePermission(approvalId: string, optionId: string) {
+  controlling.value = true
+  try {
+    await gqlMutation(decideGql, { id: sessionId.value, approvalId, optionId })
+    await refresh()
+  } catch {
+    toast.error('This permission request could not be answered. It may have expired or changed.')
+    await refresh()
+  } finally { controlling.value = false }
+}
 
 async function sendMessage(text: string, { showOptimistic = true }: { showOptimistic?: boolean } = {}) {
   if (!text.trim()) return
@@ -380,6 +570,35 @@ onUnmounted(() => {
     </template>
 
     <div class="chat-layout">
+      <KitHarnessContext
+        v-if="session?.harnessContext"
+        :context="session.harnessContext"
+        :attachments="session.attachments"
+        :collection-attachments="session.collectionAttachments"
+        :saving="savingContext"
+        @add-content="contentPickerOpen = true"
+        @add-collection="collectionPickerOpen = true"
+        @add-work-ops="domainPicker = 'workops'"
+        @add-git="domainPicker = 'git'"
+        @clear="clearDomainContext"
+        @remove="(kind, id, ref, path) => changeContext(kind, id, true, ref, path)" />
+      <KitHarnessSettings
+        v-if="session?.harnessSettings"
+        :settings="session.harnessSettings"
+        :busy="savingSettings"
+        @change="setHarnessSettings"
+        @model="(model, reasoning) => setHarnessSettings(session?.harnessSettings?.effectiveProfile ?? null, undefined, { model, reasoning })"
+        @connections="keys => setHarnessSettings(session?.harnessSettings?.requestedProfile ?? session?.harnessSettings?.effectiveProfile ?? null, keys)" />
+      <KitHarnessControls
+        :state="session?.harnessState"
+        :approvals="session?.harnessApprovals ?? []"
+        :processing="processing"
+        :busy="controlling"
+        @cancel="cancelWork"
+        @activate="changeRuntime(true)"
+        @archive="changeRuntime(false)"
+        @decide="decidePermission"
+      />
       <div ref="messagesEl" class="chat-messages">
         <div v-if="!messages.length && queryStatus === 'pending'" class="chat-loading">
           <Icon name="wand" :size="24" color="var(--fg-4)" />
@@ -395,7 +614,7 @@ onUnmounted(() => {
           class="chat-thread"
           appear>
           <div
-            v-for="msg in messages"
+            v-for="msg in visibleMessages"
             :key="msg.id"
             class="chat-bubble"
             :class="msg.kind === 'text' ? msg.role : 'assistant chat-bubble-viz'"
@@ -407,6 +626,12 @@ onUnmounted(() => {
               <KitMessageContent v-if="msg.role === 'assistant'" :text="msg.text" />
               <template v-else>{{ msg.text }}</template>
             </div>
+            <KitHarnessTurn v-else-if="msg.kind === 'harness'" :event="msg.event" />
+            <KitGraphQLResult
+              v-else-if="msg.kind === 'graphql'"
+              :data="msg.data"
+              :data-type="msg.dataType"
+              :sdl="msg.sdl" />
             <template v-else>
               <KitAnalyticsResult
                 :name="msg.name"
@@ -423,7 +648,7 @@ onUnmounted(() => {
             </template>
           </div>
         </TransitionGroup>
-        <div v-if="processing" class="chat-processing">
+        <div v-if="processing && !session?.harnessState" class="chat-processing">
           <span class="chat-processing-dot" />
           <span>Kit is thinking…</span>
         </div>
@@ -453,6 +678,13 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+    <MetadataPickerModal v-if="contentPickerOpen" @select="source => changeContext('metadata', source.id)" @close="contentPickerOpen = false" />
+    <CollectionPickerModal v-if="collectionPickerOpen" @select="source => changeContext('collection', source.id)" @close="collectionPickerOpen = false" />
+    <KitContextPicker
+      v-if="domainPicker"
+      :git="domainPicker === 'git'"
+      @select="addDomainSource"
+      @close="domainPicker = null" />
   </PageShell>
 </template>
 

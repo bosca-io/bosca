@@ -99,6 +99,13 @@ class ScriptServiceImplTest {
     }
 
     @Test
+    fun `stale caller revision cannot overwrite a newer script`() = runTest {
+        coEvery { repository.getById(testScript.id) } returns testScript.copy(version = 4)
+        assertFailsWith<IllegalStateException> { service.edit(testScript.id, ScriptInput(key = "test-key", name = "Test", source = "42"), 3) }
+        coVerify(exactly = 0) { repository.update(any()) }
+    }
+
+    @Test
     fun `edit invalidates cache and updates`() = runTest {
         val input = ScriptInput(
             key = "updated-key",
