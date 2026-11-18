@@ -1,5 +1,6 @@
 package bosca.content.transition
 
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.cache.CacheManager
 import bosca.cache.RequestCache
 import bosca.cache.RequestCacheSerializer
@@ -77,7 +78,6 @@ import bosca.events.DisabledEventManagerFilter
 import bosca.events.EventManager
 import bosca.events.asCoroutineContext
 import bosca.lock.DistributedLockFactory
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.nats.NatsConnectionPool
 import bosca.pubsub.PubSubService
 import bosca.security.model.AuthenticatedPrincipal
@@ -113,6 +113,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
+import bosca.test.resources.SharedValkeyContainer
 import bosca.test.resources.SharedNatsContainer
 import bosca.test.resources.SharedPostgreSQLContainer
 import org.testcontainers.containers.wait.strategy.Wait
@@ -131,6 +132,7 @@ import kotlin.uuid.toJavaUuid
 @OptIn(InternalDI::class)
 class StateTransitionEndToEndTest {
 
+    private lateinit var lockRedis: SharedValkeyContainer
     private lateinit var natsContainer: SharedNatsContainer
     private lateinit var postgresContainer: SharedPostgreSQLContainer
     private lateinit var connectionPool: ConnectionPool
@@ -182,7 +184,8 @@ class StateTransitionEndToEndTest {
             withReuse(true)
         }
 
-        Startables.deepStart(natsContainer, postgresContainer).join()
+        lockRedis = SharedValkeyContainer()
+        Startables.deepStart(natsContainer, postgresContainer, lockRedis).join()
 
         // Database
         val factory = ConnectionFactoryImpl(
@@ -201,7 +204,7 @@ class StateTransitionEndToEndTest {
         val natsPool = natsContainer.newConnectionPool(1)
         cacheManager = NatsCacheManager(natsPool)
         serializer = RequestCacheSerializerImpl(testJson)
-        val distributedLockFactory = NatsDistributedLockFactory(natsPool)
+        val distributedLockFactory = RedisDistributedLockFactory(lockRedis.newConnectionPool())
 
         // Job queue + runner
         val natsJobQueueFactory = NatsJobQueueFactory(natsPool, testJson, distributedLockFactory, null, emptyList())
@@ -342,6 +345,7 @@ class StateTransitionEndToEndTest {
     fun teardown() = runBlocking {
         if (::jobRunner.isInitialized) jobRunner.shutdown()
         if (::connectionPool.isInitialized) connectionPool.close()
+        if (::lockRedis.isInitialized) lockRedis.stop()
         if (::natsContainer.isInitialized) natsContainer.stop()
         if (::postgresContainer.isInitialized) postgresContainer.stop()
         ProviderRegistry.clear()

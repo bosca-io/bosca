@@ -8,6 +8,18 @@ release:
   name: test
   namespace: test-namespace
 tests:
+- it: defaults to Redis locks with the shared endpoint while messaging stays on NATS
+  template: templates/configmap-appconfig.yaml
+  asserts:
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'distributedLock:\s*\n\s*type: redis'
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'redis:\s*\n\s*host: redis.test-namespace.svc.cluster.local\s*\n\s*port: 6379'
+  - matchRegex:
+      path: data["application.yaml"]
+      pattern: 'jobQueue:\s*\n\s*factory: nats'
 - it: renders a Redis connection when jobQueueFactory selects Redis
   set:
     appConfig.jobQueueFactory: redis

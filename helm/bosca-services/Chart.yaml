@@ -74,7 +74,7 @@ dependencies:
   - name: tf-serving
     version: ">=0.1.0"
     repository: "file://../tf-serving"
-    condition: tf-serving.enabled
+    condition: tf-serving.provisioning.enabled
   - name: recommendation-trainer
     version: ">=0.1.0"
     repository: "file://../recommendation-trainer"

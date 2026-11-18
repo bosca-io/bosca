@@ -32,6 +32,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -426,42 +429,43 @@ class GraphQLWebSocketProtocolHandlerTest {
         assertTrue(done.await(5, TimeUnit.SECONDS))
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun `pong response prevents immediate close after server ping`() {
+    fun `pong response prevents immediate close after server ping`() = runTest {
         val sent = CopyOnWriteArrayList<String>()
-        val session = createTestSession(sent)
-        // Use longer intervals so we have time to respond
-        val done = CountDownLatch(1)
-
-        val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-        val handlerJob = scope.launch {
-            GraphQLWebSocketProtocolHandler.handle(session, json, noOpSubscribe(), timeoutCheckIntervalMs = 200, idleTimeoutMs = 500)
-            done.countDown()
+        val session = createTestSession(sent, this)
+        val handlerJob = launch {
+            GraphQLWebSocketProtocolHandler.handle(
+                session,
+                json,
+                noOpSubscribe(),
+                timeoutCheckIntervalMs = 200,
+                idleTimeoutMs = 500,
+                timeSource = { testScheduler.currentTime },
+            )
         }
+        runCurrent()
 
-        kotlinx.coroutines.runBlocking {
-            // Poll until server sends a ping (should happen around 700-1000ms)
-            var serverPingSent = false
-            for (i in 0..30) {
-                delay(100)
-                if (sent.any { it.contains(""""type":"ping"""") }) {
-                    serverPingSent = true
-                    break
-                }
-            }
-            assertTrue(serverPingSent, "Server should have sent a ping")
+        advanceTimeBy(600)
+        runCurrent()
+        assertEquals(1, sent.count { it.contains("\"type\":\"ping\"") })
+        assertTrue(handlerJob.isActive)
 
-            // Respond with pong immediately — this resets lastMessage and needsPing
-            session._incoming.send(WebSocketFrame.Text("""{"type":"pong"}"""))
+        session._incoming.send(WebSocketFrame.Text("""{"type":"pong"}"""))
+        runCurrent()
+        advanceTimeBy(400)
+        runCurrent()
+        assertTrue(handlerJob.isActive, "Pong must reset the idle deadline")
+        assertEquals(1, sent.count { it.contains("\"type\":\"ping\"") })
 
-            // Wait a short time — handler should NOT have closed
-            delay(200)
-            assertTrue(handlerJob.isActive, "Handler should still be active after pong response")
+        advanceTimeBy(200)
+        runCurrent()
+        assertEquals(2, sent.count { it.contains("\"type\":\"ping\"") })
+        assertTrue(handlerJob.isActive)
 
-            session.closeReason.complete(null)
-        }
-
-        assertTrue(done.await(5, TimeUnit.SECONDS))
+        advanceTimeBy(200)
+        runCurrent()
+        assertTrue(handlerJob.isCompleted, "An unanswered second ping must still close the handler")
     }
 
     // --- Close Handling ---

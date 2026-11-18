@@ -70,18 +70,41 @@ class RecommendationContextsMutationController(
 
     @Field
     suspend fun modelExported(authentication: AuthenticationContext, version: Long, personalized: Boolean): Boolean {
+        verifyModelWrite(authentication, version, personalized)
+        contextService.exportModel(version, personalized)
+        return true
+    }
+
+    @Field
+    suspend fun modelServingFailed(authentication: AuthenticationContext, version: Long, selectionRevision: Long, failure: String): Boolean {
+        verifyModelWrite(authentication, version)
+        return contextService.failServingModel(version, selectionRevision, failure)
+    }
+
+    @Field
+    suspend fun modelServingPrepared(authentication: AuthenticationContext, version: Long, selectionRevision: Long, endpoint: String): Boolean {
+        verifyModelWrite(authentication, version)
+        return contextService.prepareServingModel(version, selectionRevision, endpoint)
+    }
+
+    /**
+     * Admits administrators, or a scoped credential that may push the model's exports to the ML registry.
+     * [personalized] selects whether the personalized export is also checked; null uses the stored model.
+     */
+    private suspend fun verifyModelWrite(
+        authentication: AuthenticationContext,
+        version: Long,
+        personalized: Boolean? = null,
+    ) {
         if (authentication.principal() !is ScopedAuthenticatedPrincipal || groupEvaluator.hasAdminGroup(authentication)) {
             groupEvaluator.verifyHasAdminGroup(authentication)
         } else {
             val model = contextService.getModel(version) ?: throw NoSuchElementException("Recommendation model not found")
-            // The trainer may report only exports it can publish in the ML registry.
             artifactPermissionEvaluator.verify(authentication, "ml", "model", model.contentModelName, version.toString(), ArtifactAction.PUSH)
-            if (personalized) {
-                artifactPermissionEvaluator.verify(authentication, "ml", "model", model.personalizedModelName, version.toString(), ArtifactAction.PUSH)
-            }
+            if (personalized ?: model.personalized) artifactPermissionEvaluator.verify(
+                authentication, "ml", "model", model.personalizedModelName, version.toString(), ArtifactAction.PUSH,
+            )
         }
-        contextService.exportModel(version, personalized)
-        return true
     }
 
     @Field

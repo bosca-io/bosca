@@ -79,16 +79,16 @@ class ReleaseVersionsTest(unittest.TestCase):
                 self.assertIn(f"ghcr.io/bosca-io/bosca/{image['repository']}:{VERSION}", rendered)
 
     def test_upstream_images_keep_versions_and_loader_follows_release(self):
-        rendered = self.render("tf-serving")
+        rendered = self.render("tf-serving", "--set", "provisioning.enabled=true")
         self.assertIn("tensorflow/serving:2.16.1", rendered)
         self.assertIn(f"ghcr.io/bosca-io/bosca/recommendation-model-loader:{VERSION}", rendered)
         rendered = self.render("text-embeddings-inference")
         self.assertIn("ghcr.io/huggingface/text-embeddings-inference:cpu-1.8.1", rendered)
 
-    def test_umbrella_and_sidecar_image_overrides_take_precedence(self):
+    def test_umbrella_and_init_container_image_overrides_take_precedence(self):
         rendered = self.render("bosca-services", "--set", "bosca-server.image.tag=custom")
         self.assertIn("ghcr.io/bosca-io/bosca/bosca-server:custom", rendered)
-        rendered = self.render("tf-serving", "--set", "loader.image.tag=custom")
+        rendered = self.render("tf-serving", "--set", "provisioning.enabled=true", "--set", "loader.image.tag=custom")
         self.assertIn("ghcr.io/bosca-io/bosca/recommendation-model-loader:custom", rendered)
 
     def test_source_charts_values_and_locks_are_unchanged(self):

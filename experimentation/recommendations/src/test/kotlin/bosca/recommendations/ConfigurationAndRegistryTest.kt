@@ -68,6 +68,7 @@ class ConfigurationAndRegistryTest {
                         modelName: personalized-v2
                         contentModelName: content-v2
                         timeoutSeconds: "7"
+                        contextModelUrlTemplate: "http://serving-{version}.models.svc:8501"
                 """.trimIndent().byteInputStream(),
             ),
         )
@@ -78,6 +79,7 @@ class ConfigurationAndRegistryTest {
         assertEquals("personalized-v2", result.modelName)
         assertEquals("content-v2", result.contentModelName)
         assertEquals(7, result.timeoutSeconds)
+        assertEquals("http://serving-42.models.svc:8501", result.contextModelUrl(42))
         assertEquals(null, result.modelVersion)
     }
 

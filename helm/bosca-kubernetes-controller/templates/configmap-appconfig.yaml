@@ -42,7 +42,7 @@ data:
 
     redis:
       host: {{ .Values.appConfig.redisHost | default "redis" }}.{{ .Release.Namespace }}.svc.cluster.local
-      port: {{ .Values.appConfig.redisPort | default 6380 }}
+      port: {{ .Values.appConfig.redisPort | default 6379 }}
 
     jwt:
       domain: {{ .Values.appConfig.domain | quote }}

@@ -392,6 +392,24 @@ class RedisCacheEndToEndTest {
     }
 
     @Test
+    fun `renewed Redis lease blocks contenders until its renewed expiry`() = runBlocking {
+        val factory = RedisDistributedLockFactory(connections)
+        val name = "renew-expiry-${bosca.serialization.UUID.random()}"
+        val holder = factory.create(name)
+        val contender = factory.create(name)
+        assertTrue(holder.tryAcquire(1_000))
+        assertTrue(holder.renew(3_000))
+        delay(1_200)
+        assertFalse(contender.tryAcquire(3_000))
+        delay(2_000)
+        assertTrue(contender.tryAcquire(3_000))
+        assertFalse(holder.renew(3_000))
+        assertFalse(holder.release())
+        assertFalse(factory.create(name).tryAcquire(3_000))
+        assertTrue(contender.release())
+    }
+
+    @Test
     fun `shared redis connections reuse healthy channels and replace closed channels`(): Unit = runBlocking {
         withTimeout(5.minutes) {
             val shared = SharedConnection(connections)

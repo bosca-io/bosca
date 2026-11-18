@@ -63,7 +63,7 @@ pubsub:
   type: "$PUBSUB_TYPE:nats"
 
 distributedLock:
-  type: "$DISTRIBUTED_LOCK_TYPE:nats"
+  type: "$DISTRIBUTED_LOCK_TYPE:redis"
 
 eventRepository:
   type: "${EVENT_REPOSITORY_TYPE:nats}"

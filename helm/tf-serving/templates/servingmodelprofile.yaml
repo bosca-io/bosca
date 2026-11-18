@@ -1,0 +1,28 @@
+{{- if .Values.provisioning.enabled }}
+{{- $persistence := .Values.persistence | default dict }}
+{{- if $persistence.enabled }}
+{{- fail "ServingModel provisioning requires per-Pod storage; disable persistence" }}
+{{- end }}
+apiVersion: kubernetes.bosca.io/v1alpha1
+kind: ServingModelProfile
+metadata:
+  name: {{ include "bosca-common.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+spec:
+  boscaUrl: {{ .Values.loader.boscaUrl | quote }}
+  tokenSecretName: {{ required "ServingModel discovery requires loader.secrets.artifactsToken.name" .Values.loader.secrets.artifactsToken.name | quote }}
+  tokenSecretKey: {{ .Values.loader.secrets.artifactsToken.key | quote }}
+  controlTokenSecretName: {{ required "ServingModel failure reporting requires loader.secrets.boscaToken.name" .Values.loader.secrets.boscaToken.name | quote }}
+  controlTokenSecretKey: {{ .Values.loader.secrets.boscaToken.key | quote }}
+  serviceNamePrefix: {{ .Values.provisioning.serviceNamePrefix | quote }}
+  servicePort: {{ .Values.service.port }}
+  modelBasePath: {{ .Values.modelBasePath | quote }}
+  maxCandidates: {{ .Values.provisioning.maxCandidates }}
+  drainSeconds: {{ .Values.provisioning.drainSeconds }}
+  startupTimeoutSeconds: {{ .Values.provisioning.startupTimeoutSeconds }}
+  failureGraceSeconds: {{ .Values.provisioning.failureGraceSeconds }}
+  podTemplate:
+    {{- include "tf-serving.podTemplate" . | nindent 4 }}
+{{- end }}

@@ -17,7 +17,7 @@ pubsub:
   type: "$PUBSUB_TYPE:nats"
 
 distributedLock:
-  type: "$DISTRIBUTED_LOCK_TYPE:nats"
+  type: "$DISTRIBUTED_LOCK_TYPE:redis"
 
 jobQueue:
   factory: "$JOB_QUEUE_FACTORY:nats"

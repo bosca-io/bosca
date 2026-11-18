@@ -106,6 +106,21 @@ class RecommendationContextServiceImpl(
 
     override suspend fun failModel(version: Long, failure: String) { repository.failModel(version, failure) }
 
+    override suspend fun failServingModel(version: Long, selectionRevision: Long, failure: String): Boolean = transaction {
+        val initial = requireModel(version)
+        val context = repository.lock(initial.contextId) ?: return@transaction false
+        val model = requireModel(version)
+        if (context.activeModelVersion == version) return@transaction false
+        if (context.requestedModelVersion == version) {
+            if (context.selectionRevision != selectionRevision) return@transaction false
+        } else if (model.status != RecommendationTrainingStatus.RUNNING || model.selectionRevision != selectionRevision) {
+            return@transaction false
+        }
+        repository.failModel(version, failure)
+        repository.clearRequestedModel(context.id, version)
+        true
+    }
+
     override suspend fun activateLoadedModel(version: Long, selectionRevision: Long) = transaction {
         val model = requireModel(version)
         require(model.status == RecommendationTrainingStatus.COMPLETED) { "Model is not completed" }
@@ -114,11 +129,26 @@ class RecommendationContextServiceImpl(
         Unit
     }
 
+    override suspend fun prepareServingModel(version: Long, selectionRevision: Long, endpoint: String): Boolean = transaction {
+        require(endpoint.isNotBlank()) { "Serving endpoint is required" }
+        val initial = requireModel(version)
+        val context = repository.lock(initial.contextId) ?: return@transaction false
+        val model = requireModel(version)
+        if (!model.exported || context.activeModelVersion == version) return@transaction false
+        val pendingExport = model.status == RecommendationTrainingStatus.RUNNING && model.selectionRevision == selectionRevision
+        val requested = model.status == RecommendationTrainingStatus.COMPLETED &&
+            context.requestedModelVersion == version && context.selectionRevision == selectionRevision
+        if (!pendingExport && !requested) return@transaction false
+        ActivateContextModelJob(version, selectionRevision, endpoint).enqueue()
+        true
+    }
+
     override suspend fun activateModel(contextId: UUID, version: Long): RecommendationContextModel = transaction {
         repository.lock(contextId) ?: throw NoSuchElementException("Recommendation context not found: $contextId")
         val model = retainedModel(contextId, version)
         require(model.status == RecommendationTrainingStatus.COMPLETED) { "Only completed models can be selected" }
         val context = repository.nextSelection(contextId)
+        repository.clearServingFailure(version)
         repository.requestModel(contextId, version, context.selectionRevision)
         ActivateContextModelJob(version, context.selectionRevision).enqueue()
         model

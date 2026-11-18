@@ -9,6 +9,8 @@ import bosca.kubernetes.controller.cluster.ClusterInformerRegistry
 import bosca.kubernetes.controller.helm.HelmIndexFetcher
 import bosca.kubernetes.controller.helm.HelmRuntime
 import bosca.kubernetes.controller.jobs.KubernetesJobController
+import bosca.kubernetes.controller.models.ServingModelController
+import bosca.kubernetes.controller.models.ServingModelDiscovery
 import bosca.kubernetes.repository.ClusterRepository
 import bosca.kubernetes.repository.KubernetesJobExecutionRepository
 import bosca.kubernetes.service.ClusterCredentialService
@@ -39,6 +41,12 @@ import kotlinx.serialization.json.Json
  */
 @Providers
 class Configuration {
+
+    @Provider(singleton = true)
+    fun servingModelController(pool: ClusterClientPool, clusters: ClusterRepository, json: Json, locks: DistributedLockFactory) =
+        ServingModelController(pool, clusters, ServingModelDiscovery(
+            okhttp3.OkHttpClient.Builder().callTimeout(30, java.util.concurrent.TimeUnit.SECONDS).build(), json,
+        ), locks)
 
     @Provider(singleton = true)
     fun clusterClientPool(credentials: ClusterCredentialService) = ClusterClientPool(credentials)

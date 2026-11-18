@@ -88,8 +88,8 @@ data class SwarmConfig(
     val pubsubBackend: String = "nats",
     /** Job queue backend: `nats` or `redis`. */
     val jobQueueBackend: String = "nats",
-    /** Distributed lock backend: `nats` or `redis`. */
-    val distributedLockBackend: String = "nats",
+    /** Distributed locks use `redis`. */
+    val distributedLockBackend: String = "redis",
     /** Counter backend: `nats` or `redis`. */
     val counterBackend: String = "nats",
     val bmlArtifactsUrl: String = "SET_URL",
@@ -342,9 +342,10 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
             "atlas.domain for ${site.id} must share the site's cookie domain"
         }
         require(site.redisDatabase in 1..15) { "Redis database must be between 1 and 15 for ${site.id}" }
+        require(site.distributedLockBackend == "redis") { "distributedLockBackend for ${site.id} must be redis" }
         mapOf(
             "cacheBackend" to site.cacheBackend, "pubsubBackend" to site.pubsubBackend,
-            "jobQueueBackend" to site.jobQueueBackend, "distributedLockBackend" to site.distributedLockBackend,
+            "jobQueueBackend" to site.jobQueueBackend,
             "counterBackend" to site.counterBackend,
         ).forEach { (setting, backend) ->
             require(backend in setOf("nats", "redis")) { "$setting for ${site.id} must be nats or redis" }

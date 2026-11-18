@@ -1,21 +1,23 @@
 package bosca.content.metadata.jobs
 
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.cache.CacheManager
 import bosca.cache.nats.NatsCacheManager
 import bosca.lock.DistributedLockFactory
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.nats.NatsConnectionPool
 import bosca.sharedqueue.jobs.JobQueueFactory
 import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
+import bosca.test.resources.SharedValkeyContainer
 import bosca.test.resources.SharedNatsContainer
 import org.testcontainers.containers.wait.strategy.Wait
 
 /**
  * Runs [MetadataSyncStateEndToEndTest] scenarios using NATS JetStream for the job queue,
- * distributed locking, and cache infrastructure.
+ * and cache infrastructure, with Redis distributed locks.
  */
 class NatsMetadataSyncStateEndToEndTest : MetadataSyncStateEndToEndTest() {
 
+    private lateinit var lockRedis: SharedValkeyContainer
     private lateinit var natsContainer: SharedNatsContainer
     private lateinit var natsPool: NatsConnectionPool
 
@@ -26,11 +28,14 @@ class NatsMetadataSyncStateEndToEndTest : MetadataSyncStateEndToEndTest() {
             .withReuse(true)
             .waitingFor(Wait.forListeningPort())
         natsContainer.start()
+        lockRedis = SharedValkeyContainer()
+        lockRedis.start()
 
         natsPool = natsContainer.newConnectionPool(1)
     }
 
     override fun stopContainers() {
+        if (::lockRedis.isInitialized) lockRedis.stop()
         if (::natsContainer.isInitialized) natsContainer.stop()
     }
 
@@ -39,7 +44,7 @@ class NatsMetadataSyncStateEndToEndTest : MetadataSyncStateEndToEndTest() {
     }
 
     override fun createDistributedLockFactory(): DistributedLockFactory {
-        return NatsDistributedLockFactory(natsPool)
+        return RedisDistributedLockFactory(lockRedis.newConnectionPool())
     }
 
     override fun createCacheManager(): CacheManager {
