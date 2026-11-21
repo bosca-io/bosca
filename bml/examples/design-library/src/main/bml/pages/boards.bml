@@ -1,0 +1,8 @@
+<page route="/boards">
+  <html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Board consumer</title></head>
+    <body><page-shell class="fixture-shell"><h1>Boards</h1><div class="themes">
+      <div class="light" data-palette="light"><board-controls id="light" /></div>
+      <div class="purple" data-palette="purple"><board-controls id="purple" /></div>
+    </div></page-shell></body>
+  </html>
+</page>

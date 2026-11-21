@@ -473,6 +473,9 @@ class TaskServiceEdgeTest {
         coEvery { taskRepository.setMetadataId(active.id, metadataId, principalId, 1) } returns updated
 
         assertEquals(updated, service.createDocument(active.id, 1, principalId, null))
+        coVerify { metadataService.add(null, null, match { input ->
+            input.document?.title == active.summary && input.document?.content != null
+        }) }
 
         val missingId = UUID.random()
         coEvery { taskRepository.getActiveById(missingId) } returns null

@@ -26,6 +26,7 @@
     </span>
   </html:button>
   <style scoped>
+    .button[hidden] { display: none; }
     .button.size-xs {
       padding: 0 8px;
       font-size: 12px;
@@ -130,6 +131,10 @@
     .button.icon-only.size-xs {
       width: var(--control-height-xs);
       height: var(--control-height-xs);
+    }
+    .button.icon-only.size-md {
+      width: var(--control-height-md);
+      height: var(--control-height-md);
     }
     .button:focus-visible {
       outline: var(--focus-width) solid var(--accent);

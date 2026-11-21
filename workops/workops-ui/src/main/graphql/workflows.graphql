@@ -1,0 +1,17 @@
+query WorkOpsWorkflowCatalog {
+  workOps { workflows {
+    all {
+      id name description initialStateId version
+      states { id displayOrder status { name category colorHex } }
+      transitions { id name description fromStateIds toStateId }
+    }
+    schemes { id name description defaultWorkflowId version }
+  } }
+}
+
+mutation WorkOpsWorkflowCreate($input: CreateWorkOpsWorkflowInput!) { workOps { workflows { create(input: $input) { id } } } }
+mutation WorkOpsWorkflowUpdate($id: UUID!, $input: UpdateWorkOpsWorkflowInput!) { workOps { workflows { update(id: $id, input: $input) { id } } } }
+mutation WorkOpsWorkflowDelete($id: UUID!) { workOps { workflows { delete(id: $id) } } }
+mutation WorkOpsWorkflowSchemeCreate($input: CreateWorkOpsWorkflowSchemeInput!) { workOps { workflows { createScheme(input: $input) { id } } } }
+mutation WorkOpsWorkflowSchemeUpdate($id: UUID!, $input: UpdateWorkOpsWorkflowSchemeInput!) { workOps { workflows { updateScheme(id: $id, input: $input) { id } } } }
+mutation WorkOpsWorkflowSchemeDelete($id: UUID!) { workOps { workflows { deleteScheme(id: $id) } } }

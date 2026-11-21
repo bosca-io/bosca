@@ -1,0 +1,8 @@
+# WorkOps release health uses the owning Analytics read contracts. Other Analytics applications
+# and mutation namespaces are not rooted in Atlas.
+type Analytics
+type AnalyticsMutation
+
+extend type Query {
+    analytics: Analytics!
+}

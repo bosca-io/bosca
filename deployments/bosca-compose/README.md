@@ -101,6 +101,11 @@ protocol URLs and redirects UI navigation to Atlas; `artifacts.<domain>` retains
 native registry URLs. Separate backends share the database, signing/encryption
 keys, and storage with Atlas.
 
+WorkOps pages and `/collaboration` use the selected Atlas UI listener. The standalone
+`atlas-ui` service receives the same NATS endpoint and generated token as Atlas for
+shared document updates and presence. Its environment does not require database or
+JWT signing credentials.
+
 To change an existing topology, edit these settings in `.env`, then run
 `sudo bosca compose render --directory /opt/bosca` (or
 `sudo sh install.sh --directory /opt/bosca --render`). This generates
@@ -188,7 +193,9 @@ sudo systemctl enable --now certbot.timer
 sudo certbot renew --dry-run --run-deploy-hooks
 ```
 
-Nginx routes Atlas UI pages/actions/assets to 8095 and its shared API to 8094.
+Nginx routes Atlas UI pages/actions/assets and WorkOps collaboration WebSockets to
+8095 and its shared API to 8094. WorkOps routing matches the imported pages while
+Git clone, LFS and raw-file paths for an owner named `workops` retain their protocol backend.
 Git protocols use 8091 with separate Git, otherwise 8094; registry protocols use
 8084 with separate artifacts, otherwise 8094.
 Git transport URLs remain on the Git hostname; Git UI pages redirect to Atlas.

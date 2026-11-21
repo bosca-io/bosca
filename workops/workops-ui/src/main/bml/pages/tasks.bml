@@ -1,0 +1,34 @@
+<page route="/workops/tasks" requireAuth>
+  <contract>
+    interface WorkOpsFormChoices {
+      /** Resolve authorized stored choices, or return an error message when the form must reload. */
+      suspend fun choices(key: String, version: Int, fieldKey: String, query: String?, offset: Int): Map<String, String>
+    }
+    interface WorkOpsBql {
+      /** Return the caller's WorkOps BQL diagnostics without executing a task search. */
+      suspend fun validate(source: String): List<Map<String, String>>
+      /** Validate specification fields through their owning catalog without running a search. */
+      suspend fun validateSpec(source: String): List<Map<String, String>>
+    }
+  </contract>
+  <script server provides="model">bosca.workops.ui.workOpsTaskSearch()</script>
+  <script server provides="creation">bosca.workops.ui.workOpsTaskCreate()</script>
+  <workops-layout title="Tasks">
+    <page-shell class="workops-page" fill>
+      <page-heading title="Tasks" subtitle="Find and track project work" :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false))'><workops-task-create :initial="creation" /></page-heading>
+      <div class="workops-content">
+        <workops-bql-query :source="model.source" :validationMessage="model.validationMessage" />
+        <if model.filters.isNotEmpty()>
+          <nav class="workops-saved-filters" aria-label="Saved task filters">
+            <for filter in model.filters><button-link :href="filter.href">{ filter.name }</button-link></for>
+          </nav>
+        </if>
+        <for error in model.errors><alert>{ error }</alert></for>
+        <if model.failed><button-link :href="model.retryHref" icon="refresh">Retry</button-link></if>
+        <if model.valid>
+          <workops-task-list :model="model" />
+        </if>
+      </div>
+    </page-shell>
+  </workops-layout>
+</page>

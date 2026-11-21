@@ -1,0 +1,578 @@
+# Maintained WorkOps UI client subset; authoritative contracts live in workops/workops.
+# Platform approval contracts are owned by pipelines/pipelines.
+scalar UUID
+scalar Long
+scalar DateTime
+scalar JSON
+type Query { workOps: WorkOps! content: Content! }
+extend type Query { pipelines: Pipelines! }
+type Pipelines { run(runId: UUID!): PipelineRunState }
+type PipelineRunState { id: UUID! status: PipelineRunStatus! error: String modifiedAt: DateTime! awaitingNodes: [PipelineAwaitingNode!]! }
+enum PipelineRunStatus { RUNNING SUSPENDED OK FAILED CANCELLED }
+type PipelineAwaitingNode { nodeId: String! type: String! name: String! runId: UUID }
+type Content { metadata(id: UUID!, version: Int): Metadata checkMetadataActions(actions: [PermissionAction!]!, ids: [UUID!]!): [UUID!]! collections: Collections! findMetadata(query: FindQueryInput!): [Metadata!]! }
+enum PermissionAction { DELETE EDIT EXECUTE IMPERSONATE LIST MANAGE VIEW }
+type Metadata { id: UUID! version: Int! name: String! uploaded: DateTime document: Document documentTemplate: DocumentTemplate content: MetadataContent bible(variant: String): Bible }
+input FindQueryInput { contentTypes: [String!] offset: Int limit: Int }
+type Bible { name: String! styles: JSON! book(usfm: String!): BibleBook chapter(usfm: String!): BibleChapter find(human: String!): [FindBibleResult!]! }
+type BibleBook { nameLong: String! }
+type BibleChapter { component: JSON! reference: BibleReference! verses: [BibleReference!]! attribution: BibleAttribution }
+type BibleReference { human: String! usfm: String! }
+type FindBibleResult { reference: BibleReference! chapter: BibleChapter }
+type BibleAttribution { copyright: String! citation: String! informationUrl: String }
+type MetadataContent { type: String! length: Long urls: MetadataContentUrls }
+type MetadataContentUrls { download: SignedUrl upload: SignedUrl }
+type SignedUrl { url: String! headers: [SignedUrlHeader!]! }
+type SignedUrlHeader { name: String! value: String! }
+type Document { title: String! content: JSON! template: Metadata }
+type DocumentTemplate { schema: JSON containers: [DocumentTemplateContainer!]! }
+type DocumentTemplateContainer { id: String! name: String! description: String! type: DocumentTemplateContainerType! filters: [String!] }
+enum DocumentTemplateContainerType { STANDARD BIBLE METADATA }
+type Mutation { forms: FormsMutation! workOps: WorkOpsMutation! content: ContentMutation! }
+extend type Mutation { pipelines: PipelinesMutation! }
+type PipelinesMutation { resolveGate(runId: UUID!, nodeId: String!, approved: Boolean!, note: String): Boolean! }
+type ContentMutation { metadata: MetadataMutation! }
+type MetadataMutation { setMetadataDocument(document: DocumentInput!, id: UUID!, version: Int!): Boolean! add(metadata: MetadataInput!, setReady: Boolean): Metadata! setMetadataReady(id: UUID!): Boolean! edit(id: UUID!, metadata: MetadataInput!): Metadata! }
+input MetadataInput { name: String! contentType: String! contentLength: Long languageTag: String! }
+input DocumentInput { content: JSON! templateMetadataId: UUID templateMetadataVersion: Int title: String! }
+type FormsMutation { submit(input: FormSubmissionInput!): SubmittedForm! }
+input FormSubmissionInput { formSchemaId: UUID formSchemaKey: String attributes: JSON! }
+type SubmittedForm { id: UUID! type: FormSchemaType! }
+enum FormSchemaType { SUBMISSION INTERNAL WORK_OPS }
+extend type Query { formSchemas: FormSchemas! }
+type FormSchemas { byKey(key: String!): FormSchema }
+type FormSchema { id: UUID! key: String! name: String! type: FormSchemaType! schema: JSON! uiSchema: JSON! version: Int! }
+type WorkOps { savedFilters: WorkOpsSavedFilters! projects: WorkOpsProjects! tasks: WorkOpsTasks! statuses: WorkOpsStatuses! notifications: WorkOpsNotificationsQuery! worklogs: WorkOpsWorklogQuery! links: WorkOpsTaskLinks! boards: WorkOpsBoards! sprints: WorkOpsSprints! }
+type WorkOpsProjects { all: [WorkOpsProject!]! project(id: UUID!): WorkOpsProject }
+type WorkOpsProject { id: UUID! key: String! name: String! taskCreationFormSchemaKey: String! archivedAt: DateTime }
+type WorkOpsTasks { task(id: UUID!): WorkOpsTask taskByKey(key: String!): WorkOpsTask taskTypes: [WorkOpsTaskType!]! priorities: [WorkOpsPriority!]! resolutions: [WorkOpsResolution!]! }
+type WorkOpsStatuses { all: [WorkOpsStatus!]! }
+type WorkOpsResolution { id: UUID! name: String! }
+type WorkOpsSavedFilters {
+    validateBql(source: String!): WorkOpsBqlValidationResult!
+    validateSpecBql(source: String!): WorkOpsBqlValidationResult!
+    searchTasks(source: String!, offset: Long! = 0, limit: Int! = 50): WorkOpsTaskSearchResult!
+    searchSpecs(source: String!, offset: Long! = 0, limit: Int! = 50): WorkOpsSpecSearchResult!
+    mine(offset: Long! = 0, limit: Int! = 50): [WorkOpsSavedFilter!]!
+}
+type WorkOpsBqlValidationResult { errors: [WorkOpsBqlError!]! }
+type WorkOpsBqlError { message: String! start: Int! end: Int! hint: String }
+type WorkOpsTaskSearchResult { rows: [WorkOpsTask!]! freeTextTerms: [String!]! }
+type WorkOpsSpecSearchResult { rows: [WorkOpsSpec!]! freeTextTerms: [String!]! }
+type WorkOpsSavedFilter { id: UUID! name: String! description: String bqlSource: String! modifiedAt: DateTime! version: Long! }
+type WorkOpsTask {
+    id: UUID!
+    key: String!
+    summary: String!
+    status: WorkOpsStatus!
+    priority: WorkOpsPriority!
+    taskType: WorkOpsTaskType!
+    assignee: Profile
+    dueDate: DateTime
+    startDate: DateTime
+    descriptionMarkdown: String descriptionHtml: String
+    project: WorkOpsProject!
+    affectedProjects: [WorkOpsProject!]!
+    reporter: Profile!
+    reporterProfileId: UUID!
+    assigneeProfileId: UUID
+    sprintId: UUID
+    originalEstimateSeconds: Long
+    remainingEstimateSeconds: Long
+    timeSpentSeconds: Long!
+    parentTask: WorkOpsTask
+    epicTask: WorkOpsTask
+    resolution: WorkOpsResolution
+    metadataId: UUID
+    requirement: WorkOpsRequirement
+    transitions(currentOnly: Boolean! = true): [WorkOpsWorkflowTransition!]!
+    comments(offset: Long! = 0, limit: Long! = 50): [WorkOpsTaskComment!]!
+    links: [WorkOpsTaskLink!]!
+    history(offset: Long! = 0, limit: Int! = 50): [WorkOpsTaskHistoryEntry!]!
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+    version: Long!
+}
+type WorkOpsStatus { id: UUID! name: String! category: WorkOpsStatusCategory! }
+enum WorkOpsStatusCategory { TODO IN_PROGRESS DONE CANCELLED }
+type WorkOpsPriority { id: UUID! name: String! displayOrder: Int! colorHex: String! }
+type WorkOpsTaskType { id: UUID! name: String! }
+type Profile { id: UUID! name: String! slug: String visibility: ProfileVisibility! isPrimary: Boolean! attributes: [ProfileAttribute!]! }
+type ProfileAttribute { typeId: String! attributes: JSON }
+extend type Query { git: Git! }
+type Git { repositories(includeArchived: Boolean): [GitRepository!]! }
+type GitRepository { id: UUID! name: String! }
+extend type Query { profiles: Profiles! search: Search! }
+type Profiles { current: [Profile!] profile(id: UUID!): Profile }
+type WorkOpsRequirement {
+    id: UUID! key: String! metadataId: UUID! parentType: WorkOpsRequirementParent! parentId: UUID!
+    status: WorkOpsStatus! priority: WorkOpsPriority! assigneeProfileId: UUID assignee: Profile
+    taskId: UUID task: WorkOpsTask sortOrder: Int! version: Long! createdAt: DateTime! modifiedAt: DateTime!
+    history(offset: Long! = 0, limit: Int! = 50): [WorkOpsRequirementHistoryEntry!]!
+}
+enum WorkOpsRequirementParent { SPEC TASK }
+type WorkOpsRequirementHistoryEntry { id: UUID! changedAt: DateTime! changedByProfileId: UUID changes: [WorkOpsFieldChange!]! }
+type WorkOpsRequirements {
+    requirement(id: UUID!): WorkOpsRequirement requirementByKey(key: String!): WorkOpsRequirement
+    byTask(taskId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsRequirement!]!
+    bySpec(specId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsRequirement!]!
+}
+type WorkOpsRequirementComment { id: Long! content: String! profileId: UUID! profile: Profile created: DateTime! }
+type WorkOpsRequirementComments { forRequirement(requirementId: UUID!, offset: Long! = 0, limit: Long! = 50): [WorkOpsRequirementComment!]! }
+type WorkOpsRequirementsMutation {
+    create(input: CreateWorkOpsRequirementInput!): WorkOpsRequirement!
+    update(id: UUID!, input: UpdateWorkOpsRequirementInput!): WorkOpsRequirement!
+    softDelete(id: UUID!, expectedVersion: Long!): WorkOpsRequirement!
+}
+input CreateWorkOpsRequirementInput { metadataId: UUID name: String parentType: WorkOpsRequirementParent! parentId: UUID! priorityId: UUID assigneeProfileId: UUID sortOrder: Int }
+input UpdateWorkOpsRequirementInput { priorityId: UUID assigneeProfileId: UUID clearAssignee: Boolean expectedVersion: Long! }
+input WorkOpsRequirementCommentInput { content: String! visibility: ProfileVisibility! = USER }
+type WorkOpsRequirementCommentsMutation { add(requirementId: UUID!, input: WorkOpsRequirementCommentInput!): WorkOpsRequirementComment! }
+type WorkOpsSpecs {
+    spec(id: UUID!): WorkOpsSpec specByKey(key: String!): WorkOpsSpec specByMetadataId(metadataId: UUID!): WorkOpsSpec
+    children(parentSpecId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsSpec!]!
+}
+type WorkOpsSpec {
+    id: UUID! key: String! metadataId: UUID! metadata: Metadata status: WorkOpsStatus!
+    ownerProfileId: UUID! owner: Profile project: WorkOpsProject projectId: UUID parentSpecId: UUID
+    childCount: Int! childDoneCount: Int! requirementCount: Long!
+    gitRepositoryId: UUID gitPath: String createdAt: DateTime! modifiedAt: DateTime! version: Long!
+    watcherProfileIds: [UUID!]! transitions(currentOnly: Boolean! = true): [WorkOpsWorkflowTransition!]!
+    history(offset: Long! = 0, limit: Int! = 50): [WorkOpsSpecHistoryEntry!]!
+    comments(offset: Long! = 0, limit: Long! = 50): [WorkOpsSpecComment!]!
+    contexts: [WorkOpsSpecContext!]!
+    taskGenerations(offset: Long! = 0, limit: Int! = 50): [WorkOpsSpecTaskGeneration!]!
+}
+enum WorkOpsGenerationSource { CLAUDE_CODE MANUAL KIT }
+type WorkOpsSpecTaskGeneration { id: UUID! metadataVersion: Int! source: WorkOpsGenerationSource! generatedTaskIds: [UUID!]! createdAt: DateTime! }
+enum WorkOpsSpecContextType { GIT_RESOURCE METADATA COLLECTION PROFILE CHAT_CHANNEL AI_SESSION SPEC TASK PROJECT EXTERNAL_URI }
+type WorkOpsSpecContext { id: UUID! contextType: WorkOpsSpecContextType! targetId: String! label: String createdAt: DateTime! }
+input CreateWorkOpsSpecContextInput { contextType: WorkOpsSpecContextType! targetId: String! label: String }
+type WorkOpsSpecHistoryEntry { id: UUID! changedAt: DateTime! changedByProfileId: UUID changes: [WorkOpsFieldChange!]! }
+type WorkOpsSpecComment { id: Long! content: String! profileId: UUID! profile: Profile created: DateTime! }
+type WorkOpsSpecsMutation {
+    create(input: CreateWorkOpsSpecInput!): WorkOpsSpec!
+    update(id: UUID!, input: UpdateWorkOpsSpecInput!): WorkOpsSpec!
+    transition(id: UUID!, transitionId: UUID!, expectedVersion: Long!, resolutionId: UUID): WorkOpsSpec!
+    addContext(specId: UUID!, input: CreateWorkOpsSpecContextInput!): WorkOpsSpecContext!
+    removeContext(specId: UUID!, contextId: UUID!): Boolean!
+    generateTasks(specId: UUID!, metadataVersion: Int!, source: WorkOpsGenerationSource!): WorkOpsSpecTaskGeneration!
+    pushSavedToGit(specId: UUID!, authorName: String!, authorEmail: String!): String
+}
+input CreateWorkOpsSpecInput { name: String projectId: UUID parentSpecId: UUID }
+input UpdateWorkOpsSpecInput { ownerProfileId: UUID expectedVersion: Long! }
+input WorkOpsSpecCommentInput { content: String! visibility: ProfileVisibility! = USER }
+type WorkOpsSpecCommentsMutation { add(specId: UUID!, input: WorkOpsSpecCommentInput!): WorkOpsSpecComment! }
+extend type WorkOps { requirements: WorkOpsRequirements! requirementComments: WorkOpsRequirementComments! specs: WorkOpsSpecs! }
+extend type WorkOpsMutation { requirements: WorkOpsRequirementsMutation! requirementComments: WorkOpsRequirementCommentsMutation! }
+extend type WorkOpsMutation { specs: WorkOpsSpecsMutation! }
+extend type WorkOpsMutation { specComments: WorkOpsSpecCommentsMutation! }
+extend type WorkOps { programs: WorkOpsPrograms! milestones: WorkOpsMilestones! }
+type WorkOpsPrograms { all: [WorkOpsProgram!]! program(id: UUID!): WorkOpsProgram }
+type WorkOpsProgram { id: UUID! key: String! name: String! archivedAt: DateTime }
+type WorkOpsMilestones { byProgram(programId: UUID!): [WorkOpsMilestone!]! }
+type WorkOpsMilestone { id: UUID! name: String! description: String targetDate: DateTime state: WorkOpsMilestoneState! closedAt: DateTime version: Long! }
+enum WorkOpsMilestoneState { OPEN CLOSED }
+input CreateWorkOpsMilestoneInput { programId: UUID! name: String! description: String targetDate: DateTime }
+type WorkOpsMilestonesMutation { create(input: CreateWorkOpsMilestoneInput!): WorkOpsMilestone! close(id: UUID!, expectedVersion: Long!): WorkOpsMilestone! }
+extend type WorkOpsMutation { milestones: WorkOpsMilestonesMutation! }
+extend type WorkOps { portfolios: WorkOpsPortfolios! }
+type WorkOpsPortfolios { all(offset: Long! = 0, limit: Int! = 50): [WorkOpsPortfolio!]! portfolio(id: UUID!): WorkOpsPortfolio }
+type WorkOpsPortfolio { id: UUID! key: String! name: String! description: String ownerProfileId: UUID! owner: Profile archivedAt: DateTime modifiedAt: DateTime! version: Long! }
+extend type WorkOpsProgram { description: String ownerProfileId: UUID! owner: Profile portfolio: WorkOpsPortfolio! startDate: DateTime targetDate: DateTime modifiedAt: DateTime! version: Long! }
+extend type WorkOpsProject { description: String ownerProfileId: UUID! owner: Profile program: WorkOpsProgram! defaultTaskTypeSchemeId: UUID modifiedAt: DateTime! version: Long! }
+input WorkOpsPortfolioInput { key: String! name: String! description: String ownerProfileId: UUID! }
+input WorkOpsProgramInput { portfolioId: UUID! key: String! name: String! description: String ownerProfileId: UUID! startDate: DateTime targetDate: DateTime }
+input WorkOpsProjectInput { programId: UUID! key: String! name: String! description: String ownerProfileId: UUID! defaultTaskTypeSchemeId: UUID taskCreationFormSchemaKey: String }
+type WorkOpsPortfoliosMutation { create(input: WorkOpsPortfolioInput!): WorkOpsPortfolio! update(id: UUID!, input: WorkOpsPortfolioInput!, expectedVersion: Long!): WorkOpsPortfolio! archive(id: UUID!, expectedVersion: Long!): WorkOpsPortfolio! unarchive(id: UUID!, expectedVersion: Long!): WorkOpsPortfolio! }
+type WorkOpsProgramsMutation { create(input: WorkOpsProgramInput!): WorkOpsProgram! update(id: UUID!, input: WorkOpsProgramInput!, expectedVersion: Long!): WorkOpsProgram! archive(id: UUID!, expectedVersion: Long!): WorkOpsProgram! unarchive(id: UUID!, expectedVersion: Long!): WorkOpsProgram! }
+type WorkOpsProjectsMutation { create(input: WorkOpsProjectInput!): WorkOpsProject! update(id: UUID!, input: WorkOpsProjectInput!, expectedVersion: Long!): WorkOpsProject! archive(id: UUID!, expectedVersion: Long!): WorkOpsProject! unarchive(id: UUID!, expectedVersion: Long!): WorkOpsProject! move(id: UUID!, programId: UUID!, expectedVersion: Long!): WorkOpsProject! }
+extend type WorkOpsMutation { portfolios: WorkOpsPortfoliosMutation! programs: WorkOpsProgramsMutation! projects: WorkOpsProjectsMutation! }
+type WorkOpsWorkflowTransition { id: UUID! name: String! toState: WorkOpsWorkflowState! description: String fromStateIds: [String!]! toStateId: UUID! }
+type WorkOpsWorkflowState { id: UUID! displayOrder: Int! status: WorkOpsStatus! }
+type WorkOpsTaskComment { id: Long! content: String! profileId: UUID! profile: Profile created: DateTime! modified: DateTime! likes: Int! }
+type WorkOpsTaskLink { id: UUID! sourceTask: WorkOpsTask targetTask: WorkOpsTask linkType: WorkOpsTaskLinkType! }
+type WorkOpsTaskLinkType { id: UUID! name: String! outwardLabel: String! inwardLabel: String! }
+type WorkOpsTaskLinks { linkTypes: [WorkOpsTaskLinkType!]! }
+type WorkOpsTaskHistoryEntry { id: UUID! changes: [WorkOpsFieldChange!]! changedByProfileId: UUID changedAt: DateTime! }
+type WorkOpsFieldChange { fieldKey: String! fromValue: JSON toValue: JSON }
+type WorkOpsTaskWatcher { profileId: UUID! }
+type WorkOpsNotificationsQuery {
+    watchers(taskId: UUID!): [WorkOpsTaskWatcher!]!
+    unreadCount: Long!
+    unread(offset: Long!, limit: Int!): [WorkOpsNotification!]!
+    mine(offset: Long!, limit: Int!): [WorkOpsNotification!]!
+    myPreferences: WorkOpsNotificationPreference
+}
+type WorkOpsNotification { id: UUID! event: String! body: String! link: String taskId: UUID projectId: UUID readAt: DateTime createdAt: DateTime! }
+type WorkOpsNotificationPreference { eventChannels: JSON! watchAuthored: Boolean! watchCommented: Boolean! dailyDigest: Boolean! dndStartLocal: String dndEndLocal: String mutedTaskIds: [UUID!]! mutedProjectIds: [UUID!]! version: Long! }
+input WorkOpsNotificationPreferenceUpdateInput { eventChannels: JSON! watchAuthored: Boolean! watchCommented: Boolean! dailyDigest: Boolean! dndStartLocal: String dndEndLocal: String mutedTaskIds: [UUID!]! mutedProjectIds: [UUID!]! }
+type WorkOpsWorkLog { id: UUID! profileId: UUID! timeSpentShort: String! startedAt: DateTime! comment: String }
+type WorkOpsWorklogQuery { forTask(taskId: UUID!, offset: Long!, limit: Int!): [WorkOpsWorkLog!]! }
+type WorkOpsBoards { board(id: UUID!): WorkOpsBoard byProject(projectId: UUID!): [WorkOpsBoard!]! byProjects(projectIds: [UUID!]!): [WorkOpsBoard!]! }
+type WorkOpsBoard { id: UUID! name: String! type: WorkOpsBoardType! swimlaneStrategy: WorkOpsSwimlaneStrategy! projectId: UUID programId: UUID portfolioId: UUID projects: [WorkOpsProject!]! columns: [WorkOpsBoardColumn!]! version: Long! }
+type WorkOpsBoardColumn { id: UUID! name: String! displayOrder: Int! statusIds: [UUID!]! wipLimit: Int }
+enum WorkOpsBoardType { KANBAN SCRUM }
+extend type WorkOpsMutation { boards: WorkOpsBoardsMutation! }
+type WorkOpsBoardsMutation { create(input: CreateWorkOpsBoardInput!): WorkOpsBoard! }
+extend type WorkOpsBoardsMutation {
+    update(id: UUID!, input: UpdateWorkOpsBoardInput!): WorkOpsBoard!
+    addColumn(input: CreateWorkOpsBoardColumnInput!): WorkOpsBoardColumn!
+    updateColumn(input: UpdateWorkOpsBoardColumnInput!): WorkOpsBoardColumn!
+    deleteColumn(columnId: UUID!): Boolean!
+}
+input CreateWorkOpsBoardInput { projectId: UUID programId: UUID portfolioId: UUID projectIds: [UUID!] name: String! type: WorkOpsBoardType! swimlaneStrategy: WorkOpsSwimlaneStrategy! = NONE }
+input UpdateWorkOpsBoardInput { name: String! type: WorkOpsBoardType! swimlaneStrategy: WorkOpsSwimlaneStrategy! expectedVersion: Long! addProjectIds: [UUID!] removeProjectIds: [UUID!] }
+input CreateWorkOpsBoardColumnInput { boardId: UUID! name: String! displayOrder: Int! statusIds: [UUID!]! wipLimit: Int }
+input UpdateWorkOpsBoardColumnInput { id: UUID! name: String! displayOrder: Int! statusIds: [UUID!]! wipLimit: Int }
+enum WorkOpsSwimlaneStrategy { NONE ASSIGNEE EPIC PRIORITY PROJECT QUERY }
+enum WorkOpsSprintState { FUTURE ACTIVE CLOSED }
+type WorkOpsSprint { id: UUID! name: String! state: WorkOpsSprintState! boardId: UUID! goal: String startDate: DateTime endDate: DateTime committedTaskIds: [UUID!]! addedDuringSprintTaskIds: [UUID!]! version: Long! }
+type WorkOpsSprints { sprint(id: UUID!): WorkOpsSprint byBoard(boardId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsSprint!]! }
+extend type WorkOpsSprint { board: WorkOpsBoard! completeDate: DateTime velocityPoints: Float createdAt: DateTime! modifiedAt: DateTime! }
+extend type WorkOpsMutation { sprints: WorkOpsSprintsMutation! }
+type WorkOpsSprintsMutation { create(input: CreateWorkOpsSprintInput!): WorkOpsSprint! start(input: StartWorkOpsSprintInput!): WorkOpsSprint! close(input: CloseWorkOpsSprintInput!): WorkOpsSprint! }
+input CreateWorkOpsSprintInput { boardId: UUID! name: String! goal: String }
+input StartWorkOpsSprintInput { sprintId: UUID! expectedVersion: Long! startDate: DateTime endDate: DateTime committedTaskIds: [UUID!]! = [] }
+input CloseWorkOpsSprintInput { sprintId: UUID! expectedVersion: Long! destinations: [WorkOpsCloseSprintDestination!]! = [] velocityPoints: Float }
+input WorkOpsCloseSprintDestination { taskId: UUID! targetSprintId: UUID }
+type WorkOpsMutation { tasks: WorkOpsTasksMutation! notifications: WorkOpsNotificationsMutation! taskComments: WorkOpsTaskCommentsMutation! worklogs: WorkOpsWorklogMutation! links: WorkOpsTaskLinksMutation! savedFilters: WorkOpsSavedFiltersMutation! }
+input WorkOpsSavedFilterInput { name: String! description: String bqlSource: String! }
+type WorkOpsSavedFiltersMutation {
+    create(input: WorkOpsSavedFilterInput!): WorkOpsSavedFilter!
+    update(id: UUID!, input: WorkOpsSavedFilterInput!, expectedVersion: Long!): WorkOpsSavedFilter!
+    delete(id: UUID!): Boolean!
+}
+type WorkOpsTasksMutation {
+    create(input: CreateWorkOpsTaskInput!): WorkOpsTask!
+    createDocument(id: UUID!, expectedVersion: Long!): WorkOpsTask!
+    update(id: UUID!, input: UpdateWorkOpsTaskInput!): WorkOpsTask!
+    transition(id: UUID!, transitionId: UUID!, expectedVersion: Long!, resolutionId: UUID): WorkOpsTask!
+    addAffectedProject(id: UUID!, projectId: UUID!): Boolean!
+    removeAffectedProject(id: UUID!, projectId: UUID!): Boolean!
+}
+input CreateWorkOpsTaskInput { projectId: UUID! summary: String! sprintId: UUID }
+input UpdateWorkOpsTaskInput {
+    summary: String
+    descriptionMarkdown: String
+    priorityId: UUID
+    assigneeProfileId: UUID
+    clearAssignee: Boolean
+    sprintId: UUID
+    clearSprintId: Boolean
+    dueDate: DateTime
+    clearDueDate: Boolean
+    originalEstimateSeconds: Long
+    clearOriginalEstimate: Boolean
+    remainingEstimateSeconds: Long
+    clearRemainingEstimate: Boolean
+    expectedVersion: Long!
+}
+type WorkOpsNotificationsMutation { watch(taskId: UUID!): Boolean! unwatch(taskId: UUID!): Boolean! markRead(id: UUID!): Boolean! markAllRead: Boolean! updatePreferences(input: WorkOpsNotificationPreferenceUpdateInput!): WorkOpsNotificationPreference! }
+enum ProfileVisibility { FRIENDS FRIENDS_OF_FRIENDS PUBLIC SYSTEM USER }
+input WorkOpsTaskCommentInput { content: String! visibility: ProfileVisibility! = USER }
+type WorkOpsTaskCommentsMutation { add(taskId: UUID!, input: WorkOpsTaskCommentInput!): WorkOpsTaskComment! }
+enum WorklogVisibility { ALL ROLE PROFILES }
+input WorkOpsWorkLogInput { timeSpent: String! startedAt: DateTime! comment: String visibility: WorklogVisibility! estimateAdjustment: String }
+type WorkOpsWorklogMutation { logWork(taskId: UUID!, input: WorkOpsWorkLogInput!): WorkOpsWorkLog! deleteWorklog(id: UUID!): Boolean! }
+input WorkOpsTaskLinkInput { sourceTaskId: UUID! targetTaskId: UUID! linkTypeId: UUID! }
+type WorkOpsTaskLinksMutation { link(input: WorkOpsTaskLinkInput!): WorkOpsTaskLink! }
+input SearchQuery { query: String! filter: [String!] storageSystemName: String limit: Int offset: Int }
+type Search { search(query: SearchQuery): SearchResult }
+type SearchResult { documents: [SearchDocument!]! }
+type SearchDocument { profile: Profile metadata: Metadata collection: Collection }
+type Collections { collection(id: UUID!): Collection }
+type Collection { id: UUID! name: String! description: String items(limit: Int!, offset: Long!): [CollectionItem!]! }
+union CollectionItem = Collection | Metadata
+
+extend type WorkOpsProject { createdAt: DateTime! repositories: [WorkOpsProjectRepository!]! analyticsApplications: [WorkOpsProjectAnalyticsApplication!]! analyticsServices: [WorkOpsProjectAnalyticsService!]! }
+type WorkOpsProjectRepository { id: UUID! projectId: UUID! repositoryId: UUID! }
+type WorkOpsProjectAnalyticsApplication { id: UUID! projectId: UUID! applicationId: String! }
+type WorkOpsProjectAnalyticsService { id: UUID! projectId: UUID! service: String! }
+extend type WorkOpsProjectsMutation {
+    addProjectRepository(projectId: UUID!, repositoryId: UUID!): WorkOpsProjectRepository!
+    removeProjectRepository(projectId: UUID!, id: UUID!): Boolean!
+    addAnalyticsApplication(projectId: UUID!, applicationId: String!): WorkOpsProjectAnalyticsApplication!
+    removeAnalyticsApplication(projectId: UUID!, id: UUID!): Boolean!
+    addAnalyticsService(projectId: UUID!, service: String!): WorkOpsProjectAnalyticsService!
+    removeAnalyticsService(projectId: UUID!, id: UUID!): Boolean!
+}
+extend type GitRepository { slug: String! archived: Boolean! }
+extend type WorkOps { versions: WorkOpsVersions! components: WorkOpsComponents! labels: WorkOpsLabels! multiRepo: WorkOpsMultiRepoQuery! }
+extend type WorkOpsMutation { versions: WorkOpsVersionsMutation! components: WorkOpsComponentsMutation! labels: WorkOpsLabelsMutation! multiRepo: WorkOpsMultiRepoMutation! }
+type WorkOpsVersion { id: UUID! projectId: UUID! name: String! description: String released: Boolean! archived: Boolean! startDate: DateTime releaseDate: DateTime sequenceNumber: Int! version: Long! }
+type WorkOpsVersions { byProject(projectId: UUID!): [WorkOpsVersion!]! }
+input CreateWorkOpsVersionInput { projectId: UUID! name: String! description: String startDate: DateTime releaseDate: DateTime }
+type WorkOpsVersionsMutation { create(input: CreateWorkOpsVersionInput!): WorkOpsVersion! release(id: UUID!, expectedVersion: Long!): WorkOpsVersion! delete(id: UUID!): Boolean! }
+extend type WorkOps { crossProject: WorkOpsCrossProjectQuery! }
+extend type WorkOpsMutation { crossProject: WorkOpsCrossProjectMutation! }
+type WorkOpsRelease { id: UUID! programId: UUID! name: String! description: String releaseDate: DateTime releasedAt: DateTime version: Long! }
+type WorkOpsReleaseRun { runId: UUID! status: String! startedAt: DateTime! }
+type WorkOpsCrossProjectQuery { releases(programId: UUID!): [WorkOpsRelease!]! releaseRuns(releaseId: UUID!): [WorkOpsReleaseRun!]! }
+input CreateWorkOpsReleaseInput { programId: UUID! name: String! description: String releaseDate: DateTime ownerProfileId: UUID }
+type WorkOpsCrossProjectMutation { createRelease(input: CreateWorkOpsReleaseInput!): WorkOpsRelease! bundleVersion(releaseId: UUID!, projectId: UUID!, versionId: UUID!): Boolean! }
+extend type Query { security: Security! }
+type Security { groups: Groups! }
+type Groups { all(offset: Long!, limit: Int!, type: GroupType): [Group!]! }
+enum GroupType { SYSTEM PRINCIPAL }
+type Group { id: UUID! name: String! }
+type EntityPermission { groupId: UUID! action: PermissionAction! }
+type WorkOpsEnvironmentType { id: UUID! name: String! description: String displayOrder: Int! version: Long! }
+type WorkOpsEnvironment { id: UUID! key: String! name: String! description: String displayOrder: Int! requiresApproval: Boolean! autoPromote: Boolean! typeId: UUID! promotionSourceIds: [UUID!]! version: Long! permissions: [EntityPermission!]! }
+extend type WorkOpsMultiRepoQuery { environments(programId: UUID!): [WorkOpsEnvironment!]! environmentTypes: [WorkOpsEnvironmentType!]! }
+input CreateWorkOpsEnvironmentInput { programId: UUID! key: String! name: String! description: String displayOrder: Int promotionSourceIds: [UUID!] requiresApproval: Boolean autoPromote: Boolean typeId: UUID! }
+input UpdateWorkOpsEnvironmentInput { name: String! description: String displayOrder: Int promotionSourceIds: [UUID!] requiresApproval: Boolean autoPromote: Boolean typeId: UUID! }
+extend type WorkOpsMultiRepoMutation {
+    createEnvironmentType(name: String!, description: String, displayOrder: Int): WorkOpsEnvironmentType!
+    updateEnvironmentType(id: UUID!, name: String!, description: String, displayOrder: Int, expectedVersion: Long!): WorkOpsEnvironmentType!
+    deleteEnvironmentType(id: UUID!): Boolean!
+    createEnvironment(input: CreateWorkOpsEnvironmentInput!): WorkOpsEnvironment!
+    updateEnvironment(id: UUID!, input: UpdateWorkOpsEnvironmentInput!, expectedVersion: Long!): WorkOpsEnvironment!
+    deleteEnvironment(id: UUID!): Boolean!
+    addEnvironmentPermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+    removeEnvironmentPermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+}
+enum WorkOpsComponentAssigneeMode { UNASSIGNED COMPONENT_LEAD PROJECT_DEFAULT COMPONENT_LEAD_OR_PROJECT_DEFAULT }
+type WorkOpsComponent { id: UUID! projectId: UUID! name: String! description: String assigneeMode: WorkOpsComponentAssigneeMode! leadProfileId: UUID defaultAssigneeProfileId: UUID version: Long! }
+type WorkOpsComponents { byProject(projectId: UUID!): [WorkOpsComponent!]! }
+input CreateWorkOpsComponentInput { projectId: UUID! name: String! description: String assigneeMode: WorkOpsComponentAssigneeMode! = UNASSIGNED leadProfileId: UUID defaultAssigneeProfileId: UUID }
+type WorkOpsComponentsMutation { create(input: CreateWorkOpsComponentInput!): WorkOpsComponent! delete(id: UUID!): Boolean! }
+enum WorkOpsLabelScope { GLOBAL PORTFOLIO PROGRAM PROJECT }
+type WorkOpsLabel { id: UUID! name: String! colorHex: String scope: WorkOpsLabelScope! projectId: UUID version: Long! }
+type WorkOpsLabels { byProject(projectId: UUID!): [WorkOpsLabel!]! }
+input CreateWorkOpsLabelInput { name: String! colorHex: String scope: WorkOpsLabelScope! = GLOBAL portfolioId: UUID programId: UUID projectId: UUID }
+type WorkOpsLabelsMutation { create(input: CreateWorkOpsLabelInput!): WorkOpsLabel! delete(id: UUID!): Boolean! }
+enum WorkOpsDependencyType { BUILD RUNTIME CONTRACT }
+enum WorkOpsDependencyStatus { CURRENT OUTDATED INCOMPATIBLE }
+type WorkOpsDependencyDeclaration { id: UUID! consumerProjectId: UUID! providerProjectId: UUID! providerVersionConstraint: String! dependencyType: WorkOpsDependencyType! status: WorkOpsDependencyStatus! version: Long! }
+input CreateWorkOpsDependencyDeclarationInput { consumerProjectId: UUID! consumerVersionId: UUID providerProjectId: UUID! providerVersionConstraint: String! resolvedProviderVersionId: UUID dependencyType: WorkOpsDependencyType! artifactCoordinates: String }
+type WorkOpsDeployConfigFile { repositoryId: UUID! branch: String! path: String! commitSha: String! content: String! }
+type WorkOpsMultiRepoQuery { dependencies(projectId: UUID!): [WorkOpsDependencyDeclaration!]! consumers(projectId: UUID!): [WorkOpsDependencyDeclaration!]! }
+type WorkOpsMultiRepoMutation { declareDependency(input: CreateWorkOpsDependencyDeclarationInput!): WorkOpsDependencyDeclaration! removeDependency(id: UUID!): Boolean! createProjectDeployConfig(projectId: UUID!, repositoryId: UUID!, authorName: String!, authorEmail: String!): WorkOpsDeployConfigFile! }
+
+# Release detail workspace. Nested bundle labels are resolved through authorized owning roots.
+extend type WorkOpsCrossProjectQuery {
+    release(id: UUID!): WorkOpsRelease
+    versionsForRelease(releaseId: UUID!): [WorkOpsReleaseProjectVersion!]!
+    releaseReadiness(releaseId: UUID!): [String!]!
+    releaseActionAccess(releaseId: UUID!): WorkOpsReleaseActionAccess
+}
+type WorkOpsReleaseProjectVersion {
+    releaseId: UUID! projectId: UUID! versionId: UUID! deploymentOrder: Int
+    deploymentStatus: String! deployedAt: DateTime rollbackVersionId: UUID
+}
+type WorkOpsReleaseActionAccess { canManage: Boolean! repositories: [WorkOpsReleaseRepositoryAccess!]! environments: [WorkOpsReleaseEnvironmentAccess!]! }
+type WorkOpsReleaseRepositoryAccess { repositoryId: UUID! canEdit: Boolean! canExecute: Boolean! }
+type WorkOpsReleaseEnvironmentAccess { key: String! canExecute: Boolean! }
+input UpdateWorkOpsReleaseInput { name: String! description: String releaseDate: DateTime }
+extend type WorkOpsCrossProjectMutation {
+    updateRelease(id: UUID!, input: UpdateWorkOpsReleaseInput!, expectedVersion: Long!): WorkOpsRelease!
+    deleteRelease(id: UUID!): Boolean!
+    unbundleVersion(releaseId: UUID!, versionId: UUID!): Boolean!
+}
+
+# Native Git CI release plans and controls.
+extend type WorkOpsCrossProjectQuery { releasePlans(releaseId: UUID!): [WorkOpsReleasePipelinePlan!]! }
+extend type WorkOpsReleaseRun { finishedAt: DateTime durationMs: Int }
+type WorkOpsReleasePipelineInput { name: String! type: String! defaultValue: String description: String options: [String!]! required: Boolean! }
+type WorkOpsReleasePipelinePlanStep { name: String! action: String! }
+type WorkOpsReleasePipelinePlanJob { key: String! environment: String approvalRequired: Boolean! needs: [String!]! requirements: [String!]! steps: [WorkOpsReleasePipelinePlanStep!]! depth: Int! }
+type WorkOpsReleasePipelinePlan { pipelineId: UUID! pipelineName: String! repositoryId: UUID! repositorySlug: String! triggerType: String! environment: String promotesFrom: String inputs: [WorkOpsReleasePipelineInput!]! jobs: [WorkOpsReleasePipelinePlanJob!]! }
+input PromoteWorkOpsReleaseInput { environment: String! allowDowngrade: Boolean! = false inputs: JSON }
+input StartWorkOpsPatchReleaseInput { projectIds: [UUID!]! }
+extend type WorkOpsCrossProjectMutation {
+    launchRelease(releaseId: UUID!, inputs: JSON): Boolean!
+    promoteRelease(releaseId: UUID!, input: PromoteWorkOpsReleaseInput!): Boolean!
+    startPatchRelease(releaseId: UUID!, input: StartWorkOpsPatchReleaseInput!): WorkOpsRelease!
+    rollbackReleaseArtifacts(releaseId: UUID!): Boolean!
+    rollbackReleaseEnvironment(releaseId: UUID!, environmentKey: String!, toRevision: Int! = 0): [String!]!
+}
+enum GitPipelineRunStatus { QUEUED RUNNING SUCCESS FAILURE CANCELLED SKIPPED }
+enum GitPipelineTriggerType { PUSH PULL_REQUEST TAG MANUAL SCHEDULE RELEASE PROMOTION }
+extend type Git { pipelineRun(id: UUID!): GitPipelineRun }
+type GitPipelineRun {
+    id: UUID! pipelineId: UUID! repositoryId: UUID! ref: String! triggerType: GitPipelineTriggerType!
+    status: GitPipelineRunStatus! number: Int! parameters: JSON! created: DateTime!
+    started: DateTime finished: DateTime durationSeconds: Long jobs: [GitPipelineJob!]!
+}
+type GitPipelineJob {
+    id: UUID! name: String! status: GitPipelineRunStatus! dependsOn: [String!]!
+    requirements: JSON pipelineRequirements: JSON requirementsDeadline: DateTime awaitingRequirements: Boolean!
+    environment: String approvalRequired: Boolean! approvedAt: DateTime approvalComment: String
+    awaitingApproval: Boolean! errorMessage: String attempt: Int! started: DateTime finished: DateTime steps: [GitPipelineStep!]!
+}
+type GitPipelineStep {
+    id: UUID! name: String! ordinal: Int! status: GitPipelineRunStatus! uses: String
+    exitCode: Int errorMessage: String started: DateTime finished: DateTime
+}
+extend type Mutation { git: GitMutation! }
+type GitMutation {
+    cancelPipelineRun(id: UUID!): GitPipelineRun!
+    cancelPipelineJob(jobId: UUID!): GitPipelineJob!
+    rerunPipelineJob(jobId: UUID!): GitPipelineJob!
+    approvePipelineJob(jobId: UUID!, comment: String): GitPipelineJob!
+    rejectPipelineJob(jobId: UUID!, comment: String): GitPipelineJob!
+}
+
+# Release publications and localized store notes.
+enum WorkOpsArtifactType { MAVEN NPM DOCKER HELM HELM_VALUES GRAALVM_NATIVE IOS_FRAMEWORK ANDROID_AAR WASM OTHER }
+enum WorkOpsPublicationStatus { PENDING PUBLISHED FAILED YANKED }
+type WorkOpsArtifactPublication {
+    id: UUID! versionId: UUID! projectId: UUID! artifactType: WorkOpsArtifactType!
+    coordinates: String! namespace: String environments: [String!]! status: WorkOpsPublicationStatus!
+}
+type WorkOpsReleaseDeclaredArtifact { projectId: UUID! type: WorkOpsArtifactType! namespace: String! coordinate: String! environments: [String!]! }
+extend type WorkOpsCrossProjectQuery { releaseDeclaredArtifacts(releaseId: UUID!): [WorkOpsReleaseDeclaredArtifact!]! }
+type WorkOpsVersionReleaseNotes { id: UUID! versionId: UUID! sourceLocale: String! generatedAt: DateTime manuallyEdited: Boolean! variants: JSON! }
+extend type WorkOpsMultiRepoQuery {
+    artifacts(versionId: UUID!): [WorkOpsArtifactPublication!]!
+    versionReleaseNotes(releaseId: UUID!): [WorkOpsVersionReleaseNotes!]!
+}
+extend type WorkOpsMultiRepoMutation {
+    autoGenerateVersionReleaseNotes(releaseId: UUID!): [WorkOpsVersionReleaseNotes!]!
+    editVersionReleaseNotes(releaseId: UUID!, versionId: UUID!, variants: JSON!): WorkOpsVersionReleaseNotes!
+}
+
+# Release environment topology and current deployment/drift facts.
+enum WorkOpsEnvironmentTargetType { GENERIC PLAY_TRACK TESTFLIGHT APP_STORE }
+enum WorkOpsDeployTargetKind { HELM HELM_VALUES GOOGLE_PLAY APP_STORE }
+enum WorkOpsEnvironmentDeploymentStatus { PENDING DEPLOYING DEPLOYED FAILED ROLLED_BACK }
+enum WorkOpsEnvironmentDriftType { VERSION_MISMATCH NOT_DEPLOYED }
+extend type WorkOpsEnvironment { targetType: WorkOpsEnvironmentTargetType }
+type WorkOpsEnvironmentDeployment { id: UUID! projectId: UUID! versionId: UUID! targetKind: WorkOpsDeployTargetKind! status: WorkOpsEnvironmentDeploymentStatus! deployedAt: DateTime }
+type WorkOpsEnvironmentDrift { projectId: UUID! deployedVersionId: UUID expectedVersionId: UUID! driftType: WorkOpsEnvironmentDriftType! }
+extend type WorkOpsMultiRepoQuery {
+    environmentState(environmentId: UUID!): [WorkOpsEnvironmentDeployment!]!
+    environmentDrift(environmentId: UUID!, releaseId: UUID!): [WorkOpsEnvironmentDrift!]!
+    environmentCompatibleProjects(environmentId: UUID!, releaseId: UUID!): [UUID!]!
+}
+
+# Existing Analytics read contracts used by release health.
+extend type Query { analytics: Analytics! }
+type Analytics { counters: AnalyticsCounters! errors: AnalyticsErrors! }
+type AnalyticsCounters { byId(id: ID!): AnalyticsCounter! }
+type AnalyticsCounter { value(window: Int): Long! values(window: Int): [AnalyticsCounterValue!]! }
+type AnalyticsCounterValue { time: DateTime! value: Long! }
+enum ErrorGroupStatus { OPEN RESOLVED IGNORED }
+input ErrorGroupFilter { appId: String status: ErrorGroupStatus fatal: Boolean }
+type ErrorGroup { lastSeen: DateTime! }
+type ErrorGroupConnection { total: Long! edges: [ErrorGroup!]! }
+type AnalyticsErrors { groups(filter: ErrorGroupFilter, offset: Long, limit: Int): ErrorGroupConnection! }
+
+# Existing release-scoped store state and analytics observations.
+extend type WorkOpsMultiRepoQuery { releaseStoreTelemetry(releaseId: UUID!): WorkOpsReleaseStoreTelemetry! }
+type WorkOpsReleaseStoreTelemetry { states: [WorkOpsReleaseStoreState!]! observations: [WorkOpsReleaseStoreObservation!]! }
+type WorkOpsReleaseStoreState {
+    projectId: UUID! versionId: UUID! environmentId: UUID! environmentKey: String! store: String!
+    applicationId: String! appVersion: String! buildNumber: String track: String rolloutPercentage: Float
+    releaseState: String reviewState: String betaReviewState: String buildProcessingState: String phasedReleaseState: String
+    testFlightGroups: [String!]! testFlightCrashFeedback: [WorkOpsReleaseStoreCrashFeedback!]!
+}
+type WorkOpsReleaseStoreCrashFeedback { id: String! comment: String email: String deviceModel: String osVersion: String createdAt: String }
+type WorkOpsReleaseStoreObservation { store: String! applicationId: String! appVersion: String! telemetryType: String! observedAt: DateTime! payload: JSON! }
+
+type Subscription { liveSessions(appId: String, appVersion: String): LiveSession! }
+type LiveSession { sessionId: String! lat: Float! lon: Float! appId: String appVersion: String }
+
+
+# Global WorkOps reference catalogs.
+enum WorkOpsTaskHierarchyLevel { SUBTASK STANDARD EPIC INITIATIVE }
+enum WorkOpsLinkCategory { BLOCKS DUPLICATES RELATES_TO CLONES CAUSES CUSTOM }
+extend type WorkOpsTaskType { description: String iconKey: String! colorHex: String! hierarchyLevel: WorkOpsTaskHierarchyLevel! version: Long! }
+extend type WorkOpsStatus { description: String colorHex: String! version: Long! }
+extend type WorkOpsPriority { description: String iconKey: String! version: Long! }
+extend type WorkOpsResolution { description: String displayOrder: Int! version: Long! }
+extend type WorkOpsTaskLinkType { category: WorkOpsLinkCategory! version: Long! }
+extend type WorkOpsLabels { global: [WorkOpsLabel!]! }
+extend type WorkOpsLabelsMutation { update(id: UUID!, name: String!, colorHex: String, expectedVersion: Long!): WorkOpsLabel! }
+extend type WorkOpsMutation {
+    taskTypes: WorkOpsTaskTypesMutation!
+    statuses: WorkOpsStatusesMutation!
+    priorities: WorkOpsPrioritiesMutation!
+    resolutions: WorkOpsResolutionsMutation!
+    linkTypes: WorkOpsTaskLinkTypesMutation!
+}
+input CreateWorkOpsTaskTypeInput { name: String! description: String iconKey: String! colorHex: String! hierarchyLevel: WorkOpsTaskHierarchyLevel! }
+input UpdateWorkOpsTaskTypeInput { name: String! description: String iconKey: String! colorHex: String! hierarchyLevel: WorkOpsTaskHierarchyLevel! expectedVersion: Long! }
+type WorkOpsTaskTypesMutation { create(input: CreateWorkOpsTaskTypeInput!): WorkOpsTaskType! update(id: UUID!, input: UpdateWorkOpsTaskTypeInput!): WorkOpsTaskType! delete(id: UUID!): Boolean! }
+input CreateWorkOpsStatusInput { name: String! description: String category: WorkOpsStatusCategory! colorHex: String! }
+input UpdateWorkOpsStatusInput { name: String! description: String category: WorkOpsStatusCategory! colorHex: String! expectedVersion: Long! }
+type WorkOpsStatusesMutation { create(input: CreateWorkOpsStatusInput!): WorkOpsStatus! update(id: UUID!, input: UpdateWorkOpsStatusInput!): WorkOpsStatus! delete(id: UUID!): Boolean! }
+input CreateWorkOpsPriorityInput { name: String! description: String iconKey: String! colorHex: String! displayOrder: Int! }
+input UpdateWorkOpsPriorityInput { name: String! description: String iconKey: String! colorHex: String! displayOrder: Int! expectedVersion: Long! }
+type WorkOpsPrioritiesMutation { create(input: CreateWorkOpsPriorityInput!): WorkOpsPriority! update(id: UUID!, input: UpdateWorkOpsPriorityInput!): WorkOpsPriority! delete(id: UUID!): Boolean! }
+input CreateWorkOpsResolutionInput { name: String! description: String displayOrder: Int! }
+input UpdateWorkOpsResolutionInput { name: String! description: String displayOrder: Int! expectedVersion: Long! }
+type WorkOpsResolutionsMutation { create(input: CreateWorkOpsResolutionInput!): WorkOpsResolution! update(id: UUID!, input: UpdateWorkOpsResolutionInput!): WorkOpsResolution! delete(id: UUID!): Boolean! }
+input CreateWorkOpsTaskLinkTypeInput { name: String! inwardLabel: String! outwardLabel: String! category: WorkOpsLinkCategory! }
+input UpdateWorkOpsTaskLinkTypeInput { name: String! inwardLabel: String! outwardLabel: String! category: WorkOpsLinkCategory! expectedVersion: Long! }
+type WorkOpsTaskLinkTypesMutation { create(input: CreateWorkOpsTaskLinkTypeInput!): WorkOpsTaskLinkType! update(id: UUID!, input: UpdateWorkOpsTaskLinkTypeInput!): WorkOpsTaskLinkType! delete(id: UUID!): Boolean! }
+
+extend type WorkOps { automation: WorkOpsAutomationQuery! }
+extend type WorkOpsMutation { automation: WorkOpsAutomationMutation! }
+type WorkOpsAutomationRule {
+    id: UUID! scope: String! scopeId: UUID name: String! description: String enabled: Boolean!
+    trigger: JSON! conditions: JSON! actions: JSON! runAsProfileId: UUID! failureMode: String!
+    executionLogRetentionDays: Int! maxFiresPerTaskPerHour: Int! version: Long!
+}
+type WorkOpsAutomationExecutionLog {
+    id: UUID! ruleId: UUID! taskId: UUID outcome: String! startedAt: DateTime! finishedAt: DateTime durationMs: Long errorMessage: String
+}
+input WorkOpsAutomationRuleInput {
+    scope: String! scopeId: UUID name: String! description: String enabled: Boolean!
+    trigger: JSON! conditions: JSON! actions: JSON! runAsProfileId: UUID! failureMode: String!
+    executionLogRetentionDays: Int! maxFiresPerTaskPerHour: Int!
+}
+type WorkOpsAutomationQuery {
+    rules(scope: String!, scopeId: UUID): [WorkOpsAutomationRule!]!
+    rule(id: UUID!): WorkOpsAutomationRule
+    executionLogs(ruleId: UUID!, offset: Long!, limit: Int!): [WorkOpsAutomationExecutionLog!]!
+}
+type WorkOpsAutomationMutation {
+    create(input: WorkOpsAutomationRuleInput!): WorkOpsAutomationRule!
+    update(id: UUID!, input: WorkOpsAutomationRuleInput!, expectedVersion: Long!): WorkOpsAutomationRule!
+    delete(id: UUID!): Boolean!
+    setEnabled(id: UUID!, enabled: Boolean!, expectedVersion: Long!): WorkOpsAutomationRule!
+}
+
+
+extend type WorkOps { workflows: WorkOpsWorkflows! }
+type WorkOpsWorkflows { all: [WorkOpsWorkflow!]! schemes: [WorkOpsWorkflowScheme!]! }
+type WorkOpsWorkflow { id: UUID! name: String! description: String initialStateId: UUID version: Long! states: [WorkOpsWorkflowState!]! transitions: [WorkOpsWorkflowTransition!]! }
+type WorkOpsWorkflowScheme { id: UUID! name: String! description: String defaultWorkflowId: UUID! version: Long! }
+extend type WorkOpsMutation { workflows: WorkOpsWorkflowsMutation! }
+type WorkOpsWorkflowsMutation {
+    create(input: CreateWorkOpsWorkflowInput!): WorkOpsWorkflow!
+    update(id: UUID!, input: UpdateWorkOpsWorkflowInput!): WorkOpsWorkflow!
+    delete(id: UUID!): Boolean!
+    createScheme(input: CreateWorkOpsWorkflowSchemeInput!): WorkOpsWorkflowScheme!
+    updateScheme(id: UUID!, input: UpdateWorkOpsWorkflowSchemeInput!): WorkOpsWorkflowScheme!
+    deleteScheme(id: UUID!): Boolean!
+}
+input CreateWorkOpsWorkflowInput { name: String! description: String }
+input UpdateWorkOpsWorkflowInput { name: String! description: String expectedVersion: Long! }
+input CreateWorkOpsWorkflowSchemeInput { name: String! description: String defaultWorkflowId: UUID! }
+input UpdateWorkOpsWorkflowSchemeInput { name: String! description: String defaultWorkflowId: UUID! expectedVersion: Long! }
+
+
+extend type WorkOps { sla: WorkOpsSlaQuery! }
+type WorkOpsSlaQuery { slaPolicies: [WorkOpsSlaPolicy!]! workingCalendars: [WorkOpsWorkingCalendar!]! }
+type WorkOpsSlaPolicy { id: UUID! name: String! description: String goals: [WorkOpsSlaGoal!]! }
+type WorkOpsSlaGoal { id: UUID! name: String! targetMinutes: Int! atRiskAtPercent: Int! startConditions: String! stopConditions: String! pauseConditions: String displayOrder: Int! }
+type WorkOpsWorkingCalendar { id: UUID! name: String! description: String timeZone: String! weeklyHours: JSON! holidays: JSON! }
+extend type WorkOpsMutation { sla: WorkOpsSlaMutation! }
+type WorkOpsSlaMutation { createSlaPolicy(name: String!, description: String): WorkOpsSlaPolicy! createWorkingCalendar(input: WorkOpsWorkingCalendarInput!): WorkOpsWorkingCalendar! }
+input WorkOpsWorkingCalendarInput { name: String! description: String timeZone: String! weeklyHours: JSON! holidays: JSON! }
+
+
+extend type EntityPermission { group: Group! }
+extend type WorkOpsPortfolio { permissions: [EntityPermission!]! }
+extend type WorkOpsProgram { permissions: [EntityPermission!]! }
+extend type WorkOpsProject { permissions: [EntityPermission!]! }
+extend type WorkOpsPortfoliosMutation { addPermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean! removePermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean! }
+extend type WorkOpsProgramsMutation { addPermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean! removePermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean! }
+extend type WorkOpsProjectsMutation { addPermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean! removePermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean! }
+
+
+extend type WorkOpsNotificationsQuery { schemes: [WorkOpsNotificationScheme!]! }
+type WorkOpsNotificationScheme { id: UUID! name: String! description: String eventRecipients: JSON! }

@@ -7,7 +7,8 @@
         <div class="example-actions">
           <dialog title="Edit display name" triggerLabel="Edit name" triggerIcon="edit" icon="edit" primary
                   subtitle="Use at least three characters." :triggerDisabled="overlay.triggerDisabled"
-                  :forceOpen="overlay.reopen" :completed="overlay.completed" :data-catalog-edit="overlay.id">
+                  :forceOpen="overlay.reopen" :completed="overlay.completed" :data-catalog-edit="overlay.id"
+                  :returnFocus='"[data-catalog-edit=" + overlay.id + "] > [data-bml-ref=trigger]"'>
             <form @submit="overlay.save(form.name)" class="modal-form" :data-overlay-form="overlay.id">
               <div class="modal-fields">
                 <field label="Display name">
@@ -23,6 +24,14 @@
                    :sequence="overlay.noticeSequence" tone="error" :data-overlay-rejection="overlay.id" />
           </dialog>
           <confirmation-example :id='"overlay-" + overlay.id' />
+          <button @click="overlay.openAction()" :data-dialog-dismiss-open="overlay.id">Dismissible action</button>
+          <span>Dismissals: <span :data-dialog-dismiss-count="overlay.id">{ overlay.dismissals }</span></span>
+          <dialog title="Dismissible action" triggerLabel="Dismissible action" :showTrigger="false"
+                  :forceOpen="overlay.actionOpen" :completed="!overlay.actionOpen" @dialogdismiss="overlay.dismissAction()"
+                  :returnFocus='"[data-dialog-dismiss-open=" + overlay.id + "]"' :data-dialog-dismiss-surface="overlay.id">
+            <form-body padded><p>Dismissal updates the application while focus returns to the current action.</p></form-body>
+            <form-actions bordered><button data-dialog-close :data-dialog-dismiss-cancel="overlay.id">Cancel action</button></form-actions>
+          </dialog>
           <button @click="overlay.requestDraft" :data-overlay-open="overlay.id">Open retained draft</button>
           <dialog title="Retained draft" triggerLabel="Retained draft" :showTrigger="false" size="lg"
                   :openRequest='if (overlay.request > 0) overlay.request.toString() else ""' :completed="overlay.draftCompleted"

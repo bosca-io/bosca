@@ -1,0 +1,17 @@
+query WorkOpsUnreadInbox($offset: Long!) {
+  workOps { notifications { unreadCount unread(offset: $offset, limit: 31) { id event body link taskId projectId readAt createdAt } } }
+}
+query WorkOpsAllInbox($offset: Long!) {
+  workOps { notifications { unreadCount mine(offset: $offset, limit: 31) { id event body link taskId projectId readAt createdAt } } }
+}
+query WorkOpsNotificationPreferences {
+  workOps { notifications { unreadCount myPreferences {
+    eventChannels watchAuthored watchCommented dailyDigest dndStartLocal dndEndLocal mutedTaskIds mutedProjectIds version
+  } } }
+}
+query WorkOpsInboxCount { workOps { notifications { unreadCount } } }
+mutation WorkOpsMarkNotificationRead($id: UUID!) { workOps { notifications { markRead(id: $id) } } }
+mutation WorkOpsMarkAllNotificationsRead { workOps { notifications { markAllRead } } }
+mutation WorkOpsSaveNotificationPreferences($input: WorkOpsNotificationPreferenceUpdateInput!) {
+  workOps { notifications { updatePreferences(input: $input) { version } } }
+}

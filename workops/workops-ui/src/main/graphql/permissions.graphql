@@ -1,0 +1,13 @@
+query WorkOpsPermissionPortfolioChoices($offset: Long!) { workOps { portfolios { all(offset: $offset, limit: 101) { id key name } } } }
+query WorkOpsPermissionProgramChoices { workOps { programs { all { id key name } } } }
+query WorkOpsPermissionGroups($offset: Long!) { security { groups { all(offset: $offset, limit: 101, type: SYSTEM) { id name } } } }
+fragment WorkOpsGrantFields on EntityPermission { groupId action group { id name } }
+query WorkOpsPortfolioGrants($id: UUID!) { workOps { portfolios { portfolio(id: $id) { id permissions { ...WorkOpsGrantFields } } } } }
+query WorkOpsProgramGrants($id: UUID!) { workOps { programs { program(id: $id) { id permissions { ...WorkOpsGrantFields } } } } }
+query WorkOpsProjectGrants($id: UUID!) { workOps { projects { project(id: $id) { id permissions { ...WorkOpsGrantFields } } } } }
+mutation WorkOpsPortfolioGrant($id: UUID!, $group: UUID!, $action: PermissionAction!) { workOps { portfolios { addPermission(id: $id, groupId: $group, action: $action) } } }
+mutation WorkOpsProgramGrant($id: UUID!, $group: UUID!, $action: PermissionAction!) { workOps { programs { addPermission(id: $id, groupId: $group, action: $action) } } }
+mutation WorkOpsProjectGrant($id: UUID!, $group: UUID!, $action: PermissionAction!) { workOps { projects { addPermission(id: $id, groupId: $group, action: $action) } } }
+mutation WorkOpsPortfolioRevoke($id: UUID!, $group: UUID!, $action: PermissionAction!) { workOps { portfolios { removePermission(id: $id, groupId: $group, action: $action) } } }
+mutation WorkOpsProgramRevoke($id: UUID!, $group: UUID!, $action: PermissionAction!) { workOps { programs { removePermission(id: $id, groupId: $group, action: $action) } } }
+mutation WorkOpsProjectRevoke($id: UUID!, $group: UUID!, $action: PermissionAction!) { workOps { projects { removePermission(id: $id, groupId: $group, action: $action) } } }

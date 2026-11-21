@@ -30,6 +30,16 @@ class SpecGitSyncServiceImpl(
     private val json: Json,
 ) : SpecGitSyncService {
 
+    override suspend fun pushSavedToGit(spec: Spec, actingPrincipalId: UUID, authorName: String, authorEmail: String): String? {
+        if (spec.gitRepositoryId == null || spec.gitPath == null) return null
+        require(authorName.isNotBlank() && authorEmail.isNotBlank()) { "Enter the commit author's name and email." }
+        val metadata = requireNotNull(metadataService.getById(spec.metadataId)) { "The specification document is unavailable." }
+        val content = requireNotNull(documentService.getDocument(spec.metadataId, metadata.version)?.content) {
+            "The saved specification document is unavailable."
+        }
+        return pushToGit(spec, json.encodeToString(Content.serializer(), content), actingPrincipalId, authorName, authorEmail)
+    }
+
     override suspend fun pushToGit(
         spec: Spec,
         content: String,
@@ -41,7 +51,9 @@ class SpecGitSyncServiceImpl(
         val gitPath = spec.gitPath ?: return null
 
         val pushContent = if (gitPath.endsWith(".md")) {
-            val documentContent = documentService.getDocument(spec.metadataId, 1)?.content
+            val documentContent = metadataService.getById(spec.metadataId)?.let {
+                documentService.getDocument(spec.metadataId, it.version)?.content
+            }
             if (documentContent != null) {
                 MarkdownConverter.toMarkdown(documentContent)
             } else {
@@ -57,7 +69,7 @@ class SpecGitSyncServiceImpl(
                 branch = "main",
                 path = gitPath,
                 content = pushContent,
-                message = "Update spec ${spec.key}",
+                message = "Update specification document",
                 authorName = authorName,
                 authorEmail = authorEmail,
             )

@@ -1,0 +1,14 @@
+query WorkOpsMilestonePrograms {
+  workOps { programs { all { id key name archivedAt } } }
+}
+query WorkOpsMilestones($programId: UUID!) {
+  workOps { milestones { byProgram(programId: $programId) {
+    id name description targetDate state closedAt version
+  } } }
+}
+mutation WorkOpsCreateMilestone($input: CreateWorkOpsMilestoneInput!) {
+  workOps { milestones { create(input: $input) { id } } }
+}
+mutation WorkOpsCloseMilestone($id: UUID!, $version: Long!) {
+  workOps { milestones { close(id: $id, expectedVersion: $version) { id } } }
+}

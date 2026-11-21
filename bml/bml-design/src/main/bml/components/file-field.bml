@@ -1,0 +1,26 @@
+<component tag="file-field">
+  <prop name="name" type="String" required />
+  <prop name="label" type="String" default="File" />
+  <prop name="value" type="kotlinx.serialization.json.JsonElement" :default="kotlinx.serialization.json.JsonNull" />
+  <prop name="readOnly" type="Boolean" default="false" />
+  <prop name="image" type="Boolean" default="false" />
+  <prop name="accept" type="String" default="" />
+  <div class="file-field" data-file-field :data-value="value.toString()" :data-readonly="readOnly" :data-image="image" {...attrs}>
+    <html:input type="hidden" data-file-field-value :name="name" :value="value.toString()" />
+    <img ref="filePreview" hidden :alt="label" />
+    <file-drop ref="fileDrop" :label="label" :accept="accept" :disabled="readOnly" />
+    <p ref="fileStatus" role="status"></p>
+    <progress-bar ref="fileProgress" hidden label="Reading file" />
+    <form-actions><button ref="fileCancel" hidden>Cancel reading</button><button ref="fileClear" :disabled="readOnly">Clear file</button></form-actions>
+  </div>
+  <style scoped>
+    .file-field { min-width:0; display:grid; gap:8px; }
+    img { display:block; max-width:100%; max-height:200px; object-fit:contain; justify-self:start; border-radius:var(--r-sm); }
+    p { margin:0; color:var(--fg-3); font-size:12px; overflow-wrap:anywhere; }
+    [hidden] { display:none; }
+  </style>
+  <script client scoped>
+    import { fileField } from "@client/helpers/file-field";
+    fileField(ctx);
+  </script>
+</component>

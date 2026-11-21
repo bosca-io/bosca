@@ -1,0 +1,49 @@
+<component tag="workops-project-header">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsProjectDetailModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsProjectDetailModel(initial.id, initial.tab, initial.selectedBoardId, initial.project, initial.programs, initial.boards, initial.catalogs, initial.recent, initial.sprintCount, initial.activeSprintCount, initial.overviewLoaded, initial.moveTarget, initial.moveProgramId, initial.moved, initial.feedback)</script>
+  <island name="projectDetails" :key="initial.id">
+    <div class="workops-project-header" data-workops-project-details :data-header-only='model.tab != "overview"'>
+      <page-heading :title="model.title" :subtitle='model.project?.let { it.key + " · " + model.programName + " · Owner " + it.ownerLabel }.orEmpty()' :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false), bosca.design.model.NavigationItem("Projects", "/workops/projects", false))'><icon-button icon="refresh" label="Refresh project details" id="workops-project-refresh" @click="model.retry(ctx)" /><if model.project?.archived == true><badge>Archived</badge><else-if model.project != null && model.tab == "overview"><button @click="model.beginMove()">Move project</button></if><if model.moved><button-link :href="model.href" size="xs" icon="arrow-right">Open the moved project</button-link></if></page-heading>
+      <div class="workops-content">
+        <tabs :items="model.tabs" label="Project views" />
+
+        <workops-feedback id="project-header-0" :feedback="model.feedback" />
+
+        <if model.project == null><empty-state title="Project unavailable" message="This project is not available to you." />
+        <else-if model.tab == "overview">
+          <if !model.overviewLoaded><p role="status">The overview has not been loaded. Refresh project details to try again.</p>
+          <else>
+            <div class="workops-project-stats">
+              <card><strong>{ model.boards.size }</strong><p>Visible boards</p></card><card><strong>{ model.sprintCount }</strong><p>Sprints · { model.activeSprintCount } active</p></card>
+              <card><strong>{ model.versions.size }</strong><p>Versions · { model.versions.count { it.released } } released</p></card><card><strong>{ model.components.size }</strong><p>Components</p></card><card><strong>{ model.labels.size }</strong><p>Project labels</p></card>
+            </div>
+            <div class="workops-project-overview">
+              <card title="Project"><dl class="workops-project-facts"><div><dt>Key</dt><dd>{ model.project?.key }</dd></div><div><dt>Program</dt><dd>{ model.programName }</dd></div><div><dt>Owner</dt><dd><if model.project?.ownerName.orEmpty().isNotBlank()><profile :name="model.project?.ownerName.orEmpty()" /><else>{ model.project?.ownerLabel }</if></dd></div><div><dt>Created</dt><dd><time :value="model.project?.created.orEmpty()" /></dd></div><div><dt>Modified</dt><dd><time :value="model.project?.modified.orEmpty()" /></dd></div></dl><if model.project?.description.orEmpty().isNotBlank()><p class="project-description">{ model.project?.description }</p></if></card>
+              <card title="Recent task statuses"><help-text>Counts describe the { model.recentRows.size } most recently modified visible tasks.</help-text><for status in model.statusCounts><div class="workops-project-status"><span>{ status.label } · { status.count }</span><progress-bar :value="status.percent" :label='status.label + " in recent tasks"' /></div></for></card>
+              <if model.labels.isNotEmpty()><card title="Project labels"><div class="workops-task-actions"><for label in model.labels><badge :color="label.colorHex.orEmpty()">{ label.name }</badge></for></div></card></if>
+              <if model.components.isNotEmpty()><card title="Components"><ul><for component in model.components><li>{ component.name } · { component.assigneeMode.name.lowercase().replace('_', ' ') }</li></for></ul></card></if>
+              <if model.versions.isNotEmpty()><card title="Versions"><ul><for version in model.versions><li>{ version.name } <badge :tone='if (version.released) "success" else "neutral"'>{ if (version.released) "Released" else if (version.archived) "Archived" else "Unreleased" }</badge></li></for></ul></card></if>
+            </div>
+            <card :padded="false"><table-scroll label="Recent tasks"><table><caption>Recent tasks</caption><thead><tr><th scope="col">Task</th><th scope="col">Status</th><th scope="col">Priority</th><th scope="col">Assignee</th><th scope="col">Modified</th></tr></thead><tbody><for task in model.recentRows><tr :data-workops-project-recent-task="task.id"><td><a :href='"/workops/tasks/" + bosca.workops.ui.workOpsEncode(task.id)'>{ task.key } · { bosca.workops.ui.workOpsContentLabel(task.summary, task.id, "Task") }</a></td><td><badge>{ task.status.name }</badge></td><td><badge :color="task.priority.colorHex">{ task.priority.name }</badge></td><td><if task.assignee?.name.orEmpty().isNotBlank()><profile :name="task.assignee?.name.orEmpty()" /><else>{ bosca.workops.ui.workOpsAssigneeLabel(task.assigneeProfileId, task.assignee?.name) }</if></td><td><time :value="task.modifiedAt" relative /></td></tr></for></tbody></table><if model.recentRows.isEmpty()><empty-state title="No visible tasks yet." compact /></if></table-scroll></card>
+          </if>
+        </if>
+      </div>
+      <dialog title="Move project" triggerLabel="Move project" :showTrigger="false" :forceOpen="model.moveTarget != null" :completed="model.moveTarget == null" returnFocus="#workops-project-refresh" @dialogdismiss="model.cancelMove()">
+        <form @submit="model.move(form.program, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert><help-text>Your selection is retained. If the project changed, cancel and refresh project details before reopening.</help-text></if><p>Move { model.moveTarget?.name } to another program. Its tasks and permissions stay with the project.</p><if model.feedback.failed><form-actions align="start"><button icon="refresh" @click="model.reloadMoveChoices(form.program, ctx)">Retry loading programs</button></form-actions></if>
+          <field label="Destination program"><select name="program" label="Destination program" required><option value="">Choose a program</option><for program in model.moveChoices><option :value="program.id" :selected="program.id == model.moveProgramId">{ program.key } · { program.name }</option></for><if model.moveProgramId.isNotBlank() && model.moveChoices.none { it.id == model.moveProgramId }><option :value="model.moveProgramId" selected disabled>Selected program unavailable</option></if></select></field></form-body><form-actions bordered><button data-dialog-close @click="model.cancelMove()">Cancel</button><button type="submit" primary>Move project</button></form-actions></form>
+      </dialog>
+    </div>
+  </island>
+  <style scoped>
+    .workops-project-header { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+    .workops-project-header[data-header-only] { flex: 0 0 auto; }
+    .workops-project-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 16px; }
+    .workops-project-stats strong { font-size: 24px; }
+    .workops-project-stats p, .workops-project-facts dt { color: var(--fg-2); font-size: 12px; }
+    .workops-project-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .workops-project-facts { display: grid; gap: 12px; }
+    .workops-project-facts dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+    .project-description { white-space: pre-wrap; }
+    .workops-project-status { display: grid; gap: 8px; margin-top: 14px; }
+  </style>
+</component>

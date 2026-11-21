@@ -1,0 +1,17 @@
+fragment WorkOpsReleaseFields on WorkOpsRelease { id programId name description releaseDate releasedAt version }
+query WorkOpsReleasePrograms { workOps { programs { all { id key name } } } }
+query WorkOpsReleaseList($program: UUID!) {
+  workOps { crossProject { releases(programId: $program) { ...WorkOpsReleaseFields } } }
+}
+query WorkOpsReleaseRunStatuses($id: UUID!) {
+  workOps { crossProject { releaseRuns(releaseId: $id) { runId status startedAt } } }
+}
+query WorkOpsReleasePickerProjects {
+  workOps { projects { all { id key name program { id } } } }
+}
+mutation WorkOpsCreateRelease($input: CreateWorkOpsReleaseInput!) {
+  workOps { crossProject { createRelease(input: $input) { ...WorkOpsReleaseFields } } }
+}
+mutation WorkOpsBundleReleaseVersion($release: UUID!, $project: UUID!, $version: UUID!) {
+  workOps { crossProject { bundleVersion(releaseId: $release, projectId: $project, versionId: $version) } }
+}

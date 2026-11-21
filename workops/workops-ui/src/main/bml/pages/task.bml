@@ -1,0 +1,37 @@
+<page route="/workops/tasks/{id}" requireAuth>
+  <contract>
+    interface WorkOpsImages {
+      /** Search an offset page of the caller's existing Content images. */
+      suspend fun search(query: String, offset: Int): Map<String, String>
+      /** Resolve an uploaded image with Content VIEW access under the current caller. */
+      suspend fun resolve(id: String): Map<String, String>?
+      /** Create an upload draft or obtain a fresh upload target for a retry of that draft. */
+      suspend fun prepare(name: String, type: String, length: Long, existingId: String): Map<String, String>
+      /** Verify uploaded Content, mark it ready and return its stable image identity. */
+      suspend fun complete(id: String): Map<String, String>
+    }
+    interface WorkOpsDocumentReferences {
+      /** Search authorized metadata with the selected template's filters. */
+      suspend fun searchMetadata(query: String, filters: List<String>): List<Map<String, String>>
+      /** Resolve a stored reference under the current caller, preserving its optional version. */
+      suspend fun metadata(id: String, version: Int?): Map<String, String>?
+      /** Return one existing offset page of visible Bibles. */
+      suspend fun bibles(offset: Int): List<Map<String, String>>
+      /** Return entered, chapter and verse choices for a human reference. */
+      suspend fun findScripture(id: String, query: String): List<Map<String, String>>
+      /** Read selected passages with their styles and supplied attribution. */
+      suspend fun scripture(id: String, reference: String): List<Map<String, String>>
+    }
+    interface WorkOpsProfileSearch {
+      suspend fun search(query: String, offset: Int): List<Map<String, String>>
+    }
+    interface WorkOpsMentionSearch {
+      /** Find authorized profiles with handles, including an empty handle prefix. */
+      suspend fun profiles(query: String): List<Map<String, String>>
+      /** Find authorized document, collection and profile identities for a nonempty query. */
+      suspend fun entities(query: String): List<Map<String, String>>
+    }
+  </contract>
+  <script server provides="page">bosca.workops.ui.workOpsTaskDetail()</script>
+  <workops-layout :title="page.title"><workops-task-detail :initial="page" /></workops-layout>
+</page>

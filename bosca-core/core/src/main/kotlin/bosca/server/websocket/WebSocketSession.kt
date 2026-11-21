@@ -4,11 +4,14 @@ import bosca.server.ServerCall
 import bosca.server.netty.ChannelAttributes
 import bosca.server.netty.ChannelReadPauseReason
 import bosca.server.netty.resumeReads
+import io.netty.buffer.Unpooled
 import io.netty.channel.Channel
 import io.netty.channel.ChannelFuture
 import io.netty.channel.ChannelFutureListener
 import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame
+import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame
+import io.netty.handler.codec.http.websocketx.WebSocketFrame as NettyWebSocketFrame
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -25,7 +28,7 @@ import kotlin.coroutines.resumeWithException
 
 /**
  * Represents an active WebSocket connection, providing methods to send and receive
- * text frames, check connection status, and close the session.
+ * text and binary frames, check connection status, and close the session.
  *
  * Backed by a Netty channel with coroutine-based message passing for integration
  * with the suspend-based server framework.
@@ -97,9 +100,20 @@ class WebSocketSession(
      * @throws IOException if the channel is no longer active, or a close frame was already sent
      *   (nothing may follow it, RFC 6455 §5.5.1)
      */
-    suspend fun send(text: String) {
+    suspend fun send(text: String) = sendFrame { TextWebSocketFrame(text) }
+
+    /**
+     * Sends a binary message, suspending until its write completes. The session copies [data],
+     * so later caller mutations cannot change an enqueued frame. It observes the same close
+     * ordering and cancellation contract as [send].
+     *
+     * @throws IOException if the channel is inactive or a close frame has already been sent
+     */
+    suspend fun sendBinary(data: ByteArray) = sendFrame { BinaryWebSocketFrame(Unpooled.copiedBuffer(data)) }
+
+    private suspend fun sendFrame(createFrame: () -> NettyWebSocketFrame) {
         if (!channel.isActive) throw IOException("WebSocket channel is no longer active")
-        val frame = TextWebSocketFrame(text)
+        val frame = createFrame()
         val promise = channel.newPromise()
         // The check runs on the event loop together with the write, so a close frame written there
         // meanwhile (by the peer's close or a server close) can never be followed by this frame.

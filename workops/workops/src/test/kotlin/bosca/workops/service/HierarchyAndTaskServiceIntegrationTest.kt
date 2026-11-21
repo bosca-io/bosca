@@ -237,6 +237,56 @@ class HierarchyAndTaskServiceIntegrationTest {
         return Triple(portfolio.id, program.id, project.id)
     }
 
+    @Test
+    fun `task type CRUD persists every hierarchy level and rejects a stale edit`() = withDb {
+        val service = TaskTypeServiceImpl(taskTypeRepo)
+        for (level in bosca.workops.model.task.TaskHierarchyLevel.entries) {
+            val created = service.create(bosca.workops.model.task.CreateTaskTypeInput(
+                name = "Catalog ${UUID.random()}", description = "Initial type notes", iconKey = "check-square", colorHex = "#1230", hierarchyLevel = level,
+            ))
+            try {
+                assertEquals(level, taskTypeRepo.getById(created.id)?.hierarchyLevel)
+                assertEquals("#1230", created.colorHex)
+                val next = bosca.workops.model.task.TaskHierarchyLevel.entries.let { it[(it.indexOf(level) + 1) % it.size] }
+                val input = bosca.workops.model.task.UpdateTaskTypeInput(
+                    name = created.name + " updated", description = "Updated type notes", iconKey = "custom-icon", colorHex = "#5ec5ff", hierarchyLevel = next, expectedVersion = created.version,
+                )
+                val updated = service.update(created.id, input)
+                assertEquals(created.version + 1, updated.version); assertEquals(next, updated.hierarchyLevel)
+                assertEquals("Updated type notes", updated.description); assertEquals("custom-icon", updated.iconKey)
+                assertEquals(updated, taskTypeRepo.getById(created.id))
+                val failure = assertFailsWith<IllegalStateException> { service.update(created.id, input.copy(name = "Stale type")) }
+                assertTrue(failure.message.orEmpty().contains("version mismatch")); assertEquals(updated, taskTypeRepo.getById(created.id))
+            } finally { service.delete(created.id) }
+            assertNull(taskTypeRepo.getById(created.id))
+        }
+    }
+
+    @Test
+    fun `status CRUD and category lookup persist every category and reject a stale edit`() = withDb {
+        val service = StatusServiceImpl(statusRepo)
+        for (category in bosca.workops.model.workflow.StatusCategory.entries) {
+            val created = service.create(bosca.workops.model.workflow.CreateStatusInput(
+                name = "Catalog ${UUID.random()}", description = "Initial status notes", category = category, colorHex = "#1230",
+            ))
+            try {
+                assertEquals(category, statusRepo.getById(created.id)?.category)
+                assertTrue(statusRepo.getByCategory(category).any { it.id == created.id })
+                val next = bosca.workops.model.workflow.StatusCategory.entries.let { it[(it.indexOf(category) + 1) % it.size] }
+                val input = bosca.workops.model.workflow.UpdateStatusInput(
+                    name = created.name + " updated", description = "Updated status notes", category = next, colorHex = "#5ec5ff", expectedVersion = created.version,
+                )
+                val updated = service.update(created.id, input)
+                assertEquals(created.version + 1, updated.version); assertEquals(next, updated.category)
+                assertEquals("Updated status notes", updated.description); assertEquals("#5ec5ff", updated.colorHex)
+                assertEquals(updated, statusRepo.getById(created.id)); assertTrue(statusRepo.getByCategory(next).any { it.id == created.id })
+                val failure = assertFailsWith<IllegalStateException> { service.update(created.id, input.copy(name = "Stale status")) }
+                assertTrue(failure.message.orEmpty().contains("version mismatch")); assertEquals(updated, statusRepo.getById(created.id))
+            } finally { service.delete(created.id) }
+            assertNull(statusRepo.getById(created.id))
+        }
+    }
+
     // ----- hierarchy tests -----
 
     @Test
@@ -259,6 +309,19 @@ class HierarchyAndTaskServiceIntegrationTest {
 
         val counter = keyCounterRepo.lastUsed(projectId)
         assertEquals(0L, counter, "fresh project counter starts at 0")
+    }
+
+    @Test
+    fun `project creation persists the configured task form and retains the default when omitted`() = withDb {
+        val (_, programId, defaultProjectId) = seedHierarchy()
+        assertEquals("workops.create-task", projectRepo.getById(defaultProjectId)?.taskCreationFormSchemaKey)
+        val project = projectService.create(ProjectInput(
+            programId = programId, key = "FORM", name = "Configured form project", ownerProfileId = ownerProfileId,
+            taskCreationFormSchemaKey = "project.create-task",
+        ))
+        assertEquals("project.create-task", project.taskCreationFormSchemaKey)
+        assertEquals("project.create-task", projectRepo.getById(project.id)?.taskCreationFormSchemaKey)
+        assertEquals("project.create-task", projectRepo.getByKey("FORM")?.taskCreationFormSchemaKey)
     }
 
     @Test
@@ -477,21 +540,19 @@ class HierarchyAndTaskServiceIntegrationTest {
     fun `summary blank or oversized is rejected`() = withDb {
         val (_, _, projectId) = seedHierarchy()
 
-        assertFailsWith<WorkOpsValidationException> {
-            taskService.create(
-                CreateTaskInput(projectId = projectId, summary = "   "),
-                actingPrincipalId = callerPrincipalId,
-                actingProfileId = callerProfileId,
-                reporterProfileId = callerProfileId,
-            )
+        for (summary in listOf("", "   ", "x".repeat(256))) {
+            assertFailsWith<WorkOpsValidationException> {
+                taskService.create(
+                    CreateTaskInput(projectId = projectId, summary = summary),
+                    actingPrincipalId = callerPrincipalId,
+                    actingProfileId = callerProfileId,
+                    reporterProfileId = callerProfileId,
+                )
+            }
         }
-        assertFailsWith<WorkOpsValidationException> {
-            taskService.create(
-                CreateTaskInput(projectId = projectId, summary = "x".repeat(256)),
-                actingPrincipalId = callerPrincipalId,
-                actingProfileId = callerProfileId,
-                reporterProfileId = callerProfileId,
-            )
-        }
+        val accepted = taskService.create(CreateTaskInput(projectId = projectId, summary = "x".repeat(255)),
+            callerPrincipalId, callerProfileId, callerProfileId)
+        assertEquals(255, accepted.summary.length)
+        assertEquals("BLOG-1", accepted.key, "Rejected summaries must not consume task keys")
     }
 }

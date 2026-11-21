@@ -45,6 +45,7 @@ class BibleRouteVersionTest {
         provides<bosca.content.metadata.routes.LanguageVariantLegacy> { mockk() }
         provides<bosca.content.metadata.routes.Upload> { mockk() }
         provides<bosca.content.metadata.routes.SetDocumentCollaboration> { mockk() }
+        provides<bosca.content.metadata.routes.MergeDocumentCollaboration> { mockk() }
         provides<bosca.content.metadata.routes.GetBibleBookChapter> { mockk() }
         provides<bosca.content.metadata.routes.GetDocumentCollaboration> { mockk() }
         provides<bosca.content.metadata.routes.GetBibleBooks> { mockk() }

@@ -3,6 +3,8 @@ package bosca.documents
 import bosca.documents.marks.Mark
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 
 @Serializable
 data class TableHeaderNodeAttributes(
@@ -12,14 +14,18 @@ data class TableHeaderNodeAttributes(
     var rowspan: Int = 1
 ) : DocumentAttributes {
 
+    var colwidth: List<Int>? = null
+
     override fun withClasses(classes: String?): TableHeaderNodeAttributes {
-        return copy(classes = classes)
+        return copy(classes = classes).also { it.colwidth = colwidth }
     }
 }
 
 @Serializable
 @SerialName("tableHeader")
 data class TableHeaderNode(
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     @SerialName("attrs")
     override val attributes: TableHeaderNodeAttributes = TableHeaderNodeAttributes(),
     override var content: List<DocumentNode> = emptyList(),

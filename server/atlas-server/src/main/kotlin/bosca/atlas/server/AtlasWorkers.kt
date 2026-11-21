@@ -27,6 +27,9 @@ internal suspend fun BoscaApplication.startAtlasWorkers(configuration: AtlasConf
             "index" -> bosca.search.configuration.JobQueueNames.indexJobQueue
             "backup" -> bosca.backup.BackupJobQueueNames.backupJobQueue
             "profile" -> bosca.profile.configuration.JobQueueNames.profileJobQueue
+            "workops" -> "workops"
+            "content" -> bosca.content.configuration.JobQueueNames.contentJobQueue
+            "messages" -> bosca.communications.configuration.JobQueueNames.messagesJobQueue
             else -> error("Unknown Atlas runner queue: $name")
         }
         val runner = JobRunner(provide<JobQueue>(providerName), configuration.runnerConcurrency, locks, errors)
@@ -37,6 +40,8 @@ internal suspend fun BoscaApplication.startAtlasWorkers(configuration: AtlasConf
     if (configuration.runnerListeners) {
         install(GitCiModule())
         install(PipelinesModule())
+        install(bosca.workops.WorkOpsModule())
+        install(bosca.communications.CommunicationsModule())
     }
     if (provide<SchedulerConfiguration>().enabled) {
         val scheduler = provide<SchedulerRunner>()

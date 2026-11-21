@@ -1,6 +1,8 @@
 package bosca.workops.controller
 
 import bosca.security.model.PermissionAction
+import bosca.graphql.server.GraphQLException
+import bosca.workops.model.VersionInUseException
 import bosca.security.service.AuthenticationContext
 import bosca.serialization.OffsetDateTime
 import bosca.serialization.UUID
@@ -25,6 +27,9 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -43,6 +48,36 @@ class AgileLookupControllerTest {
     private val programPermissions = mockk<ProgramPermissionEvaluator>(relaxed = true)
     private val authentication = mockk<AuthenticationContext>(relaxed = true)
     private val ownerProfileId = UUID.random()
+
+    @Test
+    fun `version deletion exposes its documented in use code and preserves the domain cause`() = runTest {
+        val project = sampleProject(); val version = sampleVersion(project.id)
+        coEvery { versionService.getById(version.id) } returns version
+        coEvery { projectService.getById(project.id) } returns project
+        val cause = VersionInUseException(version.id)
+        coEvery { versionService.delete(version.id) } throws cause
+        val failure = assertFailsWith<GraphQLException> {
+            VersionMutationController(versionService, projectService, projectPermissions).delete(authentication, version.id)
+        }
+        assertEquals("VERSION_IN_USE", failure.extensions?.get("code")?.jsonPrimitive?.contentOrNull)
+        assertEquals("This version is still referenced by tasks and cannot be deleted.", failure.message)
+        assertSame(cause, failure.cause)
+        coVerify { projectPermissions.verifyAllowed(authentication, project, PermissionAction.MANAGE) }
+    }
+
+    @Test
+    fun `version deletion does not replace unexpected errors or cancellation`() = runTest {
+        val project = sampleProject(); val version = sampleVersion(project.id)
+        coEvery { versionService.getById(version.id) } returns version
+        coEvery { projectService.getById(project.id) } returns project
+        val controller = VersionMutationController(versionService, projectService, projectPermissions)
+        val failure = IllegalStateException("Repository unavailable")
+        coEvery { versionService.delete(version.id) } throws failure
+        assertSame(failure, assertFailsWith<IllegalStateException> { controller.delete(authentication, version.id) })
+        val cancellation = CancellationException("Navigation")
+        coEvery { versionService.delete(version.id) } throws cancellation
+        assertSame(cancellation, assertFailsWith<CancellationException> { controller.delete(authentication, version.id) })
+    }
 
     @Test
     fun `version controllers cover fields queries lifecycle and missing resources`() = runTest {

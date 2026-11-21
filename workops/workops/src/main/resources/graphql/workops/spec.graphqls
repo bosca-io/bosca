@@ -225,6 +225,8 @@ input WorkOpsSpecCommentInput {
 type WorkOpsSpecs {
     spec(id: UUID!): WorkOpsSpec
     specByKey(key: String!): WorkOpsSpec
+    "Resolve an active specification from its backing Content document, subject to specification VIEW."
+    specByMetadataId(metadataId: UUID!): WorkOpsSpec
     byProject(projectId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsSpec!]!
     byProgram(programId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsSpec!]!
     byOwner(ownerProfileId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsSpec!]!
@@ -245,6 +247,8 @@ type WorkOpsSpecsMutation {
     generateTasks(specId: UUID!, metadataVersion: Int!, source: WorkOpsGenerationSource!, agentSessionId: UUID): WorkOpsSpecTaskGeneration!
     "Push the spec's current content to its linked git repository. Returns the commit SHA, or null if no git binding."
     pushToGit(specId: UUID!, content: String!, authorName: String!, authorEmail: String!): String
+    "Push the current saved rich document as Markdown or complete Content JSON to its linked Git file. Requires specification EDIT."
+    pushSavedToGit(specId: UUID!, authorName: String!, authorEmail: String!): String
     "Pull the spec's content from its linked git repository at a specific commit."
     pullFromGit(specId: UUID!, commitSha: String!): WorkOpsSpec
 }

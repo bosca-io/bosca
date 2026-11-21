@@ -1,0 +1,11 @@
+<page route="/workops/releases/versions" requireAuth>
+  <script server provides="directory">bosca.workops.ui.workOpsProjectDirectory()</script>
+  <script server provides="catalog">if (directory.loaded && directory.selected != null) bosca.workops.ui.workOpsDeliveryVersionCatalog(directory.projectId).also { it.pageDirectory = directory } else null</script>
+  <workops-layout title="Versions"><page-shell class="workops-page" fill>
+    <if catalog != null><div class="workops-catalog-page"><workops-project-catalog :initial="requireNotNull(catalog)" /></div>
+    <else><page-heading title="Versions" subtitle="Manage release versions for the selected project."><workops-project-choice :projects="directory.projects" :projectId="directory.projectId" action="/workops/releases/versions" /></page-heading>
+      <div class="workops-content" data-workops-version-directory><if directory.feedback.failed><alert>{ directory.feedback.message }</alert></if>
+      <if !directory.loaded><p role="status">Project choices have not been loaded. Reload this page to try again.</p><else><empty-state :title='if (directory.projects.isEmpty()) "No projects available" else "Choose a project"' :message='if (directory.projects.isEmpty()) "No projects are available." else "Choose an available project."' /></if></div>
+    </if>
+  </page-shell></workops-layout>
+</page>

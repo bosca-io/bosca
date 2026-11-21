@@ -9,7 +9,8 @@
   <prop name="placeholder" type="String" default="Write a comment…" />
   <prop name="describedBy" type="String" default="" />
   <prop name="name" type="String" default="body" />
-  <div class="comment-editor" :data-submit-disabled="submitDisabled" :data-submit-label="submitLabel" :data-value="value">
+  <prop name="mentions" type="Boolean" default="false" />
+  <div class="comment-editor" :data-mentions="mentions" :data-submit-disabled="submitDisabled" :data-submit-label="submitLabel" :data-value="value">
     <textarea
       ref="commentBody"
       :name="name"

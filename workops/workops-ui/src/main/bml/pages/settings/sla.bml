@@ -1,0 +1,4 @@
+<page route="/workops/settings/sla" requireAuth>
+  <script server provides="model">bosca.workops.ui.workOpsSla()</script>
+  <workops-layout title="SLA"><workops-sla :initial="model" /></workops-layout>
+</page>

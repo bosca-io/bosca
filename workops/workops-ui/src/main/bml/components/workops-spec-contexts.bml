@@ -1,0 +1,37 @@
+<component tag="workops-spec-contexts">
+  <prop name="specId" type="String" required />
+  <prop name="returnTo" type="String" required />
+  <script server provides="initial">bosca.workops.ui.workOpsSpecContexts(specId, returnTo)</script>
+  <script server provides="model">bosca.workops.ui.WorkOpsSpecContextsModel(initial.specId, initial.returnTo, initial.data, initial.rows, initial.adding, initial.kind, initial.targetDraft, initial.targetName, initial.labelDraft, initial.feedback, initial.revision)</script>
+  <island name="specContexts" :key="specId">
+    <card title="Contexts" data-workops-spec-contexts>
+      <workops-feedback id="spec-contexts-0" :feedback="model.feedback" />
+      <if model.feedback.failed><button icon="refresh" @click="model.retry(ctx)">Reload contexts</button></if>
+      <form-actions><button id="workops-context-add" icon="plus" @click="model.open()">Add context</button></form-actions>
+      <for row in model.rows><article class="workops-task-entry"><div class="workops-task-entry-header"><badge>{ row.kind }</badge><time :value="row.created" /></div>
+        <p class="workops-context-reference"><if row.href.isNotBlank()><a :href="row.href" :target='if (row.href.startsWith("http://") || row.href.startsWith("https://")) "_blank" else null' rel="noopener noreferrer">{ row.title }</a><else>{ row.title }</if></p>
+        <icon-button icon="close" @click="model.remove(row.id, ctx)" :label='"Remove context " + row.title' />
+      </article></for>
+      <if model.rows.isEmpty()><empty-state title="No contexts yet." compact /></if>
+      <dialog title="Add specification context" triggerLabel="Add specification context" :showTrigger="false" :forceOpen="model.adding" :completed="!model.adding" returnFocus="#workops-context-add" @dialogdismiss="model.cancel()">
+        <form :data-context-kind="model.kind" @submit="model.add(form.targetId, form.label, ctx)"><form-body padded>
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+          <field label="Context type"><select name="contextType" label="Context type" @change="model.chooseType(form.contextType, form.targetId, form.label)"><for kind in model.kinds><option :value="kind" :selected="kind == model.kind">{ model.kindLabel(kind) }</option></for></select></field>
+          <field label="Reference">
+            <if model.searchable><div data-workops-context-picker :data-context-kind="model.kind"><select name="targetId" label="Reference" :preserveKey='"workops-context-target-" + model.specId + "-" + model.kind + "-" + model.revision' searchable async :minQuery="2" required><option value="">Choose a reference</option><if model.targetDraft.isNotBlank()><option :value="model.targetDraft" selected data-persistent>{ model.targetName.ifBlank { "Selected reference" } }</option></if></select></div>
+            <else><input name="targetId" :data-bml-preserve='"workops-context-target-" + model.specId + "-" + model.kind + "-" + model.revision' :type='if (model.kind == "EXTERNAL_URI") "url" else "text"' :value="model.targetDraft" required /></if>
+          </field>
+          <field label="Label" hint="Optional. A label for this context."><input name="label" :data-bml-preserve='"workops-context-label-" + model.specId + "-" + model.revision' :value="model.labelDraft" /></field>
+        </form-body><form-actions bordered><button data-dialog-close @click="model.cancel()">Cancel</button><button type="submit" primary>Add context</button></form-actions></form>
+      </dialog>
+    </card>
+    <script client scoped>
+      import { WorkOpsContextChoices } from "./WorkOpsContextChoices";
+      import { workOpsContextChoices } from "@client/helpers/context-choices";
+      workOpsContextChoices(ctx, (kind, query, offset) => WorkOpsContextChoices.search(kind, query, offset));
+    </script>
+  </island>
+  <style scoped>
+    .workops-context-reference { overflow-wrap: anywhere; }
+  </style>
+</component>

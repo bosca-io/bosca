@@ -40,7 +40,7 @@ export async function checkOverlays({ navigate, evaluate, until: poll, call, art
     for(const expression of ['document','window']) {
       const remote=await call('Runtime.evaluate',{expression});
       const found=await call('DOMDebugger.getEventListeners',{objectId:remote.result.objectId});
-      result[expression]=found.listeners.filter(listener=>['keydown','pointerdown','resize','scroll','bml:update'].includes(listener.type)).length;
+      result[expression]=found.listeners.filter(listener=>['keydown','pointerdown','resize','scroll','focusin','bml:update'].includes(listener.type)).length;
       await call('Runtime.releaseObject',{objectId:remote.result.objectId});
     }
     return result;
@@ -52,6 +52,18 @@ export async function checkOverlays({ navigate, evaluate, until: poll, call, art
   assert.ok(await truth(`(()=>{const ids=[...document.querySelectorAll('dialog,[popover]')].map(node=>node.id).filter(Boolean);return ids.length===new Set(ids).size;})()`));
   assert.ok(await truth(`${trigger(edit('dark'))}.getAttribute('aria-controls')===${panel(edit('dark'))}.id`));
   const baseline=await listeners();
+  const dismissed = `document.querySelector('[data-dialog-dismiss-surface=dark]')`;
+  await action('[data-dialog-dismiss-open=dark]',`${panel(dismissed)}.matches(':modal')`);
+  await evaluate(`window.dismissalReturn=document.querySelector('[data-dialog-dismiss-open=dark]');document.querySelector('[data-dialog-dismiss-cancel=dark]').click()`);
+  await until(`document.querySelector('[data-dialog-dismiss-count=dark]').textContent.trim()==='1'&&!${panel(dismissed)}.open`);
+  await until(`document.activeElement===document.querySelector('[data-dialog-dismiss-open=dark]')`);
+  assert.ok(await truth(`window.dismissalReturn!==document.querySelector('[data-dialog-dismiss-open=dark]')`),'Dismissal returns focus after the action replaces its target.');
+  await action('[data-dialog-dismiss-open=dark]',`${panel(dismissed)}.matches(':modal')`); await key('Escape');
+  await until(`document.querySelector('[data-dialog-dismiss-count=dark]').textContent.trim()==='2'&&document.activeElement===document.querySelector('[data-dialog-dismiss-open=dark]')`);
+  await action('[data-dialog-dismiss-open=dark]',`${panel(dismissed)}.matches(':modal')`);
+  await evaluate(`document.querySelector('[data-dialog-dismiss-cancel=dark]').click();document.querySelector('[data-dialog-dismiss-open=light]').focus()`);
+  await until(`document.querySelector('[data-dialog-dismiss-count=dark]').textContent.trim()==='3'&&!${panel(dismissed)}.open`);
+  assert.ok(await truth(`document.activeElement===document.querySelector('[data-dialog-dismiss-open=light]')`),'A late dismissal response retains focus moved to another palette.');
   await evaluate(`${root('dark')}.querySelector('details[data-example-states]').open=true`);
   await action('[data-overlay-disabled=dark]',`${trigger(edit('dark'))}.disabled`);
   await evaluate(`${trigger(edit('dark'))}.dispatchEvent(new MouseEvent('click',{bubbles:true}))`);

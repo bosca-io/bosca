@@ -1,6 +1,7 @@
 package bosca.atlas.server
 
 import bosca.analytics.server.AnalyticsServerClientModule
+import bosca.ai.configuration.AILlmExecutorModule
 import bosca.artifacts.docker.routes.DockerRoutesModule
 import bosca.artifacts.helm.routes.HelmRoutesModule
 import bosca.artifacts.maven.routes.MavenRoutesModule
@@ -17,6 +18,8 @@ import bosca.initialization.InitializeModule
 import bosca.installer.model.PackageInstallations
 import bosca.routes.configureGitCiRoutes
 import bosca.routes.configureGitRoutes
+import bosca.routes.configureContentRoutes
+import bosca.routes.configureScriptingRoutes
 import bosca.routes.configureArtifactsRawRoutes
 import bosca.routes.configureArtifactsMavenRoutes
 import bosca.routes.configureArtifactsNpmRoutes
@@ -44,6 +47,7 @@ suspend fun BoscaApplication.module(configure: BoscaApplication.() -> Unit = {})
     install(InitializeModule(providers = atlasProviderRegistrars()))
     configureAtlasHubSpot()
     configure()
+    install(AILlmExecutorModule())
     install(AnalyticsServerClientModule())
     RegisterJobsConfiguration()
     // Completion callbacks may target a parent on a queue this process does not consume.
@@ -52,6 +56,9 @@ suspend fun BoscaApplication.module(configure: BoscaApplication.() -> Unit = {})
     provide<JobQueue>(JobQueueNames.commonJobQueue)
     provide<JobQueue>(bosca.backup.BackupJobQueueNames.backupJobQueue)
     provide<JobQueue>(bosca.profile.configuration.JobQueueNames.profileJobQueue)
+    provide<JobQueue>("workops")
+    provide<JobQueue>(bosca.content.configuration.JobQueueNames.contentJobQueue)
+    provide<JobQueue>(bosca.communications.configuration.JobQueueNames.messagesJobQueue)
     val forwarder = provide<JobEnqueueEventForwarder>()
     onShutdown { forwarder.stop() }
     forwarder.start()
@@ -64,6 +71,8 @@ suspend fun BoscaApplication.module(configure: BoscaApplication.() -> Unit = {})
     val graphql = AtlasGraphQLService(environment.config.propertyOrNull("graphql.introspection.enabled")?.getString()?.toBoolean() ?: false)
     if (configuration.apiEnabled) {
         install(GraphQLModule(graphql))
+        configureContentRoutes()
+        configureScriptingRoutes()
     } else {
         GraphQLRegistrar.register(graphql)
         launch { graphql.warmup() }
@@ -95,7 +104,7 @@ suspend fun BoscaApplication.module(configure: BoscaApplication.() -> Unit = {})
 
 internal fun atlasProviderRegistrars() = arrayOf(
     AtlasProviderRegistrar(),
-    CoreAIProviderRegistrar(), AIProviderRegistrar(),
+    CoreAIProviderRegistrar(), AIProviderRegistrar(), KitProviderRegistrar(),
     CoreChatProviderRegistrar(), ChatProviderRegistrar(),
     CoreCollaborationProviderRegistrar(), CollaborationProviderRegistrar(),
     PostgresAdminProviderRegistrar(), NatsAdminProviderRegistrar(), MeilisearchAdminProviderRegistrar(),
@@ -104,8 +113,18 @@ internal fun atlasProviderRegistrars() = arrayOf(
     CoreConfigurationProviderRegistrar(), ConfigurationProviderRegistrar(),
     bosca.di.BackupProviderRegistrar(),
     CoreSecurityProviderRegistrar(), SecurityProviderRegistrar(),
+    CoreDevicesProviderRegistrar(), DevicesProviderRegistrar(),
     CoreStorageProviderRegistrar(), StorageProviderRegistrar(),
     CoreContentProviderRegistrar(), ContentProviderRegistrar(), SlugProviderRegistrar(),
+    CoreCommentsProviderRegistrar(), CommentsProviderRegistrar(),
+    CoreCalendarProviderRegistrar(), CalendarProviderRegistrar(),
+    CoreLanguagesProviderRegistrar(), LanguagesProviderRegistrar(),
+    CoreLocalizationProviderRegistrar(), LocalizationProviderRegistrar(),
+    CoreWorkOpsProviderRegistrar(), WorkOpsProviderRegistrar(), StorePipelinesProviderRegistrar(),
+    CoreKubernetesProviderRegistrar(), KubernetesProviderRegistrar(), KubernetesPipelinesProviderRegistrar(),
+    CoreScriptingProviderRegistrar(), ScriptingProviderRegistrar(),
+    CoreCommunicationsProviderRegistrar(), CommunicationsProviderRegistrar(),
+    CoreAnalyticsProviderRegistrar(), AnalyticsProviderRegistrar(),
     CoreBibleProvidersProviderRegistrar(), BibleProvidersProviderRegistrar(), MuxProviderRegistrar(), HubSpotProviderRegistrar(),
     CoreSearchProviderRegistrar(), SearchProviderRegistrar(),
     CoreSchedulerProviderRegistrar(), SchedulerProviderRegistrar(),

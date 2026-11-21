@@ -1,0 +1,74 @@
+.workops-document {
+  --accent: #91a6f6;
+  --shell-accent: var(--accent);
+  --select-active-border: var(--accent);
+  --control-bg: var(--bg-2);
+  --control-border: var(--line-2);
+  --mark-top: var(--accent);
+  --mark-right: color-mix(in oklch, var(--accent) 85%, #fff);
+  --mark-left: color-mix(in oklch, var(--accent) 80%, #000);
+  color: var(--fg-0);
+  background: var(--shell-background, var(--bg-0));
+  color-scheme: dark;
+}
+
+.workops-document[data-theme="light"] {
+  color-scheme: light;
+  --accent: #4f67b8;
+  --shell-background: #f6f7f9;
+  --bg-0: #f6f7f9;
+  --bg-1: #fff;
+  --bg-2: #f9fafb;
+  --bg-3: #f1f3f7;
+  --bg-4: #e7eaf0;
+  --fg-0: #0e1019;
+  --fg-1: #2a2e3a;
+  --fg-2: #5a6072;
+  --fg-3: #71788b;
+  --fg-4: #a2a9ba;
+  --line: #e5e8ee;
+  --line-2: #d2d6e0;
+  --ok: #15803d;
+  --warn: #a16207;
+  --err: #dc2626;
+  --info: #1d4ed8;
+  --shadow-color: #0f172a;
+  --backdrop-color: #0f172a;
+  --source-bg: var(--bg-1);
+  --source-fg: var(--fg-1);
+  --source-gutter: var(--fg-3);
+  --source-active-line: #f1f3f7;
+  --source-panel-bg: var(--bg-2);
+  --source-selection: #e1e7fa;
+  --source-comment: #667085;
+  --source-keyword: #6d28d9;
+  --source-string: #15803d;
+  --source-number: #a16207;
+  --json-scheme: light;
+}
+
+.workops-page { min-height: 0; }
+.workops-catalog-page, .workops-catalog-page > [data-bml-island] { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.workops-content { display: flex; flex: 1; flex-direction: column; gap: 20px; min-height: 0; overflow: auto; padding-bottom: 24px; }
+.workops-content > * { flex-shrink: 0; }
+.workops-saved-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.workops-task-table table, .workops-spec-table table { width: 100%; min-width: 780px; }
+.workops-task-key { font-family: var(--font-mono); white-space: nowrap; }
+.workops-task-table tr[data-selected], .workops-spec-table tr[data-selected] { background: var(--bg-2); }
+.workops-task-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.workops-task-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); gap: 20px; align-items: start; }
+.workops-task-main, .workops-task-sidebar, .workops-task-relations, .workops-task-activity { display: flex; flex-direction: column; min-width: 0; gap: 16px; }
+.workops-task-relations p, .workops-task-entry p { margin: 0; }
+.workops-task-entry { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding-bottom: 16px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.workops-task-entry-header { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.workops-comment-content { white-space: pre-wrap; }
+.workops-task-facts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); align-items: start; gap: 14px 12px; margin: 0; overflow-wrap: anywhere; }
+.workops-task-facts dt { color: var(--fg-2); }
+.workops-task-facts dd { margin: 0; min-width: 0; }
+[data-workops-task-detail] time[data-overdue] { color: var(--err); }
+.workops-filter-table { width: 100%; min-width: 760px; }
+.workops-filter-table td { max-width: 420px; overflow-wrap: anywhere; }
+.workops-filter-table td p { margin: 6px 0 0; color: var(--fg-2); }
+.workops-inbox-list, .workops-notification { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.workops-notification-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 900px) { .workops-task-detail-grid { grid-template-columns: minmax(0, 1fr); } }

@@ -1,0 +1,35 @@
+<component tag="workops-spec-create">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsSpecCreateModel" required />
+  <prop name="id" type="String" default="specifications" />
+  <script server provides="model">bosca.workops.ui.WorkOpsSpecCreateModel(initial.creating, initial.projectId, initial.parentId, initial.parentName, initial.nameDraft, initial.data, initial.createdId, initial.refreshHref, initial.feedback)</script>
+  <island name="specCreate" :key="id">
+    <button id="workops-new-spec" primary icon="plus" @click="model.open(ctx)">New specification</button>
+    <toast :id='"workops-spec-created-" + model.feedback.noticeId' :message='if (model.feedback.failed) "" else model.feedback.message' :sequence="model.feedback.noticeSequence" tone="success" />
+    <if model.createdId.isNotBlank()><button-link :href='"/workops/specs/" + model.createdId'>Open specification</button-link><button-link :href="model.refreshHref">Refresh specifications</button-link></if>
+    <dialog title="New specification" triggerLabel="New specification" :showTrigger="false" :forceOpen="model.creating" :completed="!model.creating" returnFocus="#workops-new-spec" @dialogdismiss="model.cancel()">
+      <form @submit="model.create(form.name, form.projectId, form.parentId, ctx)">
+        <form-body padded>
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+          <if model.feedback.failed><form-actions align="start"><button @click="model.reloadChoices(form.name, form.projectId, form.parentId, ctx)" icon="refresh">Retry loading specification choices</button></form-actions></if>
+          <field label="Name"><input name="name" :value="model.nameDraft" required /></field>
+          <field label="Project"><select name="projectId" label="Project" required searchable>
+            <option value="">Choose a project</option>
+            <for project in model.projects><option :value="project.id" :selected="project.id == model.projectId">{ project.name }</option></for>
+          </select></field>
+          <field label="Parent specification" hint="Optional. Search by its Content title."><div data-workops-spec-picker>
+            <select name="parentId" label="Parent specification" searchable async :minQuery="2">
+              <option value="" data-persistent :selected="model.parentId.isBlank()">No parent</option>
+              <if model.parentId.isNotBlank()><option :value="model.parentId" data-persistent selected>{ model.parentName.ifBlank { "Selected specification" } }</option></if>
+            </select>
+          </div></field>
+        </form-body>
+        <form-actions bordered><button data-dialog-close @click="model.cancel()">Cancel</button><button type="submit" primary>Create specification</button></form-actions>
+      </form>
+    </dialog>
+    <script client scoped>
+      import { WorkOpsSpecChoices } from "./WorkOpsSpecChoices";
+      import { workOpsSpecChoices } from "@client/helpers/spec-choices";
+      workOpsSpecChoices(ctx, (query, offset) => WorkOpsSpecChoices.search(query, offset));
+    </script>
+  </island>
+</component>

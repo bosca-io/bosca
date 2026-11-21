@@ -1,0 +1,10 @@
+query WorkOpsSpecGit($id: UUID!) {
+  profiles { current { name isPrimary attributes { typeId attributes } } }
+  workOps { specs { spec(id: $id) { gitRepositoryId gitPath } } }
+}
+query WorkOpsSpecGitRepositories {
+  git { repositories(includeArchived: true) { id name } }
+}
+mutation WorkOpsPushSavedSpec($id: UUID!, $authorName: String!, $authorEmail: String!) {
+  workOps { specs { pushSavedToGit(specId: $id, authorName: $authorName, authorEmail: $authorEmail) } }
+}

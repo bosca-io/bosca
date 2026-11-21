@@ -64,6 +64,7 @@ class SpecGitSyncServiceTest {
         val spec = spec(path = "specs/git-spec-6.md")
         val principalId = UUID.random()
         val richContent = MarkdownConverter.fromMarkdown("# Durable spec\n")
+        coEvery { metadataService.getById(spec.metadataId) } returns mockk { io.mockk.every { version } returns 1 }
         val commit = slot<CommitFileInput>()
         val changes = slot<JsonElement>()
         coEvery { documentService.getDocument(spec.metadataId, 1) } returns Document(
@@ -86,7 +87,7 @@ class SpecGitSyncServiceTest {
         assertEquals(spec.gitRepositoryId, commit.captured.repositoryId)
         assertEquals("main", commit.captured.branch)
         assertEquals("# Durable spec\n\n", commit.captured.content)
-        assertEquals("Update spec ${spec.key}", commit.captured.message)
+        assertEquals("Update specification document", commit.captured.message)
         assertEquals("Bosca", commit.captured.authorName)
         assertEquals("bosca@example.com", commit.captured.authorEmail)
         assertEquals(
@@ -96,11 +97,60 @@ class SpecGitSyncServiceTest {
     }
 
     @Test
+    fun `markdown pushes use the current Content version rather than the first document`() = runTest {
+        val spec = spec(path = "specs/current.md")
+        val metadata = mockk<Metadata> { io.mockk.every { version } returns 3 }
+        coEvery { metadataService.getById(spec.metadataId) } returns metadata
+        coEvery { documentService.getDocument(spec.metadataId, 1) } returns Document(
+            metadataId = spec.metadataId, version = 1, title = "First version", content = MarkdownConverter.fromMarkdown("# First version\n"),
+        )
+        coEvery { documentService.getDocument(spec.metadataId, 3) } returns Document(
+            metadataId = spec.metadataId, version = 3, title = "Current version", content = MarkdownConverter.fromMarkdown("# Current version\n\nCurrent saved body.\n"),
+        )
+        val commit = slot<CommitFileInput>()
+        coEvery { repositoryWriteService.commitFile(capture(commit)) } returns CommitFileResult("current-sha", "main", "specs/current.md")
+        coEvery { historyRepository.add(any(), any(), any(), null, any()) } returns mockk(relaxed = true)
+        service.pushToGit(spec, "Supplied JSON", UUID.random(), "Human Author", "human@example.test")
+        assertEquals("# Current version\n\nCurrent saved body.\n\n", commit.captured.content)
+    }
+
+    @Test
+    fun `saved document pushes serialize the complete current Content wrapper for JSON bindings`() = runTest {
+        val spec = spec(path = "specs/current.json")
+        val content = MarkdownConverter.fromMarkdown("# Saved document\n\nSaved body.\n")
+        coEvery { metadataService.getById(spec.metadataId) } returns mockk { io.mockk.every { version } returns 4 }
+        coEvery { documentService.getDocument(spec.metadataId, 4) } returns Document(
+            metadataId = spec.metadataId, version = 4, title = "Saved document", content = content,
+        )
+        val commit = slot<CommitFileInput>()
+        coEvery { repositoryWriteService.commitFile(capture(commit)) } returns CommitFileResult("saved-sha", "main", "specs/current.json")
+        coEvery { historyRepository.add(any(), any(), any(), null, any()) } returns mockk(relaxed = true)
+        assertEquals("saved-sha", service.pushSavedToGit(spec, UUID.random(), "Human Author", "human@example.test"))
+        assertEquals(content, json.decodeFromString(Content.serializer(), commit.captured.content))
+        assertEquals("Human Author", commit.captured.authorName); assertEquals("human@example.test", commit.captured.authorEmail)
+    }
+
+    @Test
+    fun `saved document pushes reject absent content and author details before writing`() = runTest {
+        val spec = spec(path = "specs/current.md")
+        kotlin.test.assertFailsWith<IllegalArgumentException> { service.pushSavedToGit(spec, UUID.random(), "", "") }
+        coEvery { metadataService.getById(spec.metadataId) } returns null
+        kotlin.test.assertFailsWith<IllegalArgumentException> { service.pushSavedToGit(spec, UUID.random(), "Human", "human@example.test") }
+        coEvery { metadataService.getById(spec.metadataId) } returns mockk { io.mockk.every { version } returns 4 }
+        coEvery { documentService.getDocument(spec.metadataId, 4) } returns null
+        kotlin.test.assertFailsWith<IllegalArgumentException> { service.pushSavedToGit(spec, UUID.random(), "Human", "human@example.test") }
+        assertNull(service.pushSavedToGit(spec.copy(gitPath = null), UUID.random(), "Human", "human@example.test"))
+        coVerify(exactly = 0) { repositoryWriteService.commitFile(any()) }
+    }
+
+    @Test
     fun `push uses supplied content for missing rich content and non markdown paths`() = runTest {
         val missingDocument = spec(path = "missing.md")
         val emptyDocument = spec(path = "empty.md")
         val jsonSpec = spec(path = "spec.json")
         val commits = mutableListOf<CommitFileInput>()
+        coEvery { metadataService.getById(missingDocument.metadataId) } returns mockk { io.mockk.every { version } returns 1 }
+        coEvery { metadataService.getById(emptyDocument.metadataId) } returns mockk { io.mockk.every { version } returns 1 }
         coEvery { documentService.getDocument(missingDocument.metadataId, 1) } returns null
         coEvery { documentService.getDocument(emptyDocument.metadataId, 1) } returns Document(
             metadataId = emptyDocument.metadataId,

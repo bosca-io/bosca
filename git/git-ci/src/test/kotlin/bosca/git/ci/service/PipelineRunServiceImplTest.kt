@@ -948,6 +948,52 @@ class PipelineRunServiceImplTest {
     }
 
     @Test
+    fun `WorkOps promotion accepts a successful branch release for the same release version and commit`() = runTest {
+        val source = testRun(status = PipelineRunStatus.SUCCESS).copy(
+            triggerType = PipelineTriggerType.RELEASE,
+            commitSha = "abc",
+            parameters = Json.parseToJsonElement("""{"release.id":"release-one","release.version":"6.2.0"}"""),
+        )
+        coEvery { runRepository.findByCommit(repoId, "abc") } returns listOf(source)
+        service.createRun(
+            pipelineId, repoId, environmentDefinition, "abc", "refs/tags/6.2.0", PipelineTriggerType.PROMOTION,
+            parameters = mapOf("release.id" to "release-one", "release.version" to "6.2.0", "promotion.environment" to "production"),
+        )
+        coVerify(exactly = 1) { runRepository.create(any()) }
+        coVerify(exactly = 0) { runRepository.findLatestSuccessfulRelease(any(), any()) }
+    }
+
+    @Test
+    fun `WorkOps promotion rejects unrelated release proofs before persisting a run`() = runTest {
+        val source = testRun(status = PipelineRunStatus.SUCCESS).copy(
+            triggerType = PipelineTriggerType.RELEASE,
+            commitSha = "abc",
+            parameters = Json.parseToJsonElement("""{"release.id":"release-one","release.version":"6.2.0"}"""),
+        )
+        val parameters = mapOf("release.id" to "release-one", "release.version" to "6.2.0", "promotion.environment" to "production")
+        val unrelated = listOf(
+            source.copy(pipelineId = UUID.random()),
+            source.copy(triggerType = PipelineTriggerType.MANUAL),
+            source.copy(status = PipelineRunStatus.FAILURE),
+            source.copy(parameters = Json.parseToJsonElement("""{"release.id":"other","release.version":"6.2.0"}""")),
+            source.copy(parameters = Json.parseToJsonElement("""{"release.id":"release-one","release.version":"6.1.0"}""")),
+        )
+        coEvery { runRepository.findLatestSuccessfulRelease(any(), any()) } returns source
+        coEvery { runRepository.findLatestSuccessfulPromotion(any(), any(), any()) } returns null
+        for (proof in unrelated) {
+            coEvery { runRepository.findByCommit(repoId, "abc") } returns listOf(proof)
+            assertFailsWith<IllegalArgumentException> {
+                service.createRun(pipelineId, repoId, environmentDefinition, "abc", "refs/tags/6.2.0", PipelineTriggerType.PROMOTION, parameters = parameters)
+            }
+        }
+        coEvery { runRepository.findByCommit(repoId, "different-commit") } returns emptyList()
+        assertFailsWith<IllegalArgumentException> {
+            service.createRun(pipelineId, repoId, environmentDefinition, "different-commit", "refs/tags/6.2.0", PipelineTriggerType.PROMOTION, parameters = parameters)
+        }
+        coVerify(exactly = 0) { runRepository.create(any()) }
+    }
+
+    @Test
     fun `promoting an older version than the environment holds is blocked unless overridden`() = runTest {
         coEvery { runRepository.findLatestSuccessfulRelease(pipelineId, any()) } returns testRun()
         coEvery { runRepository.findLatestSuccessfulPromotionToEnvironment(pipelineId, "production") } returns

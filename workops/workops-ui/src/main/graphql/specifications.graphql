@@ -1,0 +1,67 @@
+query WorkOpsValidateSpecBql($source: String!) {
+  workOps { savedFilters { validateSpecBql(source: $source) { errors { message start end hint } } } }
+}
+
+query WorkOpsSpecSearch($source: String!, $offset: Long!) {
+  workOps { savedFilters { searchSpecs(source: $source, offset: $offset, limit: 26) {
+    rows {
+      id metadataId metadata { name } status { name category }
+      ownerProfileId owner { name } project { name }
+      childCount childDoneCount requirementCount gitRepositoryId modifiedAt
+    }
+    freeTextTerms
+  } } }
+}
+query WorkOpsSpecCreateChoices {
+  workOps { projects { all { id key name archivedAt } } }
+}
+query WorkOpsSpecChoice($id: UUID!) {
+  workOps { specs { spec(id: $id) { id metadataId metadata { name } } } }
+}
+query WorkOpsSpecChoiceByMetadata($id: UUID!) {
+  workOps { specs { specByMetadataId(metadataId: $id) { id metadataId metadata { name } project { name } } } }
+}
+query WorkOpsSpecContentChoices($query: String!, $offset: Int!) {
+  search { search(query: { query: $query, filter: ["_type = \"metadata\""], storageSystemName: "Admin Search Index", offset: $offset, limit: 26 }) {
+    documents { metadata { id } }
+  } }
+}
+mutation WorkOpsCreateSpec($input: CreateWorkOpsSpecInput!) {
+  workOps { specs { create(input: $input) { id } } }
+}
+
+query WorkOpsSpecIdByKey($key: String!) {
+  workOps { specs { specByKey(key: $key) { id } } }
+}
+query WorkOpsSpecDetail($id: UUID!, $offset: Long!, $childrenOffset: Long!) {
+  profiles { current { id name } }
+  workOps {
+    specs {
+      spec(id: $id) {
+        id metadataId status { id name category } ownerProfileId owner { id name }
+        project { id name } parentSpecId childCount childDoneCount requirementCount
+        gitRepositoryId gitPath watcherProfileIds createdAt modifiedAt version
+        transitions { id name toState { status { category } } }
+        comments(offset: $offset, limit: 26) { id content profileId profile { id name } created }
+        history(offset: $offset, limit: 26) { id changedAt changedByProfileId changes { fieldKey fromValue toValue } }
+      }
+      children(parentSpecId: $id, offset: $childrenOffset, limit: 26) {
+        id metadataId metadata { name } status { name category } childCount childDoneCount
+      }
+    }
+    tasks { resolutions { id name } }
+    statuses { all { id name } }
+  }
+}
+mutation WorkOpsUpdateSpec($id: UUID!, $input: UpdateWorkOpsSpecInput!) {
+  workOps { specs { update(id: $id, input: $input) { id } } }
+}
+mutation WorkOpsTransitionSpec($id: UUID!, $transitionId: UUID!, $expectedVersion: Long!, $resolutionId: UUID) {
+  workOps { specs { transition(id: $id, transitionId: $transitionId, expectedVersion: $expectedVersion, resolutionId: $resolutionId) { id } } }
+}
+mutation WorkOpsCommentOnSpec($id: UUID!, $input: WorkOpsSpecCommentInput!) {
+  workOps { specComments { add(specId: $id, input: $input) { id } } }
+}
+mutation WorkOpsRenameSpec($id: UUID!, $input: MetadataInput!) {
+  content { metadata { edit(id: $id, metadata: $input) { id } } }
+}

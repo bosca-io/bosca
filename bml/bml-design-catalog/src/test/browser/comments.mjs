@@ -15,7 +15,7 @@ export async function checkComments({ navigate, evaluate, until: poll, call, art
   const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
   const key = async (value, modifiers = 0) => {
     for (const type of ['keyDown', 'keyUp']) await call('Input.dispatchKeyEvent', { type, key: value, modifiers,
-      windowsVirtualKeyCode: { Enter: 13, Escape: 27, Tab: 9 }[value] });
+      windowsVirtualKeyCode: { Enter: 13, Escape: 27, Tab: 9, ArrowDown: 40 }[value] });
   };
   const edit = (id, value) => evaluate(`${field(id)}.value=${JSON.stringify(value)};${field(id)}.dispatchEvent(new Event('input',{bubbles:true}))`);
   const action = async (id, name, done) => {
@@ -29,6 +29,17 @@ export async function checkComments({ navigate, evaluate, until: poll, call, art
   assert.ok(await truth(`${field('dark')}.required&&${field('dark')}.name==='body'&&${field('dark')}.getAttribute('aria-label')==='Example comment'&&${field('dark')}.id!==${field('light')}.id&&${field('dark')}.getAttribute('aria-describedby').split(' ').every(id=>document.getElementById(id))`));
   assert.ok(await truth(`document.getElementById('comment-readonly').readOnly&&document.getElementById('comment-unavailable').disabled&&!document.getElementById('comment-paused').readOnly&&document.getElementById('comment-invalid').getAttribute('aria-invalid')==='true'&&!window.catalogCommentExecuted&&!document.querySelector('.comment-editor script')&&document.getElementById('comment-escaped').value.includes('</textarea><script>window.catalogCommentExecuted = true;</script>')`));
   await evaluate(`document.querySelectorAll('[data-catalog-comment-owner] details').forEach(details=>{details.open=true;})`);
+  await evaluate(`${field('dark')}.scrollIntoView({block:'center'});${field('dark')}.focus();${field('dark')}.value='@';${field('dark')}.setSelectionRange(1,1);${field('dark')}.dispatchEvent(new Event('input',{bubbles:true}))`);
+  await until(`${owner('dark')}.querySelectorAll('[role=option]').length===2`);
+  await key('ArrowDown'); await key('Enter');
+  assert.equal(await evaluate(`${field('dark')}.value`), '@avery ');
+  assert.ok(await truth(`document.activeElement===${field('dark')}&&!${form('dark')}.hasAttribute('data-bml-action-pending')&&${owner('dark')}.querySelector('.bml-mention-menu').hidden`));
+  for (const [query, message] of [['@empty', 'No mentions found.'], ['@error', 'Could not load mentions.']]) {
+    await evaluate(`${field('dark')}.value=${JSON.stringify(query)};${field('dark')}.setSelectionRange(${query.length},${query.length});${field('dark')}.dispatchEvent(new Event('input',{bubbles:true}))`);
+    await until(`${owner('dark')}.querySelector('.bml-mention-menu').textContent.includes(${JSON.stringify(message)})`);
+    assert.equal(await evaluate(`${field('dark')}.value`), query);
+  }
+  await key('Escape');
   await edit('dark', '   ');
   assert.ok(await truth(`${post('dark')}.disabled`));
   await edit('dark', 'A composing draft');

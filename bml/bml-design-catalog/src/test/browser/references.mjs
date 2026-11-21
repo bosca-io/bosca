@@ -30,6 +30,16 @@ export async function checkReferences({ navigate, evaluate, until: poll, key, ca
   }
 
   await navigate('/components/controls');
+  await until(`document.querySelector('#ref-color-input [data-color-current]')?.style.backgroundColor`);
+  await evaluate(`document.querySelector('#ref-color-input [data-color-preset="#4ade80"]').click()`);
+  assert.deepEqual(await evaluate(`(() => {const form=document.querySelector('#ref-color-input form');return [form.elements['reference-color'].value,new FormData(form).get('reference-color'),form.elements['reference-readonly-color'].value,new FormData(form).get('reference-disabled-color')];})()`), ['#4ade80','#4ade80','red',null]);
+  assert.ok(await evaluate(`document.activeElement===document.querySelector('#ref-color-input input[name="reference-color"]')`));
+  await evaluate(`document.querySelector('#ref-color-input form').reset()`);
+  await until(`document.querySelector('#ref-color-input input[name="reference-color"]').value==='#91a6f680'`);
+  await evaluate(`(() => {const form=document.querySelector('#ref-slug-input form');form.elements.title.value='Preview / API';form.elements.title.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  assert.equal(await evaluate(`document.querySelector('#ref-slug-input form').elements.key.value`), 'preview-api');
+  await evaluate(`(() => {const form=document.querySelector('#ref-slug-input form');form.elements.key.value='explicit';form.elements.key.dispatchEvent(new Event('input',{bubbles:true}));form.elements.title.value='Changed title';form.elements.title.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  assert.deepEqual(await evaluate(`(() => {const form=document.querySelector('#ref-slug-input form');return [form.elements.key.value,form.elements.keyManual.value];})()`), ['explicit','true']);
   assert.ok(await evaluate(`(() => {const field=document.querySelector('input[name="reference-compact-search"]'),root=field.closest('.search-input');return root.getBoundingClientRect().height===parseFloat(getComputedStyle(root).getPropertyValue('--control-height-md'))&&getComputedStyle(field).fontSize==='13px';})()`), 'Compact search matches the shared control height');
   const multiline = await evaluate(`(() => {
     const field=document.querySelector('textarea[name="reference-multiline"]');

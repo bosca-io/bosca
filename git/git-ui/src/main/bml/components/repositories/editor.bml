@@ -25,7 +25,7 @@
           <div class="toolbar editor-toolbar">
             <div class="editor-path">
               <field label="File path">
-                <input ref="path" name="path" :value="model.draftPath" placeholder="path/to/file.ext" autocomplete="off" spellcheck="false" mono required />
+                <input ref="path" name="path" size="sm" :value="model.draftPath" placeholder="path/to/file.ext" autocomplete="off" spellcheck="false" mono required />
               </field>
             </div>
             <div class="editor-actions">
@@ -41,7 +41,7 @@
           <code-editor ref="codeField" name="content" :value="model.draftContent" :path="model.draftPath"
                        :line='ctx.query["line"]?.toIntOrNull() ?: 0' :wrapped="false" bare fill
                        preserveKey="code-editor" exitFocus="[data-bml-ref=wrap]" class="code-editor" />
-          <article ref="previewSurface" class="markdown draft-preview" hidden></article>
+          <html-content ref="previewSurface" class="draft-preview" html="" hidden />
           <p ref="previewStatus" role="status" hidden></p>
           <div class="toolbar commit-controls">
             <div class="commit-message">

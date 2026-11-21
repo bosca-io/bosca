@@ -9,6 +9,7 @@ Kotlin/JVM projects for project management, task tracking, releases, and automat
 | `core-workops` | Domain models, BQL query language, error types |
 | `workops` | Service layer — controllers, services, repositories, migrations |
 | `workops-jobs` | Background job processing |
+| `workops-ui` | WorkOps BML pages and domain components imported by Atlas; see its source inventory for migration scope |
 | `store-pipelines` | Store pipeline integration |
 
 ## Prerequisites
@@ -45,6 +46,12 @@ docker compose down                # Stop services
 ## Architecture
 
 `core-workops` contains domain models, including a custom query language (BQL) with its own tokenizer, parser, validator, and query planner for task filtering. The `workops` module adds controllers, services, repositories, and Flyway-managed database migrations. The `workops-jobs` module handles asynchronous background processing.
+
+Sprint start assigns selected tasks and returns unselected planned work to backlog in the same
+transaction. Closing moves unfinished tasks to their selected destinations and retains the closed
+commitment/addition snapshot. These task writes use the inspected versions and human principal/profile
+attribution. Assignments that race a sprint state change reread its membership; closed sprints reject
+new assignments.
 
 KSP code generation handles dependency injection and service wiring via Bosca DI, Service, and Core annotations. The core module is `:workops:core-workops` in the root Gradle build.
 

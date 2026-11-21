@@ -1,0 +1,30 @@
+<component tag="schema-form">
+  <prop name="id" type="String" required />
+  <prop name="name" type="String" default="attributes" />
+  <prop name="schema" type="kotlinx.serialization.json.JsonObject" required />
+  <prop name="uiSchema" type="kotlinx.serialization.json.JsonObject" required />
+  <prop name="value" type="kotlinx.serialization.json.JsonObject" :default="kotlinx.serialization.json.JsonObject(emptyMap())" />
+  <prop name="options" type="Map<String, List<bosca.design.model.SchemaFormOption>>" default="emptyMap()" />
+  <prop name="controlAliases" type="Map<String, String>" default="emptyMap()" />
+  <prop name="errors" type="Map<String, String>" default="emptyMap()" />
+  <prop name="readOnly" type="Boolean" default="false" />
+  <prop name="preserveKey" type="String" default="" />
+  <script server provides="data">bosca.design.model.schemaFormDefaults(schema, value)</script>
+  <script server provides="nodes">bosca.design.model.schemaFormNodes(schema, uiSchema, data, options, controlAliases, errors)</script>
+  <script server provides="parts">bosca.design.model.schemaFormParts(nodes)</script>
+  <div class="schema-form" data-bml-schema-form :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)"
+       :data-schema="schema.toString()" :data-value="data.toString()" :data-readonly="readOnly" {...attrs}>
+    <html:input type="hidden" ref="value" :name="name" :value="data.toString()" />
+    <p ref="feedback" class="schema-feedback" role="alert" :hidden="errors.isEmpty()">{ errors[""] ?: "Please correct the marked fields." }</p>
+    <form-body><for part in parts><if part.markup.isNotEmpty()>{@ part.markup }<else><schema-form-node :node="part.node" :prefix="id" :readOnly="readOnly" /></if></for></form-body>
+  </div>
+  <style scoped>
+    .schema-form { min-width: 0; }
+    .schema-feedback { color: var(--err); font-size: 13px; }
+    [hidden] { display: none; }
+  </style>
+  <script client scoped>
+    import { mountSchemaForm } from "@client/helpers/schema-form";
+    mountSchemaForm(ctx);
+  </script>
+</component>

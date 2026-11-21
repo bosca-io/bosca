@@ -1,0 +1,40 @@
+<component tag="workops-release-build">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsReleaseBuildModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsReleaseBuildModel(initial.programId, initial.programName, initial.active, initial.draft, initial.picker, initial.createdId, initial.feedback)</script>
+  <island name="releaseBuild" :key="initial.programId"><div data-workops-release-build>
+    <form-actions align="start"><button id="workops-release-build-new" icon="plus" primary @click="model.open(ctx)">Build release</button><if model.hasPending><button @click="model.resume()">Retry pending bundles</button></if><if model.createdHref.isNotBlank()><button-link :href="model.createdHref" size="xs" icon="arrow-right">Open the created release</button-link></if></form-actions>
+    <workops-feedback id="release-build-0" :feedback="model.feedback" />
+
+    <dialog title="Build a release" triggerLabel="Build release" :showTrigger="false" :forceOpen="model.active" :completed="!model.active" returnFocus="#workops-release-build-new" @dialogdismiss="model.close()">
+      <form-body padded>
+        <p>Release for { model.programName }</p>
+        <ol class="release-steps" aria-label="Build steps"><li :aria-current='if (model.draft.step == 1) "step" else null'><badge :tone='if (model.draft.step == 1) "accent" else "neutral"'>1</badge> Details</li><li :aria-current='if (model.draft.step == 2) "step" else null'><badge :tone='if (model.draft.step == 2) "accent" else "neutral"'>2</badge> Projects</li><li :aria-current='if (model.draft.step == 3) "step" else null'><badge :tone='if (model.draft.step == 3) "accent" else "neutral"'>3</badge> Review</li></ol>
+        <if model.feedback.failed><alert data-workops-release-build-error>{ model.feedback.message }</alert></if>
+      </form-body>
+      <if model.draft.step == 1>
+        <form @submit="model.detailsNext(form.name, form.description, form.date)"><form-body padded><field label="Name"><input name="name" :value="model.draft.name" required /></field><field label="Description"><textarea name="description">{ model.draft.description }</textarea></field><field label="Planned release date"><input type="date" name="date" :value="model.draft.date" /></field></form-body><form-actions bordered><button data-dialog-close @click="model.close()">Cancel</button><button type="submit" primary>Next</button></form-actions></form>
+      <else-if model.draft.step == 2>
+        <form-body padded>
+          <help-text>Add the project versions this release ships. Versions can also be bundled later.</help-text>
+          <workops-feedback id="release-build-1" :feedback="model.picker.feedback" />
+          <workops-feedback id="release-build-2" :feedback="model.picker.versionFeedback" />
+          <form class="release-picker" data-workops-release-picker @submit="model.stage(form.projectId, form.versionId)">
+            <div @projectchange.coalesce="model.chooseProject(form.projectId, ctx)"><workops-release-picker-fields :projects="model.picker.projectChoices" :versions="model.picker.versionChoices" :projectId="model.picker.pickProjectId" :versionId="model.picker.pickVersionId" :projectName="model.picker.pickedProjectName" :versionsEnabled="model.picker.pickProjectId.isNotBlank() && (model.picker.versionsLoaded || model.picker.offeredVersions.isNotEmpty())" /></div>
+            <form-actions align="start"><if !model.picker.choicesLoaded || (model.picker.pickProjectId.isNotBlank() && !model.picker.versionsLoaded)><button icon="refresh" @click="model.reloadPicker(form.projectId, form.versionId, ctx)">Retry loading project versions</button></if><button id="workops-release-version-new" @click="model.openVersion(form.projectId)">New version</button><button type="submit" primary>Add version</button></form-actions>
+          </form>
+          <if model.draft.components.isNotEmpty()><ul class="release-components"><for component in model.draft.components><li :data-workops-release-staged="component.versionId"><span>{ component.projectKey } · { component.versionName }</span><icon-button icon="trash" :label='"Remove " + component.projectKey + " " + component.versionName' @click="model.removeStage(component.versionId)" /></li></for></ul><else><empty-state title="No project versions staged" message="No project versions staged. You can build an empty release and bundle versions later." compact /></if>
+        </form-body><form-actions bordered><button @click="model.back()">Back</button><button primary @click="model.projectsNext()">Next</button></form-actions>
+      <else>
+        <form @submit="model.build(ctx)"><form-body padded><p><strong>{ model.draft.name.trim() }</strong></p><if model.draft.description.isNotBlank()><p>{ model.draft.description.trim() }</p></if><p>Planned: <if model.planned.isNotBlank()><time :value="model.planned" format="MMM d, yyyy" /><else>No date set</if></p>
+          <if model.createdId.isNotBlank()><p>This release has been created. Pending versions can be retried against the same release.</p><form-actions align="start"><button-link :href="model.createdHref" size="xs" icon="arrow-right">Open the created release</button-link></form-actions></if>
+          <if model.draft.components.isNotEmpty()><ul class="release-components"><for component in model.draft.components><li :data-workops-release-review="component.versionId"><span>{ component.projectKey } · { component.versionName }</span><if component.bundled><badge tone="success">Bundled</badge><else-if model.createdId.isNotBlank()><badge tone="warning">Pending</badge></if><if component.error.isNotBlank()><alert>{ component.error }</alert></if></li></for></ul><else><empty-state title="No project versions staged." compact /></if>
+          <help-text>Building creates the release bundle. Start its pipelines from the release page.</help-text>
+        </form-body><form-actions bordered><if model.createdId.isBlank()><button @click="model.back()">Back</button><button type="submit" primary>Build release</button><else><button data-dialog-close @click="model.close()">Close</button><button type="submit" primary>Retry bundles</button></if></form-actions></form>
+      </if>
+    </dialog>
+    <dialog title="New project version" triggerLabel="New project version" :showTrigger="false" :forceOpen="model.picker.creatingVersion" :completed="!model.picker.creatingVersion" returnFocus="#workops-release-version-new" @dialogdismiss="model.cancelVersion()">
+      <form @submit="model.createVersion(form.name, form.description, form.startDate, form.releaseDate, ctx)"><form-body padded><p>Version for { model.picker.pickedProjectName }</p><if model.picker.versionFeedback.failed><alert>{ model.picker.versionFeedback.message }</alert></if><field label="Name"><input name="name" :value="model.picker.versionDraft.name" required /></field><field label="Description"><textarea name="description">{ model.picker.versionDraft.description }</textarea></field><field label="Start date"><input name="startDate" type="date" :value="model.picker.versionDraft.startDate" /></field><field label="Release date"><input name="releaseDate" type="date" :value="model.picker.versionDraft.releaseDate" /></field></form-body><form-actions bordered><button data-dialog-close @click="model.cancelVersion()">Cancel</button><button type="submit" primary>Create version</button></form-actions></form>
+    </dialog>
+  </div></island>
+  <style scoped>.release-picker { display: grid; gap: 14px; }.release-steps { display: flex; flex-wrap: wrap; gap: 16px; list-style: none; padding: 0; margin: 0; }.release-steps li { display: flex; align-items: center; gap: 8px; }.release-components { display: grid; gap: 12px; padding: 0; list-style: none; }.release-components li { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }.release-components span { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }</style>
+</component>

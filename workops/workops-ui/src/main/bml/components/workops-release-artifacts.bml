@@ -1,0 +1,25 @@
+<component tag="workops-release-artifacts">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsReleaseArtifactsModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsReleaseArtifactsModel(initial.id, initial.components, initial.componentsLoaded, initial.declarations, initial.declarationsLoaded, initial.publications, initial.publicationErrors, initial.needsPolling, initial.feedback, initial.labelFeedback, initial.declarationFeedback, initial.runFeedback)</script>
+  <island name="releaseArtifacts" :key="initial.id"><card :padded="false"><html:section class="release-artifacts" :id='"workops-release-artifacts-" + model.id' data-workops-release-artifacts :data-artifacts-live="model.needsPolling" :data-artifacts-empty="model.verifiedEmpty">
+    <section-heading title="Artifacts" subtitle="Declared artifacts and registered publications for bundled versions."><icon-button size="md" icon="refresh" label="Refresh artifacts" data-bml-coalesce @click="model.refresh(ctx)" /></section-heading>
+    <form-body padded>
+    <p ref="pollError" role="status" aria-live="polite" />
+    <if model.feedback.failed><alert>Bundled versions are unavailable. Previously loaded publications may be stale. { model.feedback.message }</alert></if>
+    <if model.labelFeedback.failed><alert>Project/version labels unavailable: { model.labelFeedback.message }</alert></if>
+    <if model.declarationFeedback.failed><alert>Declared artifacts are unavailable. Previously loaded declarations may be stale. { model.declarationFeedback.message }</alert></if>
+    <for error in model.publicationErrors><alert>Publications for { model.components.firstOrNull { it.versionId == error.key }?.versionLabel ?: "an unavailable version" } could not be refreshed. { error.value }</alert></for>
+    <if model.runFeedback.failed><alert>Run status is unavailable. { model.runFeedback.message }</alert></if>
+    <if model.rows.isNotEmpty()><card :padded="false"><table-scroll label="Release artifacts"><table><caption>Registered and expected artifacts</caption><thead><tr><th scope="col">Project / version</th><th scope="col">Artifact</th><th scope="col">Environments</th><th scope="col">Status</th></tr></thead><tbody>
+      <for row in model.rows><tr :data-workops-artifact="row.publicationId" :data-artifact-status="row.status"><td>{ model.projectLabel(row) }<br />{ model.versionLabel(row) }</td><td><badge>{ row.type }</badge><if row.namespace.isNotBlank()><span class="artifact-namespace">{ row.namespace }</span></if><code>{ row.coordinate }</code></td><td>{ row.environmentLabel }</td><td><badge :tone="row.tone">{ row.status }</badge><if row.stale><badge tone="warning">Stale</badge></if></td></tr></for>
+    </tbody></table></table-scroll></card><else-if model.verifiedEmpty><empty-state title="No artifacts to display" message="No declared or visible registered artifacts for the bundled versions." compact /><else><p role="status">Artifact data is unavailable. Refresh artifacts to try again.</p></if>
+    </form-body>
+    <script client scoped>
+      import { workOpsReleaseRefresh } from "@client/helpers/release-refresh";
+      const owner = () => ctx.root.matches("[data-workops-release-artifacts]") ? ctx.root : ctx.root.querySelector("[data-workops-release-artifacts]");
+      workOpsReleaseRefresh(ctx, { active: () => owner()?.hasAttribute("data-artifacts-live") === true, intervalMs: 6000,
+        settleMs: owner()?.hasAttribute("data-artifacts-empty") ? 2000 : undefined });
+    </script>
+  </html:section></card></island>
+  <style scoped>.release-artifacts { min-width: 0; }.release-artifacts p:empty { display: none; }.artifact-namespace { display: block; margin: 6px 0; color: var(--fg-2); }td code { display: block; margin-top: 6px; overflow-wrap: anywhere; }td { overflow-wrap: anywhere; }</style>
+</component>

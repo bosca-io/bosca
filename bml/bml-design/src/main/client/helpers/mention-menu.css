@@ -1,0 +1,21 @@
+.bml-mention-host { position: relative; }
+.bml-mention-menu {
+  position: absolute;
+  z-index: 30;
+  box-sizing: border-box;
+  width: min(320px, 100%);
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  color: var(--fg-0);
+  box-shadow: 0 8px 24px #0003;
+  font: 13px/20px var(--font-sans);
+}
+.bml-mention-menu[hidden] { display: none; }
+.bml-mention-menu [role="listbox"] { max-height: 280px; overflow-y: auto; }
+.bml-mention-menu [role="option"] { display: flex; flex-direction: column; padding: 6px 8px; border-radius: var(--r-sm); cursor: pointer; }
+.bml-mention-menu [role="option"][aria-selected="true"],
+.bml-mention-menu [role="option"]:hover { background: var(--bg-2); }
+.bml-mention-menu small { color: var(--fg-2); font: 11px/16px var(--font-sans); }
+.bml-mention-menu p { margin: 4px 8px; color: var(--fg-2); }

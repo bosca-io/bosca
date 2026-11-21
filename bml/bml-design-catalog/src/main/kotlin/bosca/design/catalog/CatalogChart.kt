@@ -31,10 +31,7 @@ data class CatalogChart(
 
     companion object {
         val types = listOf("bar", "line", "scatter", "bubble", "pie", "doughnut", "radar", "polarArea", "heatmap", "funnel", "gauge", "map")
-        val worldMap: JsonObject by lazy {
-            val source = requireNotNull(CatalogChart::class.java.getResourceAsStream("/maps/world.geojson")) { "Missing catalog world boundaries." }
-            source.bufferedReader().use { Json.parseToJsonElement(it.readText()).jsonObject }
-        }
+        val worldMap: JsonObject get() = ChartMaps.world
         val mapRegions = listOf("United States of America", "Canada", "Mexico", "Brazil", "United Kingdom", "France",
             "Germany", "India", "China", "Australia", "Japan", "South Africa")
         fun configuration(type: String, alternate: Boolean = false, empty: Boolean = false): ChartConfiguration {

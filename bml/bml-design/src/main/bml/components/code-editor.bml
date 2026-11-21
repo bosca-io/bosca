@@ -7,6 +7,7 @@
   <prop name="wrapped" type="Boolean" default="true" />
   <prop name="bare" type="Boolean" default="false" />
   <prop name="fill" type="Boolean" default="false" />
+  <prop name="compact" type="Boolean" default="false" />
   <prop name="label" type="String" default="Code editor" />
   <prop name="readOnly" type="Boolean" default="false" />
   <prop name="disabled" type="Boolean" default="false" />
@@ -14,8 +15,8 @@
   <prop name="exitFocus" type="String" default="" />
   <div :class='"code-input" + (if (bare) " bare-code-input" else "") + (if (fill) " fill-code-input" else "")' data-bml-code-editor :data-name="name" :data-value="value"
        :data-language="language" :data-path="path" :data-line="line" :data-wrapped="wrapped" :data-label="label" :data-readonly="readOnly" :data-disabled="disabled"
-       :data-bml-preserve="preserveKey" :data-exit-focus="exitFocus" {...attrs}>
-    <textarea ref="value" :name="name" :aria-label="label" :readonly="readOnly" :disabled="disabled" spellcheck="false">{ value }</textarea>
+       :data-bml-preserve="preserveKey" :data-exit-focus="exitFocus" :data-compact="compact" {...attrs}>
+    <textarea ref="value" :name="name" :aria-label="label" :readonly="readOnly" :disabled="disabled" :rows="if (compact) 1 else 2" spellcheck="false">{ value }</textarea>
     <div ref="editor" class="editor-surface" />
   </div>
   <style scoped>
@@ -25,9 +26,12 @@
     .bare-code-input { border: 0; border-radius: 0; }
     .fill-code-input { display: flex; flex: 1; flex-direction: column; min-height: 0; }
     .fill-code-input > .editor-surface { flex: 1; height: auto; min-height: 0; }
+    .code-input[data-compact] .editor-surface { height: auto; }
+    .code-input[data-compact]:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 15%, transparent); }
     .editor-surface:empty { display: none; }
     textarea { box-sizing: border-box; width: 100%; min-height: 240px; margin: 0; padding: 12px; border: 0; background: var(--bg-1); color: var(--fg-1); font: 13px/1.7 var(--font-mono); }
     textarea[hidden] { display: none; }
+    .code-input[data-compact] textarea { min-height: 40px; padding: 8px 12px; }
   </style>
   <script client scoped>
     import { mountCodeEditor } from "@client/helpers/code-editor";

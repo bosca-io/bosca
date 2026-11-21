@@ -1,0 +1,10 @@
+<component tag="workops-feedback">
+  <prop name="feedback" type="bosca.workops.ui.WorkOpsFeedback" required />
+  <prop name="id" type="String" required />
+  <prop name="active" type="Boolean" default="true" />
+  <div class="workops-feedback" {...attrs}>
+    <if active && feedback.failed && feedback.message.isNotBlank()><alert>{ feedback.message }</alert></if>
+    <toast :id='"workops-" + id + "-" + feedback.noticeId' :message='if (active && !feedback.failed) feedback.message else ""' :sequence="feedback.noticeSequence" tone="success" />
+  </div>
+  <style scoped>.workops-feedback { display: contents; }</style>
+</component>

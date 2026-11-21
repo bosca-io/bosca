@@ -1,0 +1,41 @@
+<component tag="workops-filters">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsFiltersModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsFiltersModel(initial.offset, initial.rows, initial.hasNext, initial.editing, initial.draft, initial.diagnostics, initial.previewId, initial.previewSource, initial.previewRows, initial.deletingId, initial.feedback)</script>
+  <island name="filters" :key='"saved-filters"'>
+    <page-shell class="workops-page" fill>
+      <page-heading title="Saved filters" subtitle="Save and reuse your BQL queries" :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false))'><button id="workops-filter-new" data-bml-preserve="workops-filter-new" primary icon="plus" @click="model.create()">New filter</button></page-heading>
+      <div class="workops-content">
+        <workops-feedback id="filters-0" :feedback="model.feedback" />
+        <if model.feedback.failed><button @click="model.retry(ctx)" icon="refresh">Reload saved filters</button></if>
+        <if model.rows.isEmpty() && !model.feedback.failed><empty-state title="No saved filters" message="Create a filter to save a BQL query." icon="search" /></if>
+        <if model.rows.isNotEmpty()><card :padded="false"><table-scroll label="Saved filters"><table class="workops-filter-table">
+          <thead><tr><th>Name</th><th>BQL query</th><th>Modified</th><th>Actions</th></tr></thead>
+          <tbody><for filter in model.rows><tr><td><a :href="filter.href">{ filter.name }</a><if filter.description.isNotBlank()><p>{ filter.description }</p></if></td><td><code>{ filter.source }</code></td><td><time :value="filter.modified" /></td><td><form-actions align="start"><button-link :href="filter.href" size="sm">Run</button-link><button :id="filter.previewId" :data-bml-preserve='"filter-preview-trigger-" + filter.id' size="sm" @click="model.preview(filter.id, ctx)">Preview</button><icon-button icon="edit" :label='"Edit " + filter.name' :id="filter.editId" :data-bml-preserve='"filter-edit-trigger-" + filter.id' size="sm" @click="model.edit(filter.id)" /><icon-button icon="trash" :label='"Delete " + filter.name' size="sm" class="danger" @click="model.beginDelete(filter.id)" /></form-actions></td></tr></for></tbody>
+        </table></table-scroll><pagination :page="model.page" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Saved filter pages" /></card></if>
+      </div>
+      <dialog :title='if (model.draft.id.isBlank()) "New filter" else "Edit filter"' triggerLabel="Edit saved filter" :showTrigger="false" :forceOpen="model.editing" :completed="!model.editing" :returnFocus="model.editReturn" @dialogdismiss="model.cancelEdit()">
+        <form class="modal-form" @submit="model.save(form.name, form.description, form.source, ctx)"><form-body padded class="modal-fields">
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+          <field label="Name"><input name="name" :value="model.draft.name" required /></field>
+          <field label="Description"><input name="description" :value="model.draft.description" /></field>
+          <field label="BQL query"><code-editor name="source" label="Saved filter BQL query" compact language="sql" :value="model.draft.source" :preserveKey='"filter-source-" + model.draft.id + "-" + model.draft.version' /></field>
+          <for diagnostic in model.diagnostics><alert>{ diagnostic.message } ({ diagnostic.start }–{ diagnostic.end }). <if diagnostic.hint.isNotBlank()><span>{ diagnostic.hint }</span></if></alert></for>
+        </form-body><form-actions bordered class="modal-footer"><button data-dialog-close @click="model.cancelEdit()">Cancel</button><button type="submit" primary>Save filter</button></form-actions></form>
+      </dialog>
+      <dialog title="Filter preview" triggerLabel="Filter preview" :showTrigger="false" :forceOpen="model.previewId.isNotBlank()" :completed="model.previewId.isBlank()" :returnFocus="model.previewReturn" @dialogdismiss="model.cancelPreview()">
+        <form-body padded><source-view :content="model.previewSource" label="Preview BQL query" compact wrapped />
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+          <for diagnostic in model.diagnostics><alert>{ diagnostic.message } ({ diagnostic.start }–{ diagnostic.end }) { diagnostic.hint }</alert></for>
+          <if model.diagnostics.isEmpty() && !model.feedback.failed>
+            <if model.previewRows.isEmpty()><empty-state title="No matching tasks." compact /></if>
+            <for task in model.previewRows><div class="workops-task-entry"><a :href="task.href">{ task.key } · { task.summary }</a><badge :tone="task.tone">{ task.status }</badge></div></for>
+            <p>Showing up to 10 results.</p><button-link :href="model.previewHref">View all results</button-link>
+          </if>
+        </form-body><form-actions bordered><button data-dialog-close @click="model.cancelPreview()">Close preview</button></form-actions>
+      </dialog>
+      <dialog title="Delete saved filter" triggerLabel="Delete saved filter" :showTrigger="false" :forceOpen="model.deletingId.isNotBlank()" :completed="model.deletingId.isBlank()" returnFocus="#workops-filter-new" @dialogdismiss="model.cancelDelete()">
+        <form @submit="model.delete(form.confirmed, ctx)"><form-body padded><p>Delete { model.deleteName }?</p><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><checkbox name="confirmed" label="Delete this saved filter" required /></form-body><form-actions bordered><button data-dialog-close @click="model.cancelDelete()">Cancel</button><button type="submit" class="danger">Delete saved filter</button></form-actions></form>
+      </dialog>
+    </page-shell>
+  </island>
+</component>

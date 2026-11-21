@@ -9,6 +9,28 @@ import kotlin.uuid.Uuid
 /** Structured values used by standalone component examples. */
 @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 object CatalogSamples {
+    val referenceContainers = listOf(
+        DocumentContainerOption("RESOURCE", "Related content", "Metadata chosen through an application adapter", "METADATA", listOf("kind = \"article\"")),
+        DocumentContainerOption("SCRIPTURE", "Scripture", "Bible references chosen through an application adapter", "BIBLE"),
+    )
+    val referenceDocument = Json.parseToJsonElement("""{"type":"doc","content":[
+      {"type":"paragraph","content":[{"type":"text","text":"Reference authoring example"}]},
+      {"type":"container","attrs":{"name":"RESOURCE","metadataId":"example-article","version":4,"renderer":"card"}},
+      {"type":"container","attrs":{"name":"SCRIPTURE","metadataId":"example-bible","references":["GEN.1.1"]}},
+      {"type":"bible","attrs":{"metadataIds":["example-bible"],"usfm":["GEN.1.2"]}}
+    ]}""").jsonObject
+    val documentContainers = listOf(bosca.design.model.DocumentContainerOption("MAIN_CONTENT", "Main content", "Primary document body"))
+    val studioDocument = Json.parseToJsonElement("""{
+      "type":"doc","content":[
+        {"type":"heading","attrs":{"level":1},"content":[{"type":"text","text":"Stored content title"}]},
+        {"type":"heading","attrs":{"level":1},"content":[{"type":"text","text":"A section heading"}]},
+        {"type":"container","attrs":{"name":"MAIN_CONTENT","references":["GEN.1"],"metadataId":"related-content","version":4,"renderer":"card"},"content":[
+          {"type":"paragraph","content":[{"type":"text","text":"Stored body "},{"type":"mention","attrs":{"id":"profile-reference","label":"An author","entityType":"profile","mentionSuggestionChar":"@"}}]}]},
+        {"type":"bible","attrs":{"usfm":["GEN.1.1"],"metadataIds":["scripture-content"]}},
+        {"type":"codeBlock","attrs":{"language":"mermaid"},"content":[{"type":"text","text":"graph TD; A-->B;"}]},
+        {"type":"paragraph"}
+      ]
+    }""").jsonObject
     val metadataDocument = MetadataDocument(
         metadataId = Uuid.parse("00000000-0000-4000-8000-000000000002"),
         version = 3,

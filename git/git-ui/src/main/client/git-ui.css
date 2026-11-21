@@ -204,35 +204,6 @@ input[type="checkbox"] {
   font: 12.5px var(--font-sans);
   text-align: center;
 }
-.markdown .image-error {
-  color: var(--error-fg);
-  display: block;
-  padding: 12px 0;
-}
-.markdown img {
-  max-width: 100%;
-  height: auto;
-}
-.markdown pre {
-  overflow: auto;
-  padding: 12px;
-  background: var(--control-bg);
-}
-.markdown table {
-  border-collapse: collapse;
-  display: block;
-  overflow: auto;
-}
-.markdown th,
-.markdown td {
-  padding: 8px;
-  border: 1px solid var(--line);
-}
-.markdown blockquote {
-  border-left: 3px solid var(--line);
-  padding-left: 16px;
-  margin-left: 0;
-}
 .owner-options li {
   padding: 10px;
   cursor: pointer;
@@ -274,16 +245,6 @@ input[type="checkbox"] {
 
 .git-comment-field {
   --r-md: 6px;
-}
-.git-document .pull-main .markdown {
-  padding: 0;
-  margin: 0;
-}
-.markdown > :first-child {
-  margin-top: 0;
-}
-.markdown > :last-child {
-  margin-bottom: 0;
 }
 
 .dialog-content .modal-fields .owner-picker {
@@ -862,7 +823,7 @@ a.info-value {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
-  min-height: var(--control-height-md);
+  min-height: var(--control-height-sm);
 }
 .file-editor-workspace .editor-actions .button[data-bml-fullscreen-button] {
   height: var(--control-height-sm);

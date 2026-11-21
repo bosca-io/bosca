@@ -1,0 +1,32 @@
+<component tag="workops-board-directory">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsBoardDirectoryModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsBoardDirectoryModel(initial.projectId, initial.boardId, initial.projects, initial.boards, initial.creating, initial.nameDraft, initial.typeDraft, initial.scopeDraft, initial.swimlaneDraft, initial.projectDraft, initial.createdId, initial.feedback)</script>
+  <island name="boardDirectory" :key='initial.projectId.ifBlank { "directory" }'>
+    <page-heading title="Boards" subtitle="View project work and plan iterations" :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false))'>
+      <form action="/workops/boards" method="get"><form-actions><select submitOnChange name="projectId" label="Project" searchable><option value="">Choose a project</option><for project in model.projects><option :value="project.id" :selected="project.id == model.projectId">{ project.key } · { project.name }{ if (project.archived) " (archived)" else "" }</option></for></select><noscript><button type="submit">Choose project</button></noscript></form-actions></form>
+        <if model.boards.isNotEmpty()><form action="/workops/boards" method="get"><html:input type="hidden" name="projectId" :value="model.projectId" /><form-actions><select submitOnChange name="boardId" label="Board"><for board in model.boards><option :value="board.id" :selected="board.id == model.boardId">{ model.label(board) }</option></for></select><noscript><button type="submit">Choose board</button></noscript></form-actions></form></if>
+        <button id="workops-board-new" primary icon="plus" @click="model.open()">New board</button>
+    <if model.createdHref.isNotBlank()><button-link :href="model.createdHref" size="xs" icon="arrow-right">Open the created board</button-link></if></page-heading>
+    <div class="workops-content workops-board-directory" data-workops-board-directory>
+
+      <workops-feedback id="board-directory-0" :feedback="model.feedback" />
+      <if model.feedback.failed><button icon="refresh" @click="model.retry(ctx)">Reload board choices</button></if>
+
+      <if !model.feedback.failed && model.boards.isEmpty()><empty-state :title='if (model.projectId.isBlank()) "Choose a project" else "No boards for this project"' :message='if (model.projectId.isBlank()) "Choose a project to view boards." else "No boards for this project. Create one to get started."' /></if>
+      <if model.selectedBoard != null><section-heading :title="model.selectedBoard?.name.orEmpty()" :subtitle="model.selectedBoard?.type?.lowercase().orEmpty()"><button-link :href='"/workops/boards/" + bosca.workops.ui.workOpsEncode(model.selectedBoard?.id.orEmpty()) + "?tab=settings"' icon="settings">Configure</button-link></section-heading></if>
+      <dialog title="New board" triggerLabel="New board" :showTrigger="false" :forceOpen="model.creating" :completed="!model.creating" returnFocus="#workops-board-new" @dialogdismiss="model.cancel()">
+        <form @submit="model.create(form.name, form.type, form.scope, form.swimlane, form.projectIds, ctx)"><form-body padded>
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+          <field label="Name"><input name="name" :value="model.nameDraft" required /></field>
+          <field label="Type"><select name="type" label="Type"><option value="KANBAN" :selected='model.typeDraft == "KANBAN"'>Kanban</option><option value="SCRUM" :selected='model.typeDraft == "SCRUM"'>Scrum</option></select></field>
+          <field label="Scope"><select name="scope" label="Scope"><option value="single" :selected='model.scopeDraft == "single"'>Selected project</option><option value="multi" :selected='model.scopeDraft == "multi"'>Multiple projects</option></select></field>
+          <field label="Projects" hint="For multiple-project boards, choose at least two projects."><select name="projectIds" label="Projects" multiple searchable><for project in model.activeProjects><option :value="project.id" :selected="project.id in model.projectDraft">{ project.key } · { project.name }</option></for></select></field>
+          <field label="Swimlane strategy"><select name="swimlane" label="Swimlane strategy"><for item in listOf("NONE", "ASSIGNEE", "EPIC", "PRIORITY", "PROJECT")><option :value="item" :selected="item == model.swimlaneDraft">{ item.lowercase().replaceFirstChar(Char::uppercase) }</option></for></select></field>
+        </form-body><form-actions bordered><button data-dialog-close @click="model.cancel()">Cancel</button><button type="submit" primary>Create board</button></form-actions></form>
+      </dialog>
+    </div>
+  </island>
+  <style scoped>
+    .workops-board-directory { flex: 0 0 auto; overflow: visible; }
+  </style>
+</component>

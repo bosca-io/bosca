@@ -1,0 +1,40 @@
+<component tag="workops-inbox">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsInboxModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsInboxModel(initial.tab, initial.offset, initial.rows, initial.unreadCount, initial.hasNext, initial.preferencesLoaded, initial.draft, initial.nextHref, initial.feedback)</script>
+  <island name="inbox" :key='"workops-inbox"'>
+    <page-shell class="workops-page" fill>
+      <page-heading title="Inbox" :subtitle='model.unreadCount.toString() + " unread"' :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false))'><if model.tab == "preferences"><button primary type="submit" form="workops-inbox-preference-save" :disabled="!model.preferencesLoaded">Save preferences</button><else><button @click="model.markAllRead(ctx)" :disabled="model.unreadCount == 0L">Mark all read</button></if><icon-button icon="refresh" label="Refresh inbox" @click="model.retry(ctx)" /></page-heading>
+      <div class="workops-content" :data-workops-next-href="model.nextHref">
+        <tabs label="Inbox views" :items="model.tabs" />
+        <workops-feedback id="inbox-0" :feedback="model.feedback" />
+        <if model.tab == "preferences">
+          <if model.preferencesLoaded>
+            <card title="Notification preferences"><form id="workops-inbox-preference-save" @submit="model.savePreferences(form.attributes, ctx)"><form-body>
+              <workops-notification-fields :value="model.preferenceValue" />
+
+            </form-body></form></card>
+          </if>
+        <else>
+          <if model.rows.isEmpty() && !model.feedback.failed><empty-state :title='if (model.tab == "unread") "All caught up" else "No notifications"' message="WorkOps activity appears here." icon="bell" /></if>
+          <div class="workops-inbox-list">
+            <for notification in model.rows><card><article class="workops-notification" :data-notification-id="notification.id">
+              <div class="workops-task-entry-header"><badge>{ notification.label }</badge><if !notification.read><badge tone="info">Unread</badge></if><time :value="notification.created" /></div>
+              <if notification.href.isNotBlank()><a class="workops-notification-body" :href="notification.href" @click="model.open(notification.id, ctx)">{ notification.body }</a><else><p class="workops-notification-body">{ notification.body }</p></if>
+              <if !notification.read><form-actions align="start"><button size="sm" @click="model.markRead(notification.id, ctx)">Mark read</button></form-actions></if>
+            </article></card></for>
+          </div>
+          <pagination :page="model.offset / 30 + 1" :previousHref="model.previousHref" :nextHref="model.nextPageHref" label="Inbox pages" />
+        </if>
+      </div>
+    </page-shell>
+    <script client scoped>
+      const navigate = () => {
+        const owner = ctx.root.hasAttribute("data-workops-next-href") ? ctx.root : ctx.root.querySelector("[data-workops-next-href]");
+        const href = owner?.getAttribute("data-workops-next-href");
+        if (href && href.startsWith("/") && !href.startsWith("//")) location.assign(href);
+      };
+      ctx.onUpdate(navigate);
+      navigate();
+    </script>
+  </island>
+</component>

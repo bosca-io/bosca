@@ -1,0 +1,51 @@
+<component tag="workops-requirements">
+  <prop name="parentId" type="String" required />
+  <prop name="parentHref" type="String" required />
+  <prop name="parentType" type="String" default="TASK" />
+  <script server provides="initial">bosca.workops.ui.workOpsRequirements(parentId, parentHref, parentType)</script>
+  <script server provides="model">bosca.workops.ui.WorkOpsRequirementsModel(initial.parentId, initial.parentHref, initial.offset, initial.data, initial.names, initial.creating, initial.nameDraft, initial.editingId, initial.assigneeDraft, initial.assigneeName, initial.editVersion, initial.feedback, initial.createdId, initial.parentType, initial.revision)</script>
+  <island name="requirements" :key="parentId">
+    <card title="Requirements" :data-workops-task-requirements='model.parentType == bosca.workops.ui.graphql.WorkOpsRequirementParent.TASK' :data-workops-spec-requirements='model.parentType == bosca.workops.ui.graphql.WorkOpsRequirementParent.SPEC'>
+      <span ref="requirementsRevision" :data-revision="model.revision" hidden></span>
+      <workops-feedback id="requirements-0" :feedback="model.feedback" />
+      <if model.feedback.failed><button icon="refresh" @click="model.retry(ctx)">Reload requirements</button></if>
+      <form-actions><if model.createdId.isNotBlank()><button-link :href='"/workops/requirements/" + model.createdId' size="xs" icon="arrow-right">Open created requirement</button-link></if><button id="workops-requirement-create" icon="plus" @click="model.beginCreate()">Add requirement</button></form-actions>
+      <if model.rows.isNotEmpty()>
+        <help-text>{ model.doneCount } of { model.rows.size } requirements on this page are done.</help-text>
+        <progress-bar :value="model.doneCount.toDouble()" :max="model.rows.size.toDouble()" label="Completed requirements on this page" />
+        <table-scroll label="Requirements"><table><caption class="sr-only">{ if (model.parentType == bosca.workops.ui.graphql.WorkOpsRequirementParent.SPEC) "Specification requirements" else "Task requirements" }</caption><thead><tr><th scope="col">Requirement</th><th scope="col">Status</th><th scope="col">Priority</th><th scope="col">Assignee</th><th scope="col">Actions</th></tr></thead>
+          <tbody><for row in model.rows><tr>
+            <td><a :href='"/workops/requirements/" + row.id'>{ model.name(row.metadataId) }</a></td>
+            <td><badge :tone='if (row.category == bosca.workops.ui.graphql.WorkOpsStatusCategory.DONE) "success" else "neutral"'>{ row.status }</badge></td>
+            <td><badge :color="row.priorityColor">{ row.priority }</badge></td>
+            <td><profile :name="bosca.workops.ui.workOpsAssigneeLabel(row.assigneeId, row.assignee)" /></td>
+            <td><form-actions align="start"><icon-button icon="users" @click="model.editAssignee(row.id)" :label='"Assign " + model.name(row.metadataId)' />
+              <confirm-dialog title="Delete requirement" description="Remove this requirement from its parent?" triggerLabel="Delete requirement">
+                <form @submit="model.delete(row.id, row.version, form.confirmed, ctx)"><form-body padded><checkbox name="confirmed" label="Delete this requirement" required /></form-body><form-actions bordered><button data-dialog-close>Cancel</button><button type="submit" class="danger">Delete requirement</button></form-actions></form>
+              </confirm-dialog></form-actions>
+            </td>
+          </tr></for></tbody>
+        </table></table-scroll>
+      <else-if !model.feedback.failed><empty-state title="No requirements yet." compact /></if>
+      <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Requirement pages" />
+      <dialog title="Add requirement" triggerLabel="Add requirement" :showTrigger="false" :forceOpen="model.creating" :completed="!model.creating" returnFocus="#workops-requirement-create" @dialogdismiss="model.cancelCreate()">
+        <form @submit="model.create(form.name, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><field label="Requirement name"><input name="name" :value="model.nameDraft" required /></field></form-body><form-actions bordered><button data-dialog-close @click="model.cancelCreate()">Cancel</button><button type="submit" primary>Create requirement</button></form-actions></form>
+      </dialog>
+      <dialog title="Assign requirement" triggerLabel="Assign requirement" :showTrigger="false" :forceOpen="model.editingId.isNotBlank()" :completed="model.editingId.isBlank()" returnFocus="#workops-requirement-create" @dialogdismiss="model.cancelAssignee()">
+        <form @submit="model.assign(form.profileId, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><field label="Assignee"><div data-workops-profile-picker><select name="profileId" label="Assignee" searchable async :minQuery="2"><option value="" data-persistent :selected="model.assigneeDraft.isBlank()">Unassigned</option><if model.assigneeDraft.isNotBlank()><option :value="model.assigneeDraft" data-persistent selected>{ model.assigneeName }</option></if></select></div></field></form-body><form-actions bordered><button data-dialog-close @click="model.cancelAssignee()">Cancel</button><button type="submit" primary>Save assignee</button></form-actions></form>
+      </dialog>
+    </card>
+    <script client scoped>
+      import { WorkOpsProfileSearch } from "./WorkOpsProfileSearch";
+      import { workOpsProfileChoices } from "@client/helpers/profile-choices";
+      workOpsProfileChoices(ctx, (query, offset) => WorkOpsProfileSearch.search(query, offset));
+      let revision = Number(ctx.ref<HTMLElement>("requirementsRevision")?.dataset.revision || 0);
+      ctx.onUpdate(() => {
+        const next = Number(ctx.ref<HTMLElement>("requirementsRevision")?.dataset.revision || 0);
+        const changed = next > revision;
+        revision = next;
+        if (changed) ctx.root.dispatchEvent(new CustomEvent("workopsrequirementschanged", { bubbles: true }));
+      });
+    </script>
+  </island>
+</component>

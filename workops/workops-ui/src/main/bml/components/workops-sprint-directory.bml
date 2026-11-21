@@ -1,0 +1,12 @@
+<component tag="workops-sprint-directory">
+  <prop name="directory" type="bosca.workops.ui.WorkOpsBoardDirectoryModel" required />
+  <div class="workops-sprint-directory" data-workops-sprint-directory>
+    <page-heading title="Sprints" subtitle="Plan iterations and their tasks" :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false))'>
+      <form method="get" action="/workops/sprints"><form-actions><select submitOnChange name="projectId" label="Project" searchable><option value="">Choose a project</option><for project in directory.projects><option :value="project.id" :selected="project.id == directory.projectId">{ project.key } · { project.name }{ if (project.archived) " (archived)" else "" }</option></for></select><noscript><button type="submit">Choose project</button></noscript></form-actions></form>
+      <if directory.boards.isNotEmpty()><form method="get" action="/workops/sprints"><html:input type="hidden" name="projectId" :value="directory.projectId" /><form-actions><select submitOnChange name="boardId" label="Board"><for board in directory.boards><option :value="board.id" :selected="board.id == directory.boardId">{ directory.label(board) }</option></for></select><noscript><button type="submit">Choose board</button></noscript></form-actions></form></if>
+    </page-heading>
+    <if directory.feedback.failed><alert>{ directory.feedback.message }</alert><button-link :href='"/workops/sprints?projectId=" + bosca.workops.ui.workOpsEncode(directory.projectId) + "&boardId=" + bosca.workops.ui.workOpsEncode(directory.boardId)'>Reload choices</button-link>
+    <else-if directory.selectedBoard == null><empty-state :title='if (directory.projectId.isBlank()) "Choose a project" else "No board selected"' :message='if (directory.projectId.isBlank()) "Choose a project to view sprints." else "No board is selected for this project."' /></if>
+  </div>
+  <style scoped>.workops-sprint-directory { display: flex; flex-direction: column; gap: 12px; flex: 0 0 auto; padding-bottom: 20px; }</style>
+</component>

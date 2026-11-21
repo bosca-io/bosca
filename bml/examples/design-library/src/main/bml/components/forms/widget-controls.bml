@@ -5,13 +5,13 @@
     <div class="widget-stack" :data-widgets="widgets.id">
       <form class="widget-stack" @submit="widgets.save(form.document, form.graph, form.layout)" :data-widget-form="widgets.id">
         <document-editor :id='"document-" + widgets.id' :label='"Document " + widgets.id' :document="widgets.sourceDocument" :value="widgets.document"
-                         required :preserveKey='"document-" + widgets.id' />
+                         :containers="bosca.design.example.MetadataDocuments.containers" singleTitle required mentions showSaveStatus referenceControls media :preserveKey='"document-" + widgets.id' />
         <flow-editor :id='"flow-" + widgets.id' :label='"Graph " + widgets.id' :value="widgets.graph"
                      :preserveKey='"flow-" + widgets.id' />
         <dashboard-grid :id='"grid-" + widgets.id' :label='"Dashboard " + widgets.id' :value="widgets.layout"
                         :preserveKey='"grid-" + widgets.id'>
           <dashboard-item itemId="chart" label="Visits">
-            <chart :id='"chart-" + widgets.id' :label='"Visits " + widgets.id' :config="widgets.chart" />
+            <chart :id='"chart-" + widgets.id' :label='"Visits " + widgets.id' :config="widgets.chart" :maps='mapOf("world" to bosca.design.model.ChartMaps.world)' />
           </dashboard-item>
           <dashboard-item itemId="notes" label="Notes">
             <field label="Dashboard note"><input name="note" value="Unsent note" /></field>
@@ -32,4 +32,12 @@
       </if>
     </div>
   </island></card>
+  <script client scoped>
+    import { exampleMentions } from "@client/example-mentions";
+    import { exampleReferences } from "@client/example-references";
+    import { exampleImages } from "@client/example-images";
+    exampleMentions(ctx);
+    exampleReferences(ctx);
+    exampleImages(ctx);
+  </script>
 </component>

@@ -2,11 +2,9 @@ package bosca.workops.service
 
 import bosca.forms.model.FormSchema
 import bosca.forms.model.FormSchemaType
-import bosca.forms.model.FormSubmission
 import bosca.forms.model.FormSubmissionInput
 import bosca.forms.service.FormSubmissionProcessor
 import bosca.forms.service.SubmittedForm
-import bosca.profile.model.Profile
 import bosca.serialization.OffsetDateTime
 import bosca.serialization.UUID
 import bosca.workops.model.task.CreateTaskInput
@@ -44,7 +42,12 @@ class WorkOpsFormSubmissionProcessor(
 
     override val type: FormSchemaType = FormSchemaType.WORK_OPS
 
-    override suspend fun process(profileId: UUID, submission: FormSubmissionInput, schema: FormSchema): SubmittedForm {
+    override suspend fun process(
+        profileId: UUID,
+        principalId: UUID?,
+        submission: FormSubmissionInput,
+        schema: FormSchema,
+    ): SubmittedForm {
         val configuration = schema.configuration
             ?: error("WORK_OPS form ${schema.id} has no workOps configuration block — skipping task creation")
         val config = configuration.jsonObject["workOps"]?.jsonObject
@@ -123,7 +126,7 @@ class WorkOpsFormSubmissionProcessor(
 
         val task = taskService.create(
             input = input,
-            actingPrincipalId = profileId,
+            actingPrincipalId = principalId ?: UUID.NIL,
             actingProfileId = profileId,
             reporterProfileId = profileId,
         )

@@ -721,9 +721,9 @@ for (const width of [1920, 1440, 1024, 390]) {
   const fallbackPoint = await ev(`(() => {const r=document.querySelector('.repository-controls .popover summary').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()`);
   for (const type of ["mousePressed", "mouseReleased"])
     await call("Input.dispatchMouseEvent", {type, ...fallbackPoint, button:"left", clickCount:1});
-  await until(`document.querySelector('.repository-controls .popover').open && document.querySelector('.popover-content').checkVisibility()`);
+  await until(`document.querySelector('.repository-controls .popover').open && document.querySelector('.repository-controls .popover .popover-content').checkVisibility()`);
   const fallback = await ev(`(() => {
-    const content=document.querySelector('.popover-content'), input=content.querySelector('input'), r=content.getBoundingClientRect();
+    const content=document.querySelector('.repository-controls .popover .popover-content'), input=content.querySelector('input'), r=content.getBoundingClientRect();
     return {enhanced:content.hasAttribute('popover'), value:input.value, readonly:input.readOnly,
       left:r.left,right:r.right,viewport:document.documentElement.clientWidth};
   })()`);
@@ -779,7 +779,7 @@ for (const width of [1920, 1440, 1024, 390]) {
     results.push({ viewport: width, path, ...g });
     if (await ev("Boolean(document.querySelector('.repository-heading'))")) {
       const header = await ev(`(() => {
-        const bounds = document.querySelector('.repository-heading').getBoundingClientRect();
+        const bounds = document.querySelector('.repository-heading .page-heading').getBoundingClientRect();
         const copy = document.querySelector('.repository-heading .heading-copy').getBoundingClientRect();
         const controls = document.querySelector('.repository-controls').getBoundingClientRect();
         const tabs = document.querySelector('nav[aria-label="Repository section"]').getBoundingClientRect();
@@ -793,7 +793,7 @@ for (const width of [1920, 1440, 1024, 390]) {
         };
       })()`);
       results.at(-1).repositoryHeader = header;
-      assert.ok(Math.abs(header.tabGap) <= 1, "Repository tabs sit directly below Studio's page header");
+      assert.ok(Math.abs(header.tabGap) <= 1, `Repository tabs sit directly below Studio's page header: ${JSON.stringify({ path, width, header })}`);
       if (width >= 1024) {
         assert.ok(header.height <= 90, "Desktop repository headers stay compact");
         assert.ok(
@@ -965,7 +965,7 @@ for (const width of [1920, 1440, 1024, 390]) {
         ),
         "Repository tabs must remain visible at every viewport",
       );
-      const clone = `[data-bml-component="${foundationPrefix}popover"]`;
+      const clone = `.repository-controls [data-bml-component="${foundationPrefix}popover"]`;
       await ev(`document.querySelector('${clone} summary').click()`);
       await until(
         `document.querySelector('${clone} .popover-content').matches(':popover-open')`,
@@ -1704,10 +1704,10 @@ for (const width of [1920, 1440, 1024, 390]) {
       const markdown = await ev(`(() => {
         const toolbar=document.querySelector('.markdown-toolbar');
         const tab=toolbar.querySelector('[role=tab]');
-        const title=document.querySelector('.markdown h1');
+        const title=document.querySelector('[data-bml-html-content] h1');
         const text=document.createRange();text.selectNodeContents(tab);
         const tabText=text.getBoundingClientRect();
-        const header=toolbar.getBoundingClientRect(), content=document.querySelector('.markdown').getBoundingClientRect();
+        const header=toolbar.getBoundingClientRect(), content=document.querySelector('[data-bml-html-content]').getBoundingClientRect();
         const card=document.querySelector('.file-viewer').getBoundingClientRect();
         const item=tab.getBoundingClientRect(), indicator=getComputedStyle(tab,'::after');
         return {titleLeft:title.getBoundingClientRect().left,tabTextLeft:tabText.left,

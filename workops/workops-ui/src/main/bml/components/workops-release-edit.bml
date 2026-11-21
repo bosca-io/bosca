@@ -1,0 +1,53 @@
+<component tag="workops-release-edit">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsReleaseEditModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsReleaseEditModel(initial.id, initial.release, initial.canManage, initial.editing, initial.nameDraft, initial.descriptionDraft, initial.dateDraft, initial.picker, initial.components, initial.componentsLoaded, initial.removing, initial.deleting, initial.nextHref, initial.revision, initial.feedback, initial.readFeedback)</script>
+  <island name="releaseEdit" :key="initial.id"><div data-workops-release-edit :data-workops-next-href="model.nextHref">
+    <span ref="releaseRevision" :data-revision="model.revision" hidden />
+    <form-actions align="start"><button id="workops-release-edit-open" primary icon="edit" :disabled="!model.canManage || model.release == null" @click="model.open(ctx)">Edit release</button><icon-button size="md" icon="trash" label="Delete release" class="danger" :disabled="!model.canManage || model.release == null" @click="model.beginDelete()" /></form-actions>
+
+    <if model.feedback.failed && model.feedback.message.isNotBlank()><alert>{ model.feedback.message }</alert></if>
+    <dialog title="Edit release" triggerLabel="Edit release" :showTrigger="false" :forceOpen="model.editing != null" :completed="model.editing == null" returnFocus="#workops-release-edit-open" @dialogdismiss="model.close()">
+      <form @submit="model.save(form.name, form.description, form.date, form.projectId, form.versionId, ctx)"><form-body padded @projectchange.coalesce="model.chooseProject(form.name, form.description, form.date, form.projectId, ctx)">
+        <if model.feedback.failed><alert data-workops-release-edit-error>{ model.feedback.message }</alert><help-text>If the release changed, close and refresh before reopening the editor.</help-text></if>
+        <toast :id='"workops-release-edit-" + model.feedback.noticeId' :message='if (model.feedback.failed) "" else model.feedback.message' :sequence="model.feedback.noticeSequence" tone="success" />
+        <field label="Name"><input name="name" :value="model.nameDraft" required /></field><field label="Description"><textarea name="description">{ model.descriptionDraft }</textarea></field><field label="Planned release date"><input type="date" name="date" :value="model.dateDraft" /></field>
+        <form-actions align="start"><button type="submit" primary>Save details</button></form-actions>
+        <section-heading title="Project versions" />
+        <if model.readFeedback.failed><alert data-workops-release-edit-read-error>{ model.readFeedback.message }</alert></if>
+        <workops-feedback id="release-edit-1" :feedback="model.picker.feedback" />
+        <workops-feedback id="release-edit-2" :feedback="model.picker.versionFeedback" />
+        <workops-release-picker-fields :projects="model.picker.projectChoices" :versions="model.picker.versionChoices" :projectId="model.picker.pickProjectId" :versionId="model.picker.pickVersionId" :projectName="model.picker.pickedProjectName" :versionsEnabled="model.picker.pickProjectId.isNotBlank() && (model.picker.versionsLoaded || model.picker.offeredVersions.isNotEmpty())" :required="false" />
+        <form-actions align="start"><if model.readFeedback.failed || !model.componentsLoaded || !model.picker.choicesLoaded || (model.picker.pickProjectId.isNotBlank() && !model.picker.versionsLoaded)><button icon="refresh" @click="model.reloadChoices(form.name, form.description, form.date, form.projectId, form.versionId, ctx)">Retry loading project versions</button></if><button id="workops-release-edit-version-new" @click="model.openVersion(form.name, form.description, form.date, form.projectId)">New version</button><button :disabled="!model.componentsLoaded" @click="model.add(form.name, form.description, form.date, form.projectId, form.versionId, ctx)">Add version</button></form-actions>
+        <if !model.componentsLoaded><p>Bundled versions are unavailable. Retry loading project versions.</p>
+        <else-if model.components.isEmpty()><empty-state title="No project versions are bundled yet." compact />
+        <else><ul class="release-edit-components"><for item in model.components><li :data-workops-release-edit-version="item.versionId"><span>{ item.projectLabel } · { item.versionLabel }</span><icon-button icon="trash" :label='"Remove " + item.projectLabel + " " + item.versionLabel' @click="model.beginRemove(item.versionId, form.name, form.description, form.date, form.projectId, form.versionId)" /></li></for></ul></if>
+      </form-body><form-actions bordered><button-link :href="model.href">Done</button-link></form-actions></form>
+    </dialog>
+    <dialog title="New project version" triggerLabel="New project version" :showTrigger="false" :forceOpen="model.picker.creatingVersion" :completed="!model.picker.creatingVersion" returnFocus="#workops-release-edit-version-new" @dialogdismiss="model.cancelVersion()">
+      <form @submit="model.createVersion(form.name, form.description, form.startDate, form.releaseDate, ctx)"><form-body padded><p>Version for { model.picker.pickedProjectName }</p><if model.picker.versionFeedback.failed><alert>{ model.picker.versionFeedback.message }</alert></if><field label="Name"><input name="name" :value="model.picker.versionDraft.name" required /></field><field label="Description"><textarea name="description">{ model.picker.versionDraft.description }</textarea></field><field label="Start date"><input name="startDate" type="date" :value="model.picker.versionDraft.startDate" /></field><field label="Release date"><input name="releaseDate" type="date" :value="model.picker.versionDraft.releaseDate" /></field></form-body><form-actions bordered><button data-dialog-close @click="model.cancelVersion()">Cancel</button><button type="submit" primary>Create version</button></form-actions></form>
+    </dialog>
+    <dialog title="Remove bundled version" triggerLabel="Remove bundled version" :showTrigger="false" :forceOpen="model.removing != null" :completed="model.removing == null" returnFocus="#workops-release-edit-version-new" @dialogdismiss="model.cancelRemove()">
+      <form @submit="model.remove(form.confirmed, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><p>Remove { model.removing?.projectLabel } · { model.removing?.versionLabel } from this release?</p><checkbox name="confirmed" label="Confirm removal" required /></form-body><form-actions bordered><button data-dialog-close @click="model.cancelRemove()">Cancel</button><button primary type="submit">Remove version</button></form-actions></form>
+    </dialog>
+    <dialog title="Delete release" triggerLabel="Delete release" :showTrigger="false" :forceOpen="model.deleting != null" :completed="model.deleting == null" returnFocus="#workops-release-edit-open" @dialogdismiss="model.cancelDelete()">
+      <form @submit="model.delete(form.confirmed, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><p>Delete { model.deleting?.name }? The release and its bundle are retained for recovery and hidden from the release list.</p><checkbox name="confirmed" label="Confirm deletion" required /></form-body><form-actions bordered><button data-dialog-close @click="model.cancelDelete()">Cancel</button><button primary type="submit">Delete release</button></form-actions></form>
+    </dialog>
+    <script client scoped>
+      let revision = Number(ctx.ref<HTMLElement>("releaseRevision")?.dataset.revision || 0);
+      ctx.onUpdate(() => {
+        const next = Number(ctx.ref<HTMLElement>("releaseRevision")?.dataset.revision || 0);
+        const changed = next > revision;
+        revision = next;
+        if (changed) ctx.root.dispatchEvent(new CustomEvent("workopsreleasechanged", { bubbles: true }));
+      });
+      const navigate = () => {
+        const owner = ctx.root.hasAttribute("data-workops-next-href") ? ctx.root : ctx.root.querySelector("[data-workops-next-href]");
+        const href = owner?.getAttribute("data-workops-next-href");
+        if (href && href.startsWith("/") && !href.startsWith("//")) location.assign(href);
+      };
+      ctx.onUpdate(navigate);
+      navigate();
+    </script>
+  </div></island>
+  <style scoped>.release-edit-components { display: grid; gap: 12px; padding: 0; list-style: none; }.release-edit-components li { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }.release-edit-components span { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }</style>
+</component>

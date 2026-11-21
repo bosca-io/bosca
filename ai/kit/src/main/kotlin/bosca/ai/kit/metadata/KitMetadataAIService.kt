@@ -12,6 +12,7 @@ import bosca.ai.kit.agents.topics.AvailableTopic
 import bosca.ai.kit.agents.topics.TopicsAgent
 import bosca.ai.kit.agents.topics.TopicsRequest
 import bosca.ai.kit.configuration.KitJson
+import bosca.di.ObjectProvider
 import bosca.ai.models.service.ModelService
 import bosca.ai.prompts.service.PromptService
 import bosca.content.collection.model.Collection
@@ -42,7 +43,7 @@ import kotlinx.serialization.json.Json
  */
 @ServiceImplementation
 class KitMetadataAIService(
-    private val promptExecutor: PromptExecutor,
+    private val promptExecutor: ObjectProvider<PromptExecutor>,
     private val models: KitModels,
     private val json: KitJson,
     private val documentService: DocumentService,
@@ -55,7 +56,7 @@ class KitMetadataAIService(
         val text = metadataDocumentText(metadata, document, documentService)
         if (text.isBlank()) return ""
         val describer = DescriptionAgent(
-            promptExecutor,
+            promptExecutor.get(),
             model(MODEL_DESCRIPTION, models.describe),
             json,
             null,
@@ -78,7 +79,7 @@ class KitMetadataAIService(
         )
         val byId = available.associateBy { it.id }
         val topicMatcher = TopicsAgent(
-            promptExecutor,
+            promptExecutor.get(),
             model(MODEL_TOPICS, models.topics),
             json,
             null,
@@ -95,7 +96,7 @@ class KitMetadataAIService(
         val text = metadataDocumentText(metadata, document, documentService)
         if (text.isBlank()) return 0
         val estimator = ReadingTimeAgent(
-            promptExecutor,
+            promptExecutor.get(),
             model(MODEL_READING_TIME, models.readingTime),
             json,
             null,

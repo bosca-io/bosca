@@ -41,14 +41,16 @@ export async function checkIconActions({ call, evaluate, until, base, mode, arti
     return { button:button instanceof HTMLButtonElement, type:button.type, label:button.getAttribute('aria-label'),
       size:[button.getBoundingClientRect().width,button.getBoundingClientRect().height],
       small:[small.getBoundingClientRect().width,small.getBoundingClientRect().height],
+      medium:[document.querySelector('[data-md-action=light]').getBoundingClientRect().width,document.querySelector('[data-md-action=light]').getBoundingClientRect().height],
       classes:button.classList.contains('icon-only') && button.classList.contains('ghost'),
       ref:button.getAttribute('data-bml-ref'), propsConsumed:!button.hasAttribute('icon') && !button.hasAttribute('label') && !button.hasAttribute('size'),
       nativeAction:button.hasAttribute('data-bml-method'), disabled:document.querySelector('[data-disabled-action=light]').disabled,
       link:link instanceof HTMLAnchorElement && link.getAttribute('href') === '#link-target' && link.getAttribute('rel') === 'help',
       linkSize:[link.getBoundingClientRect().width,link.getBoundingClientRect().height] };
   })()`);
-  assert.deepEqual(controls, { button:true, type:'button', label:'Increment', size:[30,30], small:[24,24], classes:true,
+  assert.deepEqual(controls, { button:true, type:'button', label:'Increment', size:[30,30], small:[24,24], medium:[32,32], classes:true,
     ref:'increment', propsConsumed:true, nativeAction:true, disabled:true, link:true, linkSize:[30,30] });
+  assert.deepEqual(await evaluate(`(() => { const node=document.querySelector('[data-md-action=light]'); node.style.setProperty('--control-height-md','40px'); const size=[node.getBoundingClientRect().width,node.getBoundingClientRect().height]; node.style.removeProperty('--control-height-md'); return size; })()`), [40,40]);
   await evaluate('document.querySelector("[data-disabled-action=light]").click()');
   assert.match(await evaluate('document.querySelector("[data-action-count=light]").textContent'), /Count 0/);
   await focus('[data-icon-action=purple]');

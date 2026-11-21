@@ -2,10 +2,12 @@ import type { ClientContext } from "@bosca/bml";
 
 /** Native modal behavior, including focus containment and action-patch recovery. */
 export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boolean } = {}) {
+  const owner = ctx.root.closest<HTMLElement>("[data-bml-island]");
   let visible = false;
   let requested = false;
   let completed = false;
   let openRequest = "";
+  let closedReturnTarget: HTMLElement | null = null;
   const dialog = () => ctx.root.querySelector<HTMLDialogElement>(":scope > dialog");
   const trigger = () => ctx.root.querySelector<HTMLElement>(":scope > [data-bml-ref=trigger]");
   const sync = () => {
@@ -31,6 +33,7 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
       // Preserved DOM retains drafts, but detaching removes a native dialog from the top layer.
       if (panel.open) panel.close();
       panel.showModal();
+      ctx.root.dispatchEvent(new CustomEvent("dialogopened", { bubbles: true }));
       const field = [
         ...panel.querySelectorAll<HTMLElement>(
           'input:not([type="hidden"]), textarea, select:not(.enhanced), .select-trigger',
@@ -42,8 +45,12 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
     }
   };
   const close = (dismissed = false) => {
+    const panel = dialog();
+    const wasOpen = visible || panel?.open === true;
     visible = false;
-    dialog()?.close();
+    panel?.close();
+    if (!wasOpen) return;
+    ctx.root.dispatchEvent(new CustomEvent("dialogclosed", { bubbles: true }));
     const target =
       (ctx.root.dataset.returnFocus
         ? ctx.root
@@ -51,8 +58,17 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
             ?.querySelector<HTMLElement>(ctx.root.dataset.returnFocus)
         : null) ?? trigger();
     target?.focus();
+    closedReturnTarget = target === document.activeElement ? target : null;
     if (dismissed) ctx.root.dispatchEvent(new CustomEvent("dialogdismiss", { bubbles: true }));
   };
+  ctx.on(document, "focusin", event => {
+    if (closedReturnTarget?.isConnected && event.target !== closedReturnTarget) closedReturnTarget = null;
+  });
+  ctx.on(ctx.root, "dialogopen", event => {
+    if (event.target !== ctx.root) return;
+    completed = false; ctx.root.removeAttribute("data-completed"); visible = true; sync();
+  });
+  ctx.on(ctx.root, "dialogclose", event => { if (event.target === ctx.root) close(); });
   ctx.on<MouseEvent>(ctx.root, "click", (event) => {
     const target = event.target;
     if (!(target instanceof Node)) return;
@@ -127,7 +143,18 @@ export function modalDialog(ctx: ClientContext, options: { closeOnEscape?: boole
   ctx.on<CustomEvent<{ target: Element }>>(document, "bml:update", (event) => {
     if (event.detail?.target.contains(ctx.root)) sync();
   });
-  ctx.onUnmount(() => dialog()?.close());
+  ctx.onUnmount(() => {
+    const panel = dialog(), wasOpen = visible || panel?.open === true;
+    const returnFocus = ctx.root.dataset.returnFocus;
+    const replacedReturnTarget = closedReturnTarget != null && !closedReturnTarget.isConnected;
+    panel?.close();
+    // An action can replace either an open modal or its recently focused dismissal target.
+    if ((wasOpen || replacedReturnTarget) && returnFocus) queueMicrotask(() => {
+      if (owner?.isConnected && (wasOpen || document.activeElement === document.body) &&
+          ![...document.querySelectorAll("dialog")].some(element => element.matches(":modal")))
+        owner.querySelector<HTMLElement>(returnFocus)?.focus();
+    });
+  });
   const panel = dialog();
   if (panel) {
     panel.id = ctx.scoped("dialog");

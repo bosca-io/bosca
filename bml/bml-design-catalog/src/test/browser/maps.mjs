@@ -5,6 +5,12 @@ import {join} from 'node:path';
 /** Real geographic rendering, viewport gestures, keyboard actions and retained map state. */
 export async function checkMaps({navigate,evaluate,until:poll,call,key,artifacts,mode}) {
   const until=expression=>poll(`Boolean(${expression})`),reports=[];
+  const alphaSnapshot=async canvas=>{
+    const image=new Image();image.src=canvas.toDataURL();await image.decode();
+    const copy=document.createElement('canvas');copy.width=image.naturalWidth;copy.height=image.naturalHeight;
+    const context=copy.getContext('2d',{willReadFrequently:true});context.drawImage(image,0,0);
+    return Array.from(context.getImageData(0,0,copy.width,copy.height).data).filter((_,index)=>index%4===3).join(',');
+  };
   const axe=await readFile(new URL('../../../node_modules/axe-core/axe.min.js',import.meta.url),'utf8');
   for(const width of [1440,390])for(const id of ['dark','light']) {
     await call('Network.clearBrowserCookies');
@@ -41,6 +47,12 @@ export async function checkMaps({navigate,evaluate,until:poll,call,key,artifacts
     await evaluate(`window.mapViewport=${canvas}.toDataURL();${example}.querySelector('[data-example-states]').open=true;${example}.querySelector('[data-chart-refresh]').click()`);
     await until(`document.querySelector('[data-chart-toast=${id}]')?.matches(':popover-open')`);
     assert.ok(await evaluate(`${root}===window.mapRoot&&${canvas}===window.mapCanvas&&${canvas}.toDataURL()===window.mapViewport`),'Surrounding updates retain the geographic viewport');
+    await evaluate(`(async()=>{window.mapDeclared=${root}.dataset.config;window.mapAlpha=await (${alphaSnapshot.toString()})(${canvas});const option=JSON.parse(window.mapDeclared);option.series[0].data[0].value=14;${root}.dataset.config=JSON.stringify(option)})()`);
+    await until(`${root}.querySelector('tbody tr td:nth-of-type(2)')?.textContent==='14'`);
+    await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+    assert.ok(await evaluate(`(${alphaSnapshot.toString()})(${canvas}).then(value=>value===window.mapAlpha&&${canvas}===window.mapCanvas)`),'Client data replacement retains the panned geometry on the same renderer');
+    await evaluate(`${root}.dataset.config=window.mapDeclared`);
+    await until(`${root}.querySelector('tbody tr td:nth-of-type(2)')?.textContent==='13'`);
     await evaluate(`${action('mapReset')}.click()`);await until(`${canvas}.toDataURL()===window.mapInitial`);
     await call('Input.dispatchMouseEvent',{type:'mouseWheel',...center,deltaX:0,deltaY:-120});
     await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:1,y:1});

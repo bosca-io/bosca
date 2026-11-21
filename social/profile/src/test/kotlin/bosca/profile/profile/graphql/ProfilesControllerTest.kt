@@ -8,6 +8,7 @@ import bosca.profile.profile.service.ProfileService
 import bosca.profile.security.ProfilePermissionEvaluator
 import bosca.security.model.AuthenticatedPrincipal
 import bosca.security.model.Principal
+import bosca.security.model.PermissionAction
 import bosca.security.service.AuthenticationContext
 import bosca.security.service.GroupEvaluator
 import bosca.serialization.UUID
@@ -19,6 +20,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
+import kotlin.test.assertNull
 
 class ProfilesControllerTest {
 
@@ -105,6 +107,25 @@ class ProfilesControllerTest {
         val result = controller.attributeTypes()
 
         assertSame(ProfileAttributeTypes, result)
+    }
+
+    @Test
+    fun `profile returns the visible profile and filters inaccessible profiles as the nullable field specifies`() = runTest {
+        val auth = createAuthContext(UUID.random())
+        val profile = Profile(id = UUID.random(), type = ProfileType.GENERIC, name = "Private profile", visibility = ProfileVisibility.USER)
+        coEvery { profileService.getById(profile.id) } returns profile
+        coEvery { permissionEvaluator.isAllowed(auth, profile, PermissionAction.VIEW) } returns true
+        assertSame(profile, controller.profile(auth, profile.id))
+        coEvery { permissionEvaluator.isAllowed(auth, profile, PermissionAction.VIEW) } returns false
+        assertNull(controller.profile(auth, profile.id))
+    }
+
+    @Test
+    fun `profile lookup failures still propagate`() = runTest {
+        val auth = createAuthContext(UUID.random())
+        val id = UUID.random()
+        coEvery { profileService.getById(id) } throws IllegalStateException("Lookup failed")
+        assertFailsWith<IllegalStateException> { controller.profile(auth, id) }
     }
 
     // ---- byGroup --------------------------------------------------------

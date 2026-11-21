@@ -11,7 +11,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -62,8 +63,8 @@ class SpecDocumentSyncListener(
         }
     }
 
-    internal fun close() {
-        scope.cancel()
+    internal suspend fun close() {
+        scope.coroutineContext.job.cancelAndJoin()
     }
 
     companion object {

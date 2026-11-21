@@ -1,0 +1,42 @@
+<component tag="workops-milestones">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsMilestonesModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsMilestonesModel(initial.baseHref, initial.programId, initial.offset, initial.programs, initial.data, initial.creating, initial.nameDraft, initial.descriptionDraft, initial.dateDraft, initial.createProgramId, initial.closingId, initial.closingName, initial.closeVersion, initial.feedback, initial.createdId)</script>
+  <island name="milestones" :key="initial.baseHref">
+    <page-shell class="workops-page" fill data-workops-milestones>
+      <page-heading title="Milestones" subtitle="Program commitments and target dates" :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false)) + (if (model.programId.isNotBlank()) listOf(bosca.design.model.NavigationItem(model.selectedName, model.programHref, false)) else emptyList())'><form :action="model.baseHref" method="get">
+          <form-actions><select submitOnChange name="programId" label="Program" searchable required>
+            <option value="">Choose a program</option>
+            <for program in model.choices><option :value="program.id" :selected="program.id == model.programId">{ program.key } · { program.name }</option></for>
+          </select><noscript><button type="submit">Show milestones</button></noscript></form-actions>
+        </form><button id="workops-milestone-new" icon="plus" primary @click="model.open()">New milestone</button><if model.createdHref.isNotBlank()><button-link :href="model.createdHref" size="xs" icon="arrow-right">Show created milestone</button-link></if><icon-button icon="refresh" label="Refresh milestones" @click="model.retry(ctx)" /></page-heading>
+      <div class="workops-content">
+        <workops-feedback id="milestones-0" :feedback="model.feedback" />
+
+
+
+
+        <if model.rows.isNotEmpty()>
+          <card :padded="false"><table-scroll label="Program milestones"><table><caption>Program milestones</caption><thead><tr><th scope="col">Name</th><th scope="col">State</th><th scope="col">Target date</th><th scope="col">Closed</th><th scope="col">Actions</th></tr></thead><tbody>
+            <for row in model.rows><tr :id='"workops-milestone-" + row.id'><td><strong>{ row.name }</strong><if !row.description.isNullOrBlank()><help-text>{ row.description }</help-text></if></td><td><badge :tone='if (row.state == bosca.workops.ui.graphql.WorkOpsMilestoneState.CLOSED) "success" else "neutral"'>{ if (row.state == bosca.workops.ui.graphql.WorkOpsMilestoneState.CLOSED) "Closed" else "Open" }</badge></td><td><if row.targetDate != null><time :value="row.targetDate" format="MMM d, yyyy" /><help-text>{ model.dueLabel(row.targetDate, row.state == bosca.workops.ui.graphql.WorkOpsMilestoneState.CLOSED) }</help-text><else>No target date</if></td><td><if row.closedAt != null><time :value="row.closedAt" /><else>—</if></td><td><if row.state == bosca.workops.ui.graphql.WorkOpsMilestoneState.OPEN><icon-button icon="check" :id='"workops-milestone-close-" + row.id' :label='"Close " + row.name' @click="model.beginClose(row.id)" /></if></td></tr></for>
+          </tbody></table></table-scroll></card>
+        <else><if !model.feedback.failed><empty-state title="No milestones visible on this page." /></if></if>
+        <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Milestone pages" />
+        <dialog title="New milestone" triggerLabel="New milestone" :showTrigger="false" :forceOpen="model.creating" :completed="!model.creating" returnFocus="#workops-milestone-new" @dialogdismiss="model.cancelCreate()">
+          <form @submit="model.create(form.name, form.description, form.targetDate, form.programId, ctx)"><form-body padded>
+            <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+            <field label="Program"><select name="programId" label="Program" required searchable><option value="">Choose a program</option><for program in model.choices><option :value="program.id" :selected="program.id == model.createProgramId">{ program.key } · { program.name }</option></for></select></field>
+            <field label="Name"><input name="name" :value="model.nameDraft" required /></field>
+            <field label="Description"><textarea name="description">{ model.descriptionDraft }</textarea></field>
+            <field label="Target date"><input type="date" name="targetDate" :value="model.dateDraft" /></field>
+          </form-body><form-actions bordered><button data-dialog-close @click="model.cancelCreate()">Cancel</button><button type="submit" primary>Create milestone</button></form-actions></form>
+        </dialog>
+        <dialog title="Close milestone" triggerLabel="Close milestone" :showTrigger="false" :forceOpen="model.closingId.isNotBlank()" :completed="model.closingId.isBlank()" returnFocus="#workops-milestone-new" @dialogdismiss="model.cancelClose()">
+          <form @submit="model.close(form.confirmed, ctx)"><form-body padded>
+            <if model.feedback.failed><alert>{ model.feedback.message }</alert><p>Cancel and reload milestones to check the latest state before trying again.</p></if>
+            <p>Close { model.closingName }?</p><checkbox name="confirmed" label="Confirm closing this milestone" required />
+          </form-body><form-actions bordered><button data-dialog-close @click="model.cancelClose()">Cancel</button><button type="submit" primary>Close milestone</button></form-actions></form>
+        </dialog>
+      </div>
+    </page-shell>
+  </island>
+</component>

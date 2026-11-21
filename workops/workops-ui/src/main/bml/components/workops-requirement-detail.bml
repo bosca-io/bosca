@@ -1,0 +1,77 @@
+<component tag="workops-requirement-detail">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsRequirementDetailModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsRequirementDetailModel(initial.id, initial.tab, initial.offset, initial.data, initial.document, initial.parentName, initial.profileNames, initial.editing, initial.priorityDraft, initial.assigneeDraft, initial.editVersion, initial.renaming, initial.nameDraft, initial.pendingTransition, initial.transitionVersion, initial.commentDraft, initial.commentRevision, initial.feedback)</script>
+  <island name="requirementDetail" :key="initial.id">
+    <page-shell class="workops-page" fill>
+      <page-heading :title="model.title" subtitle="Requirement" :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false))' />
+      <div class="workops-content" data-workops-requirement-detail>
+        <workops-feedback id="requirement-detail-0" :feedback="model.feedback" />
+        <if model.feedback.failed><button icon="refresh" @click="model.retry(ctx)">Reload requirement</button></if>
+        <for requirement in listOfNotNull(model.requirement)>
+          <div class="workops-task-actions" id="workops-requirement-actions" tabindex="-1">
+            <badge :tone="model.statusTone">{ requirement.status.name }</badge>
+            <for transition in requirement.task?.transitions.orEmpty()><button @click="model.beginTransition(transition.id, ctx)">{ transition.name }</button></for>
+            <button id="workops-requirement-edit" icon="edit" @click="model.edit()">Edit requirement</button>
+            <if model.document?.canEdit == true><button id="workops-requirement-rename" @click="model.beginRename()">Rename requirement</button></if>
+          </div>
+          <div class="workops-task-detail-grid">
+            <div class="workops-task-main">
+              <card title="Document"><for document in listOfNotNull(model.document)><workops-document :initial="document" /></for></card>
+              <card>
+                <tabs label="Requirement activity" :items="model.tabs" />
+                <div class="workops-task-activity">
+                  <if model.tab == "comments">
+                    <for comment in model.comments.take(25)>
+                      <article class="workops-task-entry"><div class="workops-task-entry-header"><profile :name='comment.profile?.name ?: "Profile unavailable"' /><time :value="comment.created" /></div><p class="workops-comment-content">{ comment.content }</p></article>
+                    </for>
+                    <if model.comments.isEmpty()><empty-state title="No comments yet." compact /></if>
+                    <form @submit="model.comment(form.content, ctx)"><comment-editor :id='"requirement-comment-" + requirement.id + "-" + model.commentRevision' name="content" label="Add a requirement comment" :value="model.commentDraft" submitLabel="comment" mentions><button type="submit" primary>Add comment</button></comment-editor></form>
+                  <else>
+                    <for entry in requirement.history.take(25)>
+                      <article class="workops-task-entry"><div class="workops-task-entry-header"><profile :name="model.profileName(entry.changedByProfileId)" /><time :value="entry.changedAt" /></div>
+                        <for change in entry.changes><p><strong>{ model.historyField(change.fieldKey) }</strong>: { model.historyValue(change.fieldKey, change.fromValue) } → { model.historyValue(change.fieldKey, change.toValue) }</p></for>
+                      </article>
+                    </for>
+                    <if requirement.history.isEmpty()><empty-state title="No changes recorded." compact /></if>
+                  </if>
+                </div>
+                <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Requirement activity pages" />
+              </card>
+            </div>
+            <div class="workops-task-sidebar">
+              <card title="Details"><dl class="workops-task-facts">
+                <dt>Priority</dt><dd><badge :color="requirement.priority.colorHex">{ requirement.priority.name }</badge></dd>
+                <dt>Assignee</dt><dd><profile :name="model.assigneeLabel" /></dd>
+                <dt>{ model.parentLabel }</dt><dd><a :href="model.parentHref">{ model.parentName }</a></dd>
+                <dt>Lifecycle task</dt><dd><if requirement.task != null><a :href='"/workops/tasks/" + requirement.task?.id'>{ model.lifecycleTaskName }</a><else>Task unavailable</if></dd>
+                <dt>Created</dt><dd><time :value="requirement.createdAt" /></dd>
+                <dt>Modified</dt><dd><time :value="requirement.modifiedAt" /></dd>
+              </dl></card>
+            </div>
+          </div>
+          <dialog title="Edit requirement" triggerLabel="Edit requirement" :showTrigger="false" :forceOpen="model.editing" :completed="!model.editing" returnFocus="#workops-requirement-edit" @dialogdismiss="model.cancelEdit()">
+            <form @submit="model.save(form.priorityId, form.assigneeId, ctx)"><form-body padded>
+              <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+              <field label="Priority"><select name="priorityId" label="Priority" required><for priority in model.data?.workOps?.tasks?.priorities.orEmpty()><option :value="priority.id" :selected="priority.id == model.priorityDraft">{ priority.name }</option></for></select></field>
+              <field label="Assignee"><div data-workops-profile-picker><select name="assigneeId" label="Assignee" searchable async :minQuery="2"><option value="" data-persistent :selected="model.assigneeDraft.isBlank()">Unassigned</option><if model.assigneeDraft.isNotBlank()><option :value="model.assigneeDraft" data-persistent selected>{ model.profileName(model.assigneeDraft) }</option></if></select></div></field>
+            </form-body><form-actions bordered><button data-dialog-close @click="model.cancelEdit()">Cancel</button><button type="submit" primary>Save requirement</button></form-actions></form>
+          </dialog>
+          <dialog title="Rename requirement" triggerLabel="Rename requirement" :showTrigger="false" :forceOpen="model.renaming" :completed="!model.renaming" returnFocus="#workops-requirement-rename" @dialogdismiss="model.cancelRename()">
+            <form @submit="model.rename(form.name, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><field label="Requirement name"><input name="name" :value="model.nameDraft" required /></field></form-body><form-actions bordered><button data-dialog-close @click="model.cancelRename()">Cancel</button><button type="submit" primary>Save name</button></form-actions></form>
+          </dialog>
+          <dialog title="Resolve requirement" triggerLabel="Resolve requirement" :showTrigger="false" :forceOpen="model.pendingTransition.isNotBlank()" :completed="model.pendingTransition.isBlank()" returnFocus="#workops-requirement-actions" @dialogdismiss="model.cancelTransition()">
+            <form @submit="model.completeTransition(form.resolutionId, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><field label="Resolution"><select name="resolutionId" label="Resolution" required><option value="">Choose a resolution</option><for resolution in model.data?.workOps?.tasks?.resolutions.orEmpty()><option :value="resolution.id">{ resolution.name }</option></for></select></field></form-body><form-actions bordered><button data-dialog-close @click="model.cancelTransition()">Cancel</button><button type="submit" primary>Resolve requirement</button></form-actions></form>
+          </dialog>
+        </for>
+      </div>
+    </page-shell>
+    <script client scoped>
+      import { WorkOpsProfileSearch } from "./WorkOpsProfileSearch";
+      import { WorkOpsMentionSearch } from "./WorkOpsMentionSearch";
+      import { workOpsProfileChoices } from "@client/helpers/profile-choices";
+      import { workOpsMentions } from "@client/helpers/mentions";
+      workOpsProfileChoices(ctx, (query, offset) => WorkOpsProfileSearch.search(query, offset));
+      workOpsMentions(ctx, WorkOpsMentionSearch);
+    </script>
+  </island>
+</component>

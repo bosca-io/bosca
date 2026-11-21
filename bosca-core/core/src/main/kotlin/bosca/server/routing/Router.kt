@@ -90,7 +90,18 @@ class Router(private val prefix: String = "") {
 
     /** Registers a WebSocket endpoint at the given [path] with an optional [protocol]. */
     fun webSocket(path: String, protocol: String? = null, handler: suspend WebSocketSession.() -> Unit) {
-        webSocketRoutes.add(WebSocketRouteEntry(normalizePath(path), protocol, handler))
+        webSocket(path, WebSocketRouteEntry.DEFAULT_MAXIMUM_MESSAGE_SIZE, protocol, handler)
+    }
+
+    /**
+     * Registers a WebSocket endpoint with the maximum size in bytes of a complete inbound
+     * message, including aggregated fragments. The capacity applies to HTTP/1 and HTTP/2.
+     */
+    fun webSocket(path: String, maximumMessageSize: Int, protocol: String? = null, handler: suspend WebSocketSession.() -> Unit) {
+        require(maximumMessageSize > 0) { "WebSocket maximum message size must be positive" }
+        webSocketRoutes.add(WebSocketRouteEntry(normalizePath(path), protocol, handler).also {
+            it.maximumMessageSize = maximumMessageSize
+        })
     }
 
     /** Registers a Server-Sent Events endpoint within the current route scope. */
@@ -353,7 +364,9 @@ class Router(private val prefix: String = "") {
         for (entry in webSocketRoutes) {
             val params = matchPath(entry.path, path)
             if (params != null) {
-                return entry.copy(authConfig = entry.authConfig ?: authConfig, pathParameters = params)
+                return entry.copy(authConfig = entry.authConfig ?: authConfig, pathParameters = params).also {
+                    it.maximumMessageSize = entry.maximumMessageSize
+                }
             }
         }
         for (child in children) {
@@ -368,7 +381,7 @@ class Router(private val prefix: String = "") {
                 return result.copy(
                     authConfig = result.authConfig ?: child.authConfig,
                     pathParameters = mergedParams,
-                )
+                ).also { it.maximumMessageSize = result.maximumMessageSize }
             }
         }
         return null
@@ -629,7 +642,15 @@ data class WebSocketRouteEntry(
     val handler: suspend WebSocketSession.() -> Unit,
     val authConfig: AuthConfig? = null,
     val pathParameters: Map<String, String>? = null,
-)
+) {
+    /** Maximum bytes in a complete inbound message, including aggregated fragments. */
+    var maximumMessageSize: Int = DEFAULT_MAXIMUM_MESSAGE_SIZE
+        internal set
+
+    companion object {
+        const val DEFAULT_MAXIMUM_MESSAGE_SIZE = 1024 * 1024
+    }
+}
 
 /**
  * A registered Server-Sent Events route with its path, handler function, and

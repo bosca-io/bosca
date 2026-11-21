@@ -66,6 +66,22 @@ class SpecControllerTest {
     )
 
     @Test
+    fun `metadata lookup filters missing and inaccessible specifications`() = runTest {
+        val visible = sampleSpec()
+        val hidden = sampleSpec()
+        val missing = UUID.random()
+        val authentication = authenticated()
+        coEvery { specService.getByMetadataId(visible.metadataId) } returns visible
+        coEvery { specService.getByMetadataId(hidden.metadataId) } returns hidden
+        coEvery { specService.getByMetadataId(missing) } returns null
+        coEvery { permissionEvaluator.isAllowed(authentication, visible, PermissionAction.VIEW) } returns true
+        coEvery { permissionEvaluator.isAllowed(authentication, hidden, PermissionAction.VIEW) } returns false
+        assertEquals(visible, controller().specByMetadataId(authentication, visible.metadataId))
+        assertNull(controller().specByMetadataId(authentication, hidden.metadataId))
+        assertNull(controller().specByMetadataId(authentication, missing))
+    }
+
+    @Test
     fun `spec lookup returns only visible specs`() = runTest {
         val missingId = UUID.random()
         val visible = sampleSpec()

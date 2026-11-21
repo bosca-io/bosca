@@ -94,7 +94,7 @@ class PipelineRunServiceImpl(
         val executionPlan = plan(definition, ref, triggerType, parameters)
         val effectiveParameters = executionPlan.parameters
         if (triggerType == PipelineTriggerType.PROMOTION && definition.environments.isNotEmpty()) {
-            validatePromotion(pipelineId, definition, ref, effectiveParameters)
+            validatePromotion(pipelineId, repositoryId, definition, commitSha, ref, effectiveParameters)
         }
         val selectedJobs = executionPlan.jobs
         rejectPlanUnless(selectedJobs.isNotEmpty()) {
@@ -640,7 +640,9 @@ class PipelineRunServiceImpl(
      */
     private suspend fun validatePromotion(
         pipelineId: UUID,
+        repositoryId: UUID,
         definition: PipelineDefinition,
+        commitSha: String,
         ref: String,
         parameters: Map<String, String>,
     ) {
@@ -653,7 +655,7 @@ class PipelineRunServiceImpl(
         if (source != null) {
             val sourceReached =
                 (definition.environments[source]?.deployOnRelease == true &&
-                    runRepository.findLatestSuccessfulRelease(pipelineId, ref) != null) ||
+                    releaseCompleted(pipelineId, repositoryId, commitSha, ref, parameters)) ||
                     runRepository.findLatestSuccessfulPromotion(pipelineId, ref, source) != null
             require(sourceReached) {
                 "Promotion to '$target' requires a successful '$source' stage for $ref first"
@@ -669,6 +671,27 @@ class PipelineRunServiceImpl(
                 "Promotion would DOWNGRADE '$target' from $deployedVersion to $version — " +
                     "pass $ALLOW_DOWNGRADE_PARAMETER=true to override"
             )
+        }
+    }
+
+    private suspend fun releaseCompleted(
+        pipelineId: UUID,
+        repositoryId: UUID,
+        commitSha: String,
+        ref: String,
+        parameters: Map<String, String>,
+    ): Boolean {
+        val releaseId = parameters["release.id"]?.takeIf { it.isNotBlank() }
+            ?: return runRepository.findLatestSuccessfulRelease(pipelineId, ref) != null
+        val version = parameters[RELEASE_VERSION_PARAMETER] ?: return false
+        // WorkOps builds the default branch, then promotes its immutable version tag.
+        // The source commit and release identity must both match across those refs.
+        return runRepository.findByCommit(repositoryId, commitSha).any { run ->
+            val source = run.parameters as? JsonObject
+            run.pipelineId == pipelineId && run.triggerType == PipelineTriggerType.RELEASE &&
+                run.status == PipelineRunStatus.SUCCESS &&
+                source?.get("release.id")?.jsonPrimitive?.contentOrNull == releaseId &&
+                source[RELEASE_VERSION_PARAMETER]?.jsonPrimitive?.contentOrNull == version
         }
     }
 

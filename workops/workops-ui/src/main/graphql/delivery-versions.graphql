@@ -1,0 +1,5 @@
+query WorkOpsVersionProjects { workOps { projects { all { id key name } } } }
+query WorkOpsDeliveryVersions($project: UUID!) {
+  workOps { versions { byProject(projectId: $project) { ...WorkOpsVersionFields } } }
+}
+mutation WorkOpsDeleteProjectVersion($id: UUID!) { workOps { versions { delete(id: $id) } } }

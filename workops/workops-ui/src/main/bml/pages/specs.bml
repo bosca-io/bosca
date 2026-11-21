@@ -1,0 +1,22 @@
+<page route="/workops/specs" requireAuth>
+  <contract>
+    interface WorkOpsSpecChoices {
+      /** Search a Content offset page and resolve only specifications visible to the caller. */
+      suspend fun search(query: String, offset: Int): Map<String, String>
+    }
+  </contract>
+  <script server provides="model">bosca.workops.ui.workOpsSpecSearch()</script>
+  <script server provides="creation">bosca.workops.ui.workOpsSpecCreate()</script>
+  <workops-layout title="Specs">
+    <page-shell class="workops-page" fill>
+      <page-heading title="Specs" subtitle="Find and manage specifications" :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false))'><workops-spec-create :initial="creation" /></page-heading>
+      <div class="workops-content">
+        <workops-bql-query kind="spec" :source="model.source" :validationMessage="model.validationMessage" />
+        <if model.filters.isNotEmpty()><nav class="workops-saved-filters" aria-label="Saved specification filters"><for filter in model.filters><button-link :href="filter.href">{ filter.name }</button-link></for></nav></if>
+        <for error in model.errors><alert>{ error }</alert></for>
+        <if model.failed><button-link :href="model.retryHref" icon="refresh">Retry</button-link></if>
+        <if model.valid><workops-spec-list :model="model" /></if>
+      </div>
+    </page-shell>
+  </workops-layout>
+</page>

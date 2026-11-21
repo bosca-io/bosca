@@ -18,6 +18,7 @@ import bosca.ai.kit.agents.KitSerializer
 import bosca.ai.kit.agents.KitSubAgent
 import bosca.ai.kit.agents.strategy.kitStructuredConfig
 import bosca.ai.kit.configuration.KitJson
+import bosca.di.ObjectProvider
 import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
 import bosca.workops.model.release.LocalizedReleaseNotes
@@ -29,13 +30,13 @@ import kotlinx.serialization.encodeToString
 /** Kit's direct, non-chat release-notes capability used by WorkOps release automation. */
 @ServiceImplementation
 class KitReleaseNotesAIService(
-    private val promptExecutor: PromptExecutor,
+    private val promptExecutor: ObjectProvider<PromptExecutor>,
     private val models: KitModels,
     private val json: KitJson,
 ) : ReleaseNotesAIService {
 
     override suspend fun generate(input: ReleaseNotesGenerationInput): LocalizedReleaseNotes =
-        ReleaseNotesAgent(promptExecutor, models.write, json)
+        ReleaseNotesAgent(promptExecutor.get(), models.write, json)
             .run(input, UUID.random().toString())
             .notes
 }

@@ -33,6 +33,53 @@ function fixture(projectDir = mkdtempSync(join(tmpdir(), "bml-library-assets-"))
 }
 
 describe("published library assets", () => {
+  it("removes unused lazy CommonJS loaders while retaining called modules and authored effects", async () => {
+    const f = fixture()
+    f.write(join(f.projectDir, "node_modules/private-validator/package.json"), JSON.stringify({
+      name: "private-validator", version: "1.0.0", main: "index.js", sideEffects: false,
+    }))
+    f.write(join(f.projectDir, "node_modules/private-validator/index.js"), `
+      globalThis.validatorLoads = (globalThis.validatorLoads ?? 0) + 1;
+      module.exports = value => value === 'PRIVATE_VALIDATOR_PAYLOAD';`)
+    f.write(join(f.projectDir, "node_modules/private-engine/package.json"), JSON.stringify({
+      name: "private-engine", version: "1.0.0", type: "module", main: "index.js", sideEffects: false,
+    }))
+    f.write(join(f.projectDir, "node_modules/private-engine/index.js"), `
+      import validator from 'private-validator';
+      export const label = 'Viewer';
+      export const validate = value => validator(value);`)
+    f.write(join(f.sourceRoot, "controls/button.ts"), `
+      import './effects'; export { label } from 'private-engine';`)
+    f.write(join(f.sourceRoot, "controls/effects.ts"), `
+      globalThis.authoredLoads = (globalThis.authoredLoads ?? 0) + 1;`)
+    f.write(join(f.clientDir, "helpers/form.ts"), `
+      import validator from 'private-validator'; export const validate = value => validator(value);`)
+    await bundleLibraryAssets(f)
+    const metadata = JSON.parse(readFileSync(join(f.outdir, "META-INF/bml/client-manifest.json"), "utf8"))
+    rmSync(join(f.projectDir, "src"), { recursive: true })
+    rmSync(join(f.projectDir, "node_modules"), { recursive: true })
+    const runtime = join(f.projectDir, "consumer/runtime.ts")
+    f.write(runtime, `export function defineComponent(tag, setup) { globalThis.viewerLabel = setup(); }`)
+    const viewer = join(f.projectDir, "consumer/viewer")
+    await bundleIslands({ entryPoints: [join(f.outdir, metadata.resourcePrefix, metadata.modules['ButtonPage.js'].path)],
+      outdir: viewer, runtime, minify: true })
+    const code = readFileSync(join(viewer, "ButtonPage.js"), "utf8")
+    expect(code).not.toContain('PRIVATE_VALIDATOR_PAYLOAD')
+    new Function(code)()
+    expect((globalThis as any).viewerLabel).toBe('Viewer')
+    expect((globalThis as any).validatorLoads).toBeUndefined()
+    expect((globalThis as any).authoredLoads).toBe(1)
+    const formEntry = join(f.projectDir, "consumer/Form.ts")
+    f.write(formEntry, `import { validate } from ${JSON.stringify(join(f.outdir, metadata.resourcePrefix, 'client/helpers/form.js'))};
+      globalThis.validated = [validate('PRIVATE_VALIDATOR_PAYLOAD'), validate('other')];`)
+    const form = join(f.projectDir, "consumer/form")
+    await bundleIslands({ entryPoints: [formEntry], outdir: form, runtime, minify: true })
+    new Function(readFileSync(join(form, "Form.js"), "utf8"))()
+    expect((globalThis as any).validated).toEqual([true, false])
+    expect((globalThis as any).validatorLoads).toBe(1)
+    for (const key of ['viewerLabel', 'validatorLoads', 'authoredLoads', 'validated']) delete (globalThis as any)[key]
+  })
+
   it("preserves stylesheet-only libraries without introducing client entries", async () => {
     const f = fixture()
     f.write(f.manifestPath, JSON.stringify({ library: "example:design", version: "1.0", components: [] }))

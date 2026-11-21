@@ -1,0 +1,16 @@
+fragment WorkOpsReleaseSessionCounter on AnalyticsCounter { value(window: 2) values(window: 24) { time value } }
+fragment WorkOpsReleaseHttpCounter on AnalyticsCounter { value(window: 60) values(window: 60) { time value } }
+query WorkOpsReleaseAppSessions($id: ID!) { analytics { counters { byId(id: $id) { ...WorkOpsReleaseSessionCounter } } } }
+query WorkOpsReleaseAppErrors($app: String!) {
+  analytics { errors {
+    open: groups(filter: { appId: $app, status: OPEN }, offset: 0, limit: 1) { total edges { lastSeen } }
+    fatal: groups(filter: { appId: $app, status: OPEN, fatal: true }, offset: 0, limit: 1) { total }
+  } }
+}
+query WorkOpsReleaseServiceHttp($success: ID!, $client: ID!, $server: ID!) {
+  analytics { counters {
+    success: byId(id: $success) { ...WorkOpsReleaseHttpCounter }
+    client: byId(id: $client) { ...WorkOpsReleaseHttpCounter }
+    server: byId(id: $server) { ...WorkOpsReleaseHttpCounter }
+  } }
+}

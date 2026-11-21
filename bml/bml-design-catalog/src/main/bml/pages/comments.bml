@@ -1,6 +1,7 @@
 <page route="/comments">
   <catalog-document title="Comment editors" description="Native drafts, keyboard submission and caller-owned outcomes." current="/comments">
     <p class="page-intro">Write a comment and post with Ctrl+Enter or Command+Enter. Open Example states to try rejection, paused posting, readonly and controlled updates. Each palette keeps its own draft. These examples do not publish comments to a product.</p>
+    <p>Type @ to choose an example profile. Use @empty for no results or @error for a lookup failure. Enter inserts a handle; Ctrl+Enter or Command+Enter posts the comment.</p>
     <div class="catalog-grid">
       <div class="catalog-palette-dark" data-comment-palette="dark"><card title="Dark palette"><comment-example id="dark" advanced /></card></div>
       <div class="catalog-palette-light" data-comment-palette="light"><card title="Light palette"><comment-example id="light" advanced /></card></div>
