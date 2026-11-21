@@ -10,7 +10,7 @@ import kotlinx.serialization.json.JsonElement
 @Repository
 interface DataTemplateRepository {
 
-    @Query("select * from data_templates inner join metadata on metadata_id = metadata.id where metadata.content_type = 'bosca/v-data-template'")
+    @Query("select * from data_templates inner join metadata on metadata_id = metadata.id where metadata.content_type = 'bosca/v-data-template' and metadata.deleted = false")
     suspend fun getAll(): List<DataTemplate>
 
     @Query("insert into data_templates (metadata_id, version, type, default_attributes) values (:metadataId, :version, :type::data_type, :defaultAttributes) returning *")

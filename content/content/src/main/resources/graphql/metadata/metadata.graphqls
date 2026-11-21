@@ -10,6 +10,8 @@ enum MetadataType {
 type Metadata {
     "Unique identifier for this metadata item"
     id: UUID!
+    "For template metadata, how much live content still uses this template (null for non-templates). A template in use cannot be deleted."
+    templateUsage: TemplateUsage
     "Version number of this metadata item"
     version: Int!
     "Custom attributes associated with this metadata item, optionally filtered by an attributes filter"
@@ -716,4 +718,16 @@ input MetadataWorkflowState {
     stateId: String!
     "Status message for the transition (e.g. 'approved', 'rejected')"
     status: String!
+}
+
+"Live (not deleted) content that still references a template"
+type TemplateUsage {
+    "Documents, data and guides created from the template"
+    items: Int!
+    "Collections created from the template"
+    collections: Int!
+    "Guide templates that use this template for a step or step module"
+    templates: Int!
+    "Sum of items, collections and templates"
+    total: Int!
 }

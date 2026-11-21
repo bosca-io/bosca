@@ -3,6 +3,7 @@ package bosca.atlas.server
 import bosca.test.resources.SharedMeilisearchContainer
 import bosca.test.resources.SharedNatsContainer
 import bosca.test.resources.SharedPostgreSQLContainer
+import bosca.test.resources.SharedValkeyContainer
 import java.io.File
 import java.net.URI
 import java.net.http.HttpClient
@@ -24,6 +25,7 @@ internal class AtlasProcessFixture(
 ) : AutoCloseable {
     private val postgres = SharedPostgreSQLContainer().withDatabaseName("atlas_git")
     private val nats = SharedNatsContainer()
+    private val redis = SharedValkeyContainer()
     private val search = SharedMeilisearchContainer()
     fun searchIndex(name: String): String = search.indexUid(name)
     /** Publishes through the production Analytics service inside this fixture's isolated account. */
@@ -46,6 +48,7 @@ internal class AtlasProcessFixture(
         require(listOf(databaseJdbcUrl, databaseUsername, databaseSecret).let { values -> values.all { it == null } || values.all { it != null } })
         if (databaseJdbcUrl == null) postgres.start()
         nats.start()
+        redis.start()
         search.start()
     }
 
@@ -82,6 +85,9 @@ internal class AtlasProcessFixture(
                 "DATABASE_URL" to jdbcUrl, "DATABASE_USER" to username,
                 "DATABASE_PASSWORD" to password, "NATS_HOST" to nats.url.removePrefix("nats://"),
                 "NATS_USERNAME" to nats.username, "NATS_PASSWORD" to nats.password, "NATS_TOKEN" to "",
+                "DISTRIBUTED_LOCK_TYPE" to "redis", "REDIS_HOST" to redis.host,
+                "REDIS_PORT" to redis.firstMappedPort.toString(), "REDIS_DATABASE" to redis.database.toString(),
+                "REDIS_NAMESPACE" to redis.namespace,
                 "MEILISEARCH_URL" to search.url, "MEILISEARCH_API_KEY" to search.apiKey,
                 "MEILISEARCH_INDEX_PREFIX" to "${search.namespace}_", "APP_URL" to ui, "GIT_URL" to api,
                 "STORAGE_URL_PREFIX" to api, "STORAGE_URL_UPLOAD_PREFIX" to api,
@@ -274,6 +280,7 @@ internal class AtlasProcessFixture(
             }
         }
         search.stop()
+        redis.stop()
         nats.stop()
         postgres.stop()
         System.getProperty("atlas.native.artifacts")?.let { root ->

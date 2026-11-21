@@ -1,6 +1,6 @@
 apiVersion: v2
 name: tf-serving
-description: TensorFlow Serving for the TFRS recommender model — consumed by bosca-server/bosca-runner recommendations
+description: Controller-managed TensorFlow Serving profiles for recommendation model versions
 type: application
 version: 0.1.0
 # TensorFlow Serving image version (the `image.tag` default).

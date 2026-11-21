@@ -2,6 +2,7 @@
 
 package bosca.communications.repository
 
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.communications.configuration.CommunicationsMigration
 import bosca.communications.configuration.JobQueueNames
 import bosca.communications.jobs.MessageOutboxDeliveryExecutor
@@ -23,12 +24,12 @@ import bosca.db.transaction
 import bosca.di.ProviderRegistry
 import bosca.di.provide
 import bosca.di.provides
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.serialization.UUID
 import bosca.sharedqueue.jobs.JobQueue
 import bosca.sharedqueue.jobs.asCoroutineContext
 import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
 import bosca.sharedqueue.jobs.serialize
+import bosca.test.resources.SharedValkeyContainer
 import bosca.test.resources.SharedNatsContainer
 import bosca.test.resources.SharedPostgreSQLContainer
 import io.mockk.coEvery
@@ -179,12 +180,14 @@ class MessageOutboxRepositoryIntegrationTest {
         verifyExhaustedNatsRetries(rejectTerminalWrite = true)
 
     private fun verifyExhaustedNatsRetries(rejectTerminalWrite: Boolean) = withDb {
+        val lockRedis = SharedValkeyContainer()
         val nats = SharedNatsContainer()
         nats.start()
+        lockRedis.start()
         try {
             val natsPool = nats.newConnectionPool(1)
             val queue = NatsJobQueueFactory(
-                natsPool, json, NatsDistributedLockFactory(natsPool), null, emptyList(), processExpiredJobs = false,
+                natsPool, json, RedisDistributedLockFactory(lockRedis.newConnectionPool()), null, emptyList(), processExpiredJobs = false,
             ).create("outbox-${UUID.random()}")
             ProviderRegistry.register(MessageOutboxRepository::class, MessageOutboxRepositoryProvider(), true)
             ProviderRegistry.register(MessageOutboxService::class, MessageOutboxServiceImplProvider(), true)
@@ -283,6 +286,7 @@ class MessageOutboxRepositoryIntegrationTest {
                     }
                 }
             } finally {
+                lockRedis.stop()
                 nats.stop()
             }
         }

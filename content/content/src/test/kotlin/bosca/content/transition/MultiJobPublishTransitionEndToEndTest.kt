@@ -1,5 +1,6 @@
 package bosca.content.transition
 
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.cache.CacheManager
 import bosca.cache.RequestCache
 import bosca.cache.RequestCacheSerializer
@@ -90,7 +91,6 @@ import bosca.events.DisabledEventManagerFilter
 import bosca.events.EventManager
 import bosca.events.asCoroutineContext
 import bosca.lock.DistributedLockFactory
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.nats.NatsConnectionPool
 import bosca.pubsub.PubSubService
 import bosca.security.model.Group
@@ -126,6 +126,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
+import bosca.test.resources.SharedValkeyContainer
 import bosca.test.resources.SharedNatsContainer
 import bosca.test.resources.SharedPostgreSQLContainer
 import org.testcontainers.containers.wait.strategy.Wait
@@ -175,6 +176,7 @@ import kotlin.uuid.toJavaUuid
 @OptIn(InternalDI::class)
 class MultiJobPublishTransitionEndToEndTest {
 
+    private lateinit var lockRedis: SharedValkeyContainer
     private lateinit var natsContainer: SharedNatsContainer
     private lateinit var postgresContainer: SharedPostgreSQLContainer
     private lateinit var connectionPool: ConnectionPool
@@ -262,7 +264,8 @@ class MultiJobPublishTransitionEndToEndTest {
             withReuse(true)
         }
 
-        Startables.deepStart(natsContainer, postgresContainer).join()
+        lockRedis = SharedValkeyContainer()
+        Startables.deepStart(natsContainer, postgresContainer, lockRedis).join()
 
         val factory = ConnectionFactoryImpl(
             ConnectionConfig(
@@ -279,7 +282,7 @@ class MultiJobPublishTransitionEndToEndTest {
         natsPool = natsContainer.newConnectionPool(1)
         cacheManager = NatsCacheManager(natsPool)
         serializer = RequestCacheSerializerImpl(testJson)
-        val distributedLockFactory = NatsDistributedLockFactory(natsPool)
+        val distributedLockFactory = RedisDistributedLockFactory(lockRedis.newConnectionPool())
 
         val natsJobQueueFactory = NatsJobQueueFactory(natsPool, testJson, distributedLockFactory, null, emptyList())
         // Mirror production: `common` hosts the multi-job parent,
@@ -483,6 +486,7 @@ class MultiJobPublishTransitionEndToEndTest {
         if (::contentJobRunner.isInitialized) contentJobRunner.shutdown()
         if (::natsPool.isInitialized) natsPool.close()
         if (::connectionPool.isInitialized) connectionPool.close()
+        if (::lockRedis.isInitialized) lockRedis.stop()
         if (::natsContainer.isInitialized) natsContainer.stop()
         if (::postgresContainer.isInitialized) postgresContainer.stop()
         ProviderRegistry.clear()

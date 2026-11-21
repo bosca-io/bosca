@@ -2,6 +2,7 @@
 
 package bosca.artifacts.git
 
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.artifacts.model.ArtifactCompleted
 import bosca.artifacts.model.ArtifactType
 import bosca.artifacts.repository.*
@@ -20,7 +21,6 @@ import bosca.git.service.PipelineJobService
 import bosca.git.service.PipelineLogService
 import bosca.git.service.PipelineRunService
 import bosca.git.service.ProducedArtifactVerifier
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.pipelines.PipelineEventDispatcher
 import bosca.pipelines.trigger.PipelineDispatchJob
 import bosca.pipelines.trigger.PipelineEventDispatcherImpl
@@ -29,6 +29,7 @@ import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.sharedqueue.jobs.JobQueue
 import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
+import bosca.test.resources.SharedValkeyContainer
 import bosca.test.resources.SharedNatsContainer
 import bosca.test.resources.SharedPostgreSQLContainer
 import io.mockk.coEvery
@@ -43,6 +44,7 @@ import kotlin.test.*
 /** Real migrations, generated job associations and event dispatch, and transaction-deferred NATS jobs. */
 class PipelineArtifactCompletionIntegrationTest {
     private lateinit var postgres: SharedPostgreSQLContainer
+    private lateinit var lockRedis: SharedValkeyContainer
     private lateinit var nats: SharedNatsContainer
     private lateinit var pool: ConnectionPool
     private lateinit var json: Json
@@ -64,6 +66,8 @@ class PipelineArtifactCompletionIntegrationTest {
         postgres.start()
         nats = SharedNatsContainer()
         nats.start()
+        lockRedis = SharedValkeyContainer()
+        lockRedis.start()
         pool = ConnectionPool(ConnectionFactoryImpl(ConnectionConfig(
             url = postgres.jdbcUrl, user = postgres.username, password = postgres.password, maxConnections = 5,
         ), key = "artifact-completion-test"))
@@ -73,7 +77,7 @@ class PipelineArtifactCompletionIntegrationTest {
         provides<bosca.cache.RequestCacheSerializer> { mockk(relaxed = true) }
         val natsPool = nats.newConnectionPool(1)
         queueName = "artifact-completion-${UUID.random()}"
-        queue = NatsJobQueueFactory(natsPool, json, NatsDistributedLockFactory(natsPool), null, emptyList(), false).create(queueName)
+        queue = NatsJobQueueFactory(natsPool, json, RedisDistributedLockFactory(lockRedis.newConnectionPool()), null, emptyList(), false).create(queueName)
         queue.expireAllJobs()
         provides<JobQueue>(name = bosca.pipelines.configuration.PipelinesJobQueueNames.jobQueue, singleton = true) { queue }
         graphService = mockk()
@@ -132,6 +136,7 @@ class PipelineArtifactCompletionIntegrationTest {
     @AfterTest fun cleanup() = runBlocking {
         if (::pool.isInitialized) pool.close()
         if (::postgres.isInitialized) postgres.stop()
+        if (::lockRedis.isInitialized) lockRedis.stop()
         if (::nats.isInitialized) nats.stop()
         ProviderRegistry.clear()
     }

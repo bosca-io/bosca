@@ -10,7 +10,7 @@ import pytest
 
 from model_loader import set_served_versions
 
-SCRIPTS = ["helm/tf-serving/files/serve.sh", "web/services/tf-serving/serve.sh",
+SCRIPTS = ["web/services/tf-serving/serve.sh",
            "server/services/tf-serving/serve.sh", "infra/services/tf-serving/serve.sh"]
 
 

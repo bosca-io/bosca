@@ -1,0 +1,142 @@
+suite: Controller-managed serving models
+templates:
+  - servingmodelprofile.yaml
+  - serviceaccount.yaml
+tests:
+  - it: renders a native ServingModelProfile with init downloads and no polling sidecar
+    template: servingmodelprofile.yaml
+    set:
+      provisioning.enabled: true
+      resources.limits.memory: 6Gi
+      nodeSelector.workload: models
+    asserts:
+      - isKind:
+          of: ServingModelProfile
+      - equal:
+          path: spec.maxCandidates
+          value: 1
+      - equal:
+          path: spec.startupTimeoutSeconds
+          value: 1800
+      - equal:
+          path: spec.failureGraceSeconds
+          value: 600
+      - equal:
+          path: spec.controlTokenSecretKey
+          value: bosca_token
+      - equal:
+          path: spec.podTemplate.spec.nodeSelector.workload
+          value: models
+      - equal:
+          path: spec.podTemplate.spec.containers[0].resources.limits.memory
+          value: 6Gi
+      - equal:
+          path: spec.podTemplate.spec.initContainers[0].name
+          value: download-models
+      - lengthEqual:
+          path: spec.podTemplate.spec.containers
+          count: 1
+      - equal:
+          path: spec.podTemplate.spec.containers[0].command[0]
+          value: tensorflow_model_server
+      - equal:
+          path: spec.podTemplate.spec.containers[0].livenessProbe.periodSeconds
+          value: 20
+      - equal:
+          path: spec.podTemplate.spec.containers[0].livenessProbe.failureThreshold
+          value: 30
+      - equal:
+          path: spec.podTemplate.spec.initContainers[0].image
+          value: ghcr.io/bosca-io/bosca/recommendation-model-loader:5.12.15
+  - it: passes resource and startup overrides to the serving and download containers
+    template: servingmodelprofile.yaml
+    set:
+      provisioning.enabled: true
+      provisioning.maxCandidates: 2
+      provisioning.startupTimeoutSeconds: 2400
+      resources.requests.memory: 6Gi
+      resources.limits.memory: 6Gi
+      loader.resources.requests.memory: 128Mi
+      loader.resources.limits.memory: 512Mi
+      livenessProbe.failureThreshold: 60
+    asserts:
+      - equal:
+          path: spec.maxCandidates
+          value: 2
+      - equal:
+          path: spec.startupTimeoutSeconds
+          value: 2400
+      - equal:
+          path: spec.podTemplate.spec.containers[0].resources.requests.memory
+          value: 6Gi
+      - equal:
+          path: spec.podTemplate.spec.containers[0].resources.limits.memory
+          value: 6Gi
+      - equal:
+          path: spec.podTemplate.spec.initContainers[0].resources.requests.memory
+          value: 128Mi
+      - equal:
+          path: spec.podTemplate.spec.initContainers[0].resources.limits.memory
+          value: 512Mi
+      - equal:
+          path: spec.podTemplate.spec.containers[0].livenessProbe.failureThreshold
+          value: 60
+  - it: renders nothing by default
+    asserts:
+      - template: servingmodelprofile.yaml
+        hasDocuments:
+          count: 0
+      - template: serviceaccount.yaml
+        hasDocuments:
+          count: 0
+  - it: renders nothing when provisioning is explicitly disabled
+    set:
+      provisioning.enabled: false
+    asserts:
+      - template: servingmodelprofile.yaml
+        hasDocuments:
+          count: 0
+      - template: serviceaccount.yaml
+        hasDocuments:
+          count: 0
+  - it: creates a service account only for an enabled profile
+    template: serviceaccount.yaml
+    set:
+      provisioning.enabled: true
+    asserts:
+      - isKind:
+          of: ServiceAccount
+  - it: permits an existing service account
+    template: serviceaccount.yaml
+    set:
+      provisioning.enabled: true
+      serviceAccount.create: false
+      serviceAccount.name: model-serving
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: passes probe and security overrides directly into the pod template
+    template: servingmodelprofile.yaml
+    set:
+      provisioning.enabled: true
+      livenessProbe.failureThreshold: 45
+      readinessProbe.timeoutSeconds: 5
+      securityContext.runAsNonRoot: true
+    asserts:
+      - equal:
+          path: spec.podTemplate.spec.containers[0].livenessProbe.failureThreshold
+          value: 45
+      - equal:
+          path: spec.podTemplate.spec.containers[0].readinessProbe.timeoutSeconds
+          value: 5
+      - equal:
+          path: spec.podTemplate.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+  - it: rejects a shared persistent claim across model pods
+    template: servingmodelprofile.yaml
+    set:
+      provisioning.enabled: true
+      persistence.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: ServingModel provisioning requires per-Pod storage; disable persistence

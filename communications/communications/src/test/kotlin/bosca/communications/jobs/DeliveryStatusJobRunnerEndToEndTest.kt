@@ -2,6 +2,7 @@
 
 package bosca.communications.jobs
 
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.cache.CacheManager
 import bosca.cache.RequestCacheSerializer
 import bosca.communications.configuration.CommunicationsMigration
@@ -20,7 +21,6 @@ import bosca.db.connection
 import bosca.db.migrations.FlywayMigration
 import bosca.di.ProviderRegistry
 import bosca.di.provides
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.nats.NatsConnectionPool
 import bosca.serialization.UUID
 import bosca.sharedqueue.jobs.JobRunner
@@ -34,6 +34,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import org.junit.AfterClass
+import bosca.test.resources.SharedValkeyContainer
 import bosca.test.resources.SharedNatsContainer
 import org.testcontainers.containers.wait.strategy.Wait
 import bosca.test.resources.SharedPostgreSQLContainer
@@ -74,8 +75,9 @@ class DeliveryStatusJobRunnerEndToEndTest {
                 key = "delivery-job-test",
             ),
         )
+        private val lockRedis = SharedValkeyContainer().apply { start() }
         private val natsPool = nats.newConnectionPool(2)
-        private val lockFactory = NatsDistributedLockFactory(natsPool)
+        private val lockFactory = RedisDistributedLockFactory(lockRedis.newConnectionPool())
         private var schemaInitialized = false
 
         @JvmStatic
@@ -85,6 +87,7 @@ class DeliveryStatusJobRunnerEndToEndTest {
                 natsPool.close()
                 pool.close()
             }
+            lockRedis.stop()
             nats.stop()
             postgres.stop()
         }

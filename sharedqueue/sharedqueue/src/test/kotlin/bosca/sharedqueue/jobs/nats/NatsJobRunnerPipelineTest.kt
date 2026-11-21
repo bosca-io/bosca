@@ -1,5 +1,6 @@
 package bosca.sharedqueue.jobs.nats
 
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.cache.CacheManager
 import bosca.cache.RequestCacheSerializer
 import bosca.core.annotations.Internal
@@ -7,7 +8,6 @@ import bosca.db.ConnectionPool
 import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provides
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.nats.NatsConnectionPool
 import bosca.serialization.UUID
 import bosca.sharedqueue.jobs.InternalJobConstructor
@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import bosca.test.resources.SharedValkeyContainer
 import bosca.test.resources.SharedNatsContainer
 import org.testcontainers.containers.wait.strategy.Wait
 import java.util.concurrent.ConcurrentHashMap
@@ -51,9 +52,10 @@ import kotlin.test.assertTrue
  */
 class NatsJobRunnerPipelineTest {
 
+    private lateinit var lockRedis: SharedValkeyContainer
     private lateinit var natsContainer: SharedNatsContainer
     private lateinit var natsPool: NatsConnectionPool
-    private lateinit var lockFactory: NatsDistributedLockFactory
+    private lateinit var lockFactory: RedisDistributedLockFactory
     private val json = Json
 
     @OptIn(InternalDI::class)
@@ -65,9 +67,11 @@ class NatsJobRunnerPipelineTest {
             .withReuse(true)
             .waitingFor(Wait.forListeningPort())
         natsContainer.start()
+        lockRedis = SharedValkeyContainer()
+        lockRedis.start()
 
         natsPool = natsContainer.newConnectionPool(1)
-        lockFactory = NatsDistributedLockFactory(natsPool)
+        lockFactory = RedisDistributedLockFactory(lockRedis.newConnectionPool())
 
         // The execute()/markComplete() path wraps work in withRequestCache +
         // withConnectionManager; relaxed mocks let those no-op without real infra.
@@ -80,6 +84,7 @@ class NatsJobRunnerPipelineTest {
     @AfterTest
     fun teardown() {
         ProviderRegistry.clear()
+        if (::lockRedis.isInitialized) lockRedis.stop()
         if (::natsContainer.isInitialized) natsContainer.stop()
     }
 

@@ -80,3 +80,11 @@ dependencies {
 ```
 
 Published `io.bosca:*` coordinates used by existing catalogs also resolve to these local projects in the root build.
+
+## Distributed locks
+
+`DistributedLockFactory` uses Redis, with atomic token-checked renewal and release.
+Set `distributedLock.type: redis` (the default) and configure the Redis connection.
+NATS is supported for messaging and caching, but not distributed locks. PostgreSQL
+locking is not implemented. To migrate from NATS locks, stop all lock consumers together,
+update their configuration and images, and restart them against the same Redis database.

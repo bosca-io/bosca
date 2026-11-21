@@ -289,7 +289,7 @@ The shared `dragonfly` service runs Dragonfly `v2.0.2`, configured through
 Dragonfly uses fresh storage, so disposable cache and lock data need no import;
 see the [Dragonfly cutover steps](../deployments/bosca-swarm/README.md#dragonfly).
 
-Set each site's `cacheBackend`, `pubsubBackend`, `jobQueueBackend`, `distributedLockBackend`, and `counterBackend` independently to `nats` (the default) or `redis` in the Swarm JSON configuration. For Redis caching with NATS pub/sub, set `"cacheBackend": "redis"` and `"pubsubBackend": "nats"`. See [backend selection](../deployments/bosca-swarm/README.md#backend-selection) for deployment and switching steps.
+Distributed locks use `distributedLockBackend: redis`. Set each site's `cacheBackend`, `pubsubBackend`, `jobQueueBackend`, and `counterBackend` independently to `nats` (the default) or `redis` in the Swarm JSON configuration. For Redis caching with NATS pub/sub, set `"cacheBackend": "redis"` and `"pubsubBackend": "nats"`. See [backend selection](../deployments/bosca-swarm/README.md#backend-selection) for deployment and switching steps.
 
 ## Swarm OAuth redirects
 

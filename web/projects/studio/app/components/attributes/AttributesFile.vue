@@ -28,6 +28,8 @@ const selectorSearchFilter = computed(() => {
   return (config?.searchFilter as string) || null
 })
 
+const selectorAllowYouTube = computed(() => props.attribute.configuration?.allowYouTube === true)
+
 // ── Publication status check ────────────────────────────────────────────────
 const getFileMetadataGql = gql`
   query GetFileAttrMetadata($id: UUID!) {
@@ -164,7 +166,7 @@ async function onDrop(files: File[] | null) {
   }
 }
 
-function onSelectorSelected(item: { id: string; name: string; contentType: string }) {
+function onSelectorSelected(item: { id: string; name: string; contentType: string; attributes?: Record<string, unknown> | null }) {
   const config = props.attribute.configuration as Record<string, unknown> | undefined
   // AttributeState.metadata is a class setter that updates the Yjs doc, not a plain prop
   // eslint-disable-next-line vue/no-mutating-props
@@ -172,7 +174,7 @@ function onSelectorSelected(item: { id: string; name: string; contentType: strin
     id: item.id,
     relationship: config?.relationship as string,
     contentType: item.contentType,
-    attributes: { sort: 0 },
+    attributes: { sort: 0, ...item.attributes },
     name: item.name,
   }
   updateNotPublic()
@@ -244,6 +246,7 @@ function onClear() {
       v-if="selectorOpen"
       :on-selected="onSelectorSelected"
       :search-filter="selectorSearchFilter"
+      :allow-you-tube="selectorAllowYouTube"
       @close="selectorOpen = false"
     />
 

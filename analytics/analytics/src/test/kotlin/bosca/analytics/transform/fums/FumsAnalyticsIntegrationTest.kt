@@ -27,7 +27,6 @@ import bosca.di.asProvider
 import bosca.analytics.configuration.TransformConfiguration
 import bosca.counter.Counter
 import bosca.lock.redis.RedisDistributedLockFactory
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.serialization.UUID
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
@@ -85,7 +84,7 @@ class FumsAnalyticsIntegrationTest {
         var application: BoscaApplication? = null
         try {
             val json = Json
-            val locks = if (useNats) NatsDistributedLockFactory(natsPool) else RedisDistributedLockFactory(pool)
+            val locks = RedisDistributedLockFactory(pool)
             val manager = RedisCacheManager(pool, RedisCacheScripts(pool), scope)
             val factory: JobQueueFactory = if (useNats) NatsJobQueueFactory(natsPool, json, locks, null, emptyList(), false)
                 else RedisJobQueueFactory(pool, json, locks, null, emptyList(), false)

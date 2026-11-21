@@ -16139,6 +16139,8 @@ export type Metadata = {
   syncVariantRelationships: Scalars['Boolean']['output'];
   /** System-managed attributes (not user-editable, used internally by workflows and processing) */
   systemAttributes?: Maybe<Scalars['JSON']['output']>;
+  /** For template metadata, how much live content still uses this template (null for non-templates). A template in use cannot be deleted. */
+  templateUsage?: Maybe<TemplateUsage>;
   /** Retrieve time events associated with this metadata item, optionally filtered by type and time range */
   timeEvents: Array<TimeEvent>;
   /** Retrieve time events that are active at a specific millisecond offset, optionally filtered by type IDs */
@@ -25151,6 +25153,19 @@ export type TemplateToolInput = {
   query?: InputMaybe<Scalars['String']['input']>;
   /** A path expression to extract the relevant result from the query response */
   resultPath?: InputMaybe<Scalars['String']['input']>;
+};
+
+/** Live (not deleted) content that still references a template */
+export type TemplateUsage = {
+  __typename?: 'TemplateUsage';
+  /** Collections created from the template */
+  collections: Scalars['Int']['output'];
+  /** Documents, data and guides created from the template */
+  items: Scalars['Int']['output'];
+  /** Guide templates that use this template for a step or step module */
+  templates: Scalars['Int']['output'];
+  /** Sum of items, collections and templates */
+  total: Scalars['Int']['output'];
 };
 
 /** A workflow association within a template attribute, controlling whether the workflow runs automatically on attribute changes */

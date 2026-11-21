@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 
 class SwarmBackendTest {
     @Test
-    fun `each backend is independently configured across every Bosca service and can be switched back`() {
+    fun `backend selection retains Redis locking across every Bosca service`() {
         val directory = Files.createTempDirectory("swarm-backend-test-")
         try {
             val defaults = SwarmConfig(sites = (1..5).map {
@@ -34,6 +34,7 @@ class SwarmBackendTest {
             saveConfig(path, config)
             val loaded = loadConfig(path)
             assertEquals(config, loaded)
+            assertTrue(loaded.sites.all { it.distributedLockBackend == "redis" })
             assertEquals(listOf("redis", "nats", "nats", "nats", "nats"), loaded.sites.map { it.cacheBackend })
             assertEquals(listOf("nats", "redis", "nats", "nats", "nats"), loaded.sites.map { it.pubsubBackend })
             val bundle = renderSwarm(loaded, directory.resolve("generated"))
@@ -83,7 +84,7 @@ class SwarmBackendTest {
             }
             saveConfig(path, loaded.copy(sites = loaded.sites.map { it.copy(
                 cacheBackend = "nats", pubsubBackend = "nats", jobQueueBackend = "nats",
-                distributedLockBackend = "nats", counterBackend = "nats",
+                distributedLockBackend = "redis", counterBackend = "nats",
             ) }))
             val restored = loadConfig(path)
             assertEquals(defaults, restored)
@@ -105,7 +106,7 @@ class SwarmBackendTest {
             "counterBackend" to { site, backend -> site.copy(counterBackend = backend) },
         )
         setters.forEach { (setting, setter) ->
-            listOf("", "Redis", "rabbitmq").forEach { backend ->
+            (listOf("", "Redis", "rabbitmq") + if (setting == "distributedLockBackend") listOf("nats") else emptyList()).forEach { backend ->
                 val failure = assertFailsWith<IllegalArgumentException> {
                     config.copy(sites = config.sites.map { setter(it, backend) }).validate()
                 }

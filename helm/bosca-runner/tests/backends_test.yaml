@@ -7,19 +7,19 @@ release:
   name: test
   namespace: backend-test
 tests:
-  - it: keeps the default NATS backends without a Redis connection
+  - it: uses Redis locks with NATS caching and messaging
     asserts:
       - matchRegex:
           path: data["application.yaml"]
           pattern: 'cache:\s*\n\s*type: nats'
       - matchRegex:
           path: data["application.yaml"]
-          pattern: 'distributedLock:\s*\n\s*type: nats'
-      - notMatchRegex:
+          pattern: 'distributedLock:\s*\n\s*type: redis'
+      - matchRegex:
           path: data["application.yaml"]
           pattern: '(?m)^redis:'
 
-  - it: configures Redis when only caching uses it
+  - it: uses Redis caching alongside Redis locks
     set:
       appConfig.cacheType: redis
     asserts:
@@ -28,7 +28,7 @@ tests:
           pattern: 'cache:\s*\n\s*type: redis'
       - matchRegex:
           path: data["application.yaml"]
-          pattern: 'distributedLock:\s*\n\s*type: nats'
+          pattern: 'distributedLock:\s*\n\s*type: redis'
       - matchRegex:
           path: data["application.yaml"]
           pattern: 'redis:\s*\n\s*host: redis.backend-test.svc.cluster.local\s*\n\s*port: 6379'

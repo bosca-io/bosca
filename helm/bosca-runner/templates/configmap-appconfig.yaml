@@ -140,6 +140,10 @@ data:
         password: ""
         driverClassName: "io.trino.jdbc.TrinoDriver"
 
+    recommendations:
+      tfServing:
+        {{- toYaml .Values.appConfig.tfServing | nindent 8 }}
+
     experimentation:
       eventsTable: {{ .Values.appConfig.experimentationEventsTable | default "warehouse.bosca.events" | quote }}
 

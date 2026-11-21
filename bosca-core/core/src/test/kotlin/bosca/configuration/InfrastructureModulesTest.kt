@@ -21,7 +21,6 @@ import bosca.di.provides
 import bosca.http.Client
 import bosca.http.HttpModule
 import bosca.nats.NatsConnectionPool
-import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.redis.RedisConnectionPool
 import bosca.server.BoscaApplication
@@ -224,31 +223,18 @@ class InfrastructureModulesTest {
     }
 
     @Test
-    fun `distributed lock configuration selects NATS and Redis providers`() = runTest {
-        val natsPool = mockk<NatsConnectionPool>()
+    fun `distributed lock configuration uses Redis without resolving NATS`() = runTest {
         val redisPool = mockk<RedisConnectionPool>()
-        val natsProvider = mockk<ObjectProvider<NatsConnectionPool>>()
         val redisProvider = mockk<ObjectProvider<RedisConnectionPool>>()
-        coEvery { natsProvider.get() } returns natsPool
         coEvery { redisProvider.get() } returns redisPool
         val configuration = DistributedLockConfiguration()
 
-        assertIs<NatsDistributedLockFactory>(
-            configuration.distributedLockFactory(
-                app("distributedLock:\n  type: nats"),
-                natsProvider,
-                redisProvider,
-            ),
-        )
+        assertIs<RedisDistributedLockFactory>(configuration.distributedLockFactory(app(), redisProvider))
         assertIs<RedisDistributedLockFactory>(
-            configuration.distributedLockFactory(app(), natsProvider, redisProvider),
+            configuration.distributedLockFactory(app("distributedLock:\n  type: redis"), redisProvider),
         )
-        assertIs<RedisDistributedLockFactory>(
-            configuration.distributedLockFactory(
-                app("distributedLock:\n  type: redis"),
-                natsProvider,
-                redisProvider,
-            ),
-        )
+        assertFailsWith<IllegalStateException> {
+            configuration.distributedLockFactory(app("distributedLock:\n  type: nats"), redisProvider)
+        }
     }
 }
