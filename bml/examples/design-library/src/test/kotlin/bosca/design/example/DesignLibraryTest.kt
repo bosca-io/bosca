@@ -294,9 +294,11 @@ class DesignLibraryTest {
             val widgets = request(client, base, "/widgets").body()
             assertTrue(listOf("data-bml-document-editor", "data-bml-flow-editor", "data-bml-dashboard-grid", "data-bml-chart").all { it in widgets }, widgets)
             assertTrue("Visits" in widgets && "Monday" in widgets && "name=\"document\"" in widgets && "name=\"graph\"" in widgets && "name=\"layout\"" in widgets, widgets)
-            assertTrue(styles(widgets).any { ".tiptap" in it })
-            assertTrue(styles(widgets).any { ".vue-flow__node" in it })
-            assertFalse(styles(widgets).any { "--jse-background-color" in it || ".source-keyword" in it })
+            val widgetStyles = styles(widgets)
+            assertTrue(widgetStyles.any { ".tiptap" in it })
+            assertTrue(widgetStyles.any { ".vue-flow__node" in it })
+            assertTrue(widgetStyles.any { ".source-keyword" in it && ".cm-editor" in it }, "Document code blocks include their editor and highlighting styles")
+            assertFalse(widgetStyles.any { "--jse-background-color" in it })
         }
     }
 

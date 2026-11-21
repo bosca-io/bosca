@@ -37,6 +37,7 @@
             <li><a href="/components/layout#ref-panel" data-export-link="panel"><code>panel</code></a></li>
             <li><a href="/components/layout#ref-section" data-export-link="section"><code>section</code></a></li>
             <li><a href="/components/layout#ref-page-heading" data-export-link="page-heading"><code>page-heading</code></a></li>
+            <li><a href="/components/layout#ref-help-text" data-export-link="help-text"><code>help-text</code></a></li>
             <li><a href="/components/layout#ref-section-heading" data-export-link="section-heading"><code>section-heading</code></a></li>
             <li><a href="/components/layout#ref-disclosure-heading" data-export-link="disclosure-heading"><code>disclosure-heading</code></a></li>
             <li><a href="/components/layout#ref-app-header" data-export-link="app-header"><code>app-header</code></a></li>
