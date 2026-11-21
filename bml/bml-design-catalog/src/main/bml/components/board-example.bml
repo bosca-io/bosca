@@ -1,0 +1,28 @@
+<component tag="board-example">
+  <prop name="id" type="String" required />
+  <script server provides="model" scope="server-session">bosca.design.catalog.CatalogBoard(id)</script>
+  <card :title='id + " palette"'><island name="boardExample" :key="id">
+    <div class="catalog-stack" :data-example-board="model.id" :data-example-reject="model.reject" :data-example-readonly="model.readOnly" :data-example-disabled="model.disabled" :data-example-visible="model.visible">
+      <div class="example-actions">
+        <button data-board-refresh @click="model.refresh()">Refresh example</button>
+        <switch data-board-readonly label="Read only" :checked="model.readOnly" @change="model.toggleReadOnly()" />
+        <switch data-board-disabled label="Disabled" :checked="model.disabled" @change="model.toggleDisabled()" />
+        <switch data-board-reject label="Reject moves" :checked="model.reject" @change="model.toggleRejection()" />
+        <switch data-board-visible label="Show board" :checked="model.visible" @change="model.toggleVisible()" />
+      </div>
+      <p data-board-refresh-count>Refreshes: { model.refreshCount }</p>
+      <if model.visible><board :id='"catalog-board-" + model.id' :label='model.id + " example board"' :readOnly="model.readOnly" :disabled="model.disabled">
+        <for column in model.columns><board-column :columnId="column.id" :label="column.label" :summary="model.countLabel(column.id)" :scrollKey='model.id + "-" + column.id'>
+          <for item in model.cardsFor(column.id)><board-card :cardId="item.id" :label="item.title" :movable="item.movable" :targets="model.columns" :preserveKey='"catalog-board-card-" + model.id + "-" + item.id + "-" + item.title'>
+            <div class="catalog-stack"><a class="catalog-link" href="/boards">{ item.title }</a><if item.id == "proposal"><field label="Local note"><input name="note" value="Review this week" /></field></if><if !item.movable><badge>Read only</badge></if></div>
+          </board-card></for>
+          <if model.cardsFor(column.id).isEmpty()><p>No items.</p></if>
+        </board-column></for>
+      </board></if>
+    </div>
+    <script client scoped>
+      import type { BoardMoveRequest } from "@bosca/bml-design/board";
+      ctx.on<CustomEvent<BoardMoveRequest>>(ctx.root, "boardmove", event => event.detail.waitUntil(ctx.dispatch(model.move(event.detail.cardId, event.detail.columnId))));
+    </script>
+  </island></card>
+</component>

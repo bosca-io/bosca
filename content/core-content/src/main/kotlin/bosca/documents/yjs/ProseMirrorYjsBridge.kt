@@ -81,6 +81,38 @@ object ProseMirrorYjsBridge {
     }
 
     /**
+     * Seeds only a fragment that has never contained document items. An intentionally
+     * emptied fragment keeps its deletion history; existing metadata maps are preserved.
+     * Empty canonical Content starts with the editor's title and paragraph structure.
+     */
+    fun initializeDocument(existingState: ByteArray, content: Content, title: String): ByteArray {
+        val doc = Doc()
+        try {
+            if (existingState.isNotEmpty()) applyUpdate(doc, existingState)
+            val fragment = doc.getXmlFragment(DEFAULT_FRAGMENT)
+            if (fragment.start == null) {
+                val canonical = toJsonElement(content)
+                val children = (canonical as? JsonObject)?.get("content") as? JsonArray
+                val initial = if (children?.isNotEmpty() == true) canonical else buildJsonObject {
+                    put("type", "doc")
+                    put("content", buildJsonArray {
+                        add(buildJsonObject {
+                            put("type", "heading")
+                            put("attrs", buildJsonObject { put("level", 1) })
+                            if (title.isNotEmpty()) put("content", buildJsonArray {
+                                add(buildJsonObject { put("type", "text"); put("text", title) })
+                            })
+                        })
+                        add(buildJsonObject { put("type", "paragraph") })
+                    })
+                }
+                appendFragmentChildren(fragment, initial)
+            }
+            return encodeStateAsUpdate(doc)
+        } finally { doc.destroy() }
+    }
+
+    /**
      * Decodes the Yjs binary [state] (typically a state-as-update blob from
      * `document_collaborations.content`) into a Bosca [Content] tree.
      *

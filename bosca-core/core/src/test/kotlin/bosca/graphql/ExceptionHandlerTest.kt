@@ -4,7 +4,11 @@ import bosca.graphql.language.SourceLocation
 import bosca.graphql.server.GraphQLContext
 import bosca.graphql.server.GraphQLException
 import bosca.observability.ErrorCapture
+import bosca.server.BoscaApplication
+import bosca.server.ServerCall
 import bosca.telemetry.Tracing
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonPrimitive
@@ -12,9 +16,26 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ExceptionHandlerTest {
+
+    @Test
+    fun `the default handler reports resolver failures through the request application's capture service`() = runTest {
+        val captured = CompletableDeferred<ServerCall?>()
+        val application = mockk<BoscaApplication>()
+        val call = mockk<ServerCall>()
+        every { call.application } returns application
+        every { application.errorCapture } returns ErrorCapture { _, observedCall, _ -> captured.complete(observedCall) }
+
+        val result = ExceptionHandler().handle(IllegalArgumentException("invalid field"), listOf("field"), null,
+            GraphQLContext(mapOf("call" to call)))
+
+        assertSame(call, captured.await())
+        assertEquals("invalid field", result.message)
+        assertEquals(JsonPrimitive(400), result.extensions?.get("status"))
+    }
 
     private val handler = ExceptionHandler()
 

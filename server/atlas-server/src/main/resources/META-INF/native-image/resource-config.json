@@ -9,7 +9,8 @@
       {"pattern": "META-INF/services/.*"},
       {"pattern": "messages.*\\.properties"},
       {"pattern": "org/postgresql/driverconfig\\.properties"},
-      {"pattern": "driver\\.properties"}
+      {"pattern": "driver\\.properties"},
+      {"pattern": "maps/world\\.geojson"}
     ]
   }
 }

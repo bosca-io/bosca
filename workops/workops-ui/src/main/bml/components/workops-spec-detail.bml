@@ -1,0 +1,85 @@
+<component tag="workops-spec-detail">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsSpecDetailModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsSpecDetailModel(initial.id, initial.tab, initial.offset, initial.childrenOffset, initial.requirementsOffset, initial.data, initial.document, initial.parentName, initial.profileNames, initial.editingOwner, initial.ownerDraft, initial.editVersion, initial.renaming, initial.nameDraft, initial.pendingTransition, initial.transitionVersion, initial.commentDraft, initial.commentRevision, initial.feedback, initial.generationsOffset)</script>
+  <island name="specDetail" :key="initial.id">
+    <page-shell class="workops-page" fill>
+      <page-heading :title="model.title" subtitle="Specification" :trail='listOf(bosca.design.model.NavigationItem("Specs", "/workops/specs", false))' />
+      <div class="workops-content" data-workops-spec-detail @workopsrequirementschanged="model.retry(ctx)">
+        <workops-feedback id="spec-detail-0" :feedback="model.feedback" />
+        <if model.feedback.failed><button icon="refresh" @click="model.retry(ctx)">Reload specification</button></if>
+        <for spec in listOfNotNull(model.spec)>
+          <div class="workops-task-actions" id="workops-spec-actions" tabindex="-1">
+            <badge :tone="model.statusTone">{ spec.status.name }</badge>
+            <for transition in spec.transitions><button @click="model.beginTransition(transition.id, ctx)">{ transition.name }</button></for>
+            <button id="workops-spec-owner" icon="users" @click="model.editOwner()">Change owner</button>
+            <if model.document?.canEdit == true><button id="workops-spec-rename" icon="edit" @click="model.beginRename()">Rename specification</button></if>
+          </div>
+          <div class="workops-task-detail-grid">
+            <div class="workops-task-main">
+              <card title="Document"><for document in listOfNotNull(model.document)><workops-document :initial="document" /></for></card>
+              <div :data-bml-preserve='"workops-spec-requirements-" + spec.id'><workops-requirements :parentId="spec.id" :parentHref="model.requirementsHref" parentType="SPEC" /></div>
+              <div :data-bml-preserve='"workops-spec-contexts-" + spec.id'><workops-spec-contexts :specId="spec.id" :returnTo='model.requirementsHref + "&requirementsOffset=" + model.requirementsOffset' /></div>
+              <div :data-bml-preserve='"workops-spec-generations-" + spec.id'><workops-spec-generations :specId="spec.id" :returnTo="model.generationsHref" /></div>
+              <card title="Child specifications" data-workops-spec-children>
+                <form-actions><button-link :href='"/workops/specs?new=1&parent=" + bosca.workops.ui.workOpsEncode(spec.id) + "&project=" + bosca.workops.ui.workOpsEncode(spec.project?.id.orEmpty())' icon="plus">Create child specification</button-link></form-actions>
+                <if (spec.childCount > 0)><help-text>{ spec.childDoneCount } of { spec.childCount } child specifications done.</help-text><progress-bar :value="spec.childDoneCount.toDouble()" :max="spec.childCount.toDouble()" label="Completed child specifications" /></if>
+                <if model.children.isNotEmpty()>
+                  <table-scroll><table><caption class="sr-only">Child specifications</caption><thead><tr><th scope="col">Specification</th><th scope="col">Status</th><th scope="col">Children</th></tr></thead><tbody>
+                    <for child in model.children><tr><td><a :href='"/workops/specs/" + child.id'>{ bosca.workops.ui.workOpsContentLabel(child.metadata?.name.orEmpty(), child.metadataId, "Specification unavailable") }</a></td><td><badge :tone='if (child.status.category == bosca.workops.ui.graphql.WorkOpsStatusCategory.DONE) "success" else "neutral"'>{ child.status.name }</badge></td><td>{ child.childDoneCount } of { child.childCount } done</td></tr></for>
+                  </tbody></table></table-scroll>
+                <else><empty-state title="No child specifications visible on this page." compact /></if>
+                <pagination :page="model.childrenOffset / 25 + 1" :previousHref="model.previousChildrenHref" :nextHref="model.nextChildrenHref" label="Child specification pages" />
+              </card>
+              <card>
+                <tabs label="Specification activity" :items="model.tabs" />
+                <div class="workops-task-activity">
+                  <if model.tab == "comments">
+                    <for comment in model.comments.take(25)><article class="workops-task-entry"><div class="workops-task-entry-header"><profile :name='comment.profile?.name ?: "Profile unavailable"' /><time :value="comment.created" /></div><p class="workops-comment-content">{ comment.content }</p></article></for>
+                    <if model.comments.isEmpty()><empty-state title="No comments yet." compact /></if>
+                    <form @submit="model.comment(form.content, ctx)"><comment-editor :id='"spec-comment-" + spec.id + "-" + model.commentRevision' name="content" label="Add a specification comment" :value="model.commentDraft" submitLabel="comment" mentions><button type="submit" primary>Add comment</button></comment-editor></form>
+                  <else>
+                    <for entry in spec.history.take(25)><article class="workops-task-entry"><div class="workops-task-entry-header"><profile :name="model.profileName(entry.changedByProfileId)" /><time :value="entry.changedAt" /></div><for change in entry.changes><p><strong>{ model.historyField(change.fieldKey) }</strong>: { model.historyValue(change.fieldKey, change.fromValue) } → { model.historyValue(change.fieldKey, change.toValue) }</p></for></article></for>
+                    <if spec.history.isEmpty()><empty-state title="No changes recorded." compact /></if>
+                  </if>
+                </div>
+                <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Specification activity pages" />
+              </card>
+            </div>
+            <div class="workops-task-sidebar">
+              <card title="Details"><dl class="workops-task-facts">
+                <dt>Owner</dt><dd><profile :name="model.ownerLabel" /></dd>
+                <dt>Project</dt><dd><if spec.project != null><a :href='"/workops/projects/" + spec.project?.id'>{ spec.project?.name }</a><else>Project unavailable</if></dd>
+                <if spec.parentSpecId != null><dt>Parent specification</dt><dd><a :href="model.parentHref">{ model.parentName }</a></dd></if>
+                <dt>Requirements</dt><dd>{ spec.requirementCount }</dd>
+                <dt>Watchers</dt><dd>{ spec.watcherProfileIds.size }</dd>
+                <dt>Created</dt><dd><time :value="spec.createdAt" /></dd>
+                <dt>Modified</dt><dd><time :value="spec.modifiedAt" /></dd>
+              </dl></card>
+              <if spec.gitRepositoryId != null><div :data-bml-preserve='"workops-spec-git-" + spec.id'><workops-spec-git :specId="spec.id" /></div></if>
+            </div>
+          </div>
+          <dialog title="Change specification owner" triggerLabel="Change specification owner" :showTrigger="false" :forceOpen="model.editingOwner" :completed="!model.editingOwner" returnFocus="#workops-spec-owner" @dialogdismiss="model.cancelOwner()">
+            <form @submit="model.saveOwner(form.ownerId, ctx)"><form-body padded>
+              <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+              <field label="Owner"><div data-workops-profile-picker><select name="ownerId" label="Owner" searchable async :minQuery="2" required><option value="">Choose an owner</option><if model.ownerDraft.isNotBlank()><option :value="model.ownerDraft" data-persistent selected>{ model.profileName(model.ownerDraft) }</option></if></select></div></field>
+            </form-body><form-actions bordered><button data-dialog-close @click="model.cancelOwner()">Cancel</button><button type="submit" primary>Save owner</button></form-actions></form>
+          </dialog>
+          <dialog title="Rename specification" triggerLabel="Rename specification" :showTrigger="false" :forceOpen="model.renaming" :completed="!model.renaming" returnFocus="#workops-spec-rename" @dialogdismiss="model.cancelRename()">
+            <form @submit="model.rename(form.name, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><field label="Specification name"><input name="name" :value="model.nameDraft" required /></field></form-body><form-actions bordered><button data-dialog-close @click="model.cancelRename()">Cancel</button><button type="submit" primary>Save name</button></form-actions></form>
+          </dialog>
+          <dialog title="Resolve specification" triggerLabel="Resolve specification" :showTrigger="false" :forceOpen="model.pendingTransition.isNotBlank()" :completed="model.pendingTransition.isBlank()" returnFocus="#workops-spec-actions" @dialogdismiss="model.cancelTransition()">
+            <form @submit="model.completeTransition(form.resolutionId, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><field label="Resolution"><select name="resolutionId" label="Resolution" required><option value="">Choose a resolution</option><for resolution in model.data?.workOps?.tasks?.resolutions.orEmpty()><option :value="resolution.id">{ resolution.name }</option></for></select></field></form-body><form-actions bordered><button data-dialog-close @click="model.cancelTransition()">Cancel</button><button type="submit" primary>Resolve specification</button></form-actions></form>
+          </dialog>
+        </for>
+      </div>
+    </page-shell>
+    <script client scoped>
+      import { WorkOpsProfileSearch } from "./WorkOpsProfileSearch";
+      import { WorkOpsMentionSearch } from "./WorkOpsMentionSearch";
+      import { workOpsProfileChoices } from "@client/helpers/profile-choices";
+      import { workOpsMentions } from "@client/helpers/mentions";
+      workOpsProfileChoices(ctx, (query, offset) => WorkOpsProfileSearch.search(query, offset));
+      workOpsMentions(ctx, WorkOpsMentionSearch);
+    </script>
+  </island>
+</component>

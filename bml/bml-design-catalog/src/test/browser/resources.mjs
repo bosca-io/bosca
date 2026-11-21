@@ -45,13 +45,13 @@ export async function checkResources({ navigate, evaluate, until, call, artifact
       const js = scripts.join('\n'), css = styles.join('\n');
       for (const [name, engine] of Object.entries(engines)) {
         assert.equal(js.includes(engine.js), expected.includes(name), `${mode} ${path}: ${name} JavaScript`);
-        const expectedCss = expected.includes(name) || name === 'source' && expected.includes('code');
+        const expectedCss = expected.includes(name) || name === 'source' && (expected.includes('code') || expected.includes('document'));
         assert.equal(css.includes(engine.css), expectedCss, `${mode} ${path}: ${name} CSS`);
       }
-      const codeMirror = expected.includes('source') || expected.includes('code') || expected.includes('json');
+      const codeMirror = expected.includes('source') || expected.includes('code') || expected.includes('json') || expected.includes('document');
       assert.equal(js.includes('cm-editor'), codeMirror, `${mode} ${path}: CodeMirror JavaScript`);
-      // The source viewer ships CSS; the JSON engine installs CodeMirror base styles from JS.
-      assert.equal(css.includes('.cm-editor'), expected.includes('source') || expected.includes('code'), `${mode} ${path}: source editor CSS`);
+      // Document code blocks share CodeMirror presentation; JSON installs its base styles from JS.
+      assert.equal(css.includes('.cm-editor'), expected.includes('source') || expected.includes('code') || expected.includes('document'), `${mode} ${path}: source editor CSS`);
       reports.push({ path, engines: expected, resources });
     }
     console.log(`Catalog ${mode}: optional engine JS/CSS isolated across ${reports.length} cold pages`);

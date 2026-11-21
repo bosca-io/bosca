@@ -190,5 +190,22 @@ export async function checkSelects({ call, evaluate, until, base, mode, artifact
     if(cycle<2){await click('[data-select-toggle=light]');await until(`!document.querySelector('${native('single')}')&&window.selectObservers.size===${observers-5}`);}
   }
   await click('[data-select-change=light]');await until(`document.querySelector('${native('single')}').value==='a'&&${part('single','selection')}.textContent==='Apple'`);
+  await evaluate(`window.selectSubmissions=[];window.selectSubmitProbe=new AbortController();
+    const form=document.querySelector('[data-select-form=light]');
+    form.addEventListener('submit',event=>{event.preventDefault();event.stopImmediatePropagation();window.selectSubmissions.push(new FormData(form).get('flavor'));},{capture:true,signal:window.selectSubmitProbe.signal});`);
+  await open('single');await choose('single',4);
+  assert.equal(await evaluate('window.selectSubmissions.length'),0,'Ordinary selects keep explicit form submission');
+  await evaluate(`${root('single')}.setAttribute('data-submit-on-change','')`);
+  await open('single');await choose('single',1);
+  assert.deepEqual(await evaluate('window.selectSubmissions'),['a'],'Pointer selection submits the updated native value once');
+  await open('single');await key('End');await key('Enter');
+  assert.deepEqual(await evaluate('window.selectSubmissions'),['a','c'],'Keyboard selection submits through the same form');
+  await evaluate(`const field=document.createElement('input');field.name='autoSubmitRequired';field.required=true;document.querySelector('[data-select-form=light]').append(field);`);
+  await open('single');await choose('single',2);
+  assert.equal(await evaluate('window.selectSubmissions.length'),2,'Native form validation still blocks an incomplete form');
+  await evaluate(`document.querySelector('[name=autoSubmitRequired]').remove();${root('single')}.removeAttribute('data-submit-on-change')`);
+  await open('single');await choose('single',1);
+  assert.equal(await evaluate('window.selectSubmissions.length'),2,'Disabling submitOnChange restores explicit submission');
+  await evaluate('window.selectSubmitProbe.abort()');
   await evaluate('window.selectProbe.abort()');await call('Page.removeScriptToEvaluateOnNewDocument',{identifier:instrumentation.identifier});
 }

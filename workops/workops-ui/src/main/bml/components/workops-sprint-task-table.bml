@@ -1,0 +1,17 @@
+<component tag="workops-sprint-task-table">
+  <prop name="rows" type="List<bosca.workops.ui.WorkOpsSprintTask>" required />
+  <prop name="instance" type="String" required />
+  <card :padded="false" :data-workops-sprint-table="instance"><table-scroll label="Sprint tasks" class="workops-task-table"><table class="sprint-task-table"><caption>Sprint tasks</caption><thead><tr><th scope="col">Key</th><th scope="col">Task</th><th scope="col">Commitment</th><th scope="col">Status</th><th scope="col">Priority</th><th scope="col">Assignee</th></tr></thead><tbody>
+    <for task in rows><tr :data-workops-task-row="task.available" :data-workops-sprint-task="task.id">
+      <td><if task.available><a :href="task.href" data-workops-task-link class="workops-task-key">{ task.key }</a><else>Unavailable</if></td>
+      <td><if task.available><a :href="task.href">{ task.label }</a><else>{ task.label }</if></td><td>{ if (task.added) "Added after start" else "Committed" }</td>
+      <td><if task.available><badge :tone="task.tone">{ task.status }</badge><else>Unavailable</if></td><td><if task.priority.isNotBlank()><badge :color="task.priorityColor">{ task.priority }</badge></if></td>
+      <td><if task.assigneeName.isNotBlank()><profile :name="task.assigneeName" /><else>{ task.assigneeLabel }</if></td>
+    </tr></for>
+  </tbody></table></table-scroll></card>
+  <style scoped>.sprint-task-table { width: 100%; min-width: 760px; }</style>
+  <script client scoped>
+    import { workOpsSearchRows } from "@client/helpers/search-rows";
+    workOpsSearchRows(ctx);
+  </script>
+</component>

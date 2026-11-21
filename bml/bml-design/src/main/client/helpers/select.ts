@@ -43,7 +43,7 @@ export function richSelect(ctx: ClientContext) {
   let debounce = number("debounce", 250);
   let disposed = false;
   let focused: HTMLElement | null = null;
-  const initial: SelectOption[] = [...native.options].map((option) => ({
+  let initial: SelectOption[] = [...native.options].map((option) => ({
     value: option.value,
     label: option.label,
     disabled: option.disabled || option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled,
@@ -382,6 +382,18 @@ export function richSelect(ctx: ClientContext) {
   ctx.on(native, "change", () => {
     renderLabel();
     if (expanded) render(choices);
+    if (ctx.root.hasAttribute("data-submit-on-change") && !native.disabled) native.form?.requestSubmit();
+  });
+  ctx.on<CustomEvent<SelectOption[]>>(ctx.root, "selectoptions", event => {
+    if (event.target !== ctx.root) return;
+    initial = event.detail;
+    initial.forEach(option => remembered.set(option.value, option));
+    renderLabel();
+    measure();
+    if (expanded) {
+      if (asynchronous) render(withPersistent(initial));
+      else filter();
+    }
   });
   ctx.on<FocusEvent>(popup, "focusin", event => {
     if (event.target instanceof HTMLElement) focused = event.target;
@@ -499,14 +511,25 @@ export function richSelect(ctx: ClientContext) {
     });
   }, true);
   const observer = new ResizeObserver(() => { if (expanded) position(); });
+  // Native form state can also be controlled by a containing client component.
+  const stateObserver = new MutationObserver(() => {
+    if (disposed) return;
+    renderLabel();
+    query.disabled = native.disabled || ctx.root.hasAttribute("data-loading");
+    if (expanded && trigger.disabled) close();
+  });
+  stateObserver.observe(native, { attributes: true, attributeFilter: ["disabled"] });
   observer.observe(control);
   observer.observe(popup);
   ctx.onUnmount(() => {
     disposed = true;
     close();
     observer.disconnect();
+    stateObserver.disconnect();
   });
   sync();
+  ctx.root.setAttribute("data-select-ready", "");
+  ctx.root.dispatchEvent(new Event("selectready", { bubbles: true }));
   if (nativeHadFocus && !trigger.disabled) trigger.focus();
   void document.fonts.ready.then(() => { if (!disposed) { measure(); position(); } });
 }

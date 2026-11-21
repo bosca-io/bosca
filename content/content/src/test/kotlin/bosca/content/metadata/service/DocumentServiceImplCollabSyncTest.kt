@@ -25,8 +25,7 @@ import kotlin.test.Test
  * Unit-level coverage for the new `collaborationSync` parameter on
  * [DocumentServiceImpl.setDocument]. End-to-end behavior is harder to exercise without
  * a database; these tests verify the call routing — that NONE leaves the collaboration
- * row alone, RESET deletes it, and MERGE falls back to RESET while we still need the
- * ProseMirror↔Yjs bridge.
+ * row alone, RESET deletes it, and MERGE seeds the document through the ProseMirror/Yjs bridge.
  */
 class DocumentServiceImplCollabSyncTest {
 

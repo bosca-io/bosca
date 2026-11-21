@@ -226,7 +226,7 @@ class NettyHttpHandler @JvmOverloads constructor(
      *
      * - A malformed frame ([CorruptedWebSocketFrameException]) from Netty's decoder or the UTF-8
      *   validator, both configured to only raise it: 1002, 1007, ...
-     * - A message over [MAX_WEBSOCKET_FRAME_SIZE] ([TooLongFrameException] from the aggregator):
+     * - A message over its route's capacity ([TooLongFrameException] from the aggregator):
      *   1009 Message Too Big.
      *
      * Returns false when [cause] is not such a violation on a WebSocket.
@@ -251,6 +251,6 @@ class NettyHttpHandler @JvmOverloads constructor(
         private val log = LoggerFactory.getLogger(NettyHttpHandler::class.java)
 
         /** Maximum size of a single (aggregated) WebSocket message: 1 MB. */
-        internal const val MAX_WEBSOCKET_FRAME_SIZE = 1024 * 1024
+        internal const val MAX_WEBSOCKET_FRAME_SIZE = bosca.server.routing.WebSocketRouteEntry.DEFAULT_MAXIMUM_MESSAGE_SIZE
     }
 }

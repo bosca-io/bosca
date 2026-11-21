@@ -12,7 +12,8 @@
       },
       {
         "pattern": "META-INF/licenses/bml-design/.*\\.txt"
-      }
+      },
+      { "pattern": "maps/world\\.geojson" }
     ]
   }
 }

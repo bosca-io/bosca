@@ -14,3 +14,7 @@ components and value the functionality they provide.
 Once those interfaces are in place, we intend to extract Bosca HTTP into a
 standalone project and release it under the Apache 2.0 license. We have not yet
 had time to separate it from the platform, but hope to do so soon.
+
+WebSocket routes accept complete inbound messages up to 1 MiB by default, including aggregated
+fragments. Set a route's capacity with `router.webSocket("/documents", maximumMessageSize =
+16 * 1024 * 1024) { ... }`. This applies to both HTTP/1 upgrades and HTTP/2 extended CONNECT.

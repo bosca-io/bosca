@@ -37,6 +37,7 @@ import bosca.jobs.ImportUrlJob
 import bosca.jobs.enqueue
 import bosca.security.model.AuthenticatedPrincipal
 import bosca.security.model.EntityPermission
+import bosca.security.model.Permission
 import bosca.security.model.PermissionAction
 import bosca.security.model.PermissionInput
 import bosca.security.model.Principal
@@ -337,7 +338,7 @@ class MetadataMutationControllerCoverageTest {
         coEvery { metadataService.getById(entityId) } returns md
         coEvery { metadataPermissionEvaluator.verifyAllowed(authentication, md, PermissionAction.MANAGE) } returns Unit
         coEvery { metadataService.addPermission(input) } returns perm
-        assertEquals(perm, controller.addPermission(authentication, input))
+        assertEquals(Permission(input.groupId, input.action), controller.addPermission(authentication, input))
     }
 
     @Test
@@ -357,7 +358,7 @@ class MetadataMutationControllerCoverageTest {
         coEvery { metadataService.getById(entityId) } returns md
         coEvery { metadataPermissionEvaluator.verifyAllowed(authentication, md, PermissionAction.MANAGE) } returns Unit
         coEvery { metadataService.deletePermission(input) } returns perm
-        assertEquals(perm, controller.deletePermission(authentication, input))
+        assertEquals(Permission(input.groupId, input.action), controller.deletePermission(authentication, input))
     }
 
     @Test

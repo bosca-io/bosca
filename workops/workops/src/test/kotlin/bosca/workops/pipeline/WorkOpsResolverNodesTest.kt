@@ -199,6 +199,12 @@ class WorkOpsResolverNodesTest {
         }
         assertTrue(failure.message.orEmpty().contains("resolve-sprint"))
         assertTrue(failure.message.orEmpty().contains(sprintId.toString()))
+        val namedFailure = assertFailsWith<IllegalStateException> {
+            GetSprintNode(id = "resolve-sprint", name = "Load planned sprint").run(
+                context, inputs(PipelineValue.of(sprintId, UUIDSerializer())))
+        }
+        assertTrue(namedFailure.message.orEmpty().contains("Load planned sprint"))
+        assertTrue(namedFailure.message.orEmpty().contains(sprintId.toString()))
     }
 
     @Test

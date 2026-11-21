@@ -1,0 +1,47 @@
+query WorkOpsCatalogTaskTypes { workOps { tasks { taskTypes { id name description iconKey colorHex hierarchyLevel version } } } }
+
+mutation WorkOpsCatalogCreateTaskType($input: CreateWorkOpsTaskTypeInput!) { workOps { taskTypes { create(input: $input) { id } } } }
+
+mutation WorkOpsCatalogUpdateTaskType($id: UUID!, $input: UpdateWorkOpsTaskTypeInput!) { workOps { taskTypes { update(id: $id, input: $input) { id } } } }
+
+mutation WorkOpsCatalogDeleteTaskType($id: UUID!) { workOps { taskTypes { delete(id: $id) } } }
+
+query WorkOpsCatalogStatuses { workOps { statuses { all { id name description category colorHex version } } } }
+
+mutation WorkOpsCatalogCreateStatus($input: CreateWorkOpsStatusInput!) { workOps { statuses { create(input: $input) { id } } } }
+
+mutation WorkOpsCatalogUpdateStatus($id: UUID!, $input: UpdateWorkOpsStatusInput!) { workOps { statuses { update(id: $id, input: $input) { id } } } }
+
+mutation WorkOpsCatalogDeleteStatus($id: UUID!) { workOps { statuses { delete(id: $id) } } }
+
+query WorkOpsCatalogPriorities { workOps { tasks { priorities { id name description iconKey colorHex displayOrder version } } } }
+
+mutation WorkOpsCatalogCreatePriority($input: CreateWorkOpsPriorityInput!) { workOps { priorities { create(input: $input) { id } } } }
+
+mutation WorkOpsCatalogUpdatePriority($id: UUID!, $input: UpdateWorkOpsPriorityInput!) { workOps { priorities { update(id: $id, input: $input) { id } } } }
+
+mutation WorkOpsCatalogDeletePriority($id: UUID!) { workOps { priorities { delete(id: $id) } } }
+
+query WorkOpsCatalogResolutions { workOps { tasks { resolutions { id name description displayOrder version } } } }
+
+mutation WorkOpsCatalogCreateResolution($input: CreateWorkOpsResolutionInput!) { workOps { resolutions { create(input: $input) { id } } } }
+
+mutation WorkOpsCatalogUpdateResolution($id: UUID!, $input: UpdateWorkOpsResolutionInput!) { workOps { resolutions { update(id: $id, input: $input) { id } } } }
+
+mutation WorkOpsCatalogDeleteResolution($id: UUID!) { workOps { resolutions { delete(id: $id) } } }
+
+query WorkOpsCatalogLinkTypes { workOps { links { linkTypes { id name inwardLabel outwardLabel category version } } } }
+
+mutation WorkOpsCatalogCreateLinkType($input: CreateWorkOpsTaskLinkTypeInput!) { workOps { linkTypes { create(input: $input) { id } } } }
+
+mutation WorkOpsCatalogUpdateLinkType($id: UUID!, $input: UpdateWorkOpsTaskLinkTypeInput!) { workOps { linkTypes { update(id: $id, input: $input) { id } } } }
+
+mutation WorkOpsCatalogDeleteLinkType($id: UUID!) { workOps { linkTypes { delete(id: $id) } } }
+
+query WorkOpsCatalogLabels { workOps { labels { global { id name colorHex scope version } } } }
+
+mutation WorkOpsCatalogCreateLabel($input: CreateWorkOpsLabelInput!) { workOps { labels { create(input: $input) { id } } } }
+
+mutation WorkOpsCatalogUpdateLabel($id: UUID!, $name: String!, $color: String, $version: Long!) { workOps { labels { update(id: $id, name: $name, colorHex: $color, expectedVersion: $version) { id } } } }
+
+mutation WorkOpsCatalogDeleteLabel($id: UUID!) { workOps { labels { delete(id: $id) } } }

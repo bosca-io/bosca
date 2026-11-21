@@ -15,7 +15,15 @@ import bosca.search.graphql.SearchResultFacetControllerDispatcher
 /** Reuses domain resolvers for the identity fields exposed by this composition's SDL. */
 internal class IdentityDispatchersRegistrar : DispatchersRegistrar {
     override suspend fun dispatchers(): Map<String, Dispatcher> =
-        listOf(
+        (listOf(
+                bosca.analytics.graphql.AnalyticsControllerDispatcher(provide()),
+                bosca.analytics.graphql.AnalyticsCountersControllerDispatcher(provide()),
+                bosca.analytics.graphql.AnalyticsCounterControllerDispatcher(provide()),
+                bosca.analytics.graphql.AnalyticsCounterValueControllerDispatcher(provide()),
+                bosca.analytics.graphql.AnalyticsErrorsControllerDispatcher(provide()),
+                bosca.analytics.graphql.ErrorGroupControllerDispatcher(provide()),
+                bosca.analytics.graphql.ErrorGroupConnectionControllerDispatcher(provide()),
+                bosca.analytics.graphql.LiveSessionControllerDispatcher(provide()),
                 bosca.content.graphql.ContentControllerDispatcher(provide()),
                 bosca.content.graphql.ContentMutationControllerDispatcher(provide()),
                 bosca.content.metadata.graphql.BibleProvidersControllerDispatcher(provide()),
@@ -44,10 +52,13 @@ internal class IdentityDispatchersRegistrar : DispatchersRegistrar {
                 bosca.ai.models.graphql.ModelsMutationControllerDispatcher(provide()),
                 bosca.ai.models.graphql.ModelControllerDispatcher(provide()),
                 bosca.search.graphql.SearchConfigurationControllerDispatcher(provide()),
+                bosca.search.graphql.SearchControllerDispatcher(provide()),
                 bosca.storage.graphql.StorageSystemModelControllerDispatcher(provide()),
                 bosca.storage.graphql.StorageSystemsMutationControllerDispatcher(provide()),
                 bosca.storage.graphql.StorageSystemsControllerDispatcher(provide()),
                 bosca.storage.graphql.StorageSystemControllerDispatcher(provide()),
+                bosca.storage.graphql.SignedUrlControllerDispatcher(provide()),
+                bosca.storage.graphql.SignedUrlHeaderControllerDispatcher(provide()),
                 bosca.profile.persona.graphql.StudioPersonasControllerDispatcher(provide()),
                 bosca.profile.persona.graphql.StudioPersonaControllerDispatcher(provide()),
                 bosca.profile.persona.graphql.StudioPersonasMutationControllerDispatcher(provide()),
@@ -60,7 +71,7 @@ internal class IdentityDispatchersRegistrar : DispatchersRegistrar {
                 SearchDocumentControllerDispatcher(provide()),
                 SearchResultControllerDispatcher(provide()),
                 SearchResultFacetControllerDispatcher(provide()),
-            )
+            ) + bosca.graphql.dispatcher.ProfileDispatchersRegistrar().dispatchers().values)
             .associate { dispatcher ->
                 val source = dispatcher.type
                 val fields =

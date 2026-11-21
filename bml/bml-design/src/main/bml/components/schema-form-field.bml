@@ -1,0 +1,45 @@
+<component tag="schema-form-field">
+  <prop name="node" type="bosca.design.model.SchemaFormNode" required />
+  <prop name="prefix" type="String" required />
+  <prop name="readOnly" type="Boolean" default="false" />
+  <script server provides="id">prefix + "-" + node.key</script>
+  <div class="schema-field" :data-schema-property="node.property" :data-schema-control="node.control" :data-schema-field-key="node.key" :data-property-schema="node.schema.toString()">
+    <if node.control == "checkbox"><checkbox :label="node.label" :checked="node.checked" :disabled="readOnly" :id="id" />
+    <else-if node.control == "switch"><switch :label="node.label" :checked="node.checked" :disabled="readOnly" :id="id" />
+    <else-if node.control == "radio-group">
+      <fieldset class="radio-group" :disabled="readOnly"><legend>{ node.label }</legend><div class="radio-options"><for option in node.options><label><html:input type="radio" :name="id" :value="option.value" :checked="option.value == node.text" :disabled="option.disabled" :required="node.required" />{ option.label }</label></for></div></fieldset>
+    <else>
+      <field :label='node.label + if (node.required) " *" else ""' :hint="node.hint">
+        <if node.control == "text-input" || node.control == "textarea" || node.control == "number-input" || node.control == "date-picker" || node.control == "color-picker">
+          <input :id="id" :multiline='node.control == "textarea"' :rows="node.rows" :value="node.text" :placeholder="node.placeholder" :readonly="readOnly" :required="node.required"
+                 :type='when (node.control) { "number-input" -> "number"; "date-picker" -> "date"; "color-picker" -> "color"; else -> "text" }'
+                 :min="node.minimum" :max="node.maximum" :step="node.step" />
+        <else-if node.control == "select" || node.control == "remote-select">
+          <select :id="id" :label="node.label" :placeholder="node.selectionPlaceholder" :disabled="readOnly" searchable :async='node.control == "remote-select"' :required="node.required">
+            <option value=""></option><for option in node.options><option :value="option.value" :selected="option.value == node.text" :disabled="option.disabled">{ option.label }</option></for>
+            <if node.remoteCurrent><option :value="node.text" selected>Current selection</option></if>
+          </select>
+          <if node.control == "remote-select"><p data-schema-choices-status role="status" hidden></p><button data-schema-choices-retry hidden>Retry choices</button></if>
+        <else-if node.control == "tag-input">
+          <select :id="id" :label="node.label" multiple searchable allowCustom :disabled="readOnly"><for option in node.options><option :value="option.value" :selected="option.value in node.selectedValues">{ option.label }</option></for></select>
+        <else-if node.control == "json-editor"><json-editor :name="id" :value="node.value" :readOnly="readOnly" :label="node.label" />
+        <else-if node.control == "file-upload" || node.control == "image-upload"><file-field :name="id" :value="node.value" :readOnly="readOnly" :label="node.label" :image='node.control == "image-upload"' :accept="node.accept" />
+        <else><p data-schema-unsupported role="alert">Unknown control: { node.control }</p>
+        </if>
+      </field>
+    </if>
+    <p class="schema-error" data-schema-error :id='id + "-error"' role="status" :hidden="node.error.isBlank()">{ node.error }</p>
+  </div>
+  <style scoped>
+    .schema-field { min-width:0; }
+    .schema-error { color:var(--err); font-size:12px; margin:6px 0 0; }
+    .radio-options { display:flex; flex-wrap:wrap; gap:12px; } .radio-options label { display:inline-flex; align-items:center; gap:6px; }
+    .radio-options input { accent-color:var(--accent); }
+    .radio-group { border:0; padding:0; margin:0; } .radio-group legend { color:var(--fg-2); font-size:12px; margin-bottom:6px; }
+    [hidden] { display:none; }
+  </style>
+  <script client scoped>
+    import { schemaFormChoices } from "@client/helpers/schema-form-choices";
+    schemaFormChoices(ctx);
+  </script>
+</component>

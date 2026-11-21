@@ -1,0 +1,21 @@
+query WorkOpsValidateBql($source: String!) {
+  workOps { savedFilters { validateBql(source: $source) { errors { message start end hint } } } }
+}
+
+query WorkOpsTaskSearch($source: String!, $offset: Long!) {
+  workOps { savedFilters { searchTasks(source: $source, offset: $offset, limit: 26) {
+    rows {
+      id key summary
+      status { id name category }
+      priority { id name displayOrder colorHex }
+      taskType { id name }
+      assigneeProfileId assignee { id name }
+      dueDate
+    }
+    freeTextTerms
+  } } }
+}
+
+query WorkOpsTaskFilters {
+  workOps { savedFilters { mine(limit: 20, offset: 0) { id name bqlSource } } }
+}

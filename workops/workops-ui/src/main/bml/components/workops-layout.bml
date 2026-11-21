@@ -1,0 +1,48 @@
+<component tag="workops-layout">
+  <prop name="title" type="String" required />
+  <script server provides="path">ctx.requestPath</script>
+  <script server provides="appearance">if (ctx.cookies["git_ui_appearance"] == "light") "light" else "dark"</script>
+  <html lang="en" :data-theme="appearance">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <meta name="robots" content="noindex,nofollow" />
+      <title>{ title } — Bosca Atlas</title>
+      <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    </head>
+    <body class="workops-document" :data-theme="appearance">
+      <app-shell>
+        <app-header brand="Bosca" product="Atlas" href="/">
+          <div data-atlas-system-switcher><subsystem-switcher :items="bosca.atlas.ui.AtlasSubsystems.items" currentId="workops" product="Atlas" /></div>
+          <nav class="shell-navigation" aria-label="Work Ops">
+            <for group in bosca.workops.ui.workOpsNavigationGroups>
+              <if group.label == "Settings">
+                <details class="shell-group shell-settings" :open='path.startsWith("/workops/settings/")'>
+                  <summary class="shell-label">{ group.label }<span class="shell-chevron"><icon name="chevron" :size="12" /></span></summary>
+                  <for item in group.items><a :href="item.href" :aria-current='if (bosca.workops.ui.workOpsNavigationSelected(path, item.href)) "page" else "false"'>{ item.label }</a></for>
+                </details>
+              <else>
+                <div class="shell-group">
+                  <span class="shell-label">{ group.label }</span>
+                  <for item in group.items><a :href="item.href" :aria-current='if (bosca.workops.ui.workOpsNavigationSelected(path, item.href)) "page" else "false"'>{ item.label }</a></for>
+                </div>
+              </if>
+            </for>
+          </nav>
+          <div class="shell-footer"><profile-menu /></div>
+        </app-header>
+        <div class="shell-main"><slot /></div>
+      </app-shell>
+    </body>
+  </html>
+  <script client scoped>
+    import { WorkOpsDocumentReferences } from "./WorkOpsDocumentReferences";
+    import { WorkOpsImages } from "./WorkOpsImages";
+    import { workOpsDocumentImages } from "@client/helpers/document-images";
+    import { workOpsDocumentReferences } from "@client/helpers/document-references";
+    import { workOpsReferenceLinks } from "@client/helpers/reference-links";
+    workOpsReferenceLinks(ctx);
+    workOpsDocumentReferences(ctx, WorkOpsDocumentReferences);
+    workOpsDocumentImages(ctx, WorkOpsImages);
+  </script>
+</component>

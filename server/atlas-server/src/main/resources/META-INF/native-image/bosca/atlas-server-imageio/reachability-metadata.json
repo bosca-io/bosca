@@ -1,0 +1,61 @@
+{
+  "reflection": [
+    {
+      "type": "com.sun.imageio.plugins.jpeg.JPEGImageReader",
+      "jniAccessible": true,
+      "methods": [
+        { "name": "acceptPixels", "parameterTypes": ["int", "boolean"] },
+        { "name": "passComplete", "parameterTypes": [] },
+        { "name": "passStarted", "parameterTypes": ["int"] },
+        { "name": "pushBack", "parameterTypes": ["int"] },
+        { "name": "readInputData", "parameterTypes": ["byte[]", "int", "int"] },
+        { "name": "setImageData", "parameterTypes": ["int", "int", "int", "int", "int", "byte[]"] },
+        { "name": "skipInputBytes", "parameterTypes": ["long"] },
+        { "name": "skipPastImage", "parameterTypes": ["int"] },
+        { "name": "warningOccurred", "parameterTypes": ["int"] },
+        { "name": "warningWithMessage", "parameterTypes": ["java.lang.String"] }
+      ]
+    },
+    {
+      "type": "java.awt.GraphicsEnvironment",
+      "jniAccessible": true,
+      "methods": [{ "name": "isHeadless", "parameterTypes": [] }]
+    },
+    {
+      "type": "java.lang.System",
+      "jniAccessible": true,
+      "methods": [{ "name": "load", "parameterTypes": ["java.lang.String"] }]
+    },
+    {
+      "type": "javax.imageio.plugins.jpeg.JPEGHuffmanTable",
+      "jniAccessible": true,
+      "fields": [{ "name": "lengths" }, { "name": "values" }]
+    },
+    {
+      "type": "javax.imageio.plugins.jpeg.JPEGQTable",
+      "jniAccessible": true,
+      "fields": [{ "name": "qTable" }]
+    },
+    { "type": "javax.imageio.spi.ImageReaderSpi" },
+    {
+      "type": "javax.imageio.spi.ImageReaderWriterSpi",
+      "methods": [{ "name": "getFileSuffixes", "parameterTypes": [] }]
+    },
+    { "type": "javax.imageio.spi.ImageWriterSpi" },
+    {
+      "type": "sun.java2d.Disposer",
+      "jniAccessible": true,
+      "methods": [{ "name": "addRecord", "parameterTypes": ["java.lang.Object", "long", "long"] }]
+    }
+  ],
+  "resources": [
+    { "glob": "META-INF/services/javax.imageio.spi.ImageInputStreamSpi" },
+    { "glob": "META-INF/services/javax.imageio.spi.ImageOutputStreamSpi" },
+    { "glob": "META-INF/services/javax.imageio.spi.ImageReaderSpi" },
+    { "glob": "META-INF/services/javax.imageio.spi.ImageTranscoderSpi" },
+    { "glob": "META-INF/services/javax.imageio.spi.ImageWriterSpi" },
+    { "module": "java.desktop", "glob": "sun/awt/resources/awt_en.properties" },
+    { "module": "java.desktop", "glob": "sun/awt/resources/awt_en_US.properties" },
+    { "bundle": "sun.awt.resources.awt" }
+  ]
+}

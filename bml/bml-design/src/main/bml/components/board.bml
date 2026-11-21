@@ -1,0 +1,13 @@
+<component tag="board">
+  <prop name="id" type="String" required />
+  <prop name="label" type="String" required />
+  <prop name="readOnly" type="Boolean" default="false" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <div class="board" :id="id" data-bml-board :data-board-readonly="readOnly" :data-board-disabled="disabled" :data-bml-scroll='"board-" + id' role="region" :aria-label="label" tabindex="0" {...attrs}>
+    <slot />
+  </div>
+  <style scoped>
+    .board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(var(--board-column-min-width, 260px), 1fr); gap: var(--board-gap, 16px); width: 100%; min-width: 0; height: var(--board-height, 620px); overflow: auto; overscroll-behavior: contain; box-sizing: border-box; color: var(--fg-1); font: 13px/1.5 var(--font-sans); padding: 3px; }
+    .board:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
+  </style>
+</component>

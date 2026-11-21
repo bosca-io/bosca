@@ -36,6 +36,17 @@ class CatalogOverlay(val id: String) {
         private set
     var noticeTone: String = "success"
         private set
+    var actionOpen: Boolean = false
+        private set
+    var dismissals: Int = 0
+        private set
+
+    fun openAction() { actionOpen = true }
+    suspend fun dismissAction() {
+        delay(200)
+        actionOpen = false
+        dismissals++
+    }
 
     suspend fun save(value: String) {
         check(mounted && !triggerDisabled) { "The example dialog is unavailable." }

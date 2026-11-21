@@ -1,0 +1,28 @@
+<component tag="workops-document">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsDocumentModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsDocumentModel(initial.metadataId, initial.data, initial.savedRevision, initial.feedback)</script>
+  <div data-workops-document>
+    <island name="document" :key="initial.metadataId">
+    <workops-feedback id="document-0" :feedback="model.feedback" />
+    <if model.metadata != null>
+      <form @submit="model.save(form.document, form.documentRevision, ctx)">
+        <document-editor :id='"workops-document-" + model.metadataId' label="Document body" name="document"
+                         :value="model.body" :collaborationRoom='if (model.canEdit) model.room else ""' :collaboratorName="model.collaborator"
+                         :savedRevision="model.savedRevision" :contentExpression="model.contentExpression" :containers="model.containers"
+                         placeholder="Type / to view options" singleTitle mentions showSaveStatus referenceControls media
+                         :readOnly="!model.canEdit" :preserveKey='"workops-document-" + model.room + "-" + model.canEdit' />
+        <if model.canEdit><form-actions><button type="submit" primary icon="save">Save document</button></form-actions></if>
+      </form>
+    <else>
+      <button @click="model.reload(ctx)" icon="refresh">Load document</button>
+    </if>
+    </island>
+  </div>
+  <script client scoped>
+    import { workOpsDocument } from "@client/helpers/document";
+    import { WorkOpsMentionSearch } from "./WorkOpsMentionSearch";
+    import { workOpsMentions } from "@client/helpers/mentions";
+    workOpsDocument(ctx);
+    workOpsMentions(ctx, WorkOpsMentionSearch);
+  </script>
+</component>

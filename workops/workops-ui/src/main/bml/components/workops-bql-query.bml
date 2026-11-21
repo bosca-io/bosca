@@ -1,0 +1,29 @@
+<component tag="workops-bql-query">
+  <prop name="kind" type="String" default="task" />
+  <prop name="source" type="String" required />
+  <prop name="validationMessage" type="String" default="" />
+  <card :padded="false">
+  <form :action='if (kind == "spec") "/workops/specs" else "/workops/tasks"' method="get" :class='if (kind == "spec") "workops-spec-search" else "workops-task-search"' :data-bql-kind="kind" :data-validation-message="validationMessage">
+    <section-heading title="Search"><span class="workops-query-hint">BQL · <kbd>/</kbd> to focus · <kbd>⌘↵</kbd> / <kbd>Ctrl↵</kbd> to search</span></section-heading>
+    <div class="workops-query-row">
+      <div class="workops-query-editor"><code-editor name="bql" :value="source" compact language="sql" :label='if (kind == "spec") "Specification BQL query" else "Task BQL query"' :preserveKey='"workops-" + kind + "-query"' /></div>
+      <div class="workops-query-actions"><form-actions><icon-button icon="close" label="Clear query" data-workops-clear-query /><icon-button type="submit" icon="search" label="Search" /></form-actions></div>
+    </div>
+    <div ref="validation" role="status" aria-live="polite" :hidden="validationMessage.isBlank()"><alert tone="error"><span ref="validationText">{ validationMessage }</span></alert></div>
+  </form>
+  </card>
+  <style scoped>
+    form { display: flex; flex-direction: column; }
+    .workops-query-row { display: flex; align-items: start; flex-wrap: wrap; gap: 10px; padding: 16px; }
+    .workops-query-editor { flex: 1 1 180px; min-width: 0; }
+    .workops-query-actions { display: flex; align-items: center; min-height: 40px; margin-left: auto; }
+    .workops-query-hint { color: var(--fg-3); font-size: 11px; }
+    [role="status"]:not([hidden]) { margin: 0 16px 16px; }
+    kbd { padding: 1px 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg-3); color: var(--fg-2); font: 10px var(--font-mono); }
+  </style>
+  <script client scoped>
+    import { workOpsBqlQuery } from "@client/helpers/bql-query";
+    import { WorkOpsBql } from "./WorkOpsBql";
+    workOpsBqlQuery(ctx, WorkOpsBql);
+  </script>
+</component>

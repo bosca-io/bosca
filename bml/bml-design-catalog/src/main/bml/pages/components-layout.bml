@@ -13,6 +13,7 @@
       <a href="#ref-section">section</a>
       <a href="#ref-page-heading">page-heading</a>
       <a href="#ref-section-heading">section-heading</a>
+      <a href="#ref-help-text">help-text</a>
       <a href="#ref-disclosure-heading">disclosure-heading</a>
       <a href="#ref-app-header">app-header</a>
       <a href="#ref-app-shell">app-shell</a>
@@ -107,6 +108,14 @@
       :css='"Palette and typography inherit from the consuming application. Component hooks: --accent, --fg-1, --fg-3, --fg-4, --on-accent. Forward an application class only through the documented native target; generated scope markers are private."'
       :snippet='"<page-heading title=\"Component examples\" subtitle=\"Application-owned navigation and actions\" icon=\"code\" badge=\"Preview\" badgeTone=\"info\" :trail=\u0027listOf(bosca.design.model.NavigationItem(\"Components\", \"/components\", false))\u0027><button size=\"sm\">Add example</button></page-heading>"'>
       <div aria-hidden="true" inert><page-heading title="Component examples" subtitle="Application-owned navigation and actions" icon="code" badge="Preview" badgeTone="info" :trail='listOf(bosca.design.model.NavigationItem("Components", "/components", false))'><button size="sm">Add example</button></page-heading></div>
+    </reference-entry>
+    <reference-entry name="help-text"
+      :api='"Default slot: supporting text; additional attributes target the paragraph."'
+      :contract='"Small, muted guidance without paragraph margins."'
+      :keyboard='"Plain supporting text; use alerts for validation and operation failures."'
+      :css='"Uses --fg-3 and inherits the application font."'
+      :snippet='"<help-text>Choose a project to view its components.</help-text>"'>
+      <help-text>Choose a project to view its components.</help-text>
     </reference-entry>
     <reference-entry name="section-heading"
       :api='"title: String (required)\nsubtitle: String = \"\""'

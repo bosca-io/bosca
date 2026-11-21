@@ -40,6 +40,7 @@ class AtlasUiRoutesTest {
         assertEquals(200, signedIn.statusCode())
         assertTrue("href=\"/repositories\"" in signedIn.body())
         assertTrue("href=\"/artifacts/namespaces\"" in signedIn.body())
+        assertTrue("href=\"/workops/tasks\"" in signedIn.body())
         assertTrue("Welcome." in signedIn.body())
         assertTrue("aria-label=\"Atlas systems\"" in signedIn.body())
         assertTrue("Systems" in signedIn.body())

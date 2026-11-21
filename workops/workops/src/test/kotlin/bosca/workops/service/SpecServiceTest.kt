@@ -990,6 +990,11 @@ class SpecServiceTest {
         coEvery {
             requirementRepository.listByParent(RequirementParent.SPEC, spec.id, 0, 200)
         } returns requirements
+        requirements.forEachIndexed { index, requirement ->
+            coEvery { metadataService.getById(requirement.metadataId) } returns mockk {
+                every { version } returns if (index == 2) 5 else 1
+            }
+        }
         coEvery { documentService.getDocument(requirements[0].metadataId, 1) } returns null
         coEvery { documentService.getDocument(requirements[1].metadataId, 1) } returns
             bosca.content.metadata.model.Document(
@@ -1005,6 +1010,11 @@ class SpecServiceTest {
                 title = "Authored requirement",
                 content = bosca.documents.Content(),
             )
+        coEvery { documentService.getDocument(requirements[2].metadataId, 5) } returns
+            bosca.content.metadata.model.Document(
+                metadataId = requirements[2].metadataId, version = 5, title = "Current authored requirement",
+                content = bosca.documents.MarkdownConverter.fromMarkdown("# Current authored requirement\n\nCurrent requirement body.\n"),
+            )
         val inputs = mutableListOf<bosca.workops.model.task.CreateTaskInput>()
         coEvery { taskService.create(capture(inputs), principalId, null, spec.ownerProfileId) } answers
             { mockk { every { id } returns UUID.random() } }
@@ -1016,8 +1026,8 @@ class SpecServiceTest {
         val generation = service.generateTasks(spec.id, 7, GenerationSource.MANUAL, principalId, null)
 
         assertEquals(3, generation.generatedTaskIds.size)
-        assertEquals(listOf("REQ NO-DOC-1", "REQ BLANK-1", "Authored requirement"), inputs.map { it.summary })
+        assertEquals(listOf("REQ NO-DOC-1", "REQ BLANK-1", "Current authored requirement"), inputs.map { it.summary })
         assertEquals(listOf(null, null), inputs.take(2).map { it.descriptionMarkdown })
-        assertNotNull(inputs.last().descriptionMarkdown)
+        assertTrue(requireNotNull(inputs.last().descriptionMarkdown).contains("Current requirement body."))
     }
 }

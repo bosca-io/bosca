@@ -1,0 +1,4 @@
+<page route="/workops/settings/automation" requireAuth>
+  <script server provides="model">bosca.workops.ui.workOpsAutomation()</script>
+  <workops-layout title="Automation"><workops-automation :initial="model" /></workops-layout>
+</page>

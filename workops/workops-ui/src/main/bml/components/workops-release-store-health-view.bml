@@ -1,0 +1,39 @@
+<component tag="workops-release-store-health-view">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsReleaseStoreHealthModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsReleaseStoreHealthModel(initial.id, initial.readContext, initial.rows, initial.loaded, initial.checked, initial.feedback)</script>
+  <island name="releaseStoreHealth" :key="initial.id"><card :padded="false"><html:section class="release-store-health" data-workops-release-store-health :data-read-context="model.readContext">
+    <section-heading title="Store health" subtitle="Store release state, vitals, reviews and TestFlight feedback."><icon-button size="md" icon="refresh" label="Refresh store health" data-bml-coalesce @click='model.refreshContext("", ctx)' /></section-heading>
+    <form-body padded>
+    <p ref="pollError" role="status" aria-live="polite" />
+    <if model.feedback.failed><alert>Store telemetry unavailable: { model.feedback.message }</alert></if>
+    <if !model.loaded && model.rows.isNotEmpty()><p><badge tone="warning">Stale</badge> Previously loaded store data is shown.</p></if>
+    <if model.checked.isNotBlank()><p class="store-caption">Store data checked <time :value="model.checked" relative /></p></if>
+    <if model.loaded && model.rows.isEmpty()><empty-state title="No store targets were reported for the bundled versions." compact /></if>
+    <div class="store-health-cards"><for row in model.rows><card :title="row.state.applicationId" :data-workops-store-target="row.key">
+      <p class="store-source"><badge>{ row.storeLabel }</badge><span>{ row.projectLabel } · { row.state.appVersion } · { row.state.environmentKey }</span></p>
+      <dl class="store-facts">
+        <div><dt>Build</dt><dd>{ row.state.buildNumber ?: "Unavailable" }</dd></div>
+        <if row.state.store == "GOOGLE_PLAY"><div><dt>Track</dt><dd>{ row.state.track ?: "Unavailable" }</dd></div><div><dt>Release state</dt><dd>{ row.state.releaseState ?: "Unavailable" }</dd></div><div><dt>Rollout</dt><dd>{ row.rolloutLabel }</dd></div><else>
+          <div><dt>Review state</dt><dd>{ row.state.reviewState ?: "Unavailable" }</dd></div><div><dt>Beta review</dt><dd>{ row.state.betaReviewState ?: "Unavailable" }</dd></div><div><dt>Build processing</dt><dd>{ row.state.buildProcessingState ?: "Unavailable" }</dd></div><div><dt>Phased release</dt><dd>{ row.state.phasedReleaseState ?: "Unavailable" }</dd></div>
+        </if>
+        <div><dt>Crash rate</dt><dd>{ row.crashRateLabel }</dd></div><div><dt>ANR rate</dt><dd>{ row.anrRateLabel }</dd></div><div><dt>Review rating</dt><dd>{ row.ratingLabel }</dd></div>
+      </dl>
+      <for observation in listOfNotNull(row.vitals)><p class="store-caption">Vitals observed <time :value="observation.time" /></p></for>
+      <if row.ratingTime.isNotBlank()><p class="store-caption">Rating observed <time :value="row.ratingTime" /></p></if>
+      <if row.crashPoints.isNotEmpty()><div class="store-chart"><chart :id='"release-store-crash-" + bosca.workops.ui.workOpsEncode(model.id + row.key)' label="Store crash-rate history" :config="row.crashChart" :preserveKey='"release-store-crash-" + model.id + row.key' /></div><else><empty-state title="No numeric crash-rate observations were reported." compact /></if>
+      <if row.ratingPoints.isNotEmpty()><div class="store-chart"><chart :id='"release-store-rating-" + bosca.workops.ui.workOpsEncode(model.id + row.key)' label="Store review-rating history" :config="row.ratingChart" :preserveKey='"release-store-rating-" + model.id + row.key' /></div><else><empty-state title="No numeric review ratings were reported." compact /></if>
+      <if row.state.testFlightGroups.isNotEmpty()><p>TestFlight groups: { row.state.testFlightGroups.joinToString(", ") }</p></if>
+      <if row.state.testFlightCrashFeedback.isNotEmpty()><h3>TestFlight crash feedback</h3><ul class="store-reviews"><for feedback in row.state.testFlightCrashFeedback.take(3)><li><p>{ feedback.comment?.takeIf(String::isNotBlank) ?: listOfNotNull(feedback.deviceModel, feedback.osVersion).joinToString(" · ").ifBlank { "No tester comment" } }</p><if !feedback.createdAt.isNullOrBlank()><time :value='feedback.createdAt ?: ""' /></if></li></for></ul><p class="store-caption">Showing { row.state.testFlightCrashFeedback.take(3).size } of { row.state.testFlightCrashFeedback.size } crash reports returned by the store.</p></if>
+      <if row.reviews.isNotEmpty()><h3>Recent reviews</h3><for observation in listOfNotNull(row.reviewsObservation)><p class="store-caption">Reviews observed <time :value="observation.time" /></p></for><ul class="store-reviews"><for review in row.reviews.take(3)><li><p><strong>{ review.ratingLabel }</strong> · { review.body }</p></li></for></ul><p class="store-caption">Showing { row.reviews.take(3).size } of { row.reviews.size } reviews in the latest observation.</p></if>
+    </card></for></div>
+    </form-body>
+    <script client scoped>
+      import { workOpsReleaseRefresh } from "@client/helpers/release-refresh";
+      const owner = ctx.root.matches("[data-workops-release-store-health]") ? ctx.root : ctx.root.querySelector<HTMLElement>("[data-workops-release-store-health]");
+      workOpsReleaseRefresh(ctx, { initialRevision: owner?.getAttribute("data-read-context") ?? undefined, contextual: true });
+    </script>
+  </html:section></card></island>
+  <style scoped>
+    .release-store-health { min-width: 0; }.release-store-health p:empty { display: none; }.store-health-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; min-width: 0; }.store-source { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }.store-facts { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }.store-facts dt, .store-caption { color: var(--fg-2); font-size: 12px; }.store-facts dd { margin: 4px 0 0; font-variant-numeric: tabular-nums; }.store-chart { --chart-height: 180px; min-width: 0; }.store-reviews { padding-inline-start: 20px; }.store-reviews li { margin-block: 8px; }h3 { margin-block: 20px 8px; font-size: 14px; }p, dd { overflow-wrap: anywhere; }
+  </style>
+</component>

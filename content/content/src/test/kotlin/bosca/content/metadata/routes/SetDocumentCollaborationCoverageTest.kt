@@ -1,6 +1,5 @@
 package bosca.content.metadata.routes
 
-import bosca.content.metadata.model.DocumentCollaboration
 import bosca.content.metadata.model.DocumentCollaborationInput
 import bosca.content.metadata.model.Metadata
 import bosca.content.metadata.model.MetadataType
@@ -95,13 +94,12 @@ class SetDocumentCollaborationCoverageTest {
     }
 
     @Test
-    fun `stores body directly when no existing collaboration`() = runTest {
+    fun `delegates the exact update to the atomic merger after authorization`() = runTest {
         val body = docUpdate("hello")
         val call = createCall(body = body)
         coEvery { service.getById(testId, 1) } returns metadata()
-        coEvery { documentService.getCollaboration(testId, 1) } returns null
         val captured = slot<DocumentCollaborationInput>()
-        coEvery { documentService.setCollaboration(capture(captured)) } returns true
+        coEvery { documentService.mergeCollaboration(capture(captured)) } returns body
 
         val result = executeRoute(call, authenticationContext)
 
@@ -119,63 +117,18 @@ class SetDocumentCollaborationCoverageTest {
     }
 
     @Test
-    fun `stores body directly when existing collaboration content is empty`() = runTest {
-        val body = docUpdate("world")
-        val call = createCall(body = body)
-        coEvery { service.getById(testId, 1) } returns metadata()
-        coEvery { documentService.getCollaboration(testId, 1) } returns DocumentCollaboration(
-            metadataId = testId,
-            version = 1,
-            content = ByteArray(0),
-        )
-        val captured = slot<DocumentCollaborationInput>()
-        coEvery { documentService.setCollaboration(capture(captured)) } returns true
-
-        val result = executeRoute(call, authenticationContext)
-
-        assertSame(HttpStatusCode.Accepted, result)
-        assertTrue(body.contentEquals(captured.captured.content))
-    }
-
-    @Test
-    fun `merges existing collaboration content with body when both present`() = runTest {
-        val existing = docUpdate("existing text ")
-        val body = docUpdate("new text")
-        val call = createCall(body = body)
-        coEvery { service.getById(testId, 1) } returns metadata()
-        coEvery { documentService.getCollaboration(testId, 1) } returns DocumentCollaboration(
-            metadataId = testId,
-            version = 1,
-            content = existing,
-        )
-        val captured = slot<DocumentCollaborationInput>()
-        coEvery { documentService.setCollaboration(capture(captured)) } returns true
-
-        val result = executeRoute(call, authenticationContext)
-
-        assertSame(HttpStatusCode.Accepted, result)
-        // The merged output is a re-encoded state of applying both updates; it should not be
-        // byte-identical to either input, and it must be non-empty.
-        val merged = captured.captured.content
-        assertTrue(merged != null && merged.isNotEmpty())
-        assertTrue(!body.contentEquals(merged))
-    }
-
-    @Test
     fun `uses version query parameter when present`() = runTest {
         val body = docUpdate("v3")
         val call = createCall(queryParams = mapOf("version" to "3"), body = body)
         coEvery { service.getById(testId, 3) } returns metadata(version = 3)
-        coEvery { documentService.getCollaboration(testId, 3) } returns null
         val captured = slot<DocumentCollaborationInput>()
-        coEvery { documentService.setCollaboration(capture(captured)) } returns true
+        coEvery { documentService.mergeCollaboration(capture(captured)) } returns body
 
         val result = executeRoute(call, authenticationContext)
 
         assertSame(HttpStatusCode.Accepted, result)
         assertEquals(3, captured.captured.version)
         coVerify { service.getById(testId, 3) }
-        coVerify { documentService.getCollaboration(testId, 3) }
     }
 
     @Test
@@ -183,8 +136,7 @@ class SetDocumentCollaborationCoverageTest {
         val body = docUpdate("x")
         val call = createCall(queryParams = mapOf("version" to "not-a-number"), body = body)
         coEvery { service.getById(testId, 1) } returns metadata()
-        coEvery { documentService.getCollaboration(testId, 1) } returns null
-        coEvery { documentService.setCollaboration(any()) } returns true
+        coEvery { documentService.mergeCollaboration(any()) } returns body
 
         val result = executeRoute(call, authenticationContext)
 
@@ -230,6 +182,6 @@ class SetDocumentCollaborationCoverageTest {
             executeRoute(call, authenticationContext)
         }
         assertEquals("unauthorized", ex.message)
-        coVerify(exactly = 0) { documentService.setCollaboration(any()) }
+        coVerify(exactly = 0) { documentService.mergeCollaboration(any()) }
     }
 }

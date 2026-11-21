@@ -1,0 +1,54 @@
+<component tag="workops-sla">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsSlaModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsSlaModel(initial.kind, initial.offset, initial.targetId, initial.policies, initial.calendars, initial.loaded, initial.editing, initial.draft, initial.draftRevision, initial.policyDetail, initial.calendarDetail, initial.resultId, initial.feedback)</script>
+  <island name="sla" :key="initial.kind"><page-shell class="workops-page" fill>
+    <page-heading title="SLA" subtitle="Service-level policies and working calendars."><button data-bml-coalesce id="workops-sla-new" primary icon="plus" :disabled="!model.loaded" @click="model.open()">New { model.entityLabel }</button><icon-button icon="refresh" label="Refresh SLA settings" data-bml-coalesce @click="model.retry(ctx)" /><if model.resultHref.isNotBlank()><button-link :href="model.resultHref" size="xs" icon="arrow-right">Show the created { model.entityLabel }</button-link></if></page-heading>
+    <div class="workops-content" data-workops-sla>
+      <tabs label="SLA settings" :items="model.tabs" />
+
+      <workops-feedback id="sla-0" :feedback="model.feedback" />
+
+      <if !model.loaded><p role="status">SLA settings have not been loaded. Refresh to try again.</p><else-if model.showingCalendars>
+        <if model.pageCalendars.isEmpty()><empty-state title="No working calendars on this page." /><else><card :padded="false"><table-scroll label="Working calendars"><table><caption>Working calendars</caption><thead><tr><th scope="col">Name</th><th scope="col">Time zone</th><th scope="col">Description</th><th scope="col">Actions</th></tr></thead><tbody>
+          <for row in model.pageCalendars><tr :id='"workops-sla-" + row.id' :data-workops-sla-calendar="row.id"><td>{ row.name }</td><td>{ row.timeZone }</td><td>{ row.description }</td><td><icon-button icon="eye" data-bml-coalesce :label='"View " + row.name' @click="model.view(row.id)" /></td></tr></for>
+        </tbody></table></table-scroll></card></if>
+      <else>
+        <if model.pagePolicies.isEmpty()><empty-state title="No SLA policies on this page." /><else><card :padded="false"><table-scroll label="SLA policies"><table><caption>SLA policies</caption><thead><tr><th scope="col">Name</th><th scope="col">Goals</th><th scope="col">Description</th><th scope="col">Actions</th></tr></thead><tbody>
+          <for row in model.pagePolicies><tr :id='"workops-sla-" + row.id' :data-workops-sla-policy="row.id"><td>{ row.name }</td><td>{ row.goals.size }</td><td>{ row.description }</td><td><icon-button icon="eye" data-bml-coalesce :label='"View " + row.name' @click="model.view(row.id)" /></td></tr></for>
+        </tbody></table></table-scroll></card></if>
+      </if>
+      <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" :label='model.title + " pages"' />
+      <dialog data-bml-coalesce :title='"New " + model.entityLabel' triggerLabel="SLA creation" :showTrigger="false" :forceOpen="model.editing" :completed="!model.editing" returnFocus="#workops-sla-new" size="lg" @dialogdismiss="model.cancel()">
+        <form data-bml-coalesce class="modal-form" @submit="model.save(form.name, form.description, form.timeZone, form.weeklyHours, form.holidays, ctx)"><form-body padded class="modal-fields">
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert><p>Your draft is retained.</p></if>
+          <if model.feedback.failed><form-actions align="start"><button icon="refresh" data-bml-coalesce @click="model.reloadDraft(form.name, form.description, form.timeZone, form.weeklyHours, form.holidays, ctx)">Retry loading SLA settings</button></form-actions></if>
+          <field label="Name"><input name="name" :value="model.draft.name" required /></field>
+          <field label="Description"><input multiline name="description" :value="model.draft.description" :rows="2" /></field>
+          <if model.showingCalendars>
+            <field label="Time zone" hint="Use an IANA zone, such as America/New_York."><input name="timeZone" :value="model.draft.timeZone" required /></field>
+            <section-heading title="Weekly hours" /><help-text>Use uppercase day names and startLocal/endLocal times. An endLocal of 24:00 means end of day.</help-text>
+            <json-editor name="weeklyHours" label="Weekly hours JSON" :text="model.draft.weeklyHours" mode="text" :mainMenuBar="false" :navigationBar="false" :preserveKey='"workops-sla-weekly-" + model.draftRevision' />
+            <section-heading title="Holidays" /><help-text>Use an array of dates in YYYY-MM-DD format.</help-text>
+            <json-editor name="holidays" label="Holidays JSON" :text="model.draft.holidays" mode="text" :mainMenuBar="false" :navigationBar="false" :preserveKey='"workops-sla-holidays-" + model.draftRevision' />
+          </if>
+        </form-body><form-actions bordered class="modal-footer"><button data-dialog-close @click="model.cancel()">Cancel</button><button primary type="submit">Create { model.entityLabel }</button></form-actions></form>
+      </dialog>
+      <dialog data-bml-coalesce title="SLA policy detail" triggerLabel="SLA policy detail" :showTrigger="false" :forceOpen="model.policyDetail != null" :completed="model.policyDetail == null" returnFocus="#workops-sla-new" size="lg" @dialogdismiss="model.closeDetail()">
+        <div class="modal-form"><form-body padded class="modal-fields"><h2>{ model.policyDetail?.name }</h2><p>{ model.policyDetail?.description }</p><h3>Goals</h3>
+          <if model.policyDetail?.goals.isNullOrEmpty()><empty-state title="No goals defined for this policy." compact /><else><for goal in requireNotNull(model.policyDetail).orderedGoals>
+            <section class="sla-goal" :data-workops-sla-goal="goal.id"><section-heading :title="goal.name"><badge>{ goal.duration }</badge><span>At risk: { goal.risk }%</span></section-heading>
+              <source-view :content="goal.start" label="Start condition" compact wrapped>Start condition</source-view><source-view :content="goal.stop" label="Stop condition" compact wrapped>Stop condition</source-view>
+              <if goal.pause.isNotBlank()><source-view :content="goal.pause" label="Pause condition" compact wrapped>Pause condition</source-view></if>
+            </section>
+          </for></if>
+        </form-body><form-actions bordered class="modal-footer"><button data-dialog-close @click="model.closeDetail()">Close</button></form-actions></div>
+      </dialog>
+      <dialog data-bml-coalesce title="Working calendar detail" triggerLabel="Working calendar detail" :showTrigger="false" :forceOpen="model.calendarDetail != null" :completed="model.calendarDetail == null" returnFocus="#workops-sla-new" size="lg" @dialogdismiss="model.closeDetail()">
+        <div class="modal-form"><form-body padded class="modal-fields"><h2>{ model.calendarDetail?.name }</h2><p>{ model.calendarDetail?.description }</p><p>Time zone: { model.calendarDetail?.timeZone }</p>
+          <if model.calendarDetail != null><h3>Weekly hours</h3><json-editor name="storedWeeklyHours" label="Stored weekly hours" :value="requireNotNull(model.calendarDetail).weeklyHours" readOnly :preserveKey='"workops-sla-stored-weekly-" + model.calendarDetail?.id' /><h3>Holidays</h3><json-editor name="storedHolidays" label="Stored holidays" :value="requireNotNull(model.calendarDetail).holidays" readOnly :preserveKey='"workops-sla-stored-holidays-" + model.calendarDetail?.id' /></if>
+        </form-body><form-actions bordered class="modal-footer"><button data-dialog-close @click="model.closeDetail()">Close</button></form-actions></div>
+      </dialog>
+    </div>
+  </page-shell></island>
+  <style scoped>.sla-goal { display: grid; gap: 12px; min-width: 0; padding-bottom: 16px; border-bottom: 1px solid var(--line); }</style>
+</component>

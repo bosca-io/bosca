@@ -8,7 +8,7 @@
         <p class="example-note" :id='"comment-context-" + comment.id'>Use at least eight characters.</p>
         <if comment.visible>
           <comment-editor :id='"comment-" + comment.id + "-" + comment.revision' label="Example comment"
-                          :value="comment.draft.value" :error="comment.draft.error" :describedBy='"comment-context-" + comment.id'
+                          :value="comment.draft.value" :error="comment.draft.error" :describedBy='"comment-context-" + comment.id' mentions
                           :submitDisabled="comment.locked" :readonly="comment.readOnly" :disabled="comment.disabled"
                           :hint='if (comment.locked) "Posting is paused. You can keep editing your draft." else ""' submitLabel="post comment">
             <button type="reset" size="sm" :disabled="comment.readOnly || comment.disabled" :data-comment-reset="comment.id">Reset draft</button>
@@ -40,6 +40,8 @@
   </island>
   <script client scoped>
     import { retainDisclosure } from "@client/catalog-disclosure";
+    import { catalogMentions } from "@client/catalog-mentions";
     retainDisclosure(ctx);
+    catalogMentions(ctx);
   </script>
 </component>

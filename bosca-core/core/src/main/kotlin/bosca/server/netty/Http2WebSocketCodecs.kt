@@ -27,6 +27,7 @@ internal fun ChannelPipeline.installHttp2WebSocketCodecs(
     transportName: String,
     transport: Http2WebSocketStreamHandler,
     idleTimeoutSeconds: Long,
+    maximumMessageSize: Int = NettyHttpHandler.MAX_WEBSOCKET_FRAME_SIZE,
 ) {
     var previous = transportName
     if (idleTimeoutSeconds > 0) {
@@ -41,7 +42,7 @@ internal fun ChannelPipeline.installHttp2WebSocketCodecs(
         .expectMaskedFrames(true)
         .allowMaskMismatch(false)
         .allowExtensions(false)
-        .maxFramePayloadLength(NettyHttpHandler.MAX_WEBSOCKET_FRAME_SIZE)
+        .maxFramePayloadLength(maximumMessageSize)
         // Netty's built-in violation handling attaches ChannelFutureListener.CLOSE to the
         // close-frame write. Closing a multiplexed child that way can reset it before the close
         // frame reaches the peer, so NettyHttpHandler sends the close and the close observer below
@@ -69,7 +70,7 @@ internal fun ChannelPipeline.installHttp2WebSocketCodecs(
     addAfter(
         PipelineHandlerNames.HTTP2_WEBSOCKET_UTF8_VALIDATOR,
         PipelineHandlerNames.HTTP2_WEBSOCKET_AGGREGATOR,
-        WebSocketFrameAggregator(NettyHttpHandler.MAX_WEBSOCKET_FRAME_SIZE),
+        WebSocketFrameAggregator(maximumMessageSize),
     )
 }
 

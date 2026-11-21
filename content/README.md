@@ -141,6 +141,14 @@ once if it uses the same content more than once. Content can belong to multiple 
 When already querying a `GuideStep`, use `guide { id name slug }` to retrieve its parent;
 that field returns null if the parent is missing or inaccessible.
 
+Document collaboration uses `/api/v1/content/metadata/{id}/document/collaboration?version={version}`.
+`HEAD` checks Content edit access, and `GET` reads the stored binary Yjs state. `PUT` atomically
+merges an update and returns Accepted. `POST` returns the durable binary state: an empty request
+initializes it from the canonical document, while a nonempty request merges the supplied update.
+Initialization preserves existing maps and deletion history. Concurrent first opens share the same
+seed, and concurrent updates serialize on the collaboration row. Every route checks Content edit
+permission under the request's authentication.
+
 ## Dependencies
 
 - `io.bosca:core`, `io.bosca:core-security`, `io.bosca:core-storage`, `io.bosca:core-scheduler` -- from bosca-core

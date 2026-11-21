@@ -25,6 +25,7 @@ class WorkOpsFormSubmissionProcessorTest {
 
     private val projectId = UUID.random()
     private val profileId = UUID.random()
+    private val principalId = UUID.random()
     private val schemaId = UUID.random()
 
     private val project = Project(
@@ -80,20 +81,36 @@ class WorkOpsFormSubmissionProcessorTest {
             put("severity", "high")
         }
 
-        processor.process(profileId, submissionInput(attrs), schema(config))
+        processor.process(profileId, principalId, submissionInput(attrs), schema(config))
 
         val input = taskSlot.captured
         assertEquals(projectId, input.projectId)
         assertEquals("Bug in login", input.summary)
         assertEquals("Steps to reproduce...", input.descriptionMarkdown)
         assertEquals(JsonPrimitive("high"), input.customFields["severity"])
+        coVerify(exactly = 1) { taskService.create(any(), principalId, profileId, profileId) }
+    }
+
+    @Test
+    fun `anonymous intake uses the nil actor and retains its reporter profile`() = runTest {
+        coEvery { projectService.getById(projectId) } returns project
+        val taskId = UUID.random()
+        coEvery { taskService.create(any(), UUID.NIL, profileId, profileId) } returns mockk {
+            every { id } returns taskId
+        }
+        val config = buildJsonObject { putJsonObject("workOps") { put("projectId", projectId.toString()) } }
+
+        val submitted = processor.process(profileId, null, submissionInput(buildJsonObject { put("summary", "Public intake") }), schema(config))
+
+        assertEquals(taskId, submitted.id)
+        coVerify(exactly = 1) { taskService.create(any(), UUID.NIL, profileId, profileId) }
     }
 
     @Test
     fun `process throws when no workOps configuration block`() = runTest {
         val config = buildJsonObject { put("other", "data") }
         assertFailsWith<IllegalStateException> {
-            processor.process(profileId, submissionInput(buildJsonObject {}), schema(config))
+            processor.process(profileId, principalId, submissionInput(buildJsonObject {}), schema(config))
         }
         coVerify(exactly = 0) { taskService.create(any(), any(), any(), any()) }
     }
@@ -104,7 +121,7 @@ class WorkOpsFormSubmissionProcessorTest {
             putJsonObject("workOps") {}
         }
         assertFailsWith<IllegalStateException> {
-            processor.process(profileId, submissionInput(buildJsonObject {}), schema(config))
+            processor.process(profileId, principalId, submissionInput(buildJsonObject {}), schema(config))
         }
         coVerify(exactly = 0) { taskService.create(any(), any(), any(), any()) }
     }
@@ -120,6 +137,7 @@ class WorkOpsFormSubmissionProcessorTest {
         assertFailsWith<IllegalStateException> {
             processor.process(
                 profileId,
+                principalId,
                 submissionInput(buildJsonObject {}),
                 schema(config),
             )
@@ -143,7 +161,7 @@ class WorkOpsFormSubmissionProcessorTest {
             put("descriptionMarkdown", "Some description")
         }
 
-        processor.process(profileId, submissionInput(attrs), schema(config))
+        processor.process(profileId, principalId, submissionInput(attrs), schema(config))
 
         assertEquals("Default mapping test", taskSlot.captured.summary)
         assertEquals("Some description", taskSlot.captured.descriptionMarkdown)
@@ -158,7 +176,7 @@ class WorkOpsFormSubmissionProcessorTest {
         val createdTaskId = UUID.random()
         coEvery { projectService.getById(projectId) } returns project
         val taskSlot = slot<CreateTaskInput>()
-        coEvery { taskService.create(capture(taskSlot), profileId, profileId, profileId) } returns mockk {
+        coEvery { taskService.create(capture(taskSlot), principalId, profileId, profileId) } returns mockk {
             every { id } returns createdTaskId
         }
 
@@ -190,7 +208,7 @@ class WorkOpsFormSubmissionProcessorTest {
             put("customerImpact", "high")
         }
 
-        val submitted = processor.process(profileId, submissionInput(attrs), schema(config))
+        val submitted = processor.process(profileId, principalId, submissionInput(attrs), schema(config))
 
         assertEquals(createdTaskId, submitted.id)
         assertEquals(FormSchemaType.WORK_OPS, submitted.type)
@@ -211,7 +229,7 @@ class WorkOpsFormSubmissionProcessorTest {
         val createdTaskId = UUID.random()
         coEvery { projectService.getById(projectId) } returns null
         val taskSlot = slot<CreateTaskInput>()
-        coEvery { taskService.create(capture(taskSlot), profileId, profileId, profileId) } returns mockk {
+        coEvery { taskService.create(capture(taskSlot), principalId, profileId, profileId) } returns mockk {
             every { id } returns createdTaskId
         }
         val config = buildJsonObject { putJsonObject("workOps") {} }
@@ -220,7 +238,7 @@ class WorkOpsFormSubmissionProcessorTest {
             put("summary", "Create before project cache refresh")
         }
 
-        val submitted = processor.process(profileId, submissionInput(attrs), schema(config))
+        val submitted = processor.process(profileId, principalId, submissionInput(attrs), schema(config))
 
         assertEquals(createdTaskId, submitted.id)
         assertEquals(projectId, taskSlot.captured.projectId)
@@ -230,7 +248,7 @@ class WorkOpsFormSubmissionProcessorTest {
     @Test
     fun `process rejects a null configuration and a blank mapped summary`() = runTest {
         assertFailsWith<IllegalStateException> {
-            processor.process(profileId, submissionInput(buildJsonObject {}), schema(null))
+            processor.process(profileId, principalId, submissionInput(buildJsonObject {}), schema(null))
         }
 
         coEvery { projectService.getById(projectId) } returns project
@@ -243,6 +261,7 @@ class WorkOpsFormSubmissionProcessorTest {
         val failure = assertFailsWith<IllegalStateException> {
             processor.process(
                 profileId,
+                principalId,
                 submissionInput(buildJsonObject { put("title", "   ") }),
                 schema(config),
             )
@@ -294,7 +313,7 @@ class WorkOpsFormSubmissionProcessorTest {
 
         malformedInputs.forEach { (form, attributes) ->
             assertFailsWith<IllegalArgumentException> {
-                processor.process(profileId, submissionInput(attributes), form)
+                processor.process(profileId, principalId, submissionInput(attributes), form)
             }
         }
         coVerify(exactly = 0) { taskService.create(any(), any(), any(), any()) }

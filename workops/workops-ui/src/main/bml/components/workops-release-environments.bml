@@ -1,0 +1,31 @@
+<component tag="workops-release-environments">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsReleaseEnvironmentsModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsReleaseEnvironmentsModel(initial.id, initial.programId, initial.environments, initial.loaded, initial.states, initial.selected, initial.projectNames, initial.versionNames, initial.feedback, initial.labelFeedback)</script>
+  <island name="releaseEnvironments" :key="initial.id"><card :padded="false"><html:section class="release-environments" data-workops-release-environments>
+    <section-heading title="Environments" subtitle="Promotion families and current targets for this release's compatible projects."><icon-button size="md" icon="refresh" label="Refresh environment state" data-bml-coalesce @click="model.refresh(ctx)" /><button-link size="md" :href='"/workops/releases/environments?programId=" + bosca.workops.ui.workOpsEncode(model.programId)'>Manage environments</button-link></section-heading>
+    <form-body padded>
+    <p ref="pollError" role="status" aria-live="polite" />
+    <if model.feedback.failed><alert>Environments could not be refreshed. Previously loaded state may be stale. { model.feedback.message }</alert></if>
+    <if model.labelFeedback.failed><alert>Project/version labels unavailable: { model.labelFeedback.message }</alert></if>
+    <if model.loaded && model.environments.isEmpty()><empty-state title="No environments are configured for this program." compact /></if>
+    <div class="release-environment-families"><for family in model.families><card :title="family.label" :data-workops-promotion-family="family.id">
+      <if family.cyclic><alert tone="warning">This promotion family contains a cycle. Check its configured promotion sources.</alert></if>
+      <div class="release-environment-stops"><for environment in family.environments><button data-bml-coalesce :disabled="!model.loaded" :aria-pressed='if (model.chosen(family).id == environment.id) "true" else "false"' :data-workops-release-environment="environment.id" @click="model.select(family.id, environment.id)">{ environment.name } <badge :tone="model.state(environment.id).tone">{ model.state(environment.id).status }</badge></button></for></div>
+      <for environment in listOf(model.chosen(family))><for state in listOf(model.state(environment.id))><div class="release-environment-selected" :data-workops-selected-environment="environment.id">
+        <section-heading :title="environment.name"><if environment.requiresApproval><badge>Approval required</badge></if></section-heading>
+        <if environment.sources.isNotEmpty()><p>Promotes from { model.sourceNames(environment) }</p><else><p>Entry environment</p></if>
+        <if !state.loaded><alert>Deployment and drift data are unavailable. { state.error }</alert><if state.targets.isNotEmpty() || state.differences.isNotEmpty()><badge tone="warning">Stale</badge><p>Last loaded: { state.deployedCount } deployed targets for { state.compatibleProjects.size } compatible projects.</p></if>
+        <else-if state.compatibleProjects.isEmpty()><p>None of this release's projects target this environment.</p>
+        <else><p>{ state.deployedCount } deployed / { state.targets.size } reported targets · { state.compatibleProjects.size } compatible projects <badge :tone="state.tone">{ state.status }</badge></p></if>
+        <if state.targets.isNotEmpty()><table-scroll label="Current deployment targets"><table><caption>Current targets for bundled projects</caption><thead><tr><th scope="col">Project</th><th scope="col">Version</th><th scope="col">Target</th><th scope="col">Status</th><th scope="col">Deployed</th></tr></thead><tbody><for target in state.targets><tr :data-workops-environment-deployment="target.id"><td><if model.projectHref(target.projectId).isNotBlank()><a :href="model.projectHref(target.projectId)">{ model.projectName(target.projectId) }</a><else>{ model.projectName(target.projectId) }</if></td><td>{ model.versionName(target.versionId) }</td><td>{ target.targetKind.name }</td><td>{ target.status.name }</td><td><if target.deployedAt != null><time :value="target.deployedAt.orEmpty()" relative /><else>—</if></td></tr></for></tbody></table></table-scroll><else-if state.loaded && state.compatibleProjects.isNotEmpty()><empty-state title="No deployment targets" message="No current deployment targets are reported for the bundled projects." compact /></if>
+        <if state.differences.isNotEmpty()><table-scroll label="Environment differences"><table><caption>Differs from this release</caption><thead><tr><th scope="col">Project</th><th scope="col">Current</th><th scope="col">This release</th></tr></thead><tbody><for difference in state.differences><tr :data-workops-environment-drift="difference.projectId"><td>{ model.projectName(difference.projectId) }</td><td><if difference.deployedVersionId != null>{ model.versionName(difference.deployedVersionId) }<else>Not deployed</if></td><td>{ model.versionName(difference.expectedVersionId) }</td></tr></for></tbody></table></table-scroll></if>
+      </div></for></for>
+    </card></for></div>
+    </form-body>
+    <script client scoped>
+      import { workOpsReleaseRefresh } from "@client/helpers/release-refresh";
+      workOpsReleaseRefresh(ctx);
+    </script>
+  </html:section></card></island>
+  <style scoped>.release-environments { min-width: 0; }.release-environments p:empty { display: none; }.release-environment-families { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 16px; min-width: 0; }.release-environment-stops { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }.release-environment-selected { display: grid; gap: 12px; min-width: 0; }.release-environment-selected p { margin: 0; overflow-wrap: anywhere; }td { overflow-wrap: anywhere; }</style>
+</component>

@@ -1,0 +1,4 @@
+<page route="/workops/releases/{id}" requireAuth>
+  <script server provides="release">bosca.workops.ui.workOpsReleaseDetail()</script>
+  <workops-layout :title="release.title"><workops-release-detail :initial="release" /></workops-layout>
+</page>

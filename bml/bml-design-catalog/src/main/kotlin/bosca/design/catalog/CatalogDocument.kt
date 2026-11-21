@@ -11,7 +11,9 @@ import kotlinx.serialization.json.*
 @Serializable
 data class CatalogDocument(
     val id: String,
-    var value: JsonObject = documentValue(Document(content = listOf(
+    val studio: Boolean = false,
+    val referenceExample: Boolean = false,
+    var value: JsonObject = if (referenceExample) CatalogSamples.referenceDocument else if (studio) CatalogSamples.studioDocument else documentValue(Document(content = listOf(
         HeadingNode(HeadingAttributes(level = 2), content = listOf(TextNode(text = "A shared document"))),
         ParagraphNode(content = listOf(
             TextNode(text = "Write with "), TextNode(text = "familiar formatting", marks = listOf(Bold())),
@@ -27,14 +29,14 @@ data class CatalogDocument(
     var revision: Int = 0,
     var notice: String = "",
     var noticeSequence: Int = 0,
+    val media: Boolean = false,
 ) {
     suspend fun save(draft: String) {
         delay(150)
         val document = Json.parseToJsonElement(draft) as? JsonObject
         require(document?.get("type")?.jsonPrimitive?.content == "doc") { "Expected a ProseMirror document." }
-        value = requireNotNull(document)
         error = if (reject) "This example rejected the save. Your draft is retained." else ""
-        if (!reject) saved = draft
+        if (!reject) { value = requireNotNull(document); saved = draft }
         notice = if (reject) "Document save rejected." else "Document saved."
         noticeSequence++
     }

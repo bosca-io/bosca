@@ -39,6 +39,26 @@ class DesignLibraryTest {
     private val designJar = classpath.split(File.pathSeparator).map(::File).single { it.name.startsWith("bml-design-") }
 
     @Test
+    fun `board controls work in an independent packaged consumer`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            val log = File.createTempFile("design-boards-", ".log")
+            val process = ProcessBuilder(System.getProperty("design.fixture.node"), System.getProperty("design.fixture.boardsBrowser"),
+                base, if (development) "development" else "production", "consumer")
+                .redirectErrorStream(true).redirectOutput(log).start()
+            try {
+                assertTrue(process.waitFor(120, TimeUnit.SECONDS), "Board browser check timed out: ${log.readText()}")
+                assertEquals(0, process.exitValue(), log.readText())
+            } finally {
+                if (process.isAlive) {
+                    process.descendants().use { children -> children.toList().asReversed().forEach { it.destroyForcibly() } }
+                    process.destroyForcibly()
+                }
+                log.delete()
+            }
+        }
+    }
+
+    @Test
     fun `standalone consumer embeds application stylesheet and dependency notices`() {
         val log = File.createTempFile("design-resources-", ".log")
         withLauncher { command, directory ->
@@ -80,11 +100,11 @@ class DesignLibraryTest {
             val manifest = BmlLibraryArtifacts.decode(jar.getInputStream(jar.getJarEntry(BmlLibraryArtifacts.MANIFEST_PATH)).reader().readText())
             assertEquals("io.bosca:bml-design", manifest.library)
             assertEquals("bosca.design.generated", manifest.generatedPackage)
-            assertEquals(setOf("alert", "app-header", "app-shell", "badge", "bosca-mark", "button", "button-link",
+            assertEquals(setOf("alert", "app-header", "app-shell", "badge", "board", "board-card", "board-column", "bosca-mark", "button", "button-link",
                 "calendar-day-view", "calendar-event-fields", "calendar-month-view", "calendar-sidebar", "calendar-view", "calendar-week-view",
-                "card", "chart", "checkbox", "code-editor", "comment-editor", "confirm-dialog", "copy", "copy-field", "dashboard-grid", "dashboard-item", "dialog", "disclosure-heading",
-                "document-editor", "empty-state", "field", "file-drop", "flow-editor", "form-actions", "form-body", "fullscreen-button", "icon", "icon-button", "icon-link", "input", "json-editor", "loading-state", "page-heading", "page-shell", "pagination", "panel", "popover", "profile", "profile-menu", "progress-bar",
-                "search-input", "select", "section", "section-heading", "segmented-control", "source-view", "spinner", "subsystem-links", "subsystem-switcher", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs", "workspace"),
+                "card", "chart", "checkbox", "code-editor", "color-input", "comment-editor", "confirm-dialog", "copy", "copy-field", "dashboard-grid", "dashboard-item", "dialog", "disclosure-heading",
+                "document-editor", "empty-state", "field", "file-drop", "file-field", "flow-editor", "form-actions", "form-body", "fullscreen-button", "help-text", "html-content", "icon", "icon-button", "icon-link", "image-picker", "input", "json-editor", "loading-state", "page-heading", "page-shell", "pagination", "panel", "popover", "profile", "profile-menu", "progress-bar",
+                "schema-form", "search-input", "select", "section", "section-heading", "segmented-control", "slug-input", "source-view", "spinner", "subsystem-links", "subsystem-switcher", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs", "workspace"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
             assertTrue(manifest.requirements.isEmpty())
             assertTrue(manifest.providerRegistrars.isEmpty())
@@ -92,6 +112,7 @@ class DesignLibraryTest {
                 "segmented-control" to ("options" to "List<bosca.design.model.SegmentOption>"),
                 "view-tabs" to ("tabs" to "List<bosca.design.model.ViewTab>"),
                 "button" to ("size" to "String"),
+                "board-card" to ("targets" to "List<bosca.design.model.BoardMoveTarget>"),
                 "toast" to ("tone" to "String"),
                 "tooltip" to ("placement" to "String"),
                 "calendar-day-view" to ("events" to "List<bosca.design.model.CalendarEvent>"),
@@ -105,6 +126,9 @@ class DesignLibraryTest {
                 "dashboard-grid" to ("value" to "List<bosca.design.model.DashboardLayoutItem>"),
                 "document-editor" to ("value" to "kotlinx.serialization.json.JsonObject"),
                 "json-editor" to ("value" to "kotlinx.serialization.json.JsonElement"),
+                "file-field" to ("value" to "kotlinx.serialization.json.JsonElement"),
+                "image-picker" to ("id" to "String"),
+                "schema-form" to ("schema" to "kotlinx.serialization.json.JsonObject"),
                 "code-editor" to ("value" to "String"),
             )) {
                 assertEquals(expected.second, manifest.components.single { it.tag == tag }.props.single { it.name == expected.first }.declaredType)
@@ -123,6 +147,7 @@ class DesignLibraryTest {
             assertEquals("Map<String, kotlinx.serialization.json.JsonObject>", manifest.components.single { it.tag == "chart" }.props.single { it.name == "maps" }.declaredType)
             assertEquals("String?", manifest.components.single { it.tag == "json-editor" }.props.single { it.name == "text" }.declaredType)
             assertEquals("bosca.content.metadata.model.Document?", manifest.components.single { it.tag == "document-editor" }.props.single { it.name == "document" }.declaredType)
+            assertEquals("Boolean", manifest.components.single { it.tag == "select" }.props.single { it.name == "submitOnChange" }.declaredType)
             val button = manifest.components.single { it.tag == "button" }
             assertEquals("Boolean", button.props.single { it.name == "loading" }.declaredType)
             assertEquals("Int", manifest.components.single { it.tag == "icon" }.props.single { it.name == "size" }.declaredType)
@@ -269,9 +294,11 @@ class DesignLibraryTest {
             val widgets = request(client, base, "/widgets").body()
             assertTrue(listOf("data-bml-document-editor", "data-bml-flow-editor", "data-bml-dashboard-grid", "data-bml-chart").all { it in widgets }, widgets)
             assertTrue("Visits" in widgets && "Monday" in widgets && "name=\"document\"" in widgets && "name=\"graph\"" in widgets && "name=\"layout\"" in widgets, widgets)
-            assertTrue(styles(widgets).any { ".tiptap" in it })
-            assertTrue(styles(widgets).any { ".vue-flow__node" in it })
-            assertFalse(styles(widgets).any { "--jse-background-color" in it || ".source-keyword" in it })
+            val widgetStyles = styles(widgets)
+            assertTrue(widgetStyles.any { ".tiptap" in it })
+            assertTrue(widgetStyles.any { ".vue-flow__node" in it })
+            assertTrue(widgetStyles.any { ".source-keyword" in it && ".cm-editor" in it }, "Document code blocks include their editor and highlighting styles")
+            assertFalse(widgetStyles.any { "--jse-background-color" in it })
         }
     }
 
@@ -415,6 +442,36 @@ class DesignLibraryTest {
     }
 
     @Test
+    fun `alert block content retains structure and warning palettes in an independent consumer`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            val log = File.createTempFile("design-alerts-", ".log")
+            val process = ProcessBuilder(System.getProperty("design.fixture.node"),
+                System.getProperty("design.fixture.browser"), base,
+                if (development) "development-alerts" else "production-alerts", "alerts")
+                .redirectErrorStream(true).redirectOutput(log).start()
+            try {
+                assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Alert check timed out: ${log.readText()}")
+                assertEquals(0, process.exitValue(), log.readText())
+            } finally { process.destroyForcibly(); log.delete() }
+        }
+    }
+
+    @Test
+    fun `icon action sizes follow shared tokens in an independent consumer`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            val log = File.createTempFile("design-icon-actions-", ".log")
+            val process = ProcessBuilder(System.getProperty("design.fixture.node"),
+                System.getProperty("design.fixture.browser"), base,
+                if (development) "development-icons" else "production-icons", "icon-actions")
+                .redirectErrorStream(true).redirectOutput(log).start()
+            try {
+                assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Icon action check timed out: ${log.readText()}")
+                assertEquals(0, process.exitValue(), log.readText())
+            } finally { process.destroyForcibly(); log.delete() }
+        }
+    }
+
+    @Test
     fun `browser preserves native semantics geometry themes and action context`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             val log = File.createTempFile("design-browser-", ".log")
@@ -446,6 +503,21 @@ class DesignLibraryTest {
     }
 
     @Test
+    fun `schema forms submit typed values through shared controls in both palettes`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            val log = File.createTempFile("design-schema-forms-", ".log")
+            val process = ProcessBuilder(System.getProperty("design.fixture.node"),
+                System.getProperty("design.fixture.browser"), base,
+                if (development) "development-schema-forms" else "production-schema-forms", "schema-forms")
+                .redirectErrorStream(true).redirectOutput(log).start()
+            try {
+                assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Form browser check timed out: ${log.readText()}")
+                assertEquals(0, process.exitValue(), log.readText())
+            } finally { process.destroyForcibly(); log.delete() }
+        }
+    }
+
+    @Test
     fun `structured Kotlin inputs retain editor drafts widgets and native values`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             val log = File.createTempFile("design-structured-", ".log")
@@ -457,6 +529,41 @@ class DesignLibraryTest {
                 assertTrue(process.waitFor(90, TimeUnit.SECONDS), "Structured input check timed out: ${log.readText()}")
                 assertEquals(0, process.exitValue(), log.readText())
             } finally { process.destroyForcibly(); log.delete() }
+        }
+    }
+
+    @Test
+    fun `color fields retain exact native values through the independent consumer`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            val log = File.createTempFile("design-colors-", ".log")
+            val process = ProcessBuilder(System.getProperty("design.fixture.node"),
+                System.getProperty("design.fixture.browser"), base,
+                if (development) "development-colors" else "production-colors", "colors")
+                .redirectErrorStream(true).redirectOutput(log).start()
+            try {
+                assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Color input check timed out: ${log.readText()}")
+                assertEquals(0, process.exitValue(), log.readText())
+            } finally {
+                if (process.isAlive) process.descendants().use { children -> children.toList().asReversed().forEach { it.destroyForcibly() } }
+                process.destroyForcibly(); log.delete()
+            }
+        }
+    }
+
+    @Test
+    fun `prepared HTML renders through the independent compiled library in both palettes`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            val log = File.createTempFile("design-html-content-", ".log")
+            val process = ProcessBuilder(System.getProperty("design.fixture.node"), System.getProperty("design.fixture.browser"),
+                base, if (development) "development-html" else "production-html", "html-content")
+                .redirectErrorStream(true).redirectOutput(log).start()
+            try {
+                assertTrue(process.waitFor(60, TimeUnit.SECONDS), "HTML content check timed out: ${log.readText()}")
+                assertEquals(0, process.exitValue(), log.readText())
+            } finally {
+                if (process.isAlive) process.descendants().use { children -> children.toList().asReversed().forEach { it.destroyForcibly() } }
+                process.destroyForcibly(); log.delete()
+            }
         }
     }
 

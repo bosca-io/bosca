@@ -17,13 +17,16 @@ data class ContainerAttributes(
     val renderer: String? = null
 ) : DocumentAttributes {
 
+    /** Version of the referenced metadata, when the editor pins its container to a version. */
+    var version: Int? = null
+
     override fun withClasses(classes: String?): ContainerAttributes {
-        return copy(classes = classes)
+        return copy(classes = classes).also { it.version = version }
     }
 
     fun withReferences(metadataId: Uuid?, references: List<String>?): ContainerAttributes {
-        if (references.isNullOrEmpty()) return copy(metadataId = null, references = null)
-        return copy(metadataId = metadataId, references = references)
+        return (if (references.isNullOrEmpty()) copy(metadataId = null, references = null)
+            else copy(metadataId = metadataId, references = references)).also { it.version = version }
     }
 }
 

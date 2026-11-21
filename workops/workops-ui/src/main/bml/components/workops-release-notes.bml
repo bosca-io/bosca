@@ -1,0 +1,29 @@
+<component tag="workops-release-notes">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsReleaseNotesModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsReleaseNotesModel(initial.id, initial.components, initial.componentsLoaded, initial.notes, initial.notesLoaded, initial.canManage, initial.editing, initial.editingLabel, initial.draft, initial.draftRevision, initial.feedback, initial.readFeedback, initial.componentFeedback, initial.labelFeedback, initial.accessFeedback)</script>
+  <island name="releaseNotes" :key="initial.id"><card :padded="false"><html:section class="release-notes" :id='"workops-release-notes-" + model.id' tabindex="-1" data-workops-release-notes>
+    <section-heading title="Release notes" subtitle="Localized Google Play, App Store and TestFlight notes."><button data-bml-coalesce :disabled="!model.canManage || model.editing != null" @click="model.generate(ctx)">Generate from tags</button><icon-button size="md" icon="refresh" label="Refresh notes" data-bml-coalesce @click="model.refresh(ctx)" /></section-heading>
+    <form-body padded>
+    <p ref="pollError" role="status" aria-live="polite" />
+    <workops-feedback id="release-notes-0" :feedback="model.feedback" :active='model.editing == null' data-workops-release-notes-feedback />
+    <if !model.notesLoaded><alert>Release notes are unavailable. Previously loaded notes may be stale. { model.readFeedback.message }</alert></if>
+    <if model.componentFeedback.failed><alert>Bundled versions are unavailable: { model.componentFeedback.message }</alert></if>
+    <if model.labelFeedback.failed><alert>Project/version labels unavailable: { model.labelFeedback.message }</alert></if>
+    <if model.accessFeedback.failed><alert>Notes permissions are unavailable: { model.accessFeedback.message }</alert></if>
+    <if model.notesLoaded && model.notes.isEmpty()><empty-state title="No localized release notes" message="No localized notes are stored for these versions. Generate notes from tagged changes after linking the projects to localization." compact /></if>
+    <for note in model.notes><card :title="model.label(note)" :data-workops-release-note="note.versionId">
+      <form-actions align="start"><badge>{ if (note.manuallyEdited) "Manually edited" else "Generated" }</badge><if !model.notesLoaded><badge tone="warning">Stale</badge></if><if note.generated.isNotBlank()><time :value="note.generated" /></if><button data-bml-coalesce :disabled="!model.canManage || !model.notesLoaded" @click="model.beginEdit(note.versionId)">Edit notes</button></form-actions>
+      <if note.variantError.isNotBlank()><alert>Stored variants could not be displayed: { note.variantError }</alert></if>
+      <for variant in note.localized><article class="note-locale"><h3>{ variant.locale } <if variant.locale == note.sourceLocale><badge>Source</badge></if></h3><dl><dt>Google Play</dt><dd>{ variant.playReleaseNotes }</dd><dt>App Store</dt><dd>{ variant.appStoreWhatsNew }</dd><dt>TestFlight</dt><dd>{ variant.testFlightWhatToTest }</dd></dl></article></for>
+    </card></for>
+    <dialog data-bml-coalesce :data-bml-preserve='if (model.editing != null) "workops-release-note-dialog-" + model.id + "-" + model.draftRevision else ""' :title='"Edit notes · " + model.editingLabel' triggerLabel="Edit release notes" placement="right" size="lg" :showTrigger="false" :forceOpen="model.editing != null" :completed="model.editing == null" :returnFocus='"#workops-release-notes-" + model.id' @dialogdismiss="model.cancel()">
+      <form data-bml-coalesce @submit="model.save(form.variants, ctx)"><form-body padded><if model.feedback.failed><alert data-workops-release-notes-error>{ model.feedback.message }</alert></if><p>Keep one entry per configured BCP-47 locale. Each entry requires locale, playReleaseNotes, appStoreWhatsNew and testFlightWhatToTest.</p><p>Source locale: { model.editing?.sourceLocale }</p><json-editor name="variants" label="Localized release note variants" :text="model.draft" mode="text" :mainMenuBar="false" :navigationBar="false" :preserveKey='"release-note-draft-" + model.id + "-" + model.draftRevision' /></form-body><form-actions bordered><button data-dialog-close>Cancel</button><button data-bml-coalesce primary type="submit">Save notes</button></form-actions></form>
+    </dialog>
+    </form-body>
+    <script client scoped>
+      import { workOpsReleaseRefresh } from "@client/helpers/release-refresh";
+      workOpsReleaseRefresh(ctx);
+    </script>
+  </html:section></card></island>
+  <style scoped>.release-notes { min-width: 0; }.release-notes p:empty { display: none; }.note-locale { padding: 16px 0; border-top: 1px solid var(--line); }.note-locale h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; font: 600 14px/20px var(--font-sans); }.note-locale dl { display: grid; grid-template-columns: minmax(80px, 120px) minmax(0, 1fr); gap: 10px; margin: 0; }.note-locale dt { color: var(--fg-2); }.note-locale dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }</style>
+</component>

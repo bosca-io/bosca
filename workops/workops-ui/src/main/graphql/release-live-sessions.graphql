@@ -1,0 +1,3 @@
+subscription WorkOpsReleaseLiveSessions($appId: String!, $appVersion: String) {
+  liveSessions(appId: $appId, appVersion: $appVersion) { sessionId lat lon appId appVersion }
+}

@@ -24,7 +24,7 @@ export async function checkOverlays({ call, evaluate, until, base, mode, artifac
     for (const expression of ['document', 'window']) {
       const handle = await call('Runtime.evaluate', { expression });
       const result = await call('DOMDebugger.getEventListeners', { objectId:handle.result.objectId });
-      counts[expression] = result.listeners.filter(listener => ['keydown','pointerdown','scroll','resize','bml:update'].includes(listener.type)).length;
+      counts[expression] = result.listeners.filter(listener => ['keydown','pointerdown','scroll','resize','focusin','bml:update'].includes(listener.type)).length;
       await call('Runtime.releaseObject', { objectId:handle.result.objectId });
     }
     return counts;
@@ -41,6 +41,18 @@ export async function checkOverlays({ call, evaluate, until, base, mode, artifac
   await until(`document.readyState === 'complete' && document.querySelector('[data-programmatic-open=light]')?.dataset.bmlActionBound === 'true' && !document.querySelector('${trigger(popover)}').hasAttribute('title')`);
   const baseline = await listeners();
   const observers = await evaluate('window.fixtureObservers.size');
+  const dismissed = '[data-dialog-dismiss-surface=light]';
+  await click('[data-dialog-dismiss-open=light]'); await until(open(dismissed));
+  await evaluate(`window.dismissalReturn=document.querySelector('[data-dialog-dismiss-open=light]');document.querySelector('[data-dialog-dismiss-cancel=light]').click()`);
+  await until(`document.querySelector('[data-dialog-dismiss-count=light]').textContent.trim()==='1'&&!(${open(dismissed)})`);
+  await until(`document.activeElement===document.querySelector('[data-dialog-dismiss-open=light]')`);
+  assert.ok(await evaluate(`window.dismissalReturn!==document.querySelector('[data-dialog-dismiss-open=light]')`),'The compiled consumer resolves the replaced return target.');
+  await click('[data-dialog-dismiss-open=light]'); await until(open(dismissed)); await key('Escape');
+  await until(`document.querySelector('[data-dialog-dismiss-count=light]').textContent.trim()==='2'&&document.activeElement===document.querySelector('[data-dialog-dismiss-open=light]')`);
+  await click('[data-dialog-dismiss-open=light]'); await until(open(dismissed));
+  await evaluate(`document.querySelector('[data-dialog-dismiss-cancel=light]').click();document.querySelector('[data-dialog-dismiss-open=purple]').focus()`);
+  await until(`document.querySelector('[data-dialog-dismiss-count=light]').textContent.trim()==='3'&&!(${open(dismissed)})`);
+  assert.ok(await evaluate(`document.activeElement===document.querySelector('[data-dialog-dismiss-open=purple]')`),'A delayed action leaves focus chosen in another palette alone.');
   assert.equal(await evaluate('document.querySelector("#native-dialog").hasAttribute("data-bml-c")'), false);
   assert.ok(await evaluate(`document.querySelector('${edit}').classList.contains('fixture-dialog') && !document.querySelector('${edit}').hasAttribute('triggerLabel')`));
   assert.ok(await evaluate(`document.querySelector('${trigger(edit)}').getAttribute('aria-controls') === document.querySelector('${modal(edit)}').id`));

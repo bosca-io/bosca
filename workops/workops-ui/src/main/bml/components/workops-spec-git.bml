@@ -1,0 +1,26 @@
+<component tag="workops-spec-git">
+  <prop name="specId" type="String" required />
+  <script server provides="initial">bosca.workops.ui.workOpsSpecGit(specId)</script>
+  <script server provides="model">bosca.workops.ui.WorkOpsSpecGitModel(initial.specId, initial.data, initial.repositoryName, initial.pushing, initial.authorNameDraft, initial.authorEmailDraft, initial.commitSha, initial.feedback)</script>
+  <island name="specGit" :key="specId">
+    <card title="Git" data-workops-spec-git>
+      <workops-feedback id="spec-git-0" :feedback="model.feedback" />
+      <if model.feedback.failed><button icon="refresh" @click="model.retry(ctx)">Reload Git binding</button></if>
+      <if model.repositoryHref.isNotBlank()><p><a :href="model.repositoryHref">{ model.repositoryName.ifBlank { "Repository unavailable" } }</a></p></if>
+      <if model.spec?.gitPath.isNullOrBlank()><p>No Git file configured.</p><else><p class="workops-git-path">{ model.spec?.gitPath }</p></if>
+      <button id="workops-spec-push" icon="branch" :disabled="!model.bound" @click="model.open()">Push saved document</button>
+      <if model.commitSha.isNotBlank()><p class="workops-git-path">Commit <code>{ model.commitSha }</code></p></if>
+      <dialog title="Push specification to Git" triggerLabel="Push specification to Git" :showTrigger="false" :forceOpen="model.pushing" :completed="!model.pushing" returnFocus="#workops-spec-push" @dialogdismiss="model.cancel()">
+        <form @submit="model.push(form.authorName, form.authorEmail, ctx)"><form-body padded>
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+          <p>Push the saved document to { model.spec?.gitPath }. Save document edits before pushing.</p>
+          <field label="Commit author"><input name="authorName" :value="model.authorNameDraft" required /></field>
+          <field label="Author email"><input type="email" name="authorEmail" :value="model.authorEmailDraft" required /></field>
+        </form-body><form-actions bordered><button data-dialog-close @click="model.cancel()">Cancel</button><button type="submit" primary>Push saved document</button></form-actions></form>
+      </dialog>
+    </card>
+  </island>
+  <style scoped>
+    .workops-git-path { overflow-wrap: anywhere; }
+  </style>
+</component>

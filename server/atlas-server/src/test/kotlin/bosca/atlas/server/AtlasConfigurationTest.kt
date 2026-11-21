@@ -18,7 +18,7 @@ class AtlasConfigurationTest {
               runner:
                 enabled: true
                 concurrency: 3
-                queues: git, pipelines, index, backup
+                queues: git, pipelines, index, backup, workops, content, messages
                 listeners: false
         """.trimIndent().byteInputStream())
         val roles = AtlasConfiguration.from(config)
@@ -27,7 +27,7 @@ class AtlasConfigurationTest {
         assertFalse(roles.artifactsEnabled)
         assertFalse(roles.uiEnabled)
         assertFalse(roles.runnerListeners)
-        assertEquals(listOf("git", "pipelines", "index", "backup"), roles.runnerQueues)
+        assertEquals(listOf("git", "pipelines", "index", "backup", "workops", "content", "messages"), roles.runnerQueues)
         assertEquals(3, roles.runnerConcurrency)
     }
 
@@ -39,7 +39,7 @@ class AtlasConfigurationTest {
     @Test
     fun `invalid process roles and unknown queues are rejected`() {
         assertFailsWith<IllegalArgumentException> { AtlasConfiguration(apiEnabled = false) }
-        assertFailsWith<IllegalArgumentException> { AtlasConfiguration(runnerQueues = listOf("content")) }
+        assertFailsWith<IllegalArgumentException> { AtlasConfiguration(runnerQueues = listOf("unknown")) }
         assertFailsWith<IllegalArgumentException> { AtlasConfiguration(runnerQueues = listOf("git", "git")) }
         assertFailsWith<IllegalArgumentException> { AtlasConfiguration(runnerConcurrency = 0) }
     }

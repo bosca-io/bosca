@@ -28,28 +28,42 @@ const readJson = (file) => JSON.parse(readFileSync(file, "utf8"))
 const write = (file, content) => { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, content) }
 const copy = (from, to) => { mkdirSync(dirname(to), { recursive: true }); copyFileSync(from, to) }
 
-// Keep generated namespace construction removable when the binary is bundled again. Its fresh
-// object and getter table have no outside effects; callers using that namespace retain the IIFE.
+// Keep generated namespace and lazy-loader construction removable when the binary is bundled
+// again. Calling a retained loader still executes its module with the ordinary CommonJS lifecycle.
 function namespaceModule(code) {
-  const ast = code.includes("__export") ? parse(code, { ecmaVersion: "latest", sourceType: "module" }) : null
-  const helpers = new Set()
+  const ast = /__export|__commonJS/.test(code) ? parse(code, { ecmaVersion: "latest", sourceType: "module" }) : null
+  const helpers = new Set(), factories = new Set()
   for (const statement of ast?.body ?? []) for (const declaration of statement.declarations ?? []) {
     if (/^__export\d*$/.test(declaration.id.name) && declaration.init?.type === "ArrowFunctionExpression" &&
       /^\(target, all\) => \{\s*for \(var name in all\)\s*__defProp\d*\(target, name, \{ get: all\[name\], enumerable: true \}\);\s*\}$/.test(code.slice(declaration.init.start, declaration.init.end)))
       helpers.add(declaration.id.name)
+    if (/^__commonJS\d*$/.test(declaration.id.name) && declaration.init?.type === "ArrowFunctionExpression" &&
+      !declaration.init.async && declaration.init.params.every(parameter => parameter.type === "Identifier") &&
+      declaration.init.body.type === "FunctionExpression") factories.add(declaration.id.name)
   }
-  const exports = new Set((ast?.body ?? []).flatMap(statement => statement.type === "ExportNamedDeclaration"
-    ? statement.specifiers.filter(specifier => helpers.has(specifier.local.name)).map(specifier => specifier.exported.name) : []))
-  return { code, ast, helpers, exports }
+  const exported = names => new Set((ast?.body ?? []).flatMap(statement => statement.type === "ExportNamedDeclaration"
+    ? statement.specifiers.filter(specifier => names.has(specifier.local.name)).map(specifier => specifier.exported.name) : []))
+  return { code, ast, helpers, factories, exports: exported(helpers), factoryExports: exported(factories) }
 }
 
 function pureNamespaces(module, path, modules) {
   let { code } = module
-  const helpers = new Set(module.helpers), edits = []
+  const helpers = new Set(module.helpers), factories = new Set(module.factories), edits = []
   const body = module.ast?.body ?? []
   for (const statement of body) if (statement.type === "ImportDeclaration") {
-    const exports = modules.get(resolve(dirname(path), statement.source.value))?.exports
-    for (const binding of statement.specifiers) if (binding.type === "ImportSpecifier" && exports?.has(binding.imported.name)) helpers.add(binding.local.name)
+    const imported = modules.get(resolve(dirname(path), statement.source.value))
+    for (const binding of statement.specifiers) if (binding.type === "ImportSpecifier") {
+      if (imported?.exports.has(binding.imported.name)) helpers.add(binding.local.name)
+      if (imported?.factoryExports.has(binding.imported.name)) factories.add(binding.local.name)
+    }
+  }
+  for (const statement of body) for (const declaration of statement.declarations ?? []) {
+    const call = declaration.init
+    if (call?.type !== "CallExpression" || call.callee.type !== "Identifier" || !factories.has(call.callee.name) ||
+      call.arguments.length !== 1 || call.arguments[0].type !== "ObjectExpression" ||
+      !call.arguments[0].properties.every(property => property.type === "Property" && !property.computed &&
+        property.value.type === "FunctionExpression")) continue
+    edits.push({ start: call.start, end: call.start, code: "/* @__PURE__ */ " })
   }
   for (let i = 0; i + 1 < body.length; i++) {
     const statement = body[i], next = body[i + 1], declaration = statement.declarations?.[0]
@@ -63,7 +77,7 @@ function pureNamespaces(module, path, modules) {
     edits.push({ start: statement.start, end: next.end,
       code: `var ${name} = /* @__PURE__ */ (() => { ${code.slice(statement.start, next.end)} return ${name}; })();` })
   }
-  for (const edit of edits.reverse()) code = code.slice(0, edit.start) + edit.code + code.slice(edit.end)
+  for (const edit of edits.sort((a, b) => b.start - a.start)) code = code.slice(0, edit.start) + edit.code + code.slice(edit.end)
   return code
 }
 

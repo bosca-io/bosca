@@ -7,6 +7,7 @@ import ai.koog.prompt.llm.OpenAILLMProvider
 import bosca.ai.kit.agents.KitModels
 import bosca.ai.kit.agents.koogJson
 import bosca.ai.kit.configuration.KitJson
+import bosca.di.asProvider
 import bosca.localization.model.LocalizationAITranslationRequest
 import bosca.localization.model.LocalizationAITranslationResult
 import bosca.localization.model.LocalizationAITranslationSource
@@ -33,7 +34,7 @@ class KitLocalizationAIServiceTest {
             mockLLMAnswer(response) onRequestContains "Faster startup"
         }
         val kitJson = KitJson(koogJson(Json { ignoreUnknownKeys = true; isLenient = true }))
-        val service = KitLocalizationAIService(executor, KitModels(model), kitJson)
+        val service = KitLocalizationAIService(executor.asProvider(), KitModels(model), kitJson)
 
         val result = service.translate(
             LocalizationAITranslationRequest(

@@ -9,7 +9,11 @@
           <ul class="reference-index">
             <li><a href="/components/controls#ref-button" data-export-link="button"><code>button</code></a></li>
             <li><a href="/components/controls#ref-input" data-export-link="input"><code>input</code></a></li>
+            <li><a href="/components/controls#ref-color-input" data-export-link="color-input"><code>color-input</code></a></li>
+            <li><a href="/components/controls#ref-slug-input" data-export-link="slug-input"><code>slug-input</code></a></li>
             <li><a href="/components/controls#ref-file-drop" data-export-link="file-drop"><code>file-drop</code></a></li>
+            <li><a href="/components/controls#ref-file-field" data-export-link="file-field"><code>file-field</code></a></li>
+            <li><a href="/components/controls#ref-schema-form" data-export-link="schema-form"><code>schema-form</code></a></li>
             <li><a href="/components/controls#ref-field" data-export-link="field"><code>field</code></a></li>
             <li><a href="/components/controls#ref-checkbox" data-export-link="checkbox"><code>checkbox</code></a></li>
             <li><a href="/components/controls#ref-switch" data-export-link="switch"><code>switch</code></a></li>
@@ -33,6 +37,7 @@
             <li><a href="/components/layout#ref-panel" data-export-link="panel"><code>panel</code></a></li>
             <li><a href="/components/layout#ref-section" data-export-link="section"><code>section</code></a></li>
             <li><a href="/components/layout#ref-page-heading" data-export-link="page-heading"><code>page-heading</code></a></li>
+            <li><a href="/components/layout#ref-help-text" data-export-link="help-text"><code>help-text</code></a></li>
             <li><a href="/components/layout#ref-section-heading" data-export-link="section-heading"><code>section-heading</code></a></li>
             <li><a href="/components/layout#ref-disclosure-heading" data-export-link="disclosure-heading"><code>disclosure-heading</code></a></li>
             <li><a href="/components/layout#ref-app-header" data-export-link="app-header"><code>app-header</code></a></li>
@@ -90,6 +95,8 @@
             <li><a href="/components/content#ref-json-editor" data-export-link="json-editor"><code>json-editor</code></a></li>
             <li><a href="/components/content#ref-code-editor" data-export-link="code-editor"><code>code-editor</code></a></li>
             <li><a href="/components/content#ref-source-view" data-export-link="source-view"><code>source-view</code></a></li>
+            <li><a href="/components/content#ref-html-content" data-export-link="html-content"><code>html-content</code></a></li>
+            <li><a href="/components/content#ref-image-picker" data-export-link="image-picker"><code>image-picker</code></a></li>
             <li><a href="/components/content#ref-document-editor" data-export-link="document-editor"><code>document-editor</code></a></li>
           </ul>
         </div>
@@ -103,8 +110,11 @@
       <li><a href="/components/calendars#ref-calendar-week-view" data-export-link="calendar-week-view"><code>calendar-week-view</code></a></li>
       <li><a href="/components/calendars#ref-calendar-day-view" data-export-link="calendar-day-view"><code>calendar-day-view</code></a></li>
     </ul></div></card>
-    <card title="Dashboards, flows and charts"><div class="catalog-stack"><p class="catalog-description">Dashboard layouts, diagrams and analytics visualization.</p><ul class="reference-index">
-      <li><a href="/components/visualization#ref-dashboard-grid" data-export-link="dashboard-grid"><code>dashboard-grid</code></a></li>
+    <card title="Boards, dashboards, flows and charts"><div class="catalog-stack"><p class="catalog-description">Boards, dashboard layouts, diagrams and analytics visualization.</p><ul class="reference-index">
+            <li><a href="/components/visualization#ref-board" data-export-link="board"><code>board</code></a></li>
+            <li><a href="/components/visualization#ref-board-column" data-export-link="board-column"><code>board-column</code></a></li>
+            <li><a href="/components/visualization#ref-board-card" data-export-link="board-card"><code>board-card</code></a></li>
+            <li><a href="/components/visualization#ref-dashboard-grid" data-export-link="dashboard-grid"><code>dashboard-grid</code></a></li>
       <li><a href="/components/visualization#ref-dashboard-item" data-export-link="dashboard-item"><code>dashboard-item</code></a></li>
       <li><a href="/components/visualization#ref-flow-editor" data-export-link="flow-editor"><code>flow-editor</code></a></li>
       <li><a href="/components/visualization#ref-chart" data-export-link="chart"><code>chart</code></a></li>

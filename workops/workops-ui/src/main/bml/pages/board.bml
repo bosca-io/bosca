@@ -1,0 +1,10 @@
+<page route="/workops/boards/{id}" requireAuth>
+  <script server provides="model">bosca.workops.ui.workOpsBoardConfiguration()</script>
+  <script server provides="boardView">bosca.workops.ui.workOpsSelectedBoard(if (model.tab == "board") model.board?.id.orEmpty() else "")</script>
+  <script server provides="sprints">if (model.tab == "sprints" && model.board != null) bosca.workops.ui.workOpsSprints("board", model.id) else null</script>
+  <workops-layout :title="model.title"><page-shell class="workops-page" fill>
+    <workops-board-configuration :initial="model" />
+    <if sprints != null><workops-sprint-workspace :initial="requireNotNull(sprints)" /></if>
+    <if boardView != null><workops-board-view :initial="requireNotNull(boardView)" instance="detail" /></if>
+  </page-shell></workops-layout>
+</page>

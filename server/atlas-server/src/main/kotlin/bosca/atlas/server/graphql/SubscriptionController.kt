@@ -1,5 +1,6 @@
 package bosca.atlas.server.graphql
 
+import bosca.analytics.livesessions.LiveSessionsService
 import bosca.db.withConnectionManager
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
@@ -18,7 +19,17 @@ import kotlinx.coroutines.flow.map
 class SubscriptionController(
     private val groups: GroupEvaluator,
     private val pubSub: PubSubService,
+    private val liveSessionStream: LiveSessionsService,
 ) : GraphQLController<Subscription> {
+    /** Uses Analytics's retained/live stream and the platform's authenticated session-map gate. */
+    @Field
+    fun liveSessions(authenticationContext: AuthenticationContext, appId: String?, appVersion: String?) = flow {
+        withConnectionManager {
+            authenticationContext.principal() ?: throw SecurityException("Authentication required")
+        }
+        emitAll(liveSessionStream.subscribe(appId, appVersion))
+    }
+
     /** Uses the same authorization and event stream as the platform pipeline subscription. */
     @Field
     fun pipelineRun(authenticationContext: AuthenticationContext, runId: UUID) = flow {

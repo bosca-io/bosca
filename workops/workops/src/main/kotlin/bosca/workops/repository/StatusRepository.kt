@@ -19,13 +19,13 @@ interface StatusRepository {
     @Query("select * from workops.status where id = any(:ids)")
     suspend fun getByIds(ids: List<UUID>): List<Status>
 
-    @Query("select * from workops.status where category = (:category)::workops.status_category order by name")
+    @Query("select * from workops.status where category = upper(:category)::workops.status_category order by name")
     suspend fun getByCategory(category: StatusCategory): List<Status>
 
     @Query(
         """
         insert into workops.status (name, description, category, color_hex)
-        values (:name, :description, (:category)::workops.status_category, :colorHex)
+        values (:name, :description, upper(:category)::workops.status_category, :colorHex)
         returning *
         """
     )
@@ -36,7 +36,7 @@ interface StatusRepository {
         update workops.status
         set name = :name,
             description = :description,
-            category = (:category)::workops.status_category,
+            category = upper(:category)::workops.status_category,
             color_hex = :colorHex,
             version = version + 1
         where id = :id and version = :expectedVersion

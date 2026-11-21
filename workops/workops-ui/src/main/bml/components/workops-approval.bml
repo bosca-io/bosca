@@ -1,0 +1,29 @@
+<component tag="workops-approval">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsApprovalModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsApprovalModel(initial.id, initial.run, initial.loaded, initial.editing, initial.draft, initial.acknowledgement, initial.feedback, initial.acknowledgementSequence)</script>
+  <island name="approval" :key="initial.id">
+    <page-shell class="workops-page" fill>
+      <page-heading title="Pipeline approval" subtitle="Review a platform pipeline's pending approval."><button-link href="/workops/inbox" icon="arrow-left">Back to inbox</button-link><icon-button icon="refresh" label="Refresh approval" id="workops-approval-refresh" data-bml-coalesce @click="model.refresh(ctx)" /></page-heading>
+      <div class="workops-content" data-workops-approval>
+
+        <toast :id='"workops-approval-" + model.id' :message="model.acknowledgement" :sequence="model.acknowledgementSequence" tone="success" />
+        <if model.feedback.message.isNotBlank()><alert>{ model.feedback.message }</alert></if>
+        <if !model.loaded><p role="status">This approval request is unavailable. Refresh to try again.</p><else-if model.run == null><empty-state title="Run unavailable" message="This run is unavailable or has been removed." /><else>
+          <card title="Run status"><badge>{ model.statusLabel }</badge><p>Last changed <time :value="model.run?.modified.orEmpty()" /></p><if !model.run?.error.isNullOrBlank()><p>{ model.run?.error }</p></if></card>
+          <if model.gates.isEmpty()><empty-state title="No approval is currently waiting on this run." compact /><else>
+            <for gate in model.gates><card :title="gate.prompt"><form-actions><button @click="model.begin(gate.runId, gate.nodeId, true)">Approve</button><button @click="model.begin(gate.runId, gate.nodeId, false)">Reject</button></form-actions></card></for>
+          </if>
+        </if>
+        <dialog title="Confirm approval decision" triggerLabel="Confirm approval decision" :showTrigger="false" :forceOpen="model.editing" :completed="!model.editing" returnFocus="#workops-approval-refresh" @dialogdismiss="model.cancel()">
+          <form data-bml-coalesce class="modal-form" @submit="model.decide(form.note, form.confirmed, ctx)"><form-body padded class="modal-fields">
+            <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+            <p>{ model.draft.prompt }</p><p>{ if (model.draft.approved) "Approval resumes the pipeline." else "Rejection fails the run at this gate." }</p>
+            <field label="Note" hint="Optional. A rejection note is recorded with the failure."><input multiline name="note" :value="model.draft.note" /></field>
+            <checkbox name="confirmed" :label='if (model.draft.approved) "Confirm approval" else "Confirm rejection"' required />
+            <button icon="refresh" @click="model.refresh(ctx)">Reload approval request</button>
+          </form-body><form-actions bordered class="modal-footer"><button data-dialog-close @click="model.cancel()">Cancel</button><button primary type="submit">{ model.decisionLabel }</button></form-actions></form>
+        </dialog>
+      </div>
+    </page-shell>
+  </island>
+</component>

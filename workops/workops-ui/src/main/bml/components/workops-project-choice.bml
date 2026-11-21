@@ -1,0 +1,10 @@
+<component tag="workops-project-choice">
+  <prop name="projects" type="List<bosca.workops.ui.WorkOpsPlanningRow>" required />
+  <prop name="projectId" type="String" required />
+  <prop name="action" type="String" required />
+  <form class="project-choice" method="get" :action="action">
+    <select submitOnChange name="projectId" label="Project" searchable><option value="">Choose a project</option><for project in projects><option :value="project.id" :selected="project.id == projectId">{ project.key } — { project.name }</option></for></select>
+    <noscript><button type="submit">Choose project</button></noscript>
+  </form>
+  <style scoped>.project-choice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }</style>
+</component>

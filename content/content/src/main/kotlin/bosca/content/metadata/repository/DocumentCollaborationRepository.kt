@@ -14,6 +14,9 @@ interface DocumentCollaborationRepository {
     @Query("select * from document_collaborations where metadata_id = :metadataId and version = :version for update")
     suspend fun getByMetadataIdAndVersionForUpdate(metadataId: UUID, version: Int): DocumentCollaboration?
 
+    @Query("insert into document_collaborations (metadata_id, version, content) values (:metadataId, :version, :content) on conflict (metadata_id, version) do nothing")
+    suspend fun addIfMissing(collaboration: DocumentCollaboration)
+
     @Query("insert into document_collaborations (metadata_id, version, content) values (:metadataId, :version, :content) on conflict (metadata_id, version) do update set content = :content, modified = now()")
     suspend fun setCollaboration(collaboration: DocumentCollaboration)
 

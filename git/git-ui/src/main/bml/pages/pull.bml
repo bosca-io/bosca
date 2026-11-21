@@ -13,7 +13,7 @@
               <card title="Description" :padded="false">
                 <div class="pull-description">
                   <if page.descriptionHtml.isNotBlank()>
-                    <git-markdown :html="page.descriptionHtml" />
+                    <html-content :html="page.descriptionHtml" />
                   <else>
                     <p class="muted">No description provided.</p>
                   </if>

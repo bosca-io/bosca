@@ -1,6 +1,32 @@
 <page route="/components/visualization">
-  <catalog-document title="Dashboards, flows and charts" description="Dashboard layouts, VueFlow diagrams and ECharts analytics components." current="/components">
-    <nav class="reference-jumps" aria-label="On this page"><a href="#ref-dashboard-grid">dashboard-grid</a><a href="#ref-dashboard-item">dashboard-item</a><a href="#ref-flow-editor">flow-editor</a><a href="#ref-chart">chart</a></nav>
+  <catalog-document title="Boards, dashboards, flows and charts" description="Board controls, dashboard layouts, VueFlow diagrams and ECharts analytics components." current="/components">
+    <nav class="reference-jumps" aria-label="On this page"><a href="#ref-board">board</a><a href="#ref-board-column">board-column</a><a href="#ref-board-card">board-card</a><a href="#ref-dashboard-grid">dashboard-grid</a><a href="#ref-dashboard-item">dashboard-item</a><a href="#ref-flow-editor">flow-editor</a><a href="#ref-chart">chart</a></nav>
+    <reference-entry name="board"
+      :api='"id: String (required)\nlabel: String (required)\nreadOnly: Boolean = false\ndisabled: Boolean = false"'
+      :contract='"Root receives attributes/classes. Default children are board-column components with application-owned content. The application supplies card data, valid destinations, authorization and saves. IDs are local to this board; scroll keys and preservation keys are unique in the surrounding rendered view. Board and column scroll positions survive refreshed content."'
+      :keyboard='"The named board region supports native scrolling. Cards expose a Move button for pointer/touch dragging or a keyboard destination dialog. Readonly retains content and hides movement; disabled retains content while disabling moves. Without scripts, projected columns, content and links remain readable."'
+      :css='"--board-height (620px), --board-column-min-width (260px), --board-gap (16px), --board-column-bg, --board-card-bg and shared palette/focus tokens."'
+      :snippet='"<board id=\"review\" label=\"Review board\">\n  <board-column columnId=\"todo\" label=\"To do\" scrollKey=\"review-todo\">Your cards</board-column>\n</board>"'>
+      <board id="reference-board" label="Reference board" readOnly><board-column columnId="todo" label="To do" scrollKey="reference-board-todo"><board-card cardId="proposal" label="Proposal"><p class="catalog-description">Application-owned proposal content.</p></board-card></board-column><board-column columnId="done" label="Done" scrollKey="reference-board-done"><p class="catalog-description">No items.</p></board-column></board>
+      <a class="catalog-link" href="/boards">Working boards in both palettes</a>
+    </reference-entry>
+    <reference-entry name="board-column"
+      :api='"columnId: String (required)\nlabel: String (required)\nsummary: String = \"\"\nscrollKey: String (required)"'
+      :contract='"A named column inside board, with projected cards or application-owned empty/quick-add content. The application supplies any count or WIP summary. columnId identifies movement destinations; scrollKey preserves this column’s vertical scroll through surrounding updates."'
+      :keyboard='"Projected card links and controls retain their native keyboard behavior. The shared Move dialog can reach permitted destinations outside the current viewport. Pointer/touch dragging scrolls near the board and column edges."'
+      :css='"--board-column-bg, --board-column-min-width, --board-gap, shared typography, border, radius and focus tokens."'
+      :snippet='"<board-column columnId=\"review\" label=\"Review\" summary=\"3 items\" scrollKey=\"proposal-review\">\n  Your application-owned cards\n</board-column>"'>
+      <board id="reference-board-column" label="Reference column" readOnly><board-column columnId="review" label="Review" summary="1 item" scrollKey="reference-column-review"><board-card cardId="review" label="Review item"><p class="catalog-description">The application supplies this content and summary.</p></board-card></board-column></board>
+    </reference-entry>
+    <reference-entry name="board-card"
+      :api='"cardId: String (required)\nlabel: String (required)\ntargets: List<bosca.design.model.BoardMoveTarget> = emptyList()\nmovable: Boolean = false\ndisabled: Boolean = false\npreserveKey: String = \"\""'
+      :contract='"Default children remain application-owned BML content. Targets use BoardMoveTarget(id,label) and must identify rendered columns in this board. Stable preserveKey retains the body, local input and pending request while the card changes columns or surrounding content refreshes; change it when replacing the projected body. boardmove supplies {cardId,columnId,waitUntil}; register the application save promise synchronously. Rejection retains the card/destination and emits boarderror {cardId,columnId,message}. The library does not write application data."'
+      :keyboard='"Activate Move with Enter or Space, then use the shared destination select and Move item. Arrow keys, Home and End select a destination. Escape dismisses the dialog or cancels a pointer/touch drag. Pending saves prevent repeat submission. Readonly/disabled states preserve ordinary projected content."'
+      :css='"--board-card-bg, --board-column-bg and shared typography, control, border, radius and focus tokens."'
+      :snippet='"<board-card :cardId=\"item.id\" :label=\"item.title\" movable :targets=\"allowedTargets\" :preserveKey=\"item.id\">\n  <a :href=\"item.href\">{ item.title }</a>\n</board-card>"'>
+      <board id="reference-board-card" label="Reference card" readOnly><board-column columnId="todo" label="To do" scrollKey="reference-card-todo"><board-card cardId="notes" label="Projected notes"><field label="Example note"><input value="Application content stays here" /></field></board-card></board-column></board>
+      <a class="catalog-link" href="/boards">Movement, rejection and retained notes</a>
+    </reference-entry>
     <reference-entry name="dashboard-grid"
       :api='"id: String (required)\nlabel: String (required)\nname: String = \"layout\"\nvalue: List<bosca.design.model.DashboardLayoutItem> = emptyList()\ncolumns: Int = 12\ncellHeight: Int = 60\nstackBelow: Int = 480\nlockedIds: Set<String> = emptySet()\nreadOnly: Boolean = false\ndisabled: Boolean = false\nerror: String = \"\"\npreserveKey: String = \"\""'
       :contract='"Root receives attributes/classes. Default children are direct dashboard-item widgets. value is a List<DashboardLayoutItem>; item IDs match itemId. Widget data stays in the application. layoutchange supplies {layout,itemId,kind}. Unlocked collisions push widgets downward; locked destinations are rejected. Stable preserveKey retains projected widget DOM and local layout; change it when adding/removing widget content. Applications own widget data, creation and saving."'

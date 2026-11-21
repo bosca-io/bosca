@@ -1,0 +1,6 @@
+<page route="/boards">
+  <catalog-document title="Boards" description="Columns and application-owned cards with pointer and keyboard movement." current="/boards">
+    <p class="page-intro">Drag a card's Move button, or activate it to choose a destination with the keyboard. The application supplies card content, allowed destinations and the save operation. Rejected moves retain the card and its local notes.</p>
+    <div class="catalog-stack"><div class="catalog-palette-dark"><board-example id="dark" /></div><div class="catalog-palette-light"><board-example id="light" /></div></div>
+  </catalog-document>
+</page>

@@ -537,6 +537,17 @@ class ServerRequestTest {
     }
 
     @Test
+    fun `opaque origins and blank referrers fall back to the addressed origin`() {
+        for (opaque in listOf("NULL", "null", "")) {
+            assertEquals("http://fallback.test", createMockRequest(headers = mapOf(
+                HttpHeaders.Origin to opaque,
+                HttpHeaders.Referer to "",
+                HttpHeaders.Host to "fallback.test",
+            )).appOrigin)
+        }
+    }
+
+    @Test
     fun `header returns header value`() {
         val request = createMockRequest(headers = mapOf("X-Custom" to "test"))
         assertEquals("test", request.header("X-Custom"))

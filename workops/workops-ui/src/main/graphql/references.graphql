@@ -1,0 +1,22 @@
+query WorkOpsReferenceMetadata($id: UUID!) {
+  content { metadata(id: $id) {
+    id name version
+      document { title content template { documentTemplate { containers { id name description type filters } } } }
+    content { type length urls { download { url } } }
+  } }
+}
+
+query WorkOpsReferenceCollection($id: UUID!, $offset: Long!) {
+  content { collections { collection(id: $id) {
+    id name description
+    items(limit: 26, offset: $offset) {
+      __typename
+      ... on Metadata { id name }
+      ... on Collection { id name }
+    }
+  } } }
+}
+
+query WorkOpsReferenceProfile($id: UUID!) {
+  profiles { profile(id: $id) { id name slug visibility } }
+}

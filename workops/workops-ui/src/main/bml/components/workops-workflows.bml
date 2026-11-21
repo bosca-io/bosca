@@ -1,0 +1,41 @@
+<component tag="workops-workflows">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsWorkflowsModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsWorkflowsModel(initial.kind, initial.offset, initial.targetId, initial.workflows, initial.schemes, initial.loaded, initial.editing, initial.draft, initial.deleting, initial.detail, initial.resultId, initial.resultKind, initial.feedback)</script>
+  <island name="workflows" :key="initial.kind"><page-shell class="workops-page" fill>
+    <page-heading title="Workflows" subtitle="Task lifecycle definitions and project workflow schemes."><button data-bml-coalesce id="workops-workflow-new" primary icon="plus" :disabled="!model.loaded" @click='model.open(model.kind, "")'>{ if (model.showingSchemes) "New workflow scheme" else "New workflow" }</button><icon-button icon="refresh" label="Refresh workflows" data-bml-coalesce @click="model.retry(ctx)" /><if model.resultHref.isNotBlank()><button-link :href="model.resultHref" size="xs" icon="arrow-right">{ if (model.resultKind == "schemes") "Show the saved workflow scheme" else "Show the saved workflow" }</button-link></if></page-heading>
+    <div class="workops-content" data-workops-workflows>
+      <tabs label="Workflow settings" :items="model.tabs" />
+
+      <workops-feedback id="workflows-0" :feedback="model.feedback" />
+
+      <if !model.loaded><p role="status">Workflows have not been loaded. Refresh to try again.</p><else-if model.showingSchemes>
+        <help-text>The default workflow applies unless a stored task-type override selects another workflow.</help-text>
+        <if model.pageSchemes.isEmpty()><empty-state title="No workflow schemes on this page." /><else><card :padded="false"><table-scroll label="Workflow schemes"><table><caption>Workflow schemes</caption><thead><tr><th scope="col">Name</th><th scope="col">Default workflow</th><th scope="col">Description</th><th scope="col">Actions</th></tr></thead><tbody>
+          <for row in model.pageSchemes><tr :id='"workops-workflow-" + row.id' :data-workops-workflow-scheme="row.id"><td>{ row.name }</td><td>{ model.workflowName(row.defaultId) }</td><td>{ row.description }</td><td><form-actions align="start"><icon-button icon="edit" data-bml-coalesce :label='"Edit " + row.name' @click='model.open("schemes", row.id)' /><icon-button icon="trash" data-bml-coalesce :label='"Delete " + row.name' @click='model.beginDelete("schemes", row.id)' /></form-actions></td></tr></for>
+        </tbody></table></table-scroll></card></if>
+      <else>
+        <if model.pageWorkflows.isEmpty()><empty-state title="No workflows on this page." /><else><card :padded="false"><table-scroll label="Workflows"><table><caption>Workflow definitions</caption><thead><tr><th scope="col">Name</th><th scope="col">States</th><th scope="col">Transitions</th><th scope="col">Description</th><th scope="col">Actions</th></tr></thead><tbody>
+          <for row in model.pageWorkflows><tr :id='"workops-workflow-" + row.id' :data-workops-workflow="row.id"><td>{ row.name }</td><td>{ row.states.size }</td><td>{ row.transitions.size }</td><td>{ row.description }</td><td><form-actions align="start"><icon-button icon="eye" data-bml-coalesce :label='"View " + row.name' @click="model.view(row.id)" /><icon-button icon="edit" data-bml-coalesce :label='"Edit " + row.name' @click='model.open("workflows", row.id)' /><icon-button icon="trash" data-bml-coalesce :label='"Delete " + row.name' @click='model.beginDelete("workflows", row.id)' /></form-actions></td></tr></for>
+        </tbody></table></table-scroll></card></if>
+      </if>
+      <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" :label='model.title + " pages"' />
+      <dialog data-bml-coalesce :title='(if (model.draft.id.isBlank()) "New " else "Edit ") + model.draft.label' triggerLabel="Workflow editor" :showTrigger="false" :forceOpen="model.editing" :completed="!model.editing" returnFocus="#workops-workflow-new" size="lg" @dialogdismiss="model.cancel()">
+        <form data-bml-coalesce class="modal-form" @submit="model.save(form.name, form.description, form.defaultId, ctx)"><form-body padded class="modal-fields">
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert><help-text>If this workflow changed, cancel and reopen to start a new edit.</help-text></if>
+          <if model.feedback.failed><form-actions align="start"><button icon="refresh" data-bml-coalesce @click="model.reloadDraft(form.name, form.description, form.defaultId, ctx)">Retry loading workflows</button></form-actions></if>
+          <field label="Name"><input name="name" :value="model.draft.name" required /></field>
+          <field label="Description"><input multiline name="description" :value="model.draft.description" :rows="2" /></field>
+          <if model.draft.kind == "schemes"><field label="Default workflow"><select label="Default workflow" name="defaultId" required><option value="" :selected="model.draft.defaultId.isBlank()">Choose a workflow</option><for choice in model.workflowChoices><option :value="choice.value" :selected="choice.value == model.draft.defaultId">{ choice.label }</option></for></select></field>
+          <else-if model.draft.id.isBlank()><help-text>New workflows start without states or transitions.</help-text>
+          <else-if model.editedWorkflow != null><workops-workflow-graph :workflow="requireNotNull(model.editedWorkflow)" /></if>
+        </form-body><form-actions bordered class="modal-footer"><button data-dialog-close @click="model.cancel()">Cancel</button><button primary type="submit">Save { model.draft.label }</button></form-actions></form>
+      </dialog>
+      <dialog data-bml-coalesce title="Workflow detail" triggerLabel="Workflow detail" :showTrigger="false" :forceOpen="model.detail != null" :completed="model.detail == null" returnFocus="#workops-workflow-new" size="lg" @dialogdismiss="model.closeDetail()">
+        <div class="modal-form"><form-body padded class="modal-fields"><if model.detail != null><h2>{ model.detail?.name }</h2><p>{ model.detail?.description }</p><workops-workflow-graph :workflow="requireNotNull(model.detail)" /></if></form-body><form-actions bordered class="modal-footer"><button data-bml-coalesce @click="model.editDetail()">Edit workflow</button><button data-dialog-close @click="model.closeDetail()">Close</button></form-actions></div>
+      </dialog>
+      <dialog data-bml-coalesce :title='"Delete " + (model.deleting?.label ?: "workflow")' triggerLabel="Delete workflow configuration" :showTrigger="false" :forceOpen="model.deleting != null" :completed="model.deleting == null" returnFocus="#workops-workflow-new" @dialogdismiss="model.cancelDelete()">
+        <form data-bml-coalesce @submit="model.delete(form.confirmed, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><p>Delete { model.deleting?.name }?</p><checkbox name="confirmed" label="Confirm deletion" required /></form-body><form-actions bordered><button data-dialog-close @click="model.cancelDelete()">Cancel</button><button primary type="submit">Delete { model.deleting?.label }</button></form-actions></form>
+      </dialog>
+    </div>
+  </page-shell></island>
+</component>

@@ -12,9 +12,6 @@ import bosca.security.service.AuthenticationContext
 import bosca.serialization.UUID
 import bosca.server.HttpStatusCode
 import bosca.server.ServerCall
-import yks.utils.Doc
-import yks.utils.applyUpdate
-import yks.utils.encodeStateAsUpdate
 
 @RouteController("/api/v1/content/metadata/{id}/document/collaboration", RouteMethod.PUT)
 class SetDocumentCollaboration(
@@ -29,16 +26,7 @@ class SetDocumentCollaboration(
         val metadata = service.getById(id, version) ?: throw NoSuchElementException("No metadata found for id $id")
         val body = call.request.bodyBytes()
         metadataPermissionEvaluator.verifyContentAllowed(authenticationContext, metadata, PermissionAction.EDIT)
-        val existing = documentService.getCollaboration(id, version)
-        val merged = if (existing != null && existing.content.isNotEmpty()) {
-            val doc = Doc()
-            applyUpdate(doc, existing.content)
-            applyUpdate(doc, body)
-            encodeStateAsUpdate(doc)
-        } else {
-            body
-        }
-        documentService.setCollaboration(DocumentCollaborationInput(id, version, merged))
+        documentService.mergeCollaboration(DocumentCollaborationInput(id, version, body))
         return HttpStatusCode.Accepted
     }
 }

@@ -1,7 +1,9 @@
 package bosca.workops.controller
 
 import bosca.security.model.PermissionAction
+import bosca.security.model.Principal
 import bosca.security.service.AuthenticationContext
+import bosca.security.service.ImpersonatedAuthenticationContext
 import bosca.serialization.OffsetDateTime
 import bosca.serialization.UUID
 import bosca.workops.model.board.Board
@@ -11,10 +13,14 @@ import bosca.workops.model.project.Portfolio
 import bosca.workops.model.project.Program
 import bosca.workops.model.project.Project
 import bosca.workops.model.sprint.CloseSprintInput
+import bosca.workops.model.sprint.CloseSprintDestination
 import bosca.workops.model.sprint.CreateSprintInput
 import bosca.workops.model.sprint.Sprint
 import bosca.workops.model.sprint.SprintState
 import bosca.workops.model.sprint.StartSprintInput
+import bosca.workops.model.task.Task
+import bosca.workops.model.workflow.Status
+import bosca.workops.model.workflow.StatusCategory
 import bosca.workops.service.BoardService
 import bosca.workops.service.PortfolioPermissionEvaluator
 import bosca.workops.service.PortfolioService
@@ -23,8 +29,13 @@ import bosca.workops.service.ProgramService
 import bosca.workops.service.ProjectPermissionEvaluator
 import bosca.workops.service.ProjectService
 import bosca.workops.service.SprintService
+import bosca.workops.service.StatusService
+import bosca.workops.service.TaskService
+import bosca.workops.service.TaskPermissionEvaluator
+import bosca.profile.profile.service.ProfileService
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -42,8 +53,13 @@ class SprintControllerTest {
     private val projectPermissions = mockk<ProjectPermissionEvaluator>(relaxed = true)
     private val programPermissions = mockk<ProgramPermissionEvaluator>(relaxed = true)
     private val portfolioPermissions = mockk<PortfolioPermissionEvaluator>(relaxed = true)
-    private val authentication = mockk<AuthenticationContext>(relaxed = true)
+    private val taskService = mockk<TaskService>(relaxed = true)
+    private val taskPermissions = mockk<TaskPermissionEvaluator>(relaxed = true)
+    private val statusService = mockk<StatusService>(relaxed = true)
+    private val profileService = mockk<ProfileService>(relaxed = true)
+    private val principalId = UUID.random()
     private val profileId = UUID.random()
+    private val authentication = ImpersonatedAuthenticationContext(Principal(id = principalId, primaryProfileId = profileId), emptyList())
 
     private fun queryController() = SprintQueryController(
         service,
@@ -65,6 +81,10 @@ class SprintControllerTest {
         projectPermissions,
         programPermissions,
         portfolioPermissions,
+        taskService,
+        taskPermissions,
+        statusService,
+        profileService,
     )
 
     @Test
@@ -224,8 +244,8 @@ class SprintControllerTest {
         coEvery { service.getById(started.id) } returns started
         coEvery { service.getById(closed.id) } returns closed
         coEvery { service.create(createInput) } returns created
-        coEvery { service.start(startInput) } returns started
-        coEvery { service.close(closeInput) } returns closed
+        coEvery { service.start(startInput, principalId, profileId) } returns started
+        coEvery { service.close(closeInput, principalId, profileId) } returns closed
 
         val controller = mutationController()
         assertEquals(created, controller.create(authentication, createInput))
@@ -242,8 +262,8 @@ class SprintControllerTest {
             portfolioPermissions.verifyAllowed(authentication, portfolio, PermissionAction.MANAGE)
         }
         coVerify(exactly = 1) { service.create(createInput) }
-        coVerify(exactly = 1) { service.start(startInput) }
-        coVerify(exactly = 1) { service.close(closeInput) }
+        coVerify(exactly = 1) { service.start(startInput, principalId, profileId) }
+        coVerify(exactly = 1) { service.close(closeInput, principalId, profileId) }
     }
 
     @Test
@@ -344,6 +364,105 @@ class SprintControllerTest {
         name = "Portfolio",
         ownerProfileId = profileId,
     )
+
+    @Test fun `start requires task edit for selected and unselected planned work before delegation`() = runTest {
+        val project = sampleProject(); val board = sampleBoard(projectId = project.id)
+        val previous = task(project.id); val selected = task(project.id)
+        val deleted = task(project.id).copy(deletedAt = OffsetDateTime.now())
+        val sprint = sampleSprint(board.id).copy(committedTaskIds = listOf(previous.id, deleted.id))
+        coEvery { service.getById(sprint.id) } returns sprint
+        coEvery { boardService.getById(board.id) } returns board
+        coEvery { projectService.getById(project.id) } returns project
+        coEvery { taskService.getByIds(any()) } returns listOf(previous, selected, deleted)
+        coEvery { taskPermissions.verifyAllowed(authentication, previous, PermissionAction.EDIT) } throws IllegalStateException("Task edit denied")
+        val input = StartSprintInput(sprint.id, sprint.version, committedTaskIds = listOf(selected.id))
+        assertFailsWith<IllegalStateException> { mutationController().start(authentication, input) }
+        coVerify(exactly = 0) { service.start(any(), any(), any()) }
+        coEvery { taskPermissions.verifyAllowed(authentication, previous, PermissionAction.EDIT) } returns Unit
+        coEvery { service.start(input, principalId, profileId) } returns sprint.copy(state = SprintState.ACTIVE)
+        assertEquals(SprintState.ACTIVE, mutationController().start(authentication, input).state)
+        coVerify(exactly = 1) { taskPermissions.verifyAllowed(authentication, selected, PermissionAction.EDIT) }
+        coVerify(exactly = 0) { taskPermissions.verifyAllowed(authentication, deleted, PermissionAction.EDIT) }
+    }
+
+    @Test fun `close checks task edit only for unfinished tasks and passes the human actor`() = runTest {
+        val project = sampleProject(); val board = sampleBoard(projectId = project.id)
+        val done = task(project.id); val open = task(project.id)
+        val deleted = task(project.id).copy(deletedAt = OffsetDateTime.now())
+        val sprint = sampleSprint(board.id).copy(state = SprintState.ACTIVE, committedTaskIds = listOf(done.id, open.id, deleted.id), addedDuringSprintTaskIds = emptyList())
+        coEvery { service.getById(sprint.id) } returns sprint
+        coEvery { boardService.getById(board.id) } returns board
+        coEvery { projectService.getById(project.id) } returns project
+        coEvery { taskService.getByIds(any()) } returns listOf(done, open, deleted)
+        coEvery { statusService.getByIds(any()) } returns listOf(
+            Status(id = done.statusId, name = "Done", category = StatusCategory.DONE, colorHex = "#334455"),
+            Status(id = open.statusId, name = "To do", category = StatusCategory.TODO, colorHex = "#334455"),
+        )
+        coEvery { taskPermissions.verifyAllowed(authentication, open, PermissionAction.EDIT) } throws IllegalStateException("Task edit denied")
+        val input = CloseSprintInput(sprint.id, sprint.version, listOf(CloseSprintDestination(open.id)))
+        assertFailsWith<IllegalStateException> { mutationController().close(authentication, input) }
+        coVerify(exactly = 0) { service.close(any(), any(), any()) }
+        coVerify(exactly = 0) { taskPermissions.verifyAllowed(authentication, done, PermissionAction.EDIT) }
+        coVerify(exactly = 0) { taskPermissions.verifyAllowed(authentication, deleted, PermissionAction.EDIT) }
+        coEvery { taskPermissions.verifyAllowed(authentication, open, PermissionAction.EDIT) } returns Unit
+        coEvery { service.close(input, principalId, profileId) } returns sprint.copy(state = SprintState.CLOSED)
+        assertEquals(SprintState.CLOSED, mutationController().close(authentication, input).state)
+    }
+
+    @Test fun `closing fails before delegation when a task status cannot be resolved`() = runTest {
+        val project = sampleProject(); val board = sampleBoard(projectId = project.id)
+        val open = task(project.id)
+        val sprint = sampleSprint(board.id).copy(state = SprintState.ACTIVE,
+            committedTaskIds = listOf(open.id), addedDuringSprintTaskIds = emptyList())
+        coEvery { service.getById(sprint.id) } returns sprint
+        coEvery { boardService.getById(board.id) } returns board
+        coEvery { projectService.getById(project.id) } returns project
+        coEvery { taskService.getByIds(listOf(open.id)) } returns listOf(open)
+        coEvery { statusService.getByIds(listOf(open.statusId)) } returns emptyList()
+
+        val failure = assertFailsWith<IllegalArgumentException> {
+            mutationController().close(authentication, CloseSprintInput(sprint.id, sprint.version,
+                listOf(CloseSprintDestination(open.id))))
+        }
+        assertEquals("Task status is unavailable.", failure.message)
+        coVerify(exactly = 0) { service.close(any(), any(), any()) }
+    }
+
+    @Test fun `lifecycle attribution resolves a fallback profile and permits a principal without a profile`() = runTest {
+        val project = sampleProject(); val board = sampleBoard(projectId = project.id)
+        val sprint = sampleSprint(board.id).copy(committedTaskIds = emptyList(), addedDuringSprintTaskIds = emptyList())
+        val caller = ImpersonatedAuthenticationContext(Principal(id = principalId), emptyList())
+        val profile = mockk<bosca.profile.model.Profile>()
+        every { profile.id } returns profileId
+        coEvery { service.getById(sprint.id) } returns sprint
+        coEvery { boardService.getById(board.id) } returns board
+        coEvery { projectService.getById(project.id) } returns project
+        val input = StartSprintInput(sprint.id, sprint.version)
+        for (profiles in listOf(listOf(profile), emptyList())) {
+            val expectedProfileId = profiles.firstOrNull()?.id
+            coEvery { profileService.getByPrincipal(principalId) } returns profiles
+            coEvery { service.start(input, principalId, expectedProfileId) } returns sprint
+            assertEquals(sprint, mutationController().start(caller, input))
+        }
+        coVerify(exactly = 1) { service.start(input, principalId, profileId) }
+        coVerify(exactly = 1) { service.start(input, principalId, null) }
+    }
+
+    @Test fun `lifecycle changes require an authenticated actor before delegation`() = runTest {
+        val project = sampleProject(); val board = sampleBoard(projectId = project.id)
+        val sprint = sampleSprint(board.id).copy(committedTaskIds = emptyList(), addedDuringSprintTaskIds = emptyList())
+        val anonymous = mockk<AuthenticationContext>()
+        coEvery { anonymous.principal() } returns null
+        coEvery { service.getById(sprint.id) } returns sprint
+        coEvery { boardService.getById(board.id) } returns board
+        coEvery { projectService.getById(project.id) } returns project
+        assertFailsWith<IllegalStateException> { mutationController().start(anonymous, StartSprintInput(sprint.id, sprint.version)) }
+        coVerify(exactly = 0) { service.start(any(), any(), any()) }
+    }
+
+    private fun task(projectId: UUID) = Task(id = UUID.random(), key = "PLAN-1", projectId = projectId,
+        taskTypeId = UUID.random(), statusId = UUID.random(), priorityId = UUID.random(), summary = "Sprint work",
+        reporterProfileId = profileId, createdByPrincipalId = principalId, modifiedByPrincipalId = principalId)
 
     private fun sampleSprint(boardId: UUID): Sprint {
         val createdAt = OffsetDateTime.now()

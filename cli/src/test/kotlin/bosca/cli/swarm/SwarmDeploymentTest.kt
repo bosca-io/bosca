@@ -494,7 +494,7 @@ class SwarmDeploymentTest {
         val studioBlock = caddy.substringAfter("studio.$d {").substringBefore("\n}\n")
         assertTrue(studioBlock.indexOf("reverse_proxy @collector") < studioBlock.indexOf("reverse_proxy @server"))
         assertTrue(studioBlock.indexOf("reverse_proxy @server") < studioBlock.indexOf("reverse_proxy site1-studio:3000"))
-        assertFalse(caddy.contains("collaboration"))
+        assertFalse(studioBlock.contains("collaboration"))
         assertTrue(caddy.contains("a.$d {\n    reverse_proxy site1-collector:8081\n}"))
         assertTrue(caddy.contains("profiles.$d {\n    reverse_proxy site1-profiles-web:9095\n}"))
         assertTrue(caddy.contains("notifications.$d {\n    reverse_proxy site1-notifications-web:9094\n}"))

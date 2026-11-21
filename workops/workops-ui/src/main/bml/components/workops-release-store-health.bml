@@ -1,0 +1,14 @@
+<component tag="workops-release-store-health">
+  <prop name="id" type="String" required />
+  <prop name="revision" type="String" required />
+  <div class="store-health-loader">
+    <island name="releaseStoreHealthDeferred" render="deferred" :releaseId="id" :readRevision="revision">
+      <prop name="releaseId" type="String" required />
+      <prop name="readRevision" type="String" required />
+      <fallback><card><div data-workops-release-store-health-loading><p class="store-loading" role="status">Loading store health…</p><div class="store-load-error"><p role="alert">Store health could not be loaded. Retry to check again.</p><button data-bml-deferred-retry>Retry store health</button></div></div></card></fallback>
+      <script server provides="initial">bosca.workops.ui.workOpsReleaseStoreHealth(releaseId, readRevision)</script>
+      <workops-release-store-health-view :initial="initial" />
+    </island>
+  </div>
+  <style scoped>.store-load-error { display: none; }.store-health-loader [data-bml-deferred-state="error"] .store-load-error { display: block; }.store-health-loader [data-bml-deferred-state="error"] .store-loading { display: none; }</style>
+</component>

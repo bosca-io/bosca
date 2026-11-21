@@ -5,6 +5,57 @@ import kotlin.test.*
 
 class SyncHandlerTest {
 
+    @Test
+    fun echoedPresenceDoesNotTransferDisconnectOwnership() {
+        val serverDoc = newDoc(1)
+        val serverAwareness = Awareness(serverDoc).apply { setLocalState(null) }
+        val firstDoc = newDoc(100)
+        val firstAwareness = Awareness(firstDoc).apply { setLocalState(mapOf("name" to "First")) }
+        val secondDoc = newDoc(200)
+        val secondAwareness = Awareness(secondDoc).apply { setLocalState(mapOf("name" to "Second")) }
+        val first = SyncHandler(serverDoc, serverAwareness) { }
+        val second = SyncHandler(serverDoc, serverAwareness) { }
+        try {
+            first.onConnect()
+            second.onConnect()
+            first.onMessage(MessageProtocol.encodeAwareness(firstAwareness, listOf(100)))
+            second.onMessage(MessageProtocol.encodeAwareness(secondAwareness, listOf(200)))
+            // Hocuspocus providers echo awareness received from other editors.
+            first.onMessage(MessageProtocol.encodeAwareness(serverAwareness, listOf(200)))
+            first.onDisconnect()
+            assertFalse(serverAwareness.getStates().containsKey(100))
+            assertEquals("Second", serverAwareness.getStates()[200]?.get("name"))
+            second.onDisconnect()
+            assertFalse(serverAwareness.getStates().containsKey(200))
+        } finally {
+            first.dispose(); second.dispose()
+            serverDoc.destroy(); firstDoc.destroy(); secondDoc.destroy()
+        }
+    }
+
+    @Test
+    fun lateJoinIncludesAlreadyKnownPeersWithoutLocalServerPresence() {
+        val server = newDoc(1)
+        val awareness = Awareness(server).apply { setLocalState(null) }
+        val existing = newDoc(100)
+        val existingPresence = Awareness(existing).apply { setLocalState(mapOf("name" to "Existing")) }
+        val newcomer = newDoc(200)
+        val newcomerPresence = Awareness(newcomer)
+        val first = SyncHandler(server, awareness) { }
+        val messages = mutableListOf<ByteArray>()
+        val second = SyncHandler(server, awareness) { messages.add(it) }
+        try {
+            first.onConnect()
+            first.onMessage(MessageProtocol.encodeAwareness(existingPresence, listOf(100)))
+            second.onConnect()
+            messages.forEach { MessageProtocol.readMessage(it, newcomer, newcomerPresence) }
+            assertEquals("Existing", newcomerPresence.getStates()[100]?.get("name"))
+        } finally {
+            first.dispose(); second.dispose()
+            server.destroy(); existing.destroy(); newcomer.destroy()
+        }
+    }
+
     private fun newDoc(clientID: Int): Doc {
         val doc = Doc()
         doc.clientID = clientID

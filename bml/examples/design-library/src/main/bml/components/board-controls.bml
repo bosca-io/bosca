@@ -1,0 +1,26 @@
+<component tag="board-controls">
+  <prop name="id" type="String" required />
+  <script server provides="model" scope="server-session">bosca.design.example.BoardState(id)</script>
+  <card :title='id + " board"'><island name="boardControls" :key="id"><div :data-example-board="model.id" :data-example-reject="model.reject" :data-example-readonly="model.readOnly" :data-example-disabled="model.disabled" :data-example-visible="model.visible">
+    <div class="row">
+      <button data-board-refresh @click="model.refresh()">Refresh example</button>
+      <switch data-board-readonly label="Read only" :checked="model.readOnly" @change="model.toggleReadOnly()" />
+      <switch data-board-disabled label="Disabled" :checked="model.disabled" @change="model.toggleDisabled()" />
+      <switch data-board-reject label="Reject moves" :checked="model.reject" @change="model.toggleRejection()" />
+      <switch data-board-visible label="Show board" :checked="model.visible" @change="model.toggleVisible()" />
+    </div>
+    <p data-board-refresh-count>Refreshes: { model.refreshCount }</p>
+    <if model.visible><board :id='"consumer-board-" + model.id' :label='model.id + " example board"' :readOnly="model.readOnly" :disabled="model.disabled">
+      <for target in model.columns><board-column :columnId="target.id" :label="target.label" :scrollKey='model.id + "-" + target.id'>
+        <if model.column == target.id><board-card cardId="proposal" label="Review the proposal" movable :targets="model.columns" :preserveKey='"consumer-card-" + model.id + "-proposal"'>
+          <a href="/boards">Review the proposal</a><field label="Local note"><input name="note" value="Review this week" /></field>
+        </board-card></if>
+        <if target.id == "doing"><board-card cardId="fixed" label="Read-only reference" :targets="model.columns" :preserveKey='"consumer-card-" + model.id + "-fixed"'><p>Read-only reference</p></board-card></if>
+      </board-column></for>
+    </board></if>
+    <script client scoped>
+      import type { BoardMoveRequest } from "@bosca/bml-design/board";
+      ctx.on<CustomEvent<BoardMoveRequest>>(ctx.root, "boardmove", event => event.detail.waitUntil(ctx.dispatch(model.move(event.detail.cardId, event.detail.columnId))));
+    </script>
+  </div></island></card>
+</component>

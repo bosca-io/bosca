@@ -1,0 +1,11 @@
+<component tag="workops-release-live-map">
+  <prop name="model" type="bosca.workops.ui.WorkOpsReleaseLiveModel" required />
+  <prop name="expanded" type="Boolean" default="false" />
+  <div class="live-map" :data-expanded="expanded">
+    <p class="live-map-state"><span data-live-status role="status">Waiting for session streams.</span><span data-live-count>Waiting for session updates.</span></p>
+    <p class="live-map-error" data-live-error role="status" />
+    <chart data-workops-live-chart :id='"release-live-" + bosca.workops.ui.workOpsEncode(model.id) + if (expanded) "-expanded" else "-compact"' label="Release live session locations" :config="model.chart" :maps='mapOf("world" to bosca.design.model.ChartMaps.world)' :preserveKey='"release-live-" + model.id + if (expanded) "-expanded" else "-compact"' />
+    <p class="live-map-caption">Locations expire 15 minutes after their latest received update. Colors identify linked projects.</p>
+  </div>
+  <style scoped>.live-map { --chart-height: 260px; min-width: 0; }.live-map[data-expanded] { --chart-height: min(45vh, 420px); }.live-map-state { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }.live-map-error { color: var(--err); }.live-map-error:empty { display: none; }.live-map-caption { color: var(--fg-2); font-size: 12px; }p { overflow-wrap: anywhere; }</style>
+</component>

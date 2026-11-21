@@ -38,6 +38,11 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.unmockkAll
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -58,6 +63,10 @@ import kotlin.test.assertTrue
 import kotlin.test.assertIs
 import kotlin.test.assertFailsWith
 import kotlin.uuid.toJavaUuid
+import yks.utils.Doc
+import yks.utils.applyUpdate
+import yks.utils.encodeStateAsUpdate
+import kotlin.test.assertContentEquals
 
 /**
  * DB-backed coverage for [DocumentServiceImpl]. The collaboration-sync routing (NONE / RESET /
@@ -194,6 +203,78 @@ class DocumentServiceImplCoverageTest {
     }
 
     private val legacySuperscriptContent = """{"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"superscript","content":[{"type":"text","text":"2"}]}]}]}}"""
+
+    @Test
+    fun `concurrent initializers share one seed and concurrent updates all persist`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val id = insertMetadata()
+        withRequest { service.addDocument(id, 1, DocumentInput(title = "Concurrent title", content = Content())) }
+        val initial = coroutineScope {
+            val ready = CompletableDeferred<Unit>()
+            val calls = List(8) { async(Dispatchers.IO) {
+                ready.await()
+                withRequest { assertNotNull(service.initializeCollaboration(id, 1)) }
+            } }
+            ready.complete(Unit)
+            calls.awaitAll()
+        }
+        initial.forEach { assertContentEquals(initial.first(), it, "All first opens receive the same CRDT item identities") }
+        assertEquals(2, ProseMirrorYjsBridge.toContent(initial.first()).document.content.size)
+        coroutineScope {
+            val ready = CompletableDeferred<Unit>()
+            val calls = List(12) { index -> async(Dispatchers.IO) {
+                val fork = Doc()
+                val update = try {
+                    applyUpdate(fork, initial.first())
+                    fork.getMap("attributes").set("writer-$index", "value-$index")
+                    encodeStateAsUpdate(fork)
+                } finally { fork.destroy() }
+                ready.await()
+                withRequest { assertNotNull(service.mergeCollaboration(DocumentCollaborationInput(id, 1, update))) }
+            } }
+            ready.complete(Unit)
+            calls.awaitAll()
+        }
+        val stored = Doc()
+        try {
+            applyUpdate(stored, withRequest { assertNotNull(service.getCollaboration(id, 1)).content })
+            repeat(12) { assertEquals("value-$it", stored.getMap("attributes").get("writer-$it")) }
+            assertEquals(2, stored.getXmlFragment("default").length)
+        } finally { stored.destroy() }
+    }
+
+    @Test
+    fun `initialization preserves maps before seeding and never reseeds a deleted document`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val id = insertMetadata()
+        withRequest { service.addDocument(id, 1, DocumentInput(title = "", content = Content())) }
+        val doc = Doc()
+        try {
+            doc.getMap("attributes").set("dirty", true)
+            withRequest { service.mergeCollaboration(DocumentCollaborationInput(id, 1, encodeStateAsUpdate(doc))) }
+            applyUpdate(doc, withRequest { assertNotNull(service.initializeCollaboration(id, 1)) })
+            assertEquals(true, doc.getMap("attributes").get("dirty"))
+            assertEquals(2, doc.getXmlFragment("default").length)
+            doc.getXmlFragment("default").delete(0, 2)
+            withRequest { service.mergeCollaboration(DocumentCollaborationInput(id, 1, encodeStateAsUpdate(doc))) }
+            applyUpdate(doc, withRequest { assertNotNull(service.initializeCollaboration(id, 1)) })
+            assertEquals(0, doc.getXmlFragment("default").length)
+            assertEquals(true, doc.getMap("attributes").get("dirty"))
+        } finally { doc.destroy() }
+    }
+
+    @Test
+    fun `missing canonical versions stay missing and invalid updates roll back`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val id = insertMetadata()
+        withRequest {
+            assertNull(service.initializeCollaboration(id, 1))
+            assertNull(service.mergeCollaboration(DocumentCollaborationInput(id, 1, byteArrayOf(0, 0))))
+            assertNull(service.getCollaboration(id, 1))
+            service.addDocument(id, 1, DocumentInput(title = "Intact", content = Content()))
+        }
+        val before = withRequest { assertNotNull(service.initializeCollaboration(id, 1)) }
+        assertFailsWith<Exception> { withRequest { service.mergeCollaboration(DocumentCollaborationInput(id, 1, byteArrayOf(-1))) } }
+        assertContentEquals(before, withRequest { assertNotNull(service.getCollaboration(id, 1)).content })
+        withRequest { assertNull(service.initializeCollaboration(id, 2)); assertNull(service.getCollaboration(id, 2)) }
+    }
 
     // ── cache resolvers ──────────────────────────────────────────────────────
 

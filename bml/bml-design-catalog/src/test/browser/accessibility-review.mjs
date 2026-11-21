@@ -68,7 +68,8 @@ function inspectFinding(selector) {
   const owner=select??dialog;
   const result={count:1,text:node.textContent.trim()};
   if(node.hasAttribute('aria-controls')) {
-    return {...result,owner:select?'select':dialog?'dialog':null,label:select?.dataset.label,
+    return {...result,owner:select?'select':dialog?'dialog':null,
+      label:select?.querySelector('select')?.closest('label')?.querySelector(':scope > span')?.textContent.trim()||select?.dataset.label,
       value:select?.querySelector('[data-bml-ref=selection]').textContent.trim(),
       references:node.getAttribute('aria-controls').split(/\s+/).filter(Boolean).map(id=>{
         const targets=[...document.querySelectorAll('[id]')].filter(target=>target.id===id),target=targets[0];

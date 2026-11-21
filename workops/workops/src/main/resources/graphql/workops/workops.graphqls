@@ -35,6 +35,7 @@ type WorkOps {
 Single entry point for all Work Ops mutations.
 """
 type WorkOpsMutations {
+    workflows: WorkOpsWorkflowsMutation!
     portfolios: WorkOpsPortfoliosMutation!
     programs: WorkOpsProgramsMutation!
     projects: WorkOpsProjectsMutation!

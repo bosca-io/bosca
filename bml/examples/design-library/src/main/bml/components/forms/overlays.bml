@@ -7,10 +7,18 @@
         <button @click="state.requestOpen" :data-programmatic-open="state.id">Request dialog</button>
         <button @click="state.openForced" :data-force-open-action="state.id">Force dialog</button>
         <button @click="state.toggle" :data-toggle-overlays="state.id">Toggle overlays</button>
+        <button @click="state.openAction()" :data-dialog-dismiss-open="state.id">Dismissible action</button>
       </div>
       <p :data-overlay-result="state.id">{ state.message } ({ state.attempts }) · Confirmed { state.confirmations } · Updates { state.bumps }</p>
+      <p>Dismissals: <span :data-dialog-dismiss-count="state.id">{ state.dismissals }</span></p>
       <if state.mounted>
         <div class="actions">
+          <dialog title="Dismissible action" triggerLabel="Dismissible action" :showTrigger="false"
+                  :forceOpen="state.actionOpen" :completed="!state.actionOpen" @dialogdismiss="state.dismissAction()"
+                  :returnFocus='"[data-dialog-dismiss-open=" + state.id + "]"' :data-dialog-dismiss-surface="state.id">
+            <form-body padded><p>Dismissal updates this application and restores the current action's focus.</p></form-body>
+            <form-actions bordered><button data-dialog-close :data-dialog-dismiss-cancel="state.id">Cancel action</button></form-actions>
+          </dialog>
           <dialog title="Edit display name" subtitle="State and actions belong to this application."
                   triggerLabel="Edit name" triggerIcon="edit" icon="edit" primary
                   :forceOpen="state.forceOpen" :completed="state.completed"

@@ -11,6 +11,8 @@ import bosca.workops.deploy.DeployConfigService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
@@ -113,6 +115,10 @@ class DeployConfigPushListener(
                 }
             }
         }
+    }
+
+    internal suspend fun close() {
+        scope.coroutineContext.job.cancelAndJoin()
     }
 
     private companion object {

@@ -119,6 +119,19 @@ CSS, globally or on a themed container. Declaring the packaged faces does not fo
 
 ## Components
 
+`schema-form` renders existing Forms JSON Schema and version-one UI Schema with shared controls.
+Pass `schema`, `uiSchema`, a typed `value`, and an instance `id`. The `name` field (default `attributes`)
+submits the JSON object to the application's declarative form action. Sections, rows, tabs, display
+content, text, numbers, dates, colors, booleans, enum choices, tags and JSON values are supported.
+The component applies defaults, validates with the existing Forms AJV semantics, retains non-visible
+values and drafts, and focuses invalid fields. Applications supply remote choices through `options`,
+map domain control names through `controlAliases`, and own lookup and submission. Remote choices
+use `remote-select` and the typed `schemaformchoicesrequest` event. File/image controls preserve
+the Forms data-URL string/null value, with progress, cancellation, previews and readonly state. The bubbling
+`schemaformchange` event carries `{ property, value, data }`. See the [contract](schema-forms.md),
+[catalog](../bml-design-catalog/src/main/bml/pages/schema-forms.bml) and
+[independent consumer](../examples/design-library/src/main/bml/pages/schema-forms.bml).
+
 `subsystem-switcher` and `subsystem-links` reproduce Studio's sidebar subsystem header,
 filterable categorized chooser, recent items, keyboard navigation, and compact home launcher.
 Applications supply `List<SubsystemNavigationItem>` with their own routes, labels, icons, and
@@ -130,6 +143,9 @@ primary `--accent` color, with lighter and darker side faces as in Studio.
 
 `page-shell flush` lets an application own its header and content insets at every viewport width.
 The default page padding remains available to existing consumers.
+
+`help-text` presents supporting copy in small, muted text without paragraph margins. Use it for
+background guidance; validation and operation failures use `alert`.
 
 `form-body` owns the vertical field spacing (`padded` adds dialog body insets), and `form-actions`
 owns action alignment and optional bordered footers. Keep native `form` elements and declarative
@@ -178,6 +194,12 @@ does not validate dropped files. Toggle the root's `data-disabled` attribute by 
 selection during an asynchronous operation; the component synchronizes the native input and
 accessible disabled state. Its colors follow the enclosing palette.
 
+`file-field` composes that picker with file reading, progress, cancellation, clear and an optional
+image preview. Supply `name`, `label`, a JSON `value` (default null), `readOnly`, `image` and `accept`.
+Its native hidden field contains the JSON encoded data-URL string or null and emits bubbling input
+events. It retains the previous value when reading fails or is cancelled. It performs no upload.
+The bubbling `filefieldbusy` detail is a boolean; schema forms use it to refresh reading feedback.
+
 ```html
 <file-drop ref="files" label="Choose files or drop them here" description="Select attachments" multiple />
 ```
@@ -186,6 +208,8 @@ accessible disabled state. Its colors follow the enclosing palette.
 | --- | --- | --- |
 | `button` | `size: String = "md"` (`md`, `sm`, `xs`); `loading: Boolean = false`; `type: String = "button"`; `ref: String = ""`; `primary: Boolean = false`; `icon: String = ""`; `disabled: Boolean = false` | Native button receives additional attributes, merged `class`, and declarative click events. Default children supply its accessible name. Loading disables it and overlays an aria-hidden spinner. A native `form` attribute can associate a submit button with a form elsewhere on the page; `page-heading` keeps its projected form buttons in sync with the form's pending spinner state. |
 | `input` | `size: String = "md"` (`md`, `sm`); `mono: Boolean = false`; `type: String = "text"`; `ref: String = ""`; `value: String = ""`; `required: Boolean = false` | Native input receives additional attributes and events, including `name`, `disabled`, `readonly`, `autocomplete`, `aria-*`, and `data-*`. No child content. |
+| `color-input` | Required `name: String` and `label: String`; `value: String = ""`; `presets: List<String> = emptyList()`; `disabled: Boolean = false`; `readOnly: Boolean = false` | Labelled native text retains exact custom, alpha and empty values. Named preset buttons emit native `input`/`change` and return focus to the field. Extra attributes target the input. Preview colors never normalize submitted text. Native reset, readonly and disabled semantics apply. |
+| `slug-input` | Required `name: String` and `sourceField: String`; `value: String = ""`, `manual: Boolean = false`, `manualName: String = ""` | Suggests a lowercase ASCII slug from a named text field in the same form until edited. Additional attributes target the native input. The hidden manual marker defaults to `name + "Manual"`; capture it with the value and pass it back as `manual` after server actions. Native reset restores the supplied mode; script-disabled reading/editing remains available. |
 | `field` | Required `label: String`; `hint: String = ""`; `hideLabel: Boolean = false` | A wrapping native label contains default children. The hidden-label option retains an accessible label. Only named props and children are consumed. |
 | `card` | `title: String = ""`; `padded: Boolean = true`; `description: String = ""` | Native section receives additional attributes, with an optional heading/description and a default child body. |
 | `page-shell` | `fill: Boolean = false`; `narrow: Boolean = false`; `flush: Boolean = false` | Native main with default children, merged classes, and additional attributes. `fill` allocates a flex column; `narrow` uses a centered 400px form surface. |
@@ -224,18 +248,22 @@ accessible disabled state. Its colors follow the enclosing palette.
 | `segmented-control` | Required `label: String`, `name: String`, `options: List<SegmentOption>` and `value: String`; `preserveKey: String = ""` | Radiogroup receives additional attributes/classes/events. Each SegmentOption supplies its stable value, label, decorative icon and disabled state. A hidden native input supplies the selected form value. Emits bubbling `segmentchange` after updating its native value. No child content. |
 | `view-tabs` | Required `label: String`, `tabs: List<ViewTab>` and `selected: String` | Tablist receives additional attributes/classes/events. Each ViewTab supplies a stable value, label and disabled state. Emits bubbling `viewchange` with the selected value as its string detail. The application owns panels, IDs, accessible relationships and visibility. No child content. |
 | `tabs` | Required `label: String` and `items: List<NavigationItem>`; `header: Boolean = false` | Native nav receives additional attributes/classes and default trailing action children. Destinations remain native anchors with `aria-current="page"` on the current item. The scoped helper fits links around the current destination and a `More` overflow disclosure. |
-| `select` | `name: String = ""`; `ref: String = "native"`; `placeholder: String = "Select…"`; `label: String = "Selection"`; `icon: String = ""`; `searchable`, `async`, `multiple`, `inlineSearch`, `allowCustom`, `disabled`, `loading`, `required`: `Boolean = false`; `size: String = "md"`; `maxTags: Int = 3`; `minQuery: Int = 0`; `debounce: Int = 250` (milliseconds); `preserveKey: String = ""` | Additional attributes/classes target the native select. Default children are caller-owned options/optgroups. The helper enhances it with a labelled combobox, listbox, optional search/pagination and selected tags; native values remain the form submission contract. |
+| `select` | `name: String = ""`; `ref: String = "native"`; `placeholder: String = "Select…"`; `label: String = "Selection"`; `icon: String = ""`; `searchable`, `async`, `multiple`, `inlineSearch`, `allowCustom`, `disabled`, `loading`, `required`, `submitOnChange`: `Boolean = false`; `size: String = "md"`; `maxTags: Int = 3`; `minQuery: Int = 0`; `debounce: Int = 250` (milliseconds); `preserveKey: String = ""` | Additional attributes/classes target the native select. Default children are caller-owned options/optgroups. The helper enhances it with a labelled combobox, listbox, optional search/pagination and selected tags; native values remain the form submission contract. Opt-in `submitOnChange` submits the containing form through native validation and its existing submit handler, for navigation and filters. The caller supplies any no-script submit control. |
 | `tree` | Required `label: String`; `heading: String = ""`; `local: Boolean = false`; `embedded: Boolean = false`; `preserveKey: String = ""` | Section receives additional attributes/classes and contains a labelled tree with default item children. `local` manages disclosure of already-rendered rows; otherwise caller actions own folder loading. |
 | `tree-item` | Required `path: String` and `label: String`; `href: String = ""`; `directory`, `expanded`, `selected`, `wrap`: `Boolean = false`; `depth: Int = 0` | Flat ARIA tree item. Additional attributes/classes target its native directory button or native file anchor; declarative actions bind to the item row. Paths identify hierarchy, depth controls indentation/ARIA level, and selected file links use `aria-current="page"`. No child content. |
 | `time` | Required `value: String`; `relative`, `ago`, `inheritTypography`: `Boolean = false`; `format: String = ""` | Native time receives additional attributes/classes, its original value as datetime/title and an English server-rendered label. No child content. Use `html:time` for a native timestamp after importing this component. |
-| `comment-editor` | Required `id: String` and `label: String`; `value`, `error`, `hint`, `describedBy`: `String = ""`; `submitDisabled: Boolean = false`; `submitLabel: String = "comment"`; `placeholder: String = "Write a comment…"`; `name: String = "body"` | Native required textarea receives additional attributes/classes, its ID and preservation key. Default children supply action controls. The caller owns its surrounding form, submission and error outcomes. |
-| `code-editor` | Required `name: String`; `value: String = ""`; `language`, `path`: `String = ""`; `line: Int = 0`; `wrapped: Boolean = true`; `bare`, `fill`: `Boolean = false`; `label: String = "Code editor"`; `readOnly`, `disabled`: `Boolean = false`; `preserveKey: String = ""` | CodeMirror field with native form text, undo/redo, search, reset and tag-owned setup/cleanup. Additional attributes target the root. `--code-height` controls its surface height. |
+| `comment-editor` | Required `id: String` and `label: String`; `value`, `error`, `hint`, `describedBy`: `String = ""`; `submitDisabled: Boolean = false`; `submitLabel: String = "comment"`; `placeholder: String = "Write a comment…"`; `name: String = "body"`; `mentions: Boolean = false` | Native required textarea receives additional attributes/classes, its ID and preservation key. Default children supply action controls. The caller owns its surrounding form, submission and error outcomes. |
+| `code-editor` | Required `name: String`; `value: String = ""`; `language`, `path`: `String = ""`; `line: Int = 0`; `wrapped: Boolean = true`; `bare`, `fill`, `compact`: `Boolean = false`; `label: String = "Code editor"`; `readOnly`, `disabled`: `Boolean = false`; `preserveKey: String = ""` | CodeMirror field with native form text, undo/redo, search, reset and tag-owned setup/cleanup. Additional attributes target the root. `--code-height` controls its surface height. `compact` provides a content-sized query field without gutters or active-line decoration while retaining editing, undo and syntax highlighting. |
 | `json-editor` | Required `name: String`; `value: JsonElement = JsonObject(emptyMap())`; `text: String? = null`; `label: String = "JSON editor"`; `mode: String = "tree"` (`tree`, `text`, `table`); `mainMenuBar`, `navigationBar`, `statusBar`, `askToFormat`: `Boolean = true`; `readOnly: Boolean = false`; `disabled: Boolean = false`; `error: String = ""`; `preserveKey: String = ""` | Structured editor with a native textarea form value and escaped no-script fallback. Additional attributes/classes target its labelled group. Syntax and caller feedback appear in a live status. No child content. |
 | `flow-editor` | Required `id`, `label`: `String`; `name: String = "graph"`; `value: FlowGraph = FlowGraph()`; `readOnly`, `disabled`: `Boolean = false`; `error`, `preserveKey`: `String = ""` | VueFlow canvas with native JSON form value, named ports, selection/connection/change events, view controls and text outline. Additional attributes/classes reach the root; default children follow the outline. |
 | `chart` | Required `id`, `label`: `String`; required `config: ChartConfiguration`; `maps: Map<String, JsonObject> = emptyMap()`; `loading: Boolean = false`; `error`, `preserveKey`: `String = ""` | Native ECharts options, CSS palette defaults, responsive named canvas and server-rendered data table. Additional attributes/classes reach the root; default children follow the table. |
 | `dashboard-grid` | Required `id`, `label`: `String`; `name: String = "layout"`; `value: List<DashboardLayoutItem> = emptyList()`; `lockedIds: Set<String> = emptySet()`; `columns: Int = 12`; `cellHeight: Int = 60`; `stackBelow: Int = 480`; `readOnly`, `disabled`: `Boolean = false`; `error`, `preserveKey`: `String = ""` | Studio-style dashboard geometry, native JSON form value, pointer/keyboard movement and resizing, locked widgets and narrow-container stacking. Direct default children are dashboard items; extra attributes reach the root. |
 | `dashboard-item` | Required `itemId`, `label`: `String` | Named widget and layout handles. Attributes reach the section; default children remain ordinary BML content in a scrolling body. |
-| `document-editor` | Required `id`, `label`: `String`; `name: String = "document"`; `value: JsonObject = emptyDocument()` (ProseMirror content); `document: bosca.content.metadata.model.Document? = null`; `readOnly`, `disabled`, `required`: `Boolean = false`; `error`, `hint`, `preserveKey`: `String = ""`; `placeholder: String = "Start writing…"` | TipTap rich text with a native JSON form value. Additional attributes/classes reach the labelled root. The application owns forms, validation and persistence. No child content. |
+| `board` | Required `id`, `label`: `String`; `readOnly`, `disabled`: `Boolean = false` | Named horizontal board region with projected columns and retained scroll. Applications own its data and actions. |
+| `board-column` | Required `columnId`, `label`, `scrollKey`: `String`; `summary: String = ""` | Column heading and scrolling projected cards; the caller supplies counts or limit summaries. |
+| `board-card` | Required `cardId`, `label`: `String`; `targets: List<BoardMoveTarget> = emptyList()`; `movable`, `disabled`: `Boolean = false`; `preserveKey: String = ""` | Projected application content with shared pointer/touch and keyboard move controls. Movement requests await the application's save promise. |
+| `image-picker` | Required `id: String`; `label: String = "Choose image"`; `showTrigger: Boolean = true`; `disabled: Boolean = false` | Shared library search, upload, progress and image description/title controls. The application handles `imagerequest`; selection emits `imageselect`. No child content. |
+| `document-editor` | Required `id`, `label`: `String`; `name: String = "document"`; `value: JsonObject = emptyDocument()` (ProseMirror content); `document: bosca.content.metadata.model.Document? = null`; `readOnly`, `disabled`, `required`: `Boolean = false`; `error`, `hint`, `preserveKey`: `String = ""`; `placeholder: String = "Start writing…"`; `contentExpression: String = "block+"`; `singleTitle`, `mentions`, `showSaveStatus`, `referenceControls`, `media`: `Boolean = false`; `containers: List<DocumentContainerOption> = emptyList()`; `collaborationRoom`, `savedRevision`: `String = ""`; `collaborationUrl: String = "/collaboration"`; `collaboratorName: String = "Editor"`; `collaboratorColor: String = "#6366f1"` | TipTap rich text with a native JSON form value. Additional attributes/classes reach the labelled root. The application owns forms, validation and persistence. No child content. |
 | `source-view` | Required `content: String`; `path`, `language`, `preserveKey`: `String = ""`; `label: String = "File source"`; `line: Int = 0`; `compact`, `bare`, `fill`, `wrapped`: `Boolean = false` | Section receives additional attributes/classes and default toolbar action children. CodeMirror enhances escaped, focusable source markup into a read-only viewer. The application owns the content, requested line and surrounding layout. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
@@ -282,8 +310,12 @@ Icon actions retain native `title` labels when scripts are disabled.
 Dialog triggers open a native modal, focus the first available field, and contain Tab navigation.
 Escape, backdrop clicks, the close control and projected cancel controls dismiss it. Focus returns
 to the trigger, or to `returnFocus` within the nearest island when supplied. A rising `forceOpen`
-or a new nonempty `openRequest` opens it; a rising `completed` closes it once. A request remains
-consumer state: issue a new request to reopen after dismissal. User dismissal emits the bubbling `dialogdismiss` event so applications can clear a pending
+or a new nonempty `openRequest` opens it; a rising `completed` closes it once.
+Closed dialogs leave the current focus unchanged when they receive completion state. When a dismissal
+action replaces the dialog and its return target, `returnFocus` resolves the current target after
+the update. Focus deliberately moved elsewhere is retained, and another open modal keeps its focus.
+When retaining the dialog across an update, retain its return target with a stable `data-bml-preserve` key.
+The request remains consumer state: issue a new request to reopen after dismissal. User dismissal emits the bubbling `dialogdismiss` event so applications can clear a pending
 open request through a declarative handler. Completion-driven closing does not emit this event. Forms and failed-submit drafts belong
 to the application. The `/overlays` fixture shows an error response retaining submitted values and
 reopening through `forceOpen`, plus a preserved dialog whose server-owned request/completion
@@ -451,6 +483,11 @@ The helper retains selected native options and remembered labels while other pag
 `minQuery` suppresses requests below its threshold. Busy, empty and rejected requests have visible
 status feedback; newer queries, close/reopen and disposal prevent stale results from changing it.
 
+Enhancement sets `data-select-ready` and emits bubbling `selectready`. An application may dispatch
+`selectoptions` on the select root with a `SelectOption[]` detail to supply initial choices and
+labels. This updates local filtering and remembered labels without changing the native selection
+or emitting a value change. Async search pages still use `selectsearch`.
+
 Mark caller-owned `<option data-persistent>` entries to keep them available below the query
 threshold and across async pages, busy states and failures. Their explicit labels/values win over
 matching returned values. The string `all` has no special meaning. Persistent choices can also be
@@ -533,12 +570,55 @@ default. Change `id` to reset after successful submission, including when the se
 empty. The helper reconnects to the current form, and unmount removes its listeners and observer.
 It supplies no storage, transport, permissions or rich-text formatting.
 
+Set `mentions` on a comment or document editor to enable shared suggestions. Listen for the bubbling
+`mentionsearch` event using the `MentionSearch` type from `@bosca/bml-design/mentions`. Call
+`event.detail.respondWith(choicesOrPromise)` synchronously. Each choice supplies `id` and `label`;
+comment choices also supply a profile `handle`, and document choices supply an `entityType`.
+The application owns authorization and lookup transport. Its listener can use the provided
+`AbortSignal` to cancel transport; the control also discards obsolete results. A rejected lookup
+shows an error distinct from no results and emits `mentionsearcherror` with the original error.
+
+Comments search even on an empty `@` prefix and insert `@handle` with appropriate following spacing.
+Email addresses are excluded, and choosing in the middle of a handle replaces its complete suffix.
+Documents search after a nonempty query and insert Content's stored mention node with its identity,
+label, entity type and suggestion character. Titles include visible mention labels. Both controls
+debounce lookup by 150ms and support arrows, Enter, pointer selection and
+Escape, and keep focus in the editor. Composition, pending and readonly states do not select or
+submit accidentally. Ctrl+Enter/Command+Enter retains the comment submission shortcut. Search
+requests and menus are released on unmount. `mentions` defaults to false.
+Comments show up to eight choices with bounded arrow navigation; documents show up to twenty
+choices with wrapping arrow navigation, matching their Studio workflows.
+
 ## Rich text documents
 
 `document-editor` uses TipTap with the same ProseMirror JSON document format as Studio. It supplies
 headings, bold/italic/underline/strike/inline code, superscript/subscript, block quotes, bullet/numbered
 and nested task lists, links, images, tables, code blocks, text alignment and undo/redo. Images use a
-supplied URL and description; storage and uploads belong to the consuming application.
+supplied URL and description, or the shared library/upload picker when `media` is enabled. Storage and upload adapters belong to the consuming application.
+Code blocks use the shared CodeMirror engines, retain their language and provide a language selector.
+Their edits and undo/redo participate in the document history. At a code block's edge, arrow keys
+return to surrounding rich text; Command/Control+Enter exits the block. Escape then Tab moves to
+the next form control outside the document. Code blocks honor read-only and pending form state.
+
+Mermaid code blocks preview their stored source using strict Mermaid rendering and the ELK layout.
+Invalid source shows a parse error and clears the previous preview. Read-only Mermaid blocks show
+the diagram; editable blocks retain CodeMirror beside the preview. Code undo/redo delegates to the
+outer document history, including collaborative history, and cannot fall back to undoing a peer edit.
+
+Supply `containers: List<DocumentContainerOption>` for template regions. Each option carries an ID,
+human name, description, type and optional filters; applications load these under the current viewer.
+The toolbar wraps selections in the chosen region, unwraps containers and moves complete blocks up
+or down when the template permits. A pointer drag handle also moves blocks. Container headers show
+the supplied name and description, with local collapse and transactional removal. An unavailable
+definition uses the label “Content” while retaining its stored identity and body. Collapse remains
+available in read-only documents. Application adapters supply authorized reference data and any
+application-specific tools.
+
+Type `/` in a text block to choose formatting, insertion or template containers. The palette filters
+by prefix; arrow keys wrap the active choice, Enter applies it and Escape dismisses it. Level-one headings
+and code blocks retain literal slash input. `showSaveStatus` adds Draft/Saved status; shared documents
+use their acknowledged revision, and ordinary documents compare with the latest supplied value.
+Tables support pointer column resizing and retain their widths in canonical Content JSON.
 
 ```html
 <form @submit="article.save(form.document)">
@@ -551,8 +631,7 @@ supplied URL and description; storage and uploads belong to the consuming applic
 
 `value` is a serialized ProseMirror `doc` object. The native field contains the current JSON immediately
 when editing and participates in ordinary form serialization. `documentchange` bubbles with
-`detail.document`; native `input` and `change` events also bubble from the field. The component makes
-no service calls. Stable preservation keys retain local edits, selection, scroll and focus through
+`detail.document` and the first H1’s text in `detail.title`; native `input` and `change` events also bubble from the field. Stable preservation keys retain local edits, selection, scroll and focus through
 unrelated updates. A changed `value` replaces the document and becomes the native reset default;
 changing the key mounts a new editor. Reset restores the latest supplied value. Pending form actions
 lock editing. Read-only values remain in form data; disabled values are excluded.
@@ -564,16 +643,110 @@ selection; Escape closes them. `required` checks document
 content rather than the length of the serialized JSON. Errors are announced beside the editor.
 Without scripts, the native textarea exposes the supplied JSON.
 
-The initial component covers the general rich text schema. Studio collaboration, authenticated
-mentions and metadata/template-specific blocks need a consuming application's integration.
-Unsupported nodes, marks and attributes report an error and retain the original JSON instead of
-silently discarding content. The built-in image node retains Studio's optional `metadataId`.
+Stored Content and Studio nodes include `container` (name, references, metadataId, version, renderer),
+`bible` (usfm/metadataIds or Content's metadataId/references), `mention` (id, label, entityType,
+mentionSuggestionChar), image metadata IDs and node classes. These remain in the JSON value.
+Standard containers display their configured label and nested body. With `referenceControls`, metadata
+and Bible containers display shared selection and reference views; their stored nested body is retained.
+Reference data, tools, uploads and authenticated mention search require the consuming application's integration. Activating a
+stored mention emits `documentmentionactivate` with `{id, entityType}`; the application resolves its
+destination. The library does not guess domain URLs.
+
+Enable `media` to use the shared `image-picker` for document image insertion and replacement.
+The picker composes the library's dialog, asynchronous select, file drop, progress and field controls.
+It offers Content choices, upload with progress/cancellation and retry, description/title fields and
+an optional image URL. Uploading selects a result; Insert image confirms it. The editor maps the
+insertion selection across intervening document transactions, and read-only or pending state closes
+the picker and cancels its active requests. Stored image IDs resolve for the current viewer without
+rewriting document attributes; an unavailable identity displays feedback and retains its JSON.
+
+Import `ImageRequest`, `ImageChoice`, `ImagePage`, `ImageSelection` and `ImagePickerOpen` from
+`@bosca/bml-design/images`. Handle the bubbling `imagerequest` event and call `respondWith`
+synchronously with a value or promise:
+
+- `search`: `query` and `offset`, returning `items` and optional previous/next offsets.
+- `resolve`: stored `id`, returning an authorized image choice or `null` when unavailable.
+- `upload`: the selected `File`, returning a stored image choice. Report byte progress through
+  `progress(percent, "uploading")`, and completion work through `progress(100, "processing")`.
+
+Every request carries an abort signal. Applications own authorization, transport, storage and reuse
+of a prepared upload identity during retry. A choice carries `id`, `label`, `src` and an `image/*`
+`contentType`. After installing an adapter, dispatch `imagesready` on its editor/picker roots to
+reload any selected identities that mounted first. The library makes no image lookup or upload
+network requests; the browser loads the authorized image source supplied by the adapter.
+
+The standalone `<image-picker id="illustration" label="Choose illustration" />` uses the same adapter.
+It emits `imageselect` with `{id?, src, alt, title}`. For a custom trigger, set `showTrigger="false"`
+and dispatch `imagepickeropen` on its root with `ImagePickerOpen` detail (`initial?`, `select`, `cancel`).
+`imagepickerclose` cancels that attempt. `disabled` closes an open picker and aborts its requests.
+The shared dialog also supports root-targeted `dialogopen`/`dialogclose` events and emits bubbling
+`dialogopened`/`dialogclosed` notifications.
+
+Enable `referenceControls` when supplying metadata and Scripture adapters. Import
+`DocumentReferenceRequest`, `ReferenceChoice`, `MetadataReference` and `ScripturePassage` from
+`@bosca/bml-design/document-references`. Handle the bubbling `documentreferencerequest` event and
+call its `respondWith` synchronously with a value or promise. Its discriminated `kind` selects:
+
+- `metadata-search`: `query` and the selected container's `filters`, returning labeled identities.
+- `metadata`: the stored `id` and optional `version`, returning its visible name/type or `null` when unavailable.
+- `bibles`: one 25-record offset page of visible Bible choices.
+- `scripture-search`: a Bible `id` and human `query`, returning entered/chapter/verse choices.
+- `scripture`: a Bible `id` and stored USFM `reference`, returning component trees, styles and supplied attribution.
+
+After installing an adapter, dispatch `documentreferencesready` on its editor roots. This reloads
+references if a lazy editor mounted first. Each request carries an abort signal; obsolete results
+are ignored after identity/query changes or unmount. The library makes no network calls for references.
+Readonly documents load selected passages without fetching the hidden Bible catalog. Failed or
+unavailable lookups keep stored identities and show explicit reload feedback. Selections, clears and
+removals use document transactions; local collapse and passage loading do not change the document.
+Both Studio's `usfm`/`metadataIds` and Content's `metadataId`/`references` representation are retained.
+Scripture rendering preserves inline character styles, verse numbers and supplied copyright/citation.
+No attribution is invented for local content that supplies none. Metadata activations emit the same
+`documentmentionactivate` event as mentions, leaving the destination to the consuming application.
+
+`contentExpression` selects the existing template's ProseMirror content expression, such as
+`heading block+`. Change the preservation key when changing the schema. `singleTitle` demotes later
+H1 headings to H2 and leaves the first H1 as the title, including an empty title. Initial empty-text
+and container-reference normalization runs before readiness and before observing document changes.
+Unknown nodes, marks and attributes report an error and retain the original supplied JSON. Invalid
+template structure also blocks editing and form submission. A preserved editor keeps its schema
+for its mounted lifetime. The catalog demonstrates stored content with a heading-first template;
+the independent `/widgets` consumer submits Content-native nodes through its own form.
+
+Set `collaborationRoom` to the application's document room and `collaborationUrl` to a same-origin
+Hocuspocus-compatible WebSocket route (default `/collaboration`). The server loads or seeds the shared
+document before clients join. The editor starts from that shared state, preserving its dirty marker;
+the supplied `value` is the server-rendered fallback. Changes to `value` and native form resets never
+replace an active shared document. A new preservation key creates a new document connection.
+`collaboratorName` and `collaboratorColor` supply cursor identity. The default color is `#6366f1`.
+
+The consumer handles the bubbling `documenttokenrequest` event and calls
+`event.detail.respondWith(Promise<string>)` with its existing auth client's current token. Tokens
+are never component props or HTML attributes. Dispatch `documentcredentialschange` on the editor
+after token refresh/adoption, and `documentdisconnect` on sign-out. Access denial stops retries and
+locks editing; a credential change can reconnect the same document. Transient disconnects retain
+local edits for synchronization. Removing the component destroys its provider, socket and Yjs doc.
+
+Collaborative forms include `<name>Revision` alongside the JSON field. After the owning API saves
+successfully, return that captured value in `savedRevision`. Acknowledging that revision clears only
+the edits it includes; newer local or remote edits remain dirty. `documentchange` also supplies
+`revision` and `dirty`. `data-document-dirty`, `data-document-unsynced` and
+`data-document-connection` expose the corresponding state. Pending actions lock local editing while
+remote updates continue. Document persistence and save authorization belong to the consumer.
+
+Before submitting a collaborative form, the editor waits for outstanding provider acknowledgements.
+It shows `Syncing before save…` and temporarily locks local editing while retaining the draft. The
+original form submit resumes once those updates are acknowledged. Access loss or a 30-second sync
+timeout leaves the draft available with retry feedback; unmount cancels the wait. The host's
+acknowledgements must represent persisted updates. After a successful save, `Syncing…` remains until
+the saved revision marker is also acknowledged, then the status becomes `Saved`.
 
 Colors inherit the application palette. `--document-bg` and `--document-fg` override the surface and
 text; `--document-height` defaults to `320px` and `--document-max-height` to `640px`.
 `--document-selection` controls table-cell selection. Shared font, border, radius and focus tokens
 also apply. TipTap is bundled only on routes using this component; consumers need no npm dependency.
-Dependency notices ship in `META-INF/licenses/bml-design/document-editor.txt`.
+Dependency notices ship in `META-INF/licenses/bml-design/document-editor.txt`, `document-diagrams.txt`
+and `source-view.txt`.
 
 ## Fill-height workspaces
 
@@ -686,6 +859,13 @@ the trigger and uses light appearance when no preference is saved. These options
 component's own lifecycle; consumers do not call a mount function.
 
 ## Read-only source
+
+`html-content` renders HTML already prepared by the owning application or API. Its required `html`
+string is rendered as markup; Markdown parsing, sanitization and URL resolution remain with that
+owner. The native article receives forwarded attributes, classes and refs. `padded: Boolean = false`
+adds responsive content spacing when enabled. The library owns readable content spacing, bounded
+images, scrolling tables/code and an accessible unavailable-image fallback. Links retain native
+keyboard behavior. Use `source-view` when the supplied text should be displayed as source.
 
 `source-view` displays supplied text. `path` infers the language and adds context to the accessible
 label; an explicit `language` takes priority. Existing inference covers JavaScript/TypeScript/JSX/TSX,
@@ -1096,6 +1276,66 @@ in a widget. Widget bodies scroll within their assigned height. `/dashboards` de
 dark/light dashboards, retained note input, a real ECharts widget, locked content and local save
 rejection; `/components/visualization` documents both tags.
 
+## Boards
+
+`board`, `board-column` and `board-card` provide column layout and movement controls around
+ordinary application-owned BML content. Applications decide which destinations are allowed,
+perform domain validation and authorization, and return the updated cards after saving.
+
+```html
+<board id="review-board" label="Review board">
+  <for column in model.columns>
+    <board-column :columnId="column.id" :label="column.label"
+                  :scrollKey='"review-" + column.id'>
+      <for item in model.itemsFor(column.id)>
+        <board-card :cardId="item.id" :label="item.title" movable
+                    :targets="model.targetsFor(item.id)"
+                    :preserveKey='"review-card-" + item.id'>
+          <a :href="item.href">{ item.title }</a>
+          <p>{ item.description }</p>
+        </board-card>
+      </for>
+    </board-column>
+  </for>
+</board>
+```
+
+Targets use `BoardMoveTarget(id, label)` from `bosca.design.model`. Column/card IDs are local
+to the board. `id`, `scrollKey` and card `preserveKey` values must be unique in their containing
+rendered view. Keep a card's preservation key stable when moving it or refreshing surrounding
+content: its controls, local input, selection and pending save stay mounted. Change the key when
+replacing its projected body. Board and column scroll positions survive refreshed containers.
+Target changes reconcile the destination control without retaining a removed choice.
+
+The Move button supports pointer/touch dragging and native keyboard activation. Its dialog uses
+the shared select control; Enter, arrow keys, Home and End choose a destination. Escape dismisses
+the dialog or cancels a drag. The board scrolls near a dragging pointer's edges. Readonly boards
+retain content/navigation and hide movement controls; disabled boards/cards retain content while
+disabling moves. Card movement is opt-in with `movable` and an available target. Without scripts,
+the column/card content and ordinary links remain readable.
+
+Register the application save synchronously in the bubbling `boardmove` event:
+
+```typescript
+import type { BoardMoveRequest } from "@bosca/bml-design/board";
+ctx.on<CustomEvent<BoardMoveRequest>>(ctx.root, "boardmove", event => {
+  event.detail.waitUntil(ctx.dispatch(model.move(event.detail.cardId, event.detail.columnId)));
+});
+```
+
+The card stays in its supplied column until the application renders an accepted move. Pending
+requests disable repeat submission. A rejected promise keeps the destination and local body,
+shows retry feedback and emits `boarderror` with `{cardId,columnId,message}`. A save handler is
+required for movement; the library never writes application data. Unmount cancels local gestures,
+listeners and animation frames; completion of an outstanding application promise cannot update
+a removed card.
+
+`--board-height` defaults to `620px`, `--board-column-min-width` to `260px`, and `--board-gap`
+to `16px`. `--board-column-bg` and `--board-card-bg` use the surrounding palette by default.
+The [catalog board examples](../bml-design-catalog/src/main/bml/pages/boards.bml) and
+[independent consumer](../examples/design-library/src/main/bml/pages/boards.bml) demonstrate
+application saves, rejection, readonly states and retained notes.
+
 ## Flows and charts
 
 `flow-editor` uses the same VueFlow core version as Studio. Supply ordinary VueFlow nodes and edges
@@ -1175,9 +1415,18 @@ Changed options replace the configuration on the retained ECharts instance, remo
 and axes. Unmount disposes the instance and its listeners. Queries, result mapping, pagination and
 data transport belong to the consuming app.
 
+An application-owned client stream can replace the chart root's `data-config` with serialized native
+ECharts options and `data-maps` with serialized named boundaries. The component observes these
+attributes and refreshes its drawing and readable data table. Map data updates retain the viewer's
+pan/zoom when geometry, component identity and declared center/zoom stay the same. Changed declared
+views and Reset map restore the requested view.
+
 For a geographic data map, pass named GeoJSON FeatureCollections through `maps`. Native
 `series.map` and `geo.map` refer to those names; the component registers the boundaries and isolates
-aliases between chart instances. The application owns geometry loading and region values. Names in
+aliases between chart instances. The application owns geometry selection and region values.
+`bosca.design.model.ChartMaps.world` supplies bundled Natural Earth country boundaries; their source
+and terms are in [the map resources](src/main/resources/maps/README.md). Other geometry can be supplied
+directly. Names in
 `series.data` match feature `properties.name`, or the native `nameProperty`/`nameMap` settings.
 
 ```kotlin

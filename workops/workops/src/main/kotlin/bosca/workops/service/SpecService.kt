@@ -105,6 +105,8 @@ class SpecServiceImpl(
 
     override suspend fun getByKey(key: String): Spec? = specRepository.getActiveByKey(key)
 
+    override suspend fun getByMetadataId(metadataId: UUID): Spec? = specRepository.getByMetadataId(metadataId)
+
     override suspend fun getByIds(ids: List<UUID>): List<Spec> =
         if (ids.isEmpty()) emptyList() else specRepository.getByIds(ids)
 
@@ -429,7 +431,9 @@ class SpecServiceImpl(
         val reporterProfileId = actingProfileId ?: spec.ownerProfileId
         val generatedTaskIds = mutableListOf<UUID>()
         for (req in requirements) {
-            val doc = documentService.getDocument(req.metadataId, 1)
+            val doc = metadataService.getById(req.metadataId)?.let {
+                documentService.getDocument(req.metadataId, it.version)
+            }
             val summary = doc?.title?.takeIf { it.isNotBlank() } ?: "REQ ${req.key}"
             val description = doc?.content?.let { MarkdownConverter.toMarkdown(it) }
             val task = taskService.create(

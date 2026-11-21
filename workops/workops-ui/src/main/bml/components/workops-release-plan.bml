@@ -1,0 +1,10 @@
+<component tag="workops-release-plan">
+  <prop name="plan" type="bosca.workops.ui.graphql.WorkOpsReleasePlansData.WorkOps.CrossProject.ReleasePlans" required />
+  <prop name="graph" type="bosca.design.model.FlowGraph" required />
+  <prop name="phase" type="String" required />
+  <prop name="phaseTone" type="String" default="neutral" />
+  <card :title="plan.pipelineName"><p class="release-plan-summary">{ plan.repositorySlug } · { plan.triggerType.lowercase() } <badge :tone="phaseTone">{ phase }</badge></p>
+    <div class="release-plan-flow"><flow-editor :id='"release-plan-" + plan.pipelineId + "-" + plan.triggerType + "-" + plan.environment.orEmpty()' :label='plan.pipelineName + " job plan"' :value="graph" :readOnly="true" :preserveKey='"release-plan-" + plan.pipelineId + "-" + plan.triggerType + "-" + plan.environment.orEmpty()' /></div>
+  </card>
+  <style scoped>.release-plan-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }.release-plan-flow { --flow-height: 280px; min-width: 0; }</style>
+</component>

@@ -1,0 +1,6 @@
+<component tag="help-text">
+  <p class="help-text" {...attrs}><slot /></p>
+  <style scoped>
+    .help-text { margin: 0; color: var(--fg-3); font-size: 12px; font-weight: 400; line-height: 1.5; overflow-wrap: anywhere; }
+  </style>
+</component>

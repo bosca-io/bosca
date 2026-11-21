@@ -1,0 +1,36 @@
+<component tag="board-card">
+  <prop name="cardId" type="String" required />
+  <prop name="label" type="String" required />
+  <prop name="targets" type="List<bosca.design.model.BoardMoveTarget>" default="emptyList()" />
+  <prop name="movable" type="Boolean" default="false" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <prop name="preserveKey" type="String" default="" />
+  <script server provides="encodedTargets">kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.builtins.ListSerializer(bosca.design.model.BoardMoveTarget.serializer()), targets)</script>
+  <article class="board-card" :data-board-card="cardId" :data-label="label" :data-targets="encodedTargets" :data-movable="movable" :data-disabled="disabled" :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" :aria-label="label" tabindex="-1" {...attrs}>
+    <div class="board-card-content"><slot /></div>
+    <div class="board-move" data-board-move-handle hidden><button ref="moveHandle" size="xs" :aria-label='"Move " + label' aria-haspopup="dialog" :disabled="!movable || disabled" hidden>Move</button></div>
+    <p class="board-feedback" ref="status" role="status" hidden></p>
+    <p class="board-feedback board-error" ref="error" role="alert" hidden></p>
+    <dialog :title='"Move " + label' :triggerLabel='"Move " + label' :showTrigger="false" data-board-move-dialog>
+      <form ref="moveForm"><form-body padded>
+        <field label="Destination"><select ref="destination" name="destination" label="Destination" required><option value="">Choose a column</option><for target in targets><option :value="target.id">{ target.label }</option></for></select></field>
+        <p ref="dialogError" class="board-error" role="alert" hidden></p>
+      </form-body><form-actions bordered><button data-dialog-close>Cancel</button><button type="submit" primary>Move item</button></form-actions></form>
+    </dialog>
+  </article>
+  <style scoped>
+    .board-card { position: relative; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--board-card-bg, var(--bg-2)); color: var(--fg-1); overflow-wrap: anywhere; }
+    .board-card:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
+    .board-card-content { min-width: 0; }
+    .board-move { margin-top: 10px; cursor: grab; touch-action: none; }
+    .board-card[data-board-dragging] { outline: 2px solid var(--accent); opacity: .8; }
+    .board-card[data-board-pending] .board-move { cursor: wait; }
+    .board-feedback { margin: 8px 0 0; font: 12px/1.5 var(--font-sans); color: var(--fg-2); }
+    .board-error { color: var(--err); font: 12px/1.5 var(--font-sans); }
+    [hidden] { display: none; }
+  </style>
+  <script client scoped>
+    import { mountBoardCard } from "@client/helpers/board";
+    mountBoardCard(ctx);
+  </script>
+</component>

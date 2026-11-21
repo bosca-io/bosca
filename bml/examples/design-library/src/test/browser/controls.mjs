@@ -20,6 +20,10 @@ import { checkThemes } from './theme-checks.mjs';
 import { checkWidgets } from './widget-checks.mjs';
 import { checkWorkspaces } from './workspace-checks.mjs';
 import { checkShell } from './shell-checks.mjs';
+import { checkSchemaForms } from './schema-form-checks.mjs';
+import { checkSlugInputs } from './slug-input-checks.mjs';
+import { checkColorInputs } from './color-input-checks.mjs';
+import { checkHtmlContent } from '../../../../../bml-design/src/test/browser/html-content.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -107,7 +111,26 @@ try {
   await call('Network.enable');
   await call('Page.bringToFront');
   await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  if (process.argv[4] === 'shell') {
+  if (process.argv[4] === 'html-content') {
+    await checkHtmlContent({ call, evaluate, until, base, artifacts, mode, consumer: true });
+    assert.deepEqual(exceptions, []); assert.deepEqual(consoleErrors, []);
+  } else if (process.argv[4] === 'alerts') {
+    await call('Page.navigate', { url: base + '/foundation' });
+    await until(`document.readyState === 'complete' && document.querySelector('[data-block-alert=light]')`);
+    const alerts = await evaluate(`['light','purple'].map(theme => { const node=document.querySelector('[data-block-alert='+theme+']'), hidden=document.querySelector('[data-hidden-alert='+theme+']'); return {tag:node.tagName,role:node.getAttribute('role'),paragraphs:node.querySelectorAll('p').length,items:node.querySelectorAll('ul > li').length,color:getComputedStyle(node).color,hidden:hidden.hidden && getComputedStyle(hidden).display==='none'}; })`);
+    assert.deepEqual(alerts, [
+      {tag:'DIV',role:'alert',paragraphs:1,items:2,color:'rgb(161, 98, 7)',hidden:true},
+      {tag:'DIV',role:'alert',paragraphs:1,items:2,color:'rgb(255, 181, 71)',hidden:true},
+    ]);
+    assert.deepEqual(exceptions, []); assert.deepEqual(consoleErrors, []);
+  } else if (process.argv[4] === 'icon-actions') {
+    await checkIconActions({ call, evaluate, until, base, mode, artifacts });
+    assert.deepEqual(exceptions, []); assert.deepEqual(consoleErrors, []);
+  } else if (process.argv[4] === 'colors') {
+    await checkColorInputs({ call, evaluate, until, base, mode, artifacts });
+    assert.deepEqual(exceptions, []); assert.deepEqual(consoleErrors, []);
+    console.log(`Color input consumer checks passed (${mode}); artifacts: ${artifacts}`);
+  } else if (process.argv[4] === 'shell') {
     await checkShell({ call, evaluate, until, base, mode, artifacts });
     console.log(`Shell ${mode} passed`);
     assert.deepEqual(exceptions, []);
@@ -122,6 +145,11 @@ try {
     assert.deepEqual(exceptions, []);
     assert.deepEqual(consoleErrors, []);
     console.log(`Structured input consumer checks passed (${mode}); artifacts: ${artifacts}`);
+  } else if (process.argv[4] === 'schema-forms') {
+    await checkSchemaForms({ call, evaluate, until, base, mode, artifacts });
+    assert.deepEqual(exceptions, []);
+    assert.deepEqual(consoleErrors, []);
+    console.log(`Schema form consumer checks passed (${mode}); artifacts: ${artifacts}`);
   } else if (process.argv[4] === 'workspace') {
     await checkWorkspaces({ call, evaluate, until, base, mode, artifacts });
     assert.deepEqual(exceptions, []);
@@ -308,6 +336,7 @@ try {
   await until('!document.querySelector("[data-checkbox=light]").checked && !document.querySelector("[data-checkbox=light]").hasAttribute("checked")');
   await evaluate('document.querySelector("[data-switch=light]").click()');
   await until('!document.querySelector("[data-switch=light]").checked && !document.querySelector("[data-switch=light]").hasAttribute("checked")');
+  await checkSlugInputs({ call, evaluate, until, base, mode, artifacts });
   await checkLayout({ call, evaluate, until, base, mode, artifacts });
   await checkIconActions({ call, evaluate, until, base, mode, artifacts });
   await checkOverlays({ call, evaluate, until, base, mode, artifacts });

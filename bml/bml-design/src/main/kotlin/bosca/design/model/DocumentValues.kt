@@ -8,11 +8,17 @@ import bosca.documents.ParagraphNode
 import bosca.content.metadata.model.Document as MetadataDocument
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.builtins.ListSerializer
 
 /** An empty ProseMirror document as a Kotlin JSON tree, ready for editor input. */
 fun emptyDocument(): JsonObject = documentValue(Document(content = listOf(ParagraphNode())))
 
 private val documentJson = Json { serializersModule = DocumentSerializers; explicitNulls = false }
+private val containerJson = Json { encodeDefaults = true }
+
+/** Encodes template presentation without reflection for packaged native consumers. */
+fun documentContainerChoices(containers: List<DocumentContainerOption>): String =
+    containerJson.encodeToString(ListSerializer(DocumentContainerOption.serializer()), containers)
 
 /**
  * Uses Bosca's shared nodes and marks for typed editor authoring. Keep submitted/custom JSON trees
