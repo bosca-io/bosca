@@ -19,19 +19,23 @@ const SAVE_ORIGIN = 'save-document'
 const DIRTY_ORIGIN = 'update-document-changes'
 const EDITOR_REVISIONS = 'editorRevisions'
 
+/** Shares slug save state for metadata persisted through GraphQL. */
+export function getYDocSlugs(ydoc: Y.Doc) {
+  return ydoc.getMap<string>('slugs')
+}
+
 /**
  * Returns true when a Yjs transaction changed editor-owned content.
  *
- * The `changes` and `saved` texts are bookkeeping shared between clients. A
- * remote client receiving a save transaction must not interpret that clean
- * marker as a new edit and immediately change it back to dirty. Likewise, the
- * backend uses `|__dirty__|` map entries to request a re-seed from persisted
- * attributes, collections, or relationships; those markers are not edits.
+ * The `changes` and `saved` texts and the slug map carry bookkeeping shared
+ * between clients. The backend's `|__dirty__|` markers request a re-seed from
+ * persisted attributes, collections, or relationships.
  */
 function hasEditorChanges(ydoc: Y.Doc, transaction: Y.Transaction): boolean {
   const changes = ydoc.getText('changes')
   const saved = ydoc.getText('saved')
   const editorRevisions = ydoc.getMap(EDITOR_REVISIONS)
+  const slugs = getYDocSlugs(ydoc)
   const reseedMaps = new Set<unknown>([
     ydoc.getMap('attrs'),
     ydoc.getMap('collections'),
@@ -40,7 +44,7 @@ function hasEditorChanges(ydoc: Y.Doc, transaction: Y.Transaction): boolean {
 
   for (const [type, keys] of transaction.changed) {
     const changedType: unknown = type
-    if (changedType === changes || changedType === saved || changedType === editorRevisions) continue
+    if (changedType === changes || changedType === saved || changedType === editorRevisions || changedType === slugs) continue
     if (reseedMaps.has(changedType) && keys.size > 0 && [...keys].every(key => key === DIRTY_KEY)) {
       continue
     }
@@ -122,6 +126,7 @@ export function trackYDocChanges(ydoc: Y.Doc) {
   ydoc.getText('changes')
   ydoc.getText('saved')
   ydoc.getMap(EDITOR_REVISIONS)
+  getYDocSlugs(ydoc)
 
   ydoc.on('afterTransaction', (transaction) => {
     if (transaction.origin === DIRTY_ORIGIN || initializingDocs.has(ydoc)) {

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { ref, defineComponent, h, Suspense, nextTick } from 'vue'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import AttributesSidebar from './AttributesSidebar.vue'
+import CommonSlugEditor from '../common/CommonSlugEditor.vue'
 
 vi.stubGlobal('useGraphQL', () => ({
   query: vi.fn().mockResolvedValue(null),
@@ -21,11 +22,7 @@ const stubs = {
     props: ['color', 'solid'],
   },
   Popover: { template: '<span><slot name="trigger" /><slot /></span>' },
-  CommonSlugEditor: {
-    template: '<div class="mock-slug" />',
-    props: ['item', 'editable', 'ydoc'],
-    emits: ['edit'],
-  },
+  CommonSlugEditor,
   AttributesInput: {
     template: '<div class="mock-attr-input" />',
     props: ['item', 'attribute', 'editable', 'toolsEnabled', 'onRunTool'],
@@ -60,24 +57,22 @@ async function mountSidebar(extraProps: Record<string, unknown> = {}) {
 describe('AttributesSidebar', () => {
   it('renders the slug editor by default', async () => {
     const wrapper = await mountSidebar()
-    expect(wrapper.find('.mock-slug').exists()).toBe(true)
+    expect(wrapper.get<HTMLInputElement>('.slug-input').element.value).toBe('test-doc')
   })
 
   it('hides the slug editor when show-slug is false', async () => {
     const wrapper = await mountSidebar({ showSlug: false })
-    expect(wrapper.find('.mock-slug').exists()).toBe(false)
+    expect(wrapper.find('.slug-input').exists()).toBe(false)
   })
 
   it('renders the slug editor read-only', async () => {
     const wrapper = await mountSidebar()
-    const slug = wrapper.findComponent('.mock-slug') as VueWrapper
-    expect((slug.props() as Record<string, unknown>).editable).toBe(false)
+    expect(wrapper.get<HTMLInputElement>('.slug-input').element.readOnly).toBe(true)
   })
 
   it('emits edit-slug when the slug field requests editing', async () => {
     const wrapper = await mountSidebar()
-    const slug = wrapper.findComponent('.mock-slug') as VueWrapper
-    slug.vm.$emit('edit')
+    await wrapper.get('.slug-input').trigger('click')
     await nextTick()
     const sidebar = wrapper.findComponent(AttributesSidebar)
     expect(sidebar.emitted('edit-slug')).toBeTruthy()

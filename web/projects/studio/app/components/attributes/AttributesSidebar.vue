@@ -10,9 +10,6 @@ import { getWorkflowBadge } from '~/utils/workflowStatus'
 const { useAsyncQuery } = useGraphQL()
 const { requestCancel: onCancelJob, cancellingJobId } = useJobCancel()
 
-const slugEditorRef = ref()
-defineExpose({ slugEditor: slugEditorRef })
-
 const emit = defineEmits<{
   'edit-slug': []
 }>()
@@ -42,6 +39,7 @@ const props = withDefaults(defineProps<{
 
   onRunTool: (_attribute: AttributeState, _tool: TemplateAttributeTool) => void
   title?: string
+  slug?: string
   // Absent boolean props are cast to false by Vue, so the "show by default"
   // behavior needs an explicit default — `!== false` checks never see undefined.
   showSlug?: boolean
@@ -49,6 +47,7 @@ const props = withDefaults(defineProps<{
   emptyText?: string
 }>(), {
   title: undefined,
+  slug: undefined,
   showSlug: true,
   emptyText: 'No template attributes.',
 })
@@ -197,13 +196,9 @@ const sortedAttributes = computed(() => {
     </div>
 
     <div class="sidebar-scroll">
-      <!-- Slug (read-only: auto-generated from the title; clicking opens the slug modal) -->
       <CommonSlugEditor
         v-if="shouldShowSlug && content"
-        ref="slugEditorRef"
-        :item="content"
-        :editable="false"
-        :ydoc="ydoc"
+        :slug="slug ?? content.slug ?? ''"
         @edit="emit('edit-slug')"
       />
 
