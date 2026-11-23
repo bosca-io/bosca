@@ -161,12 +161,13 @@ object AnalyticsToolRegistrar {
     )
 
     fun registerAll(server: Server, api: AnalyticsApi) {
-        server.addTool(queryTool) { request -> result { handleQuery(api, request.arguments ?: error("Missing arguments")) } }
+        AnalyticsWarehouseToolRegistrar.registerAll(server, api)
+        server.addTool(queryTool) { request -> result("queries", request.arguments) { handleQuery(api, it) } }
         server.addTool(visualizationTool) { request ->
-            result { handleVisualization(api, request.arguments ?: error("Missing arguments")) }
+            result("visualizations", request.arguments) { handleVisualization(api, it) }
         }
         server.addTool(dashboardTool) { request ->
-            result { handleDashboard(api, request.arguments ?: error("Missing arguments")) }
+            result("dashboards", request.arguments) { handleDashboard(api, it) }
         }
     }
 
@@ -196,6 +197,8 @@ object AnalyticsToolRegistrar {
                         execution.cached,
                         execution.refreshedAt?.toString(),
                         args.limit(),
+                        execution.stale,
+                        execution.evidence,
                     ),
                 )
             }
@@ -420,9 +423,10 @@ object AnalyticsToolRegistrar {
             else -> error("Unknown analytics_dashboard action: $action")
         }
 
-    private suspend fun result(block: suspend () -> String): CallToolResult =
+    internal suspend fun result(kind: String, arguments: Map<String, JsonElement>?, block: suspend (Map<String, JsonElement>) -> String): CallToolResult =
         try {
-            CallToolResult(content = listOf(TextContent(block())))
+            val args = arguments ?: error("Missing arguments")
+            BoscaToolResources.analytics(kind, args, block(args))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

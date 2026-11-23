@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
 import java.nio.file.Path
 import kotlin.io.path.readText
 import kotlin.system.exitProcess
+import kotlin.uuid.Uuid
 
 /** Executes a prepared connection without exposing generation credentials in command arguments. */
 class HarnessMcpCommand : CliktCommand(name = "mcp") {
@@ -24,7 +25,7 @@ class HarnessMcpCommand : CliktCommand(name = "mcp") {
         if (key == "bosca") {
             val network = NetworkClient(connection.environment.getValue("BOSCA_ENDPOINT"))
             network.tokenProvider = { connection.environment.getValue("BOSCA_TOKEN") }
-            serveMcp(network)
+            serveMcp(network, Uuid.parse(connection.environment.getValue("BOSCA_MEMORY_SESSION_ID")))
         } else {
             val process = ProcessBuilder(connection.command).inheritIO().apply {
                 environment().clear(); environment().putAll(processEnvironment(System.getenv()) + connection.environment)
