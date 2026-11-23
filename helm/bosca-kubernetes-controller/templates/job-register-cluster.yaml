@@ -1,7 +1,12 @@
 {{- if .Values.autoRegister.enabled }}
 {{- $serverUrl := .Values.autoRegister.serverUrl }}
 {{- if not $serverUrl }}
+{{- if dig "kit" "enabled" false (.Values.global | default dict) }}
+{{- $kitProfile := include "bosca-common.kitProfile" . | fromYaml }}
+{{- $serverUrl = trimSuffix "/graphql" $kitProfile.boscaEndpoint }}
+{{- else }}
 {{- $serverUrl = printf "http://bosca-server.%s.svc.cluster.local:8080" .Release.Namespace }}
+{{- end }}
 {{- end }}
 apiVersion: batch/v1
 kind: Job

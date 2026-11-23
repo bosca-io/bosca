@@ -1,0 +1,9 @@
+{
+  "name": "kit-claude-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": "0.94.0",
+    "@anthropic-ai/claude-agent-sdk": "0.3.303"
+  }
+}
