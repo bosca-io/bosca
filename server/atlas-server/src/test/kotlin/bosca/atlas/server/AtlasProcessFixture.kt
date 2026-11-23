@@ -135,6 +135,19 @@ internal class AtlasProcessFixture(
 
     fun searchIndexUid(name: String): String = search.namespace + name
 
+    fun awaitAdminProfileSearchFilter(origin: String, token: String) {
+        val indexUid = searchIndexUid("administration")
+        await("admin search index supports filtering by profile type") {
+            val index = graphql(
+                origin,
+                """{ meilisearchAdmin { index(uid:"$indexUid") { settings { filterableAttributes } } } }""",
+                token,
+            ).getValue("meilisearchAdmin").jsonObject.getValue("index")
+            index is JsonObject && JsonPrimitive("_type") in index.getValue("settings").jsonObject
+                .getValue("filterableAttributes").jsonArray
+        }
+    }
+
     /** A connection to this fixture only, for initial scratch data and owned diagnostic sessions. */
     fun databaseConnection(): java.sql.Connection = java.sql.DriverManager.getConnection(jdbcUrl, username, password)
 

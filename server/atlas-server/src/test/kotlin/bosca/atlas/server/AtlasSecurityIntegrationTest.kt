@@ -43,6 +43,7 @@ class AtlasSecurityIntegrationTest {
                 assertTrue(errors.any { it.at("message").jsonPrimitive.content.contains("Unauthorized access") }, denied.body())
             }
             fixture.start("security-index-worker", mapOf("ATLAS_API_ENABLED" to "false", "ATLAS_GIT_ENABLED" to "false", "ATLAS_ARTIFACTS_ENABLED" to "false", "ATLAS_UI_ENABLED" to "false", "ATLAS_RUNNER_QUEUES" to "index", "ATLAS_RUNNER_LISTENERS_ENABLED" to "false", "ATLAS_SCHEDULER_ENABLED" to "false"))
+            fixture.awaitAdminProfileSearchFilter(api, admin)
             fixture.graphql(api, """mutation { storageSystems { reindex(storageName:"Admin Search Index",deleteFirst:false,metadata:false,collections:false,profiles:true) } }""", admin)
             fixture.await("token owner profile is indexed") {
                 fixture.graphql(api, """{ search { search(query:{query:"Security Reader",filter:["_type = \"profile\""],storageSystemName:"Admin Search Index",limit:20,offset:0}) { documents { profile { id } } } } }""", admin)
