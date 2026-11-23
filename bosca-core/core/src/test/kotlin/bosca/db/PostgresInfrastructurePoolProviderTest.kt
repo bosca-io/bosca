@@ -52,4 +52,15 @@ class PostgresInfrastructurePoolProviderTest {
             PostgresInfrastructurePoolProvider(app(sizeOnly)).configuration(),
         )
     }
+
+    @Test fun `creating the dedicated pool preserves its identity and bounds without opening connections`(): Unit = kotlinx.coroutines.runBlocking {
+        val provider = PostgresInfrastructurePoolProvider(app(main + "\n  postgres-infrastructure:\n    maxConnections: 3"))
+        val pool = provider.get()
+        try {
+            assertEquals(PostgresInfrastructurePoolProvider.NAME, pool.name)
+            assertEquals(3, pool.maxConnections)
+            assertEquals(0, pool.createdConnections)
+            assertEquals(0, pool.activeConnections)
+        } finally { pool.close() }
+    }
 }
