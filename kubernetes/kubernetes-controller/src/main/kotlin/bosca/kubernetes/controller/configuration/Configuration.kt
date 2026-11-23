@@ -112,13 +112,14 @@ class Configuration {
         json,
     )
 
-    @Provider
+    @Provider(singleton = true)
     suspend fun pubsubService(
         application: BoscaApplication,
         natsConnectionPool: ObjectProvider<NatsConnectionPool>,
         redisConnectionPool: ObjectProvider<RedisConnectionPool>,
         json: Json,
     ): PubSubService = when (application.environment.config.propertyOrNull("pubsub.type")?.getString()) {
+        "postgres" -> bosca.pubsub.PostgresPubSubService.create(application)
         "nats" -> NatsPubSubServiceImpl(json, natsConnectionPool.get())
         else -> RedisPubSubServiceImpl(json, redisConnectionPool.get())
     }
