@@ -65,6 +65,7 @@ class KubernetesJobExecutionRepositoryIntegrationTest {
                     connection().useStatement("drop schema if exists kubernetes cascade") { it.execute() }
                     executeResource("/db/migrations/V1__kubernetes_initial.sql")
                     executeResource("/db/migrations/V3__kubernetes_job_executions.sql")
+                    executeResource("/db/migrations/V5__job_execution_image.sql")
                 }
             }
             schemaInitialized = true
@@ -82,6 +83,25 @@ class KubernetesJobExecutionRepositoryIntegrationTest {
                 ) { it.execute() }
             }
         }
+    }
+
+    @Test
+    fun `worker image identity is updated cleared and retained after termination`() = withDb {
+        val id = UUID.random()
+        repository.create(id, "kit", "identity")
+        repository.markMaterialized(id, clusterId, "workers", "kit-job")
+        repository.recordImage(id, "image@sha256:abc", "containerd://sha256:def")
+        val observed = assertNotNull(repository.getById(id))
+        assertEquals("image@sha256:abc", observed.image)
+        assertEquals("containerd://sha256:def", observed.imageId)
+        repository.recordImage(id, null, null)
+        assertNull(repository.getById(id)?.imageId)
+        repository.markRunning(id)
+        repository.recordImage(id, "image@sha256:ghi", "sha256:jkl")
+        repository.markSucceeded(id)
+        repository.recordImage(id, null, null)
+        assertEquals("image@sha256:ghi", repository.getById(id)?.image)
+        assertEquals("sha256:jkl", repository.getById(id)?.imageId)
     }
 
     @Test

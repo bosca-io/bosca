@@ -73,4 +73,9 @@ data class KubernetesJobExecution(
     @Contextual
     @ColumnName("finished_at")
     val finishedAt: OffsetDateTime? = null,
+    /** Worker image reference from the running, Job-owned pod's spec. */
+    val image: String? = null,
+    /** Resolved worker image identity reported by kubelet, preserved without normalization. */
+    @ColumnName("image_id")
+    val imageId: String? = null,
 )
