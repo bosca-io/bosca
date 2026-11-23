@@ -518,6 +518,7 @@ fun main(args: Array<String>) {
             ServiceStatusCommand(),
         ),
         SwarmCommand().subcommands(
+            bosca.cli.swarm.runtime.SwarmRuntimeControllerCommand(),
             SwarmInitCommand(),
             SwarmEncryptCommand(),
             SwarmDecryptCommand(),
