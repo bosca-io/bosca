@@ -20,6 +20,8 @@ object Ai
 
 @TypeController
 class AiController : GraphQLController<Ai> {
+    @Field fun delegations() = bosca.ai.chat.graphql.KitDelegations
+
     @Field
     fun memories() = bosca.ai.memory.graphql.Memories
 

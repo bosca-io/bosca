@@ -50,9 +50,19 @@ interface ChatHistoryRepository {
     @Query("select * from ai.chat_messages where session_id = :sessionId order by created asc")
     suspend fun getMessages(sessionId: UUID): List<ChatHistoryMessage>
 
+    /** Bounds canonical context at the database boundary and preserves deterministic ordering. */
+    @Query("select * from ai.chat_messages where session_id=:sessionId and created<:before and lower(author) in ('user','assistant') order by created desc,id desc limit :limit")
+    suspend fun getRecentMessages(sessionId: UUID, before: bosca.serialization.OffsetDateTime, limit: Int): List<ChatHistoryMessage>
+
     @Query("delete from ai.chat_messages where session_id = :sessionId")
     suspend fun deleteMessages(sessionId: UUID)
 
-    @Query("insert into ai.chat_messages (id, session_id, author, content, event_data) values (:id, :sessionId, :author, :content, :event) on conflict do nothing returning *")
+    @Query("insert into ai.chat_messages (id, session_id, author, content, event_data, created) values (:id, :sessionId, :author, :content, :event, :created) on conflict do nothing returning *")
     suspend fun addMessage(message: ChatHistoryMessage): ChatHistoryMessage?
+
+    /** Inserts the authored timestamp and updates one coalesced message without moving it in chronological history. */
+    @Query("""insert into ai.chat_messages (id, session_id, author, content, event_data, created) values (:id, :sessionId, :author, :content, :event, :created)
+        on conflict (id) do update set content=excluded.content, event_data=excluded.event_data
+        where ai.chat_messages.session_id=excluded.session_id and ai.chat_messages.author=excluded.author returning *""")
+    suspend fun upsertMessage(message: ChatHistoryMessage): ChatHistoryMessage?
 }

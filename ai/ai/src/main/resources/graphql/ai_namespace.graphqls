@@ -1,5 +1,6 @@
 "Top-level read namespace for the AI domain: agents, tools, MCP servers, models, prompts."
 type Ai {
+    delegations: KitDelegations!
     memories: Memories!
     "Agent CRUD + sub-agent / tool join lookups."
     agents: Agents!
@@ -17,6 +18,7 @@ type Ai {
 
 "Top-level write namespace for the AI domain. Also exposes `agentRepo` for AGENT_PROJECT Git management."
 type AiMutation {
+    delegations: KitDelegationsMutation!
     memories: MemoriesMutation!
     "Agent CRUD + sub-agent / tool wiring."
     agents: AgentsMutation!
