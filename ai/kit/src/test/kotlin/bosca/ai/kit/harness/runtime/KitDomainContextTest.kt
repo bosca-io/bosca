@@ -47,7 +47,7 @@ class KitDomainContextTest {
     private val authority = KitRuntimeAuthority(listOf("content:view", "collections:view", "git:read"), listOf(group.id))
     private val config = KitHarnessConfiguration("kit", "unused", "unused", scopes = authority.scopes,
         image = "runtime@sha256:" + "a".repeat(64), imageId = "sha256:" + "b".repeat(64), versions = RuntimeVersions("test", "test", "test", "test"))
-    private val resolution = KitHarnessResolution(UUID.random(), "policy", "SYSTEM", config, authority)
+    private val resolution = KitHarnessResolution(UUID.random(), "policy", KitHarnessSource.SYSTEM, config, authority)
     private val session = KitRuntimeSession(UUID.random(), principal.id, JsonNull, JsonNull,
         resolvedSettings = json.encodeToJsonElement(KitHarnessResolution.serializer(), resolution), idleAt = OffsetDateTime.now())
     private var chat = ChatSession(session.sessionId, principal.id, agentKey = "kit")
@@ -120,7 +120,7 @@ class KitDomainContextTest {
     @Test fun `WorkOps selections include independently authorized task text and rich documents`() = runTest {
         select(taskSelection, specSelection, requirementSelection)
         val result = resolver.resolve(session)
-        assertEquals(listOf("task", "spec", "requirement"), result.manifest.sources.map { it.kind })
+        assertEquals(listOf(KitContextReferenceKind.TASK, KitContextReferenceKind.SPEC, KitContextReferenceKind.REQUIREMENT), result.manifest.sources.map { it.kind })
         assertEquals(listOf("Write the guide", "Writing plan", "Writing plan"), result.references.map { it.title })
         assertTrue(result.references.all { it.selected })
         assertContains(result.resources.first().second, "Independent task description")
@@ -222,7 +222,7 @@ class KitDomainContextTest {
         coEvery { prompts.get(agent.promptId) } returns bosca.ai.prompts.model.Prompt(agent.promptId, "kit", "Kit", "", "Instructions", "", "text", "text", null)
         select(fileSelection)
         val result = resolver.resolve(session)
-        assertEquals(listOf("git_file", "spec"), result.manifest.sources.map { it.kind })
+        assertEquals(listOf(KitContextReferenceKind.GIT_FILE, KitContextReferenceKind.SPEC), result.manifest.sources.map { it.kind })
         assertEquals(listOf(true, false), result.references.map { it.selected })
         assertEquals(1, result.selectionCount)
     }

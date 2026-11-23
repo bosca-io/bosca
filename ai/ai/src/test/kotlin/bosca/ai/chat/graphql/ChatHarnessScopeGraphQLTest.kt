@@ -46,7 +46,7 @@ class ChatHarnessScopeGraphQLTest {
                 scalar UUID
                 scalar DateTime
                 scalar JSON
-                type Query { ok: Boolean, controls: KitHarnessSettings }
+                type Query { ok: Boolean, controls: KitHarnessSettings, harness: KitHarnessStatus, reference: KitContextReference }
                 type Mutation { ok: Boolean }
                 type Subscription { ok: Boolean }
             """.trimIndent() + sdl, runtimeWiring {
@@ -57,9 +57,15 @@ class ChatHarnessScopeGraphQLTest {
                 type(dispatcher.type)
                 type(KitHarnessSettingsControllerDispatcher(KitHarnessSettingsController()).type)
                 type(KitModelOptionControllerDispatcher(KitModelOptionController()).type)
-                type("Query") { field("controls") { KitHarnessSettings("policy", "kit", "SYSTEM", true, listOf("kit"),
-                    capabilityVersion = "caps", model = "small", reasoning = "medium", models = listOf(KitModelOption("small", "Small")),
-                    reasoningOptions = listOf(KitModelOption("medium", "Medium"))) } }
+                type(KitHarnessStatusControllerDispatcher(KitHarnessStatusController()).type)
+                type(KitContextReferenceControllerDispatcher(KitContextReferenceController()).type)
+                type("Query") {
+                    field("controls") { KitHarnessSettings("policy", "kit", KitHarnessSource.SYSTEM, true, listOf("kit"),
+                        capabilityVersion = "caps", model = "small", reasoning = "medium", models = listOf(KitModelOption("small", "Small")),
+                        reasoningOptions = listOf(KitModelOption("medium", "Medium"))) }
+                    field("harness") { KitHarnessStatus(KitRuntimeSessionState.RESUMING, false) }
+                    field("reference") { KitContextReference(KitContextReferenceKind.GIT_FILE, "repository", "Guide") }
+                }
             }))
             suspend fun execute(operation: String, identity: AuthenticatedPrincipal) = graphql.execute(GraphQLRequest(
                 "mutation { chatSessions { $operation } }", context = GraphQLContext(mapOf("authenticationContext" to
@@ -79,11 +85,23 @@ class ChatHarnessScopeGraphQLTest {
             coVerify(exactly = 0) { chat.dispatch(any(), any(), any()) }
             coVerify(exactly = 0) { harness.selectContext(any(), any(), any()) }
             coVerify(exactly = 0) { harness.clearContext(any()) }
-            val output = graphql.execute(GraphQLRequest("{ controls { capabilityVersion model reasoning modelSource reasoningSource models { value name } reasoningOptions { value name } } }",
+            val query = """
+                {
+                    controls { source capabilityVersion model reasoning modelSource reasoningSource models { value name } reasoningOptions { value name } }
+                    harness { state }
+                    reference { kind }
+                }
+            """.trimIndent()
+            val output = graphql.execute(GraphQLRequest(query,
                 context = GraphQLContext(mapOf("authenticationContext" to object : AuthenticationContext(null, null) {
                     override fun principal() = AuthenticatedPrincipal(principal, emptyList())
                 }))))
             assertTrue(output.errors.isEmpty(), output.errors.toString())
+            assertContains(output.data.toString(), "\"source\":\"SYSTEM\"")
+            assertContains(output.data.toString(), "\"modelSource\":\"HARNESS\"")
+            assertContains(output.data.toString(), "\"reasoningSource\":\"HARNESS\"")
+            assertContains(output.data.toString(), "\"state\":\"RESUMING\"")
+            assertContains(output.data.toString(), "\"kind\":\"GIT_FILE\"")
             assertContains(output.data.toString(), "Small")
             assertContains(output.data.toString(), "Medium")
             val allowed = ScopedAuthenticatedPrincipal(principal, emptyList(), listOf("ai:execute"), emptySet(), 43)

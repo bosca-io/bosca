@@ -25,7 +25,7 @@ data class KitResponse(
     val harnessTurns: List<KitHarnessTurnEvent>,
     val status: String,
 ) {
-    private val unconfirmed: Boolean get() = harnessTurns.any { it.status !in setOf("COMPLETED", "CANCELLED", "FAILED", "INTERRUPTED") }
+    private val unconfirmed: Boolean get() = harnessTurns.any { !it.status.terminal }
     val failed: Boolean get() = status in setOf("FAILED", "INTERRUPTED") || unconfirmed
     val cancelled: Boolean get() = status == "CANCELLED"
     val empty: Boolean get() = text.isBlank() && displayEvents.isEmpty() && images.isEmpty() &&
@@ -49,7 +49,7 @@ fun KitChatTurn.responseContent(): KitResponse {
         images = assistantMessages.flatMap(KitChatMessage::imageReferences)
             .distinctBy(KitImageReference::metadataId),
         harnessTurns = turns,
-        status = turns.lastOrNull()?.status ?: session.status.name,
+        status = turns.lastOrNull()?.status?.name ?: session.status.name,
     )
 }
 

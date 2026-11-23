@@ -111,7 +111,7 @@ class KitHarnessServiceImpl(
         val resolution = policy.resolve(principal.id, authority, null, history.getSession(sessionId)?.agentKey ?: "kit")
         val config = resolution.configuration
         // Removal of a failed generation is confirmed before the row lock; provider observation may be remote.
-        val removedDispatch = repository.get(sessionId)?.takeIf { it.state == "FAILED" }?.let { failed ->
+        val removedDispatch = repository.get(sessionId)?.takeIf { it.state == KitRuntimeSessionState.FAILED }?.let { failed ->
             failed.dispatchId?.takeIf { provider.isStopped(json.decodeFromJsonElement(KitHarnessConfiguration.serializer(), failed.configuration), it) }
         }
         transaction {
@@ -128,12 +128,12 @@ class KitHarnessServiceImpl(
                 authority.groups.containsAll(existingAuthority.groups.filter { it in currentGroups })) {
                 "This conversation uses a different scoped authority; start a conversation with the current credentials"
             }
-            if (session.state == "FAILED") {
+            if (session.state == KitRuntimeSessionState.FAILED) {
                 require(session.dispatchId == null || session.dispatchId == removedDispatch) { "Previous runtime is still being removed" }
                 check(repository.save(session.freshGeneration().copy(
                     nativeSessionId = if (session.archiveKey == null) null else session.nativeSessionId,
                     needsContext = true)) == 1)
-            } else if (session.state == "STOPPED") check(repository.save(session.freshGeneration()) == 1)
+            } else if (session.state == KitRuntimeSessionState.STOPPED) check(repository.save(session.freshGeneration()) == 1)
             KitRuntimeJob(sessionId).enqueue()
         }
     }
@@ -143,7 +143,7 @@ class KitHarnessServiceImpl(
         activate(authentication, sessionId)
         transaction {
             val session = requireNotNull(repository.lock(sessionId))
-            require(session.deletedAt == null && session.state != "FAILED") { "Runtime requires recovery: ${session.failure}" }
+            require(session.deletedAt == null && session.state != KitRuntimeSessionState.FAILED) { "Runtime requires recovery: ${session.failure}" }
             val config = json.decodeFromJsonElement(KitHarnessConfiguration.serializer(), session.configuration)
             // Capture the context boundary before this message, including when more turns are queued.
             val turn = KitRuntimeTurn(UUID.random(), sessionId, message = json.encodeToJsonElement(ChatMessageInput.serializer(), message),
@@ -185,7 +185,7 @@ class KitHarnessServiceImpl(
     }
 
     override suspend fun state(sessionId: UUID): KitHarnessStatus? = repository.get(sessionId)?.let {
-        KitHarnessStatus(if (it.state == "STARTING" && it.archiveKey != null) "RESUMING" else it.state,
+        KitHarnessStatus(if (it.state == KitRuntimeSessionState.STARTING && it.archiveKey != null) KitRuntimeSessionState.RESUMING else it.state,
             it.cancelRequestedAt != null, it.failure ?: it.archiveFailure)
     }
 
@@ -196,10 +196,10 @@ class KitHarnessServiceImpl(
             repository.get(child.childSessionId)?.takeIf { it.deletedAt == null }?.let { cancel(it.sessionId) }
         }
         repository.cancelQueued(sessionId, session.activeTurn).forEach { turn ->
-            history.upsertMessage(requireNotNull(KitRuntimeTranscript(session, turn, json).snapshot("CANCELLED", true)))
+            history.upsertMessage(requireNotNull(KitRuntimeTranscript(session, turn, json).snapshot(KitHarnessTurnStatus.CANCELLED, true)))
         }
         session.activeTurn?.let { repository.closeApprovals(it) }
-        val pending = session.activeTurn != null || session.state == "STARTING"
+        val pending = session.activeTurn != null || session.state == KitRuntimeSessionState.STARTING
         check(repository.save(session.copy(cancelRequestedAt = if (pending) session.cancelRequestedAt ?: OffsetDateTime.now() else null)) == 1)
         history.setProcessing(sessionId, pending)
         KitRuntimeJob(sessionId).enqueue()
@@ -234,7 +234,7 @@ class KitHarnessServiceImpl(
     override suspend fun retire(sessionId: UUID) = transaction<Unit> {
         val session = repository.lock(sessionId) ?: return@transaction
         require(session.activeTurn == null && repository.next(sessionId) == null && repository.approvals(sessionId).isEmpty()) { "Conversation has unfinished work" }
-        if (session.state == "READY") {
+        if (session.state == KitRuntimeSessionState.READY) {
             check(repository.save(session.copy(idleAt = OffsetDateTime.now())) == 1)
             KitRuntimeJob(sessionId).enqueue()
         }

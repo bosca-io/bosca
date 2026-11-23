@@ -23,5 +23,6 @@ class KitMigration : Migration {
         "V10__kit_swarm_dispatch.sql",
         "V11__kit_delegation.sql",
         "V12__kit_runtime_recovery.sql",
+        "V13__kit_runtime_enums.sql",
     )
 }

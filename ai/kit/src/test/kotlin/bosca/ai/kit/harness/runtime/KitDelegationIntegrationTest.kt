@@ -24,7 +24,7 @@ class KitDelegationIntegrationTest {
                 assertFalse(f.history.getMessages(child.childSessionId).any { it.event.toString().contains("Parent private history") })
                 assertEquals(listOf(f.sessionId), f.history.getSessions(f.principalId).map { it.id })
                 assertEquals(listOf(child.childSessionId), f.history.getChildSessions(f.sessionId).map { it.id })
-                assertEquals("QUEUED", f.runtimes.turn(child.childTurnId)?.status)
+                assertEquals(KitRuntimeTurnStatus.QUEUED, f.runtimes.turn(child.childTurnId)?.status)
                 assertNull(f.runtimes.get(child.childSessionId)?.credentialId)
                 assertEquals(f.source.id.toString(), child.contextManifest?.sources?.single()?.id)
                 assertTrue(child.deadline <= OffsetDateTime.now().plusSeconds(30))
@@ -60,11 +60,11 @@ class KitDelegationIntegrationTest {
                 val children = f.repository.tree(f.turn.id)
                 val first = children.first()
                 val second = children.last()
-                f.service.finish(assertNotNull(f.runtimes.get(second.childSessionId)), assertNotNull(f.runtimes.turn(second.childTurnId)), "FAILED", "Partial investigation")
+                f.service.finish(assertNotNull(f.runtimes.get(second.childSessionId)), assertNotNull(f.runtimes.turn(second.childTurnId)), KitRuntimeTurnStatus.FAILED, "Partial investigation")
                 f.sent(first.childSessionId, 202)
                 val grandchild = f.service.start(f.auth(202), first.childSessionId, f.input(40))
                 assertEquals(2, grandchild.depth); assertEquals(f.turn.id, grandchild.rootTurnId)
-                f.service.finish(assertNotNull(f.runtimes.get(grandchild.childSessionId)), assertNotNull(f.runtimes.turn(grandchild.childTurnId)), "COMPLETED", "Answer")
+                f.service.finish(assertNotNull(f.runtimes.get(grandchild.childSessionId)), assertNotNull(f.runtimes.turn(grandchild.childTurnId)), KitRuntimeTurnStatus.COMPLETED, "Answer")
                 assertFailsWith<IllegalArgumentException> { f.service.start(f.auth(), f.sessionId, f.input(1)) }
                 assertEquals(120, f.repository.tree(f.turn.id).sumOf { it.input.runtimeSeconds })
                 f.sent(grandchild.childSessionId, 303)
@@ -90,8 +90,8 @@ class KitDelegationIntegrationTest {
                 val childTurn = assertNotNull(f.runtimes.turn(child.childTurnId))
                 f.service.wait(f.auth(), f.sessionId, child.id)
                 assertTrue(f.service.waiting(f.turn.id))
-                transaction { f.service.finish(childRuntime, childTurn, "COMPLETED", "Native fallback") }
-                f.service.finish(childRuntime, childTurn, "FAILED", "Duplicate delivery")
+                transaction { f.service.finish(childRuntime, childTurn, KitRuntimeTurnStatus.COMPLETED, "Native fallback") }
+                f.service.finish(childRuntime, childTurn, KitRuntimeTurnStatus.FAILED, "Duplicate delivery")
                 assertFalse(f.service.waiting(f.turn.id))
                 assertEquals(KitDelegationStatus.COMPLETED, f.service.get(f.auth(), f.sessionId, child.id)?.status)
                 assertEquals(result, f.service.get(f.auth(), f.sessionId, child.id)?.result)
@@ -113,7 +113,7 @@ class KitDelegationIntegrationTest {
             f.request {
                 val first = f.service.start(f.auth(), f.sessionId, f.input())
                 val second = f.service.start(f.auth(), f.sessionId, f.input())
-                f.runtimes.finish(f.turn.id, "COMPLETED", null)
+                f.runtimes.finish(f.turn.id, KitRuntimeTurnStatus.COMPLETED, null)
                 val next = f.sent(f.sessionId, 101)
                 f.service.wait(f.auth(), f.sessionId, first.id)
                 assertFalse(f.service.waiting(f.turn.id)); assertTrue(f.service.waiting(next.id))
@@ -122,7 +122,7 @@ class KitDelegationIntegrationTest {
                 assertEquals(KitDelegationStatus.CANCELLED, f.service.get(f.auth(), f.sessionId, first.id)?.status)
                 assertFalse(f.service.waiting(next.id))
                 val failed = assertNotNull(f.runtimes.get(second.childSessionId))
-                f.runtimes.save(failed.copy(state = "FAILED", failure = "Startup identity mismatch"))
+                f.runtimes.save(failed.copy(state = KitRuntimeSessionState.FAILED, failure = "Startup identity mismatch"))
                 assertEquals(KitDelegationStatus.FAILED, f.service.get(f.auth(), f.sessionId, second.id)?.status)
                 assertContains(assertNotNull(f.service.get(f.auth(), f.sessionId, second.id)?.failure), "Startup identity mismatch")
                 val queued = f.service.start(f.auth(), f.sessionId, f.input())
@@ -149,8 +149,8 @@ class KitDelegationIntegrationTest {
                 val first = assertNotNull(f.runtimes.get(expired.childSessionId))
                 val second = assertNotNull(f.runtimes.get(early.childSessionId)).copy(cancelRequestedAt = OffsetDateTime.now())
                 delay(1100)
-                f.service.finish(first, assertNotNull(f.runtimes.turn(expired.childTurnId)), "CANCELLED", "")
-                f.service.finish(second, assertNotNull(f.runtimes.turn(early.childTurnId)), "CANCELLED", "")
+                f.service.finish(first, assertNotNull(f.runtimes.turn(expired.childTurnId)), KitRuntimeTurnStatus.CANCELLED, "")
+                f.service.finish(second, assertNotNull(f.runtimes.turn(early.childTurnId)), KitRuntimeTurnStatus.CANCELLED, "")
                 assertEquals(KitDelegationStatus.TIMED_OUT, f.repository.get(expired.id)?.status)
                 assertEquals("Partial evidence", f.repository.get(expired.id)?.result?.summary)
                 assertEquals(KitDelegationStatus.CANCELLED, f.repository.get(early.id)?.status)
@@ -168,9 +168,9 @@ class KitDelegationIntegrationTest {
                 f.sent(first.childSessionId, 202)
                 assertFailsWith<IllegalArgumentException> { f.service.start(f.auth(202), first.childSessionId, f.input()) }
                 assertEquals(1, f.repository.tree(f.turn.id).size)
-                f.service.finish(assertNotNull(f.runtimes.get(first.childSessionId)), assertNotNull(f.runtimes.turn(first.childTurnId)), "COMPLETED", "First answer")
+                f.service.finish(assertNotNull(f.runtimes.get(first.childSessionId)), assertNotNull(f.runtimes.turn(first.childTurnId)), KitRuntimeTurnStatus.COMPLETED, "First answer")
                 val second = f.service.start(f.auth(), f.sessionId, f.input())
-                f.service.finish(assertNotNull(f.runtimes.get(second.childSessionId)), assertNotNull(f.runtimes.turn(second.childTurnId)), "FAILED", "")
+                f.service.finish(assertNotNull(f.runtimes.get(second.childSessionId)), assertNotNull(f.runtimes.turn(second.childTurnId)), KitRuntimeTurnStatus.FAILED, "")
                 assertEquals(60, f.repository.tree(f.turn.id).sumOf { it.input.runtimeSeconds })
                 assertFailsWith<IllegalArgumentException> { f.service.start(f.auth(), f.sessionId, f.input()) }
                 assertEquals(2, f.history.getChildSessions(f.sessionId).size)
@@ -211,7 +211,7 @@ class KitDelegationIntegrationTest {
                 f.harness.delete(child.childSessionId)
                 assertFalse(assertNotNull(f.service.get(f.auth(), f.sessionId, child.id)).status.terminal)
                 assertFailsWith<IllegalArgumentException> { f.service.start(f.auth(), f.sessionId, f.input()) }
-                f.service.finish(assertNotNull(f.runtimes.get(child.childSessionId)), assertNotNull(f.runtimes.turn(child.childTurnId)), "INTERRUPTED", "")
+                f.service.finish(assertNotNull(f.runtimes.get(child.childSessionId)), assertNotNull(f.runtimes.turn(child.childTurnId)), KitRuntimeTurnStatus.INTERRUPTED, "")
                 assertEquals(KitDelegationStatus.INTERRUPTED, f.repository.get(child.id)?.status)
                 assertEquals(KitDelegationStatus.QUEUED, f.service.start(f.auth(), f.sessionId, f.input()).status)
             }

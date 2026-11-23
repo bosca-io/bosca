@@ -15,5 +15,5 @@ data class KitContextManifest(
     val budgetCharacters: Int,
     val usedCharacters: Int,
     val historyMessages: Int = 0,
-    val format: String = "text",
+    val format: KitContextFormat = KitContextFormat.TEXT,
 )

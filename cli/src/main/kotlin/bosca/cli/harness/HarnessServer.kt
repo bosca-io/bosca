@@ -42,8 +42,8 @@ internal fun harnessServer(runtime: HarnessRuntime, host: String, port: Int) = e
                 }
             }
         }
-        get("/healthz") { call.respond(if (runtime.status().phase == "FAILED") HttpStatusCode.ServiceUnavailable else HttpStatusCode.OK) }
-        get("/readyz") { call.respond(if (runtime.status().phase in listOf("PREPARED", "RESTORED", "READY")) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable) }
+        get("/healthz") { call.respond(if (runtime.status().phase == KitRuntimePhase.FAILED) HttpStatusCode.ServiceUnavailable else HttpStatusCode.OK) }
+        get("/readyz") { call.respond(if (runtime.status().phase in listOf(KitRuntimePhase.PREPARED, KitRuntimePhase.RESTORED, KitRuntimePhase.READY)) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable) }
         get("/v1/runtime") { call.json(RuntimeStatus.serializer(), runtime.status()) }
         get("/v1/capabilities") { call.respondText(buildJsonObject {
             val versions = requireNotNull(runtime.status().versions)
@@ -59,14 +59,14 @@ internal fun harnessServer(runtime: HarnessRuntime, host: String, port: Int) = e
         } }
         post("/v1/archive") { call.checked { call.json(RuntimeArchiveReceipt.serializer(), runtime.archive(call.runtimeOwner())) } }
         get("/v1/archive") { call.checked {
-            check(runtime.status().phase == "ARCHIVED") { "Archive is unavailable" }
+            check(runtime.status().phase == KitRuntimePhase.ARCHIVED) { "Archive is unavailable" }
             call.respondFile(runtime.control.resolve("archive.tar.gz").toFile())
         } }
         post("/v1/restore") { call.checked {
             val mode = call.request.headers["X-Bosca-Restore-Mode"] ?: "full"
             require(mode in listOf("full", "workspace")) { "Unknown restore mode" }
-            check(runtime.status().phase in listOf("PREPARED", "RESTORED")) { "Runtime cannot restore in this phase" }
-            if (runtime.status().phase == "RESTORED") call.json(RuntimeStatus.serializer(), runtime.status()) else {
+            check(runtime.status().phase in listOf(KitRuntimePhase.PREPARED, KitRuntimePhase.RESTORED)) { "Runtime cannot restore in this phase" }
+            if (runtime.status().phase == KitRuntimePhase.RESTORED) call.json(RuntimeStatus.serializer(), runtime.status()) else {
                 val path = withContext(Dispatchers.IO) { Files.createTempFile(runtime.control, "restore-", ".tar.gz") }
                 try {
                     val input = call.receiveChannel()
@@ -102,7 +102,7 @@ internal fun harnessServer(runtime: HarnessRuntime, host: String, port: Int) = e
             call.json(RuntimeStatus.serializer(), runtime.status())
         } }
         post("/v1/shutdown") { call.checked {
-            check(runtime.status().phase == "ARCHIVED") { "Archive must be prepared before shutdown" }
+            check(runtime.status().phase == KitRuntimePhase.ARCHIVED) { "Archive must be prepared before shutdown" }
             call.json(RuntimeStatus.serializer(), runtime.status())
         } }
         webSocket("/acp") {

@@ -2,6 +2,7 @@ package bosca.ai.kit.harness.runtime
 
 import bosca.ai.chat.graphql.*
 import bosca.ai.graphql.*
+import bosca.ai.kit.harness.KitRuntimeTurnStatus
 import bosca.graphql.server.*
 import bosca.security.service.AuthenticationContext
 import bosca.security.service.GroupEvaluator
@@ -59,7 +60,7 @@ class KitDelegationGraphQLIntegrationTest {
                 assertTrue(submit.errors.isEmpty(), submit.errors.toString())
                 assertContains(submit.data.toString(), "\"partial\":true")
                 assertContains(submit.data.toString(), "Answer")
-                f.service.finish(assertNotNull(f.runtimes.get(child.childSessionId)), assertNotNull(f.runtimes.turn(child.childTurnId)), "COMPLETED", "")
+                f.service.finish(assertNotNull(f.runtimes.get(child.childSessionId)), assertNotNull(f.runtimes.turn(child.childTurnId)), KitRuntimeTurnStatus.COMPLETED, "")
             }
             val read = execute("""{ ai { delegations { get(sessionId: "${f.sessionId}", id: "$id") { status partial result { summary } } } } }""")
             assertTrue(read.errors.isEmpty(), read.errors.toString()); assertContains(read.data.toString(), "COMPLETED")

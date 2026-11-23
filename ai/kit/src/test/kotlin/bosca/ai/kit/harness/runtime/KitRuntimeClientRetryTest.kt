@@ -1,5 +1,6 @@
 package bosca.ai.kit.harness.runtime
 
+import bosca.ai.kit.harness.KitRuntimePhase
 import bosca.ai.kit.harness.KitHarnessConfiguration
 import bosca.ai.kit.harness.KitRuntimeSession
 import bosca.ai.kit.harness.RuntimeVersions
@@ -51,7 +52,7 @@ class KitRuntimeClientRetryTest {
                 exchange.requestHeaders.getFirst("X-Bosca-Generation"), exchange.requestHeaders.getFirst("X-Bosca-Epoch"))
             reply(exchange, if (attempt < 3) 501 + attempt else 200, if (attempt < 3) "private failure body" else status)
         }) { client, session, count ->
-            assertEquals("READY", client.claim(session, token).phase)
+            assertEquals(KitRuntimePhase.READY, client.claim(session, token).phase)
             assertEquals(3, count.get())
             assertEquals(List(3) { listOf("POST", "/v1/claim", "Bearer $token", "7", "11") }, requests.toList())
             assertTrue(times[1] - times[0] >= 100_000_000)
@@ -65,7 +66,7 @@ class KitRuntimeClientRetryTest {
                 if (attempt == 1) "unavailable" else if (receipt) """{"complete":true,"messages":[]}""" else status)
         }) { client, session, count ->
             if (receipt) assertTrue(assertNotNull(client.turn(session, token, "durable-turn")).complete)
-            else assertEquals("READY", client.status(session, token).phase)
+            else assertEquals(KitRuntimePhase.READY, client.status(session, token).phase)
             assertEquals(2, count.get())
         }
     }

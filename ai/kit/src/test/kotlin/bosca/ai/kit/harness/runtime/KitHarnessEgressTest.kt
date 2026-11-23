@@ -76,7 +76,7 @@ class KitHarnessEgressTest {
         val secrets = KitRuntimeSecrets(UUID.random(), Base64.getEncoder().encodeToString(byteArrayOf(1)), Base64.getEncoder().encodeToString(plain), values.keys.toList())
         val session = KitRuntimeSession(UUID.random(), principal.id, json.encodeToJsonElement(KitHarnessConfiguration.serializer(), resolution.configuration),
             json.encodeToJsonElement(KitRuntimeAuthority.serializer(), resolution.authority),
-            resolvedSettings = json.encodeToJsonElement(KitHarnessResolution.serializer(), resolution), state = "READY",
+            resolvedSettings = json.encodeToJsonElement(KitHarnessResolution.serializer(), resolution), state = KitRuntimeSessionState.READY,
             secrets = json.encodeToJsonElement(KitRuntimeSecrets.serializer(), secrets), credentialId = credentialId, idleAt = OffsetDateTime.now())
         sessions[session.sessionId] = session
         return session

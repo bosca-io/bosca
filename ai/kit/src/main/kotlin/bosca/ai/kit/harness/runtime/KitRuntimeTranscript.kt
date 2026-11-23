@@ -2,6 +2,7 @@ package bosca.ai.kit.harness.runtime
 
 import bosca.ai.chat.model.ChatHistoryMessage
 import bosca.ai.kit.harness.KitHarnessTurnEvent
+import bosca.ai.kit.harness.KitHarnessTurnStatus
 import bosca.ai.kit.harness.KitRuntimeSession
 import bosca.ai.kit.harness.KitRuntimeTurn
 import bosca.ai.kit.harness.acp.CodexAcpToolContent
@@ -51,7 +52,7 @@ internal class KitRuntimeTranscript(
         dirty = true
     }
 
-    fun snapshot(status: String = "STREAMING", force: Boolean = false): ChatHistoryMessage? {
+    fun snapshot(status: KitHarnessTurnStatus = KitHarnessTurnStatus.STREAMING, force: Boolean = false): ChatHistoryMessage? {
         val now = System.nanoTime()
         if (!force && (!dirty || lastFlush != Long.MIN_VALUE && now - lastFlush < 250_000_000)) return null
         lastFlush = now
@@ -60,7 +61,7 @@ internal class KitRuntimeTranscript(
         return ChatHistoryMessage(id = turn.id, sessionId = session.sessionId, author = "kit",
             event = json.encodeToJsonElement(KitHarnessTurnEvent.serializer(), KitHarnessTurnEvent(
                 turnId = turn.id.toString(), generation = session.generation, epoch = session.epoch, revision = revision,
-                status = status, text = if (status == "STREAMING") text.toString() else "", plan = plan,
+                status = status, text = if (status == KitHarnessTurnStatus.STREAMING) text.toString() else "", plan = plan,
                 tools = tools.values.toList(), content = content.toList())))
     }
 }

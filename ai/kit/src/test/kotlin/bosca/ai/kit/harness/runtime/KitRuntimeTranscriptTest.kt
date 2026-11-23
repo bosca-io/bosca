@@ -30,7 +30,7 @@ class KitRuntimeTranscriptTest {
         }""")
         transcript.accept(SessionUpdate.ToolCall(ToolCallId("mcp"), "mcp.bosca.analytics_query"))
         repeat(2) { transcript.accept(update) }
-        val snapshot = assertNotNull(transcript.snapshot("COMPLETED", true)).event
+        val snapshot = assertNotNull(transcript.snapshot(KitHarnessTurnStatus.COMPLETED, true)).event
         val event = json.decodeFromJsonElement(KitHarnessTurnEvent.serializer(), snapshot)
         val tool = event.tools.single()
         assertEquals("mcp.bosca.analytics_query", tool["title"]?.jsonPrimitive?.content)
@@ -62,7 +62,7 @@ class KitRuntimeTranscriptTest {
             content = listOf(ToolCallContent.Content(ContentBlock.Text("Found evidence")))))
         transcript.accept(SessionUpdate.AgentMessageChunk(ContentBlock.Image("aW1hZ2U=", "image/png")))
         transcript.accept(SessionUpdate.AgentThoughtChunk(ContentBlock.Text("private reasoning")))
-        val last = assertNotNull(transcript.snapshot("COMPLETED", true))
+        val last = assertNotNull(transcript.snapshot(KitHarnessTurnStatus.COMPLETED, true))
         assertEquals(first.id, last.id)
         val event = json.decodeFromJsonElement(KitHarnessTurnEvent.serializer(), last.event)
         assertEquals("", event.text)
@@ -80,7 +80,7 @@ class KitRuntimeTranscriptTest {
         val platform = Json { encodeDefaults = false; explicitNulls = false }
         val transcript = KitRuntimeTranscript(session, turn, platform)
         transcript.accept(SessionUpdate.AgentMessageChunk(ContentBlock.Text("A")))
-        val stored = assertNotNull(transcript.snapshot("COMPLETED", true)).event.jsonObject
+        val stored = assertNotNull(transcript.snapshot(KitHarnessTurnStatus.COMPLETED, true)).event.jsonObject
         assertEquals("harness-turn", stored["type"]?.jsonPrimitive?.content)
     }
 }

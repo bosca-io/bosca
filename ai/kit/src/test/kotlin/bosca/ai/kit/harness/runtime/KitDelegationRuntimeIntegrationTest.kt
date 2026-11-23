@@ -118,9 +118,9 @@ class KitDelegationRuntimeIntegrationTest {
                     suspend fun drive(id: UUID) = f.request { driver.reconcile(id) }
                     suspend fun waiting(id: UUID) { withTimeout(20_000) { while (roots[id]?.resolve("harness/waiting-pid")?.let(Files::exists) != true) delay(25) } }
                     f.request {
-                        f.runtimes.finish(f.turn.id, "COMPLETED", null)
+                        f.runtimes.finish(f.turn.id, KitRuntimeTurnStatus.COMPLETED, null)
                         val current = assertNotNull(f.runtimes.get(f.sessionId))
-                        f.runtimes.save(current.copy(state = "STOPPED", activeTurn = null, credentialId = null, secrets = null))
+                        f.runtimes.save(current.copy(state = KitRuntimeSessionState.STOPPED, activeTurn = null, credentialId = null, secrets = null))
                         f.harness.send(f.auth(), f.sessionId, ChatMessageInput("user", listOf(ChatMessagePartInput("text", "delegate-wait"))))
                     }
                     val parentWork = async { try { drive(f.sessionId); null } catch (waiting: KitDelegationWaitException) { waiting } }
@@ -136,7 +136,7 @@ class KitDelegationRuntimeIntegrationTest {
                     f.request {
                         val parent = assertNotNull(f.runtimes.get(f.sessionId))
                         assertNull(parent.owner); assertNull(parent.leaseUntil)
-                        assertEquals("SENT", f.runtimes.turn(assertNotNull(parent.activeTurn))?.status)
+                        assertEquals(KitRuntimeTurnStatus.SENT, f.runtimes.turn(assertNotNull(parent.activeTurn))?.status)
                     }
                     assertTrue(processes.getValue(f.sessionId).isAlive)
                     assertFalse(Files.exists(roots.getValue(f.sessionId).resolve("harness/cancel-observed")))

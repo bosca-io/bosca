@@ -7,7 +7,7 @@ import bosca.graphql.annotations.TypeController
 
 @TypeController
 class KitContextReferenceController : GraphQLController<KitContextReference> {
-    @Field fun kind(value: KitContextReference) = value.kind
+    @Field fun kind(value: KitContextReference) = value.kind.name
     @Field fun id(value: KitContextReference) = value.id
     @Field fun title(value: KitContextReference) = value.title
     @Field fun ref(value: KitContextReference) = value.ref

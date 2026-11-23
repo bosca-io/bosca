@@ -27,12 +27,12 @@ class KitRuntimeStartupDeadlineIntegrationTest {
             coVerify(exactly = 1) { KitAcpConnection.connect(any(), any(), any(), any()) }
             f.request {
                 val failed = assertNotNull(f.runtimes.get(f.sessionId))
-                assertEquals("FAILED", failed.state)
+                assertEquals(KitRuntimeSessionState.FAILED, failed.state)
                 assertContains(assertNotNull(failed.failure), "hard-runtime deadline during startup")
                 assertNull(failed.dispatchId)
                 assertNull(failed.credentialId)
                 assertNull(failed.secrets)
-                assertEquals("QUEUED", f.runtimes.turn(queued.id)?.status)
+                assertEquals(KitRuntimeTurnStatus.QUEUED, f.runtimes.turn(queued.id)?.status)
                 assertNull(f.runtimes.turn(queued.id)?.deadline)
             }
             coVerify(exactly = 1) { f.provider.stop(any(), any()) }
@@ -49,8 +49,8 @@ class KitRuntimeStartupDeadlineIntegrationTest {
             assertEquals(failure.message, thrown.message)
             assertTrue(generateSequence<Throwable>(thrown) { it.cause }.any { it is EOFException && it.message == "Unexpected closure" })
             f.request {
-                assertEquals("STARTING", f.runtimes.get(f.sessionId)?.state)
-                assertEquals("QUEUED", f.runtimes.turn(queued.id)?.status)
+                assertEquals(KitRuntimeSessionState.STARTING, f.runtimes.get(f.sessionId)?.state)
+                assertEquals(KitRuntimeTurnStatus.QUEUED, f.runtimes.turn(queued.id)?.status)
                 assertNull(f.runtimes.turn(queued.id)?.deadline)
             }
             coVerify(exactly = 0) { f.provider.stop(any(), any()) }
@@ -75,7 +75,7 @@ class KitRuntimeStartupDeadlineIntegrationTest {
                 assertFailsWith<CancellationException> { reconciliation.await() }
                 reconciliation.join()
             }
-            f.request { assertEquals("STARTING", f.runtimes.get(f.sessionId)?.state) }
+            f.request { assertEquals(KitRuntimeSessionState.STARTING, f.runtimes.get(f.sessionId)?.state) }
             coVerify(exactly = 0) { f.provider.stop(any(), any()) }
             coVerify(exactly = 0) { f.tokens.revokeToken(any(), any()) }
         }
@@ -91,20 +91,20 @@ class KitRuntimeStartupDeadlineIntegrationTest {
             KitDelegationFixture().use { f ->
                 f.initialize()
                 val deadline = Instant.now().plusSeconds(hardSeconds).truncatedTo(java.time.temporal.ChronoUnit.SECONDS)
-                val queued = f.turn.copy(id = UUID.random(), status = "QUEUED", deadline = null)
+                val queued = f.turn.copy(id = UUID.random(), status = KitRuntimeTurnStatus.QUEUED, deadline = null)
                 f.request {
-                    check(f.runtimes.finish(f.turn.id, "COMPLETED", null) == 1)
+                    check(f.runtimes.finish(f.turn.id, KitRuntimeTurnStatus.COMPLETED, null) == 1)
                     f.runtimes.add(queued)
                     val session = assertNotNull(f.runtimes.get(f.sessionId))
                     val environment = """{"BOSCA_RUNTIME_TOKEN":"test-token","BOSCA_RUNTIME_EXPIRES":"${deadline.epochSecond}"}""".encodeToByteArray()
                     val secret = KitRuntimeSecrets(f.sessionId, Base64.getEncoder().encodeToString(byteArrayOf(1)),
                         Base64.getEncoder().encodeToString(environment), listOf("BOSCA_RUNTIME_TOKEN", "BOSCA_RUNTIME_EXPIRES"))
-                    check(f.runtimes.save(session.copy(state = "STARTING", activeTurn = null, dispatchId = UUID.random(),
+                    check(f.runtimes.save(session.copy(state = KitRuntimeSessionState.STARTING, activeTurn = null, dispatchId = UUID.random(),
                         secrets = f.json.encodeToJsonElement(KitRuntimeSecrets.serializer(), secret))) == 1)
                 }
                 coEvery { anyConstructed<KitRuntimeClient>().claim(any(), any()) } answers {
                     val session = firstArg<KitRuntimeSession>()
-                    RuntimeStatus(session.sessionId.toString(), session.generation, "PREPARED", "fixture-instance", epoch = session.epoch, versions = f.profile.versions)
+                    RuntimeStatus(session.sessionId.toString(), session.generation, KitRuntimePhase.PREPARED, "fixture-instance", epoch = session.epoch, versions = f.profile.versions)
                 }
                 coEvery { anyConstructed<KitRuntimeClient>().start(any(), any()) } returns mockk(relaxed = true)
                 coEvery { f.provider.status(any(), any()) } returns KitRuntimeExecution(OffsetDateTime.now(), false,

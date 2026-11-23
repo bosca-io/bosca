@@ -41,7 +41,7 @@ internal fun KitHarnessTurnEvent.resultContent(): List<Pair<String?, ToolCallCon
 
 /** Payload-free turn and tool provenance shared by inbound protocol adapters. */
 internal fun KitHarnessTurnEvent.summaryJson(): JsonObject = buildJsonObject {
-    put("turnId", turnId); put("generation", generation); put("epoch", epoch); put("revision", revision); put("status", status)
+    put("turnId", turnId); put("generation", generation); put("epoch", epoch); put("revision", revision); put("status", status.name)
     put("plan", withoutHarnessMetadata(plan))
     put("tools", JsonArray(acpUpdates().filterIsInstance<SessionUpdate.ToolCall>().map { tool ->
         buildJsonObject {

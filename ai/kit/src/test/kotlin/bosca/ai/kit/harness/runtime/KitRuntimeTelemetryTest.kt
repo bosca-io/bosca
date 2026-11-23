@@ -34,9 +34,9 @@ class KitRuntimeTelemetryTest {
         val secret = "PRIVATE-CONTENT-MUST-NOT-APPEAR"
         val config = KitHarnessConfiguration("fixture", "http://$secret", "http://$secret", scopes = listOf("content:view"),
             image = "image@sha256:" + "a".repeat(64), imageId = "sha256:" + "b".repeat(64), versions = RuntimeVersions("test", "test", "test", "test"))
-        val resolution = KitHarnessResolution(UUID.random(), "policy-revision", "SYSTEM", config, KitRuntimeAuthority(listOf("content:view"), emptyList()))
+        val resolution = KitHarnessResolution(UUID.random(), "policy-revision", KitHarnessSource.SYSTEM, config, KitRuntimeAuthority(listOf("content:view"), emptyList()))
         val context = KitContextManifest("context-revision", "instruction-revision", null, null,
-            listOf(KitContextSource("memory", "memory-id", "7", "source-revision", true, ref = secret, path = secret, metadataId = secret)),
+            listOf(KitContextSource(KitContextReferenceKind.MEMORY, "memory-id", "7", "source-revision", true, ref = secret, path = secret, metadataId = secret)),
             omissions = listOf(secret), budgetCharacters = 4096, usedCharacters = 1)
         val session = KitRuntimeSession(UUID.random(), UUID.random(), JsonPrimitive(secret), JsonPrimitive(secret),
             resolvedSettings = json.encodeToJsonElement(KitHarnessResolution.serializer(), resolution),

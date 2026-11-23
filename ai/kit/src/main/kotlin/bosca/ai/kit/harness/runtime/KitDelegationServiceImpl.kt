@@ -85,7 +85,7 @@ class KitDelegationServiceImpl(
                 json.encodeToJsonElement(KitRuntimeAuthority.serializer(), childResolution.authority),
                 resolvedSettings = json.encodeToJsonElement(KitHarnessResolution.serializer(), childResolution), idleAt = now)
             val snapshot = context.resolve(child, caller = authentication)
-            require(selected.all { selection -> snapshot.references.any { it.kind == selection.kind.name.lowercase() && it.id == selection.id.toString() && it.ref == selection.ref && it.path == selection.path } }) { "Some child input references are unavailable" }
+            require(selected.all { selection -> snapshot.references.any { it.kind.name == selection.kind.name && it.id == selection.id.toString() && it.ref == selection.ref && it.path == selection.path } }) { "Some child input references are unavailable" }
             runtimes.create(child)
             val message = ChatMessageInput("user", listOf(ChatMessagePartInput("text",
                 "Delegated task:\n${input.brief}\n\nExpected result:\n${input.expectedResult}\n\nReturn a concise summary and Bosca content artifact references. Use bosca_delegate submit for structured output when available.")))
@@ -162,23 +162,29 @@ class KitDelegationServiceImpl(
         val child = repository.child(session.sessionId) ?: return
         if (child.status.terminal) return
         val turn = runtimes.turn(child.childTurnId) ?: return
-        if (turn.status in setOf("COMPLETED", "CANCELLED", "FAILED", "INTERRUPTED")) finish(session, turn, turn.status, "")
-        else if (session.deletedAt != null && turn.status != "SENT") finish(session, turn, "CANCELLED", "")
-        else if (session.state == "FAILED") finish(session, turn, if (turn.status == "SENT") "INTERRUPTED" else "FAILED", "")
-        else if (turn.status == "SENT") repository.running(child.id)
+        if (turn.status.terminal) finish(session, turn, turn.status, "")
+        else if (session.deletedAt != null && turn.status != KitRuntimeTurnStatus.SENT) finish(session, turn, KitRuntimeTurnStatus.CANCELLED, "")
+        else if (session.state == KitRuntimeSessionState.FAILED) finish(session, turn, if (turn.status == KitRuntimeTurnStatus.SENT) KitRuntimeTurnStatus.INTERRUPTED else KitRuntimeTurnStatus.FAILED, "")
+        else if (turn.status == KitRuntimeTurnStatus.SENT) repository.running(child.id)
     }
 
-    override suspend fun finish(session: KitRuntimeSession, turn: KitRuntimeTurn, status: String, summary: String) = transaction<Unit> {
+    override suspend fun finish(session: KitRuntimeSession, turn: KitRuntimeTurn, status: KitRuntimeTurnStatus, summary: String) = transaction<Unit> {
         val child = repository.child(session.sessionId) ?: return@transaction
         if (turn.id != child.childTurnId || child.status.terminal) return@transaction
         val cancelled = session.cancelRequestedAt
-        var outcome = if (status != "COMPLETED" && !child.deadline.isAfter(OffsetDateTime.now()) &&
+        var outcome = if (status != KitRuntimeTurnStatus.COMPLETED && !child.deadline.isAfter(OffsetDateTime.now()) &&
             (cancelled == null || !cancelled.isBefore(child.deadline))) KitDelegationStatus.TIMED_OUT
-            else KitDelegationStatus.valueOf(status)
+            else when (status) {
+                KitRuntimeTurnStatus.COMPLETED -> KitDelegationStatus.COMPLETED
+                KitRuntimeTurnStatus.CANCELLED -> KitDelegationStatus.CANCELLED
+                KitRuntimeTurnStatus.INTERRUPTED -> KitDelegationStatus.INTERRUPTED
+                KitRuntimeTurnStatus.FAILED -> KitDelegationStatus.FAILED
+                KitRuntimeTurnStatus.QUEUED, KitRuntimeTurnStatus.SENT -> error("Expected a terminal turn outcome")
+            }
         val result = child.result ?: summary.takeIf(String::isNotBlank)?.let { KitDelegationResult(it.take(16000)) }
         var failure = if (outcome == KitDelegationStatus.COMPLETED) null else session.failure ?: "Child task ${outcome.name.lowercase()}; completed actions were not undone."
         if (outcome == KitDelegationStatus.COMPLETED && result == null) { outcome = KitDelegationStatus.FAILED; failure = "The child returned no usable result." }
-        if (repository.finish(child.id, outcome.name, result, failure) != 1) return@transaction
+        if (repository.finish(child.id, outcome, result, failure) != 1) return@transaction
         val parent = runtimes.get(child.parentSessionId)
         if (parent != null && parent.deletedAt == null && history.getSession(parent.sessionId) != null) {
             val principal = requireNotNull(security.getPrincipalById(parent.principalId))
@@ -212,7 +218,7 @@ class KitDelegationServiceImpl(
             runtime.deletedAt != null || runtime.cancelRequestedAt != null || current.authority.groups.any { !principal.hasGroup(it) }) throw SecurityException("Child operation is outside the current runtime authority")
         val expires = runtimeEnvironment(runtime, encryption, json).getValue("BOSCA_RUNTIME_EXPIRES").toLong()
         require(java.time.Instant.now().epochSecond < expires) { "Runtime has expired" }
-        if (active) require(runtime.activeTurn?.let { runtimes.turn(it)?.status } == "SENT") { "Delegation requires an active sent parent turn" }
+        if (active) require(runtime.activeTurn?.let { runtimes.turn(it)?.status } == KitRuntimeTurnStatus.SENT) { "Delegation requires an active sent parent turn" }
         return runtime
     }
 

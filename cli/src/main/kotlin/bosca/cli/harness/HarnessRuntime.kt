@@ -39,7 +39,7 @@ internal class HarnessRuntime(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
     private val lifecycle = Mutex()
-    private var phase = "PREPARED"
+    private var phase = KitRuntimePhase.PREPARED
     private var epoch = 0L
     private var nativeSession: String? = null
     private var activeTurn: String? = null
@@ -75,8 +75,8 @@ internal class HarnessRuntime(
                 // An in-flight start may have created a process before releasing the lifecycle lock.
                 process?.let { stopHarnessProcess(it, privateNamespace) }
                 mutex.withLock {
-                    if (phase == "ARCHIVED") return@launch
-                    phase = "FAILED"
+                    if (phase == KitRuntimePhase.ARCHIVED) return@launch
+                    phase = KitRuntimePhase.FAILED
                     failure = "The harness reached its hard-runtime deadline. The active turn was interrupted and was not replayed."
                 }
                 reader?.join()
@@ -101,8 +101,8 @@ internal class HarnessRuntime(
     suspend fun start(owner: Long): RuntimeStatus = lifecycle.withLock { mutex.withLock {
         check(owner == epoch) { "Stale runtime owner" }
         check(System.currentTimeMillis() / 1000 < expires) { "Runtime deadline expired" }
-        if (phase == "READY") return@withLock identity()
-        check(phase in listOf("PREPARED", "RESTORED")) { "Runtime cannot start in this phase" }
+        if (phase == KitRuntimePhase.READY) return@withLock identity()
+        check(phase in listOf(KitRuntimePhase.PREPARED, KitRuntimePhase.RESTORED)) { "Runtime cannot start in this phase" }
         val excludedSecrets = environment["BOSCA_MCP_SECRET_NAMES"]?.let { Json.parseToJsonElement(it).jsonArray.map { name -> name.jsonPrimitive.content } }.orEmpty()
         process = withContext(Dispatchers.IO) {
             ProcessBuilder(command).directory(roots.getValue("workspace").toFile()).redirectError(ProcessBuilder.Redirect.DISCARD).apply {
@@ -110,19 +110,19 @@ internal class HarnessRuntime(
                 environment().putAll(this@HarnessRuntime.environment.filterKeys { !it.startsWith("BOSCA_") && it !in excludedSecrets })
             }.start()
         }
-        phase = "READY"
+        phase = KitRuntimePhase.READY
         reader = scope.launch { readAdapter(requireNotNull(process)) }
         identity()
     } }
 
     suspend fun configure(connections: List<KitMcpConnection>, owner: Long): List<KitMcpStatus> = mutex.withLock {
         check(owner == epoch) { "Stale runtime owner" }
-        check(phase == "READY" && activeTurn == null && (sessionSetup == null || mcp.plans == connections)) { "MCP configuration requires an idle prepared session" }
+        check(phase == KitRuntimePhase.READY && activeTurn == null && (sessionSetup == null || mcp.plans == connections)) { "MCP configuration requires an idle prepared session" }
         mcp.configure(connections, roots.getValue("workspace"), sessionId)
     }
 
     suspend fun connect(connection: WebSocketSession, owner: Long) = mutex.withLock {
-        check(phase == "READY" && epoch == owner) { "Runtime unavailable or owner is stale" }
+        check(phase == KitRuntimePhase.READY && epoch == owner) { "Runtime unavailable or owner is stale" }
         val previous = socket
         socket = connection
         if (previous !== connection) previous?.close(CloseReason(CloseReason.Codes.GOING_AWAY, "Observer replaced"))
@@ -131,7 +131,7 @@ internal class HarnessRuntime(
 
     /** WebSocket input is fenced to its observer; HTTP control messages use the current owner. */
     suspend fun receive(message: JsonObject, owner: Long, observer: WebSocketSession? = null) = mutex.withLock {
-        check(phase == "READY" && epoch == owner) { "Runtime is draining or owner is stale" }
+        check(phase == KitRuntimePhase.READY && epoch == owner) { "Runtime is draining or owner is stale" }
         check(observer == null || socket === observer) { "ACP observer was replaced" }
         val method = message.string("method")
         val params = message["params"]?.jsonObject ?: buildJsonObject { }
@@ -256,7 +256,7 @@ internal class HarnessRuntime(
             }
         } finally {
             mutex.withLock {
-                if (phase == "READY") phase = "FAILED"
+                if (phase == KitRuntimePhase.READY) phase = KitRuntimePhase.FAILED
                 socket?.close(CloseReason(CloseReason.Codes.INTERNAL_ERROR, "Adapter stopped"))
                 socket = null
             }
@@ -326,27 +326,27 @@ internal class HarnessRuntime(
         mutex.withLock {
             check(owner == epoch) { "Stale runtime owner" }
             archiveReceipt?.let { return@withLock it }
-            check(phase in listOf("READY", "DRAINING") && activeTurn == null && callbacks.isEmpty() && tools.isEmpty() && requests.isEmpty()) { "Runtime has unfinished work" }
-            phase = "DRAINING"
+            check(phase in listOf(KitRuntimePhase.READY, KitRuntimePhase.DRAINING) && activeTurn == null && callbacks.isEmpty() && tools.isEmpty() && requests.isEmpty()) { "Runtime has unfinished work" }
+            phase = KitRuntimePhase.DRAINING
         }
         archiveReceipt?.let { return@withLock it }
         stop()
         val metadata = Json.encodeToJsonElement(RuntimeStatus.serializer(), status()).jsonObject
         val receipt = archive.export(control.resolve("archive.tar.gz"), metadata, secrets.toList())
-        mutex.withLock { archiveReceipt = receipt; phase = "ARCHIVED" }
+        mutex.withLock { archiveReceipt = receipt; phase = KitRuntimePhase.ARCHIVED }
         receipt
     }
     suspend fun restore(path: Path, checksum: String, workspaceOnly: Boolean, owner: Long): RuntimeStatus = lifecycle.withLock {
         mutex.withLock {
             check(owner == epoch) { "Stale runtime owner" }
-            if (phase == "RESTORED") return@withLock identity()
-            check(phase == "PREPARED") { "Runtime cannot restore in this phase" }
+            if (phase == KitRuntimePhase.RESTORED) return@withLock identity()
+            check(phase == KitRuntimePhase.PREPARED) { "Runtime cannot restore in this phase" }
         }
-        if (status().phase == "RESTORED") return@withLock status()
+        if (status().phase == KitRuntimePhase.RESTORED) return@withLock status()
         val manifest = archive.restore(path, checksum, sessionId, workspaceOnly)
         mutex.withLock {
             nativeSession = if (workspaceOnly) null else manifest.metadata.string("nativeSessionId")
-            phase = "RESTORED"; identity()
+            phase = KitRuntimePhase.RESTORED; identity()
         }
     }
     private suspend fun stop() { process?.let { stopHarnessProcess(it, privateNamespace) }; reader?.join() }
@@ -357,7 +357,7 @@ internal class HarnessRuntime(
         lifecycle.withLock {
             // Recheck after any in-flight start has finished.
             stop()
-            mutex.withLock { phase = "DRAINING" }
+            mutex.withLock { phase = KitRuntimePhase.DRAINING }
         }
     }
 

@@ -2,6 +2,7 @@
 
 package bosca.ai.kit.harness.runtime
 
+import bosca.ai.kit.harness.KitRuntimeSessionState
 import bosca.ai.kit.configuration.KitMigration
 import bosca.ai.kit.harness.KitRuntimeArchive
 import bosca.ai.kit.harness.KitRuntimeSession
@@ -75,7 +76,7 @@ class KitArchivePersistenceIntegrationTest {
         val repository = KitRuntimeRepositoryImpl()
         val principal = UUID.random()
         val sessions = (0..3).map { KitRuntimeSession(UUID.random(), if (it < 3) principal else UUID.random(),
-            JsonObject(emptyMap()), JsonObject(emptyMap()), state = "STOPPING", generation = 1,
+            JsonObject(emptyMap()), JsonObject(emptyMap()), state = KitRuntimeSessionState.STOPPING, generation = 1,
             dispatchId = UUID.random(), idleAt = OffsetDateTime.now()) }
         fun key(session: KitRuntimeSession, generation: Long = 1) = "kit/runtime/${session.sessionId}/$generation.tar.gz"
         suspend fun reserve(session: KitRuntimeSession, generation: Long, bytes: Long, limit: Long) = withConnectionManager { transaction {
@@ -111,7 +112,7 @@ class KitArchivePersistenceIntegrationTest {
             assertTrue(reserve(selected, 2, 500, 1600))
             withConnectionManager {
                 val current = assertNotNull(repository.get(selected.sessionId))
-                assertEquals(1, repository.save(current.copy(generation = 2, state = "STOPPED", dispatchId = null, archiveKey = key(selected, 2))))
+                assertEquals(1, repository.save(current.copy(generation = 2, state = KitRuntimeSessionState.STOPPED, dispatchId = null, archiveKey = key(selected, 2))))
                 assertEquals(listOf(key(selected)), repository.obsoleteArchives(selected.sessionId).map { it.key })
                 assertEquals(1300L, repository.archiveBytes(principal), "Objects awaiting deletion retain their charge")
                 assertEquals(1, repository.deleteArchive(selected.sessionId, key(selected)))
@@ -121,7 +122,7 @@ class KitArchivePersistenceIntegrationTest {
             assertTrue(reserve(selected, 3, 300, 1600))
             withConnectionManager {
                 val current = assertNotNull(repository.get(selected.sessionId))
-                assertEquals(1, repository.save(current.copy(state = "FAILED", generation = 3, dispatchId = null)))
+                assertEquals(1, repository.save(current.copy(state = KitRuntimeSessionState.FAILED, generation = 3, dispatchId = null)))
                 assertEquals(listOf(key(selected, 3)), repository.obsoleteArchives(selected.sessionId).map { it.key })
                 assertTrue(repository.pending(100, 0, 0).any { it.sessionId == selected.sessionId }, "Failed generations with uncommitted objects remain collectible")
             }
@@ -145,12 +146,12 @@ class KitArchivePersistenceIntegrationTest {
         provides<ConnectionPool> { pool }; provides<Json> { json }
         FlywayMigration(pool).migrate(listOf(KitMigration()))
         val repository = KitRuntimeRepositoryImpl()
-        fun session(state: String, idleAt: OffsetDateTime) = KitRuntimeSession(UUID.random(), UUID.random(),
+        fun session(state: KitRuntimeSessionState, idleAt: OffsetDateTime) = KitRuntimeSession(UUID.random(), UUID.random(),
             JsonObject(emptyMap()), JsonObject(emptyMap()), state = state, generation = 1, dispatchId = UUID.random(), idleAt = idleAt)
-        val healthy = session("READY", OffsetDateTime.now().plusHours(1))
-        val expired = session("READY", OffsetDateTime.now().minusMinutes(1))
-        val stopping = session("STOPPING", OffsetDateTime.now().plusHours(1))
-        val raced = listOf(session("READY", OffsetDateTime.now().plusHours(1)), session("STOPPING", OffsetDateTime.now().plusHours(1)))
+        val healthy = session(KitRuntimeSessionState.READY, OffsetDateTime.now().plusHours(1))
+        val expired = session(KitRuntimeSessionState.READY, OffsetDateTime.now().minusMinutes(1))
+        val stopping = session(KitRuntimeSessionState.STOPPING, OffsetDateTime.now().plusHours(1))
+        val raced = listOf(session(KitRuntimeSessionState.READY, OffsetDateTime.now().plusHours(1)), session(KitRuntimeSessionState.STOPPING, OffsetDateTime.now().plusHours(1)))
         val sessions = listOf(healthy, expired, stopping)
         suspend fun claimed(urgent: Long, idle: Long, among: List<KitRuntimeSession> = sessions) = withConnectionManager {
             repository.pending(100, urgent, idle).map { it.sessionId }.filter { id -> among.any { it.sessionId == id } }

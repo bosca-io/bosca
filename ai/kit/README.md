@@ -43,6 +43,15 @@ connections and restored generations resolve current credentials.
 
 Model and reasoning controls use the [private policy and live session capabilities](runtime/README.md#model-and-reasoning-choices). Their native keys stay inside the Codex ACP adapter.
 
+## Runtime fields
+
+Kit stores the session lifecycle, context reset mode, turn status and delegation
+status as PostgreSQL enums. The harness status in GraphQL also reports `RESUMING`
+while a saved archive is being restored. The harness profile source, model and
+reasoning sources, and resolved context kind are GraphQL enums with uppercase
+values. Profile, model, and reasoning identifiers come from deployment policy
+and harness capabilities.
+
 ## Tool results
 
 The pinned Codex ACP adapter places MCP results in `rawOutput.result.content`.

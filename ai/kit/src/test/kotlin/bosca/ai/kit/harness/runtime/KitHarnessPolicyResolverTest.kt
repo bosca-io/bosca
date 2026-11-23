@@ -66,7 +66,7 @@ class KitHarnessPolicyResolverTest {
         assertFalse(settings.canOverride)
         assertTrue(settings.choices.isEmpty())
         assertEquals("managed", settings.effectiveProfile)
-        assertEquals("SYSTEM", settings.source)
+        assertEquals(KitHarnessSource.SYSTEM, settings.source)
         val public = json.encodeToString(KitHarnessSettings.serializer(), settings)
         assertFalse(public.contains("internal")); assertFalse(public.contains("bosca.invalid"))
         assertFailsWith<IllegalArgumentException> { resolver.verify(auth(), session(), KitHarnessChoice("advanced", settings.policyVersion), "kit") }
@@ -89,7 +89,7 @@ class KitHarnessPolicyResolverTest {
         val authority = resolver.capture(auth())
         val baseline = resolver.resolve(principal.id, authority, null, "kit")
         val choice = KitHarnessChoice("advanced", baseline.policyVersion)
-        assertEquals("CHAT", resolver.resolve(principal.id, authority, choice, "kit").source)
+        assertEquals(KitHarnessSource.CHAT, resolver.resolve(principal.id, authority, choice, "kit").source)
         groups = emptyList()
         val revoked = resolver.resolve(principal.id, authority, choice, "kit")
         assertEquals("managed", revoked.configuration.profile)
@@ -101,7 +101,7 @@ class KitHarnessPolicyResolverTest {
         assertEquals(listOf("content:view"), restored.authority.scopes)
         assertEquals(listOf(group.id), restored.authority.groups)
         grants = emptyList()
-        assertEquals("SYSTEM", resolver.resolve(principal.id, authority, choice, "kit").source)
+        assertEquals(KitHarnessSource.SYSTEM, resolver.resolve(principal.id, authority, choice, "kit").source)
     }
 
     @Test fun `policy revision and agent defaults apply without accepting stale overrides`() = runTest {
@@ -112,7 +112,7 @@ class KitHarnessPolicyResolverTest {
         val changed = resolver.resolve(principal.id, authority, KitHarnessChoice("managed", first.policyVersion), "kit")
         assertNotEquals(first.policyVersion, changed.policyVersion)
         assertEquals("advanced", changed.configuration.profile)
-        assertEquals("AGENT", changed.source)
+        assertEquals(KitHarnessSource.AGENT, changed.source)
         assertContains(assertNotNull(changed.notice), "policy changed")
         policy = policy.copy(defaultProfile = "unconfigured")
         assertFailsWith<IllegalArgumentException> { resolver.resolve(principal.id, authority, null, "kit") }
@@ -354,7 +354,7 @@ class KitHarnessPolicyResolverTest {
         val original = session()
         val effective = json.decodeFromJsonElement(KitHarnessResolution.serializer(), requireNotNull(original.resolvedSettings))
         assertEquals(KitModelSelection("small", "high"), effective.modelSettings)
-        assertEquals("AGENT", effective.reasoningSource)
+        assertEquals(KitModelSettingsSource.AGENT, effective.reasoningSource)
         val capabilities = KitModelCapabilities("caps", listOf(KitModelOption("small", "Small"), KitModelOption("unapproved", "Other")),
             listOf(KitModelOption("medium", "Medium")), KitModelSelection("small", "medium"))
         val session = original.copy(resolvedSettings = json.encodeToJsonElement(KitHarnessResolution.serializer(), effective.copy(modelCapabilities = capabilities)))
@@ -369,11 +369,11 @@ class KitHarnessPolicyResolverTest {
         }
         assertFailsWith<IllegalArgumentException> { resolver.verify(auth(), original, choice, "kit") }
         val chosen = resolver.resolve(principal.id, resolver.capture(auth()), choice, "kit")
-        assertEquals("CHAT", chosen.modelSource)
+        assertEquals(KitModelSettingsSource.CHAT, chosen.modelSource)
         grants = emptyList()
         val revoked = resolver.resolve(principal.id, resolver.capture(auth()), choice, "kit")
         assertEquals(KitModelSelection("small", "high"), revoked.modelSettings)
-        assertEquals("SYSTEM", revoked.modelSource)
+        assertEquals(KitModelSettingsSource.SYSTEM, revoked.modelSource)
         assertTrue(resolver.settings(auth(), session, "kit").models.isEmpty())
         assertEquals("small", resolver.settings(auth(), session, "kit").model)
     }
@@ -396,7 +396,7 @@ class KitHarnessPolicyResolverTest {
         policy = policy.copy(delegation = KitDelegationPolicy(listOf("advanced")))
         val parent = resolver.resolve(principal.id, resolver.capture(auth()), null, "kit")
         val child = resolver.resolveChild(principal.id, parent, parent.authority, "advanced", 30, "kit")
-        assertEquals("DELEGATION", child.source)
+        assertEquals(KitHarnessSource.DELEGATION, child.source)
         assertEquals(listOf("content:view"), child.authority.scopes)
         assertEquals(parent.authority.groups, child.authority.groups)
         assertEquals(30, child.configuration.hardRuntimeSeconds)

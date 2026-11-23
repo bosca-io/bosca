@@ -15,15 +15,15 @@ const emit = defineEmits<{
   remove: [kind: string, id: string, ref?: string | null, path?: string | null]
 }>()
 function selected(kind: string, id: string) {
-  if (kind === 'collection') return props.collectionAttachments.includes(id)
-  return ['metadata', 'memory'].includes(kind) && props.attachments.includes(id)
+  if (kind === 'COLLECTION') return props.collectionAttachments.includes(id)
+  return ['METADATA', 'MEMORY'].includes(kind) && props.attachments.includes(id)
 }
 function remove(source: HarnessContext['sources'][number]) {
-  if (source.kind === 'git_file') emit('remove', source.kind, source.id, source.ref, source.path)
+  if (source.kind === 'GIT_FILE') emit('remove', source.kind, source.id, source.ref, source.path)
   else emit('remove', source.kind, source.id)
 }
 function label(source: HarnessContext['sources'][number]) {
-  return source.kind === 'git_file' && source.ref ? `${source.title} (${source.ref})` : source.title
+  return source.kind === 'GIT_FILE' && source.ref ? `${source.title} (${source.ref})` : source.title
 }
 </script>
 
@@ -32,8 +32,8 @@ function label(source: HarnessContext['sources'][number]) {
     <summary>Context · {{ context.sources.length }} {{ context.sources.length === 1 ? 'source' : 'sources' }}</summary>
     <ul v-if="context.sources.length" aria-label="Current context sources">
       <li v-for="source in context.sources" :key="`${source.kind}:${source.id}:${source.ref ?? ''}:${source.path ?? ''}`">
-        {{ label(source) }}<span v-if="source.kind === 'collection'"> · Collection</span>
-        <template v-if="source.kind === 'memory'">
+        {{ label(source) }}<span v-if="source.kind === 'COLLECTION'"> · Collection</span>
+        <template v-if="source.kind === 'MEMORY'">
           <span> · Saved memory</span>
           <NuxtLink :to="`/cms/editor/${source.id}`">View or edit</NuxtLink>
         </template>
@@ -76,7 +76,7 @@ function label(source: HarnessContext['sources'][number]) {
         @click="emit('clear')">Clear WorkOps and Git selections</Button>
     </div>
     <p>Selection changes apply to the next message.</p>
-    <p v-if="context.sources.some(source => source.kind === 'memory')">Saved memories remain when a conversation is deleted. Ask to forget a memory to remove it from future context.</p>
+    <p v-if="context.sources.some(source => source.kind === 'MEMORY')">Saved memories remain when a conversation is deleted. Ask to forget a memory to remove it from future context.</p>
     <p v-if="context.integrations.includes('bosca')">Bosca tools are available.</p>
     <p v-for="notice in context.notices" :key="notice" role="status">{{ notice }}</p>
   </details>

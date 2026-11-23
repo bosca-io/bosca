@@ -53,7 +53,7 @@ class KitContextResolverTest {
     private val authority = KitRuntimeAuthority(listOf("content:view", "collections:view"), listOf(group.id))
     private val config = KitHarnessConfiguration("kit", "unused", "unused", scopes = authority.scopes,
         image = "runtime@sha256:" + "a".repeat(64), imageId = "sha256:" + "b".repeat(64), versions = RuntimeVersions("test", "test", "test", "codex-0.160.1"))
-    private val resolution = KitHarnessResolution(UUID.random(), "policy", "SYSTEM", config, authority)
+    private val resolution = KitHarnessResolution(UUID.random(), "policy", KitHarnessSource.SYSTEM, config, authority)
     private val session = KitRuntimeSession(UUID.random(), principal.id, JsonObject(emptyMap()), JsonObject(emptyMap()),
         resolvedSettings = json.encodeToJsonElement(KitHarnessResolution.serializer(), resolution), idleAt = OffsetDateTime.now())
     private var chat = ChatSession(session.sessionId, principal.id, agentKey = "kit")
@@ -85,7 +85,7 @@ class KitContextResolverTest {
         coEvery { memories.get(any(), id) } answers { memory }
         val first = resolver.resolve(session)
         assertContains(first.resources.single().second, "Use concise answers")
-        assertEquals("memory", first.manifest.sources.single().kind)
+        assertEquals(KitContextReferenceKind.MEMORY, first.manifest.sources.single().kind)
         assertEquals("1", first.manifest.sources.single().version)
         val warmed = session.copy(contextManifest = json.encodeToJsonElement(KitContextManifest.serializer(), first.manifest))
         assertTrue(resolver.canRestoreWorkspace(warmed))

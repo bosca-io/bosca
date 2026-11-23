@@ -90,12 +90,12 @@ class KitHarnessPolicyResolver(
         require(catalog.connections.filter { it.required }.all { required -> connections.any { it.key == required.key } }) { "Child requires an MCP connection outside the parent tool scope" }
         val model = current.policy.models[profile]
         val selection = model?.agentDefaults?.get(agent) ?: model?.defaults ?: KitModelSelection()
-        return KitHarnessResolution(current.id, current.version, "DELEGATION", config,
+        return KitHarnessResolution(current.id, current.version, KitHarnessSource.DELEGATION, config,
             KitRuntimeAuthority(scopes, groups, scopes), mcpConnections = connections,
             mcpOptions = catalog.options.filter { option -> connections.any { it.key == option.key } }, mcpNotices = catalog.notices,
             modelPolicy = model, modelSettings = selection,
-            modelSource = if (selection.model == null) "HARNESS" else "SYSTEM",
-            reasoningSource = if (selection.reasoning == null) "HARNESS" else "SYSTEM")
+            modelSource = if (selection.model == null) KitModelSettingsSource.HARNESS else KitModelSettingsSource.SYSTEM,
+            reasoningSource = if (selection.reasoning == null) KitModelSettingsSource.HARNESS else KitModelSettingsSource.SYSTEM)
     }
 
     /** Revalidates the immutable turn policy and caller authority before a native permission decision is used. */
@@ -106,7 +106,7 @@ class KitHarnessPolicyResolver(
         if (principal.deletedAt != null) return false
         val groups = security.getPrincipalGroups(principalId).map { it.id }.toSet()
         if (!groups.containsAll(resolution.authority.groups)) return false
-        if (resolution.source == "CHAT") {
+        if (resolution.source == KitHarnessSource.CHAT) {
             val configuration = requireNotNull(configurations.getByKey("kit.harness"))
             if (!permissions.isAllowed(authentication(principalId, resolution.authority), configuration, PermissionAction.EXECUTE)) return false
         }
@@ -155,13 +155,13 @@ class KitHarnessPolicyResolver(
         val modelSettings = KitModelSelection(requestedModel ?: agentModels?.model ?: modelPolicy?.defaults?.model,
             requestedReasoning ?: agentModels?.reasoning ?: modelPolicy?.defaults?.reasoning)
         fun source(requested: String?, agentValue: String?, system: String?) = when {
-            requested != null -> "CHAT"
-            agentValue != null -> "AGENT"
-            system != null -> "SYSTEM"
-            else -> "HARNESS"
+            requested != null -> KitModelSettingsSource.CHAT
+            agentValue != null -> KitModelSettingsSource.AGENT
+            system != null -> KitModelSettingsSource.SYSTEM
+            else -> KitModelSettingsSource.HARNESS
         }
         return KitHarnessResolution(configurationId, version,
-            if (choice != null && notice == null) "CHAT" else if (policy.agentDefaults.containsKey(agent)) "AGENT" else "SYSTEM",
+            if (choice != null && notice == null) KitHarnessSource.CHAT else if (policy.agentDefaults.containsKey(agent)) KitHarnessSource.AGENT else KitHarnessSource.SYSTEM,
             config, KitRuntimeAuthority(scopes, groups, ceiling.callerScopes), notice, choice,
             connections, effectiveCatalog.options, effectiveCatalog.notices, modelPolicy, modelSettings,
             source(requestedModel, agentModels?.model, modelPolicy?.defaults?.model),

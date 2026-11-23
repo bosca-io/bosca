@@ -1,5 +1,6 @@
 package bosca.cli.harness
 
+import bosca.ai.kit.harness.KitRuntimePhase
 import io.ktor.server.application.call
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.netty.NettyApplicationEngine
@@ -179,7 +180,7 @@ class HarnessRuntimeTest {
             }
             while (runtime.status().failure == null) delay(10)
         }
-        assertEquals("FAILED", runtime.status().phase)
+        assertEquals(KitRuntimePhase.FAILED, runtime.status().phase)
         assertContains(assertNotNull(runtime.status().failure), "hard-runtime deadline")
     }
 
@@ -271,7 +272,7 @@ class HarnessRuntimeTest {
             assertEquals(receipt, runtime.turn(turn), "New ownership retains the complete receipt")
             assertEquals(text, runtime.roots.getValue("harness").resolve("sessions/test.json").readText())
             runtime.archive(epoch)
-            assertEquals("ARCHIVED", runtime.status().phase)
+            assertEquals(KitRuntimePhase.ARCHIVED, runtime.status().phase)
         }
     }
 
@@ -283,7 +284,7 @@ class HarnessRuntimeTest {
             val turn = Uuid.random().toString()
             socket { socket, _ ->
                 send(socket, "session/prompt", prompt(turn, text))
-                withTimeout(5000) { while (runtime.status().phase != "FAILED") delay(10) }
+                withTimeout(5000) { while (runtime.status().phase != KitRuntimePhase.FAILED) delay(10) }
             }
             assertContains(assertNotNull(runtime.status().failure), "journal exceeded")
             val receipt = assertNotNull(runtime.turn(turn))
@@ -315,7 +316,7 @@ class HarnessRuntimeTest {
         assertNull(runtime.status().activeTurn)
         assertFalse(runtime.roots.getValue("harness").resolve("sessions/test.json").exists())
         runtime.archive(epoch)
-        assertEquals("ARCHIVED", runtime.status().phase)
+        assertEquals(KitRuntimePhase.ARCHIVED, runtime.status().phase)
     }
 
     /** An observer whose sends never finish; once [tornDown], they report cancellation as a closed Ktor session does. */
@@ -340,7 +341,7 @@ class HarnessRuntimeTest {
     private suspend fun assertEndTurn(turn: String) {
         withTimeout(5000) { while (runtime.turn(turn)?.complete != true) delay(1) }
         assertEquals("end_turn", assertNotNull(runtime.turn(turn)).messages.last().getValue("result").jsonObject.string("stopReason"))
-        assertEquals("READY", runtime.status().phase)
+        assertEquals(KitRuntimePhase.READY, runtime.status().phase)
     }
 
     @Test fun `a torn down observer cannot stop the native output journal`() = runBlocking {
@@ -370,7 +371,7 @@ class HarnessRuntimeTest {
             withTimeout(5000) { while (!journal.readText().contains("agent_message_chunk")) delay(5) }
             assertNull(withTimeoutOrNull(500) { runtime.status() }, "Delivery should hold the protocol mutex while its observer is blocked")
             withTimeout(10_000) { runtime.close() }
-            assertEquals("DRAINING", runtime.status().phase)
+            assertEquals(KitRuntimePhase.DRAINING, runtime.status().phase)
         }
     }
 
@@ -422,7 +423,7 @@ class HarnessRuntimeTest {
         assertEquals("slow", runtime.roots.getValue("harness").resolve("sessions/test.json").readText())
         val receipt = runtime.archive(epoch)
         assertEquals(receipt, runtime.archive(epoch))
-        assertEquals("ARCHIVED", runtime.status().phase)
+        assertEquals(KitRuntimePhase.ARCHIVED, runtime.status().phase)
     }
 
     @Test fun `reconnecting during native setup does not initialize the adapter twice`() = runBlocking {
@@ -436,7 +437,7 @@ class HarnessRuntimeTest {
             send(socket, "initialize", buildJsonObject { put("protocolVersion", 2) }, 22)
             assertContains(response(messages, 22).last().toString(), "Pending native setup differs")
             send(socket, "initialize", buildJsonObject {}, 21)
-            assertEquals("READY", runtime.status().phase)
+            assertEquals(KitRuntimePhase.READY, runtime.status().phase)
             hold.deleteExisting()
             val transferred = withTimeout(5000) { response(messages, 21) }
             assertTrue("result" in transferred.last())
@@ -549,10 +550,10 @@ class HarnessRuntimeTest {
         retained.writeText(secret)
         assertFailsWith<IllegalArgumentException> { runtime.archive(epoch) }
         assertEquals(secret, retained.readText())
-        assertEquals("DRAINING", runtime.status().phase)
+        assertEquals(KitRuntimePhase.DRAINING, runtime.status().phase)
         retained.writeText("safe content")
         runtime.archive(epoch)
-        assertEquals("ARCHIVED", runtime.status().phase)
+        assertEquals(KitRuntimePhase.ARCHIVED, runtime.status().phase)
     }
 
     @Test fun `ownership is rechecked when delayed control requests reach the runtime`() = runBlocking {
@@ -565,7 +566,7 @@ class HarnessRuntimeTest {
         rejected { runtime.configure(emptyList(), previous) }
         rejected { runtime.archive(previous) }
         rejected { runtime.restore(directory.root.toPath().resolve("absent.tar.gz"), "checksum", false, previous) }
-        assertEquals("READY", runtime.status().phase)
+        assertEquals(KitRuntimePhase.READY, runtime.status().phase)
         assertFalse(runtime.control.resolve("archive.tar.gz").exists())
 
         socket { socket, messages ->

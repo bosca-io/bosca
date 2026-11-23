@@ -2,6 +2,8 @@
 
 package bosca.ai.kit.harness.runtime
 
+import bosca.ai.kit.harness.KitRuntimeSessionState
+import bosca.ai.kit.harness.KitRuntimeTurnStatus
 import bosca.ai.kit.configuration.KitMigration
 import bosca.ai.kit.harness.KitRuntimeSession
 import bosca.ai.kit.harness.KitRuntimeTurn
@@ -43,7 +45,7 @@ class KitRuntimePersistenceIntegrationTest {
                 assertTrue(repository.lockAdmission())
                 val locked = assertNotNull(repository.lock(session.sessionId))
                 if (!repository.hasCapacity(locked.principalId, global, perPrincipal)) return@transaction false
-                assertEquals(1, repository.save(locked.copy(state = "STARTING", dispatchId = UUID.random())))
+                assertEquals(1, repository.save(locked.copy(state = KitRuntimeSessionState.STARTING, dispatchId = UUID.random())))
                 true
             } }
             val ready = CompletableDeferred<Unit>()
@@ -59,13 +61,14 @@ class KitRuntimePersistenceIntegrationTest {
                 assertEquals(3, active.size)
                 assertEquals(activeBaseline + 3, repository.activeCount())
                 val selected = active.first()
-                for (state in listOf("STARTING", "READY", "BUSY", "WAITING_FOR_APPROVAL", "STOPPING")) {
+                for (state in listOf(KitRuntimeSessionState.STARTING, KitRuntimeSessionState.READY, KitRuntimeSessionState.BUSY,
+                    KitRuntimeSessionState.WAITING_FOR_APPROVAL, KitRuntimeSessionState.STOPPING)) {
                     val current = assertNotNull(repository.get(selected.sessionId))
                     assertEquals(1, repository.save(current.copy(state = state, deletedAt = OffsetDateTime.now())))
                     assertFalse(repository.hasCapacity(UUID.random(), 3, 1), "$state and deletion cleanup retain capacity")
                 }
                 val current = assertNotNull(repository.get(selected.sessionId))
-                assertEquals(1, repository.save(current.copy(state = "FAILED")))
+                assertEquals(1, repository.save(current.copy(state = KitRuntimeSessionState.FAILED)))
                 assertTrue(repository.hasCapacity(UUID.random(), 3, 1), "Confirmed removal releases a failed generation")
                 assertEquals(activeBaseline + 2, repository.activeCount())
                 assertEquals(failedBaseline, repository.failedCount(), "Deleted failures are excluded")
@@ -79,7 +82,7 @@ class KitRuntimePersistenceIntegrationTest {
                     assertTrue(repository.lockAdmission())
                     val current = assertNotNull(repository.lock(unused.sessionId))
                     assertTrue(repository.hasCapacity(current.principalId, 4, 4))
-                    assertEquals(1, repository.save(current.copy(state = "STARTING", dispatchId = UUID.random())))
+                    assertEquals(1, repository.save(current.copy(state = KitRuntimeSessionState.STARTING, dispatchId = UUID.random())))
                     error("Injected dispatch transaction failure")
                 } }
                 assertNull(repository.get(unused.sessionId)?.dispatchId)
@@ -114,7 +117,7 @@ class KitRuntimePersistenceIntegrationTest {
         val id = UUID.random()
         val firstTurn = UUID.random()
         val ready = KitRuntimeSession(id, UUID.random(), JsonObject(emptyMap()), JsonObject(emptyMap()),
-            state = "READY", generation = 3, epoch = 4, nativeSessionId = "opaque-session",
+            state = KitRuntimeSessionState.READY, generation = 3, epoch = 4, nativeSessionId = "opaque-session",
             idleAt = OffsetDateTime.now().minusSeconds(30))
         try {
             withConnectionManager { repository.create(ready); assertEquals(1, repository.save(ready)) }
@@ -126,12 +129,12 @@ class KitRuntimePersistenceIntegrationTest {
                 assertEquals("opaque-session", current.nativeSessionId)
                 archivedClaim.complete(Unit)
                 allowCommit.await()
-                assertEquals(1, repository.save(current.copy(state = "STOPPING")))
+                assertEquals(1, repository.save(current.copy(state = KitRuntimeSessionState.STOPPING)))
             } } }
             archivedClaim.await()
             val message = async(Dispatchers.IO) { withConnectionManager { transaction {
                 val current = assertNotNull(repository.lock(id))
-                assertEquals("STOPPING", current.state)
+                assertEquals(KitRuntimeSessionState.STOPPING, current.state)
                 repository.add(KitRuntimeTurn(firstTurn, id, message = buildJsonObject { put("text", "arrived during archive") }))
                 assertEquals(1, repository.save(current.copy(idleAt = OffsetDateTime.now().plusMinutes(15))))
             } } }
@@ -139,7 +142,7 @@ class KitRuntimePersistenceIntegrationTest {
             archive.await(); message.await()
             withConnectionManager {
                 val current = assertNotNull(repository.get(id))
-                assertEquals("STOPPING", current.state)
+                assertEquals(KitRuntimeSessionState.STOPPING, current.state)
                 assertEquals(firstTurn, assertNotNull(repository.next(id)).id)
                 assertEquals(0, repository.save(ready.copy(archiveKey = "stale-generation")))
                 assertNull(repository.get(id)?.archiveKey)
@@ -151,9 +154,9 @@ class KitRuntimePersistenceIntegrationTest {
                 assertEquals(0, repository.send(firstTurn, deadline.plusSeconds(30)))
                 assertEquals(deadline.toInstant(), repository.turn(firstTurn)?.deadline?.toInstant(), "Recovery cannot extend a sent prompt's budget")
                 assertEquals(second, repository.next(id)?.id)
-                repository.finish(firstTurn, "COMPLETED", JsonPrimitive("done"))
+                repository.finish(firstTurn, KitRuntimeTurnStatus.COMPLETED, JsonPrimitive("done"))
                 assertEquals(0, repository.send(firstTurn, deadline))
-                assertEquals("COMPLETED", repository.turn(firstTurn)?.status)
+                assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(firstTurn)?.status)
                 assertEquals(JsonPrimitive("done"), repository.turn(firstTurn)?.result)
                 val owner = UUID.random()
                 val archiveCreated = OffsetDateTime.now().minusSeconds(30).truncatedTo(java.time.temporal.ChronoUnit.MICROS)

@@ -103,11 +103,11 @@ async function changeContext(kind: string, source: string, remove = false, ref?:
   if (savingContext.value) return
   savingContext.value = true
   try {
-    const domain = ['task', 'spec', 'requirement', 'git_file'].includes(kind)
-    const operation = domain ? (remove ? removeHarnessSourceGql : addHarnessSourceGql) : kind === 'collection'
+    const domain = ['TASK', 'SPEC', 'REQUIREMENT', 'GIT_FILE'].includes(kind)
+    const operation = domain ? (remove ? removeHarnessSourceGql : addHarnessSourceGql) : kind === 'COLLECTION'
       ? (remove ? removeContextCollectionGql : addContextCollectionGql)
       : (remove ? removeContextContentGql : addContextContentGql)
-    await gqlMutation(operation, { id: sessionId.value, source: domain ? { kind: kind.toUpperCase(), id: source, ref, path } : source })
+    await gqlMutation(operation, { id: sessionId.value, source: domain ? { kind, id: source, ref, path } : source })
     contentPickerOpen.value = false
     collectionPickerOpen.value = false
     domainPicker.value = null
@@ -116,7 +116,7 @@ async function changeContext(kind: string, source: string, remove = false, ref?:
   finally { savingContext.value = false }
 }
 function addDomainSource(source: HarnessSourceSelection) {
-  return changeContext(source.kind.toLowerCase(), source.id, false, source.ref, source.path)
+  return changeContext(source.kind, source.id, false, source.ref, source.path)
 }
 const savingSettings = ref(false)
 async function setHarnessSettings(profile: string | null, mcpServers?: string[], models?: { model: string | null; reasoning: string | null }) {
@@ -678,8 +678,8 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
-    <MetadataPickerModal v-if="contentPickerOpen" @select="source => changeContext('metadata', source.id)" @close="contentPickerOpen = false" />
-    <CollectionPickerModal v-if="collectionPickerOpen" @select="source => changeContext('collection', source.id)" @close="collectionPickerOpen = false" />
+    <MetadataPickerModal v-if="contentPickerOpen" @select="source => changeContext('METADATA', source.id)" @close="contentPickerOpen = false" />
+    <CollectionPickerModal v-if="collectionPickerOpen" @select="source => changeContext('COLLECTION', source.id)" @close="collectionPickerOpen = false" />
     <KitContextPicker
       v-if="domainPicker"
       :git="domainPicker === 'git'"

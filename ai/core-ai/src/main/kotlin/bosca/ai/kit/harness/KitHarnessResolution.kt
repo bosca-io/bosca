@@ -10,7 +10,7 @@ data class KitHarnessResolution(
     /** Optional private policy override; null uses the deployment's managed defaults. */
     @Contextual val configurationId: UUID? = null,
     val policyVersion: String,
-    val source: String,
+    val source: KitHarnessSource,
     val configuration: KitHarnessConfiguration,
     val authority: KitRuntimeAuthority,
     val notice: String? = null,
@@ -20,7 +20,7 @@ data class KitHarnessResolution(
     val mcpNotices: List<String> = emptyList(),
     val modelPolicy: KitModelPolicy? = null,
     val modelSettings: KitModelSelection = KitModelSelection(),
-    val modelSource: String = "HARNESS",
-    val reasoningSource: String = "HARNESS",
+    val modelSource: KitModelSettingsSource = KitModelSettingsSource.HARNESS,
+    val reasoningSource: KitModelSettingsSource = KitModelSettingsSource.HARNESS,
     val modelCapabilities: KitModelCapabilities? = null,
 )

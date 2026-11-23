@@ -3,6 +3,8 @@ package bosca.ai.kit.harness
 import bosca.serialization.UUID
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -12,7 +14,7 @@ class KitHarnessSerializationTest {
     @Test
     fun `persisted resolution preserves explicit absence of native authentication`() {
         val configuration = configuration(null)
-        val resolution = KitHarnessResolution(UUID.random(), "policy", "SYSTEM", configuration,
+        val resolution = KitHarnessResolution(UUID.random(), "policy", KitHarnessSource.SYSTEM, configuration,
             KitRuntimeAuthority(listOf("content:view"), emptyList(), null))
 
         assertEquals(resolution, json.decodeFromJsonElement(KitHarnessResolution.serializer(),
@@ -35,6 +37,15 @@ class KitHarnessSerializationTest {
             assertEquals(authority, json.decodeFromJsonElement(KitRuntimeAuthority.serializer(),
                 json.encodeToJsonElement(KitRuntimeAuthority.serializer(), authority)))
         }
+    }
+
+    @Test
+    fun `persisted context sources retain their existing kind labels`() {
+        val source = KitContextSource(KitContextReferenceKind.GIT_FILE, "repository", "commit", "revision", true)
+        val stored = json.encodeToJsonElement(KitContextSource.serializer(), source).jsonObject
+
+        assertEquals(JsonPrimitive("git_file"), stored["kind"])
+        assertEquals(source, json.decodeFromJsonElement(KitContextSource.serializer(), stored))
     }
 
     private fun configuration(authenticationMethod: String?) = KitHarnessConfiguration(

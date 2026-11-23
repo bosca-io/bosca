@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 data class RuntimeStatus(
     val sessionId: String,
     val generation: Long,
-    val phase: String,
+    val phase: KitRuntimePhase,
     /** Fresh identity for this supervisor process; never restored from a checkpoint. */
     val instanceId: String,
     val nativeSessionId: String? = null,

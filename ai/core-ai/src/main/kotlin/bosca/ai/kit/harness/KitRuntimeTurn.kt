@@ -14,7 +14,7 @@ data class KitRuntimeTurn(
     @Contextual @ColumnName("session_id") val sessionId: UUID,
     val sequence: Long = 0,
     val message: JsonElement,
-    val status: String = "QUEUED",
+    val status: KitRuntimeTurnStatus = KitRuntimeTurnStatus.QUEUED,
     val result: JsonElement? = null,
     @ColumnName("resolved_settings") val resolvedSettings: JsonElement? = null,
     @ColumnName("context_manifest") val contextManifest: JsonElement? = null,

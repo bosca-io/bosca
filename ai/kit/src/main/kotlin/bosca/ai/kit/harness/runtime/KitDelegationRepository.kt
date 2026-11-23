@@ -2,6 +2,7 @@ package bosca.ai.kit.harness.runtime
 
 import bosca.ai.kit.harness.KitDelegation
 import bosca.ai.kit.harness.KitDelegationResult
+import bosca.ai.kit.harness.KitDelegationStatus
 import bosca.db.annotation.Query
 import bosca.db.annotation.Repository
 import bosca.serialization.UUID
@@ -36,8 +37,8 @@ interface KitDelegationRepository {
     @Query("update kit.delegation set result=:result,modified=now() where id=:id and status in ('QUEUED','RUNNING') and result is null", returnUpdateCount = true)
     suspend fun submit(id: UUID, result: KitDelegationResult): Int
     /** Commits the first terminal outcome with its partial output in the same transaction as parent history. */
-    @Query("update kit.delegation set status=:status,result=:result,failure=:failure,waiting=false,modified=now() where id=:id and status in ('QUEUED','RUNNING')", returnUpdateCount = true)
-    suspend fun finish(id: UUID, status: String, result: KitDelegationResult?, failure: String?): Int
+    @Query("update kit.delegation set status=upper(:status)::kit.delegation_status,result=:result,failure=:failure,waiting=false,modified=now() where id=:id and status in ('QUEUED','RUNNING')", returnUpdateCount = true)
+    suspend fun finish(id: UUID, status: KitDelegationStatus, result: KitDelegationResult?, failure: String?): Int
     /** Persists a parent wait without retaining a transaction or server request. */
     @Query("update kit.delegation set waiting=true,wait_turn_id=:turnId,modified=now() where id=:id and status in ('QUEUED','RUNNING')", returnUpdateCount = true)
     suspend fun wait(id: UUID, turnId: UUID): Int

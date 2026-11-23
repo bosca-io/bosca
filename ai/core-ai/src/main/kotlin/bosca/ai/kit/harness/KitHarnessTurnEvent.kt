@@ -20,7 +20,7 @@ data class KitHarnessTurnEvent(
     val generation: Long,
     val epoch: Long,
     val revision: Long,
-    val status: String,
+    val status: KitHarnessTurnStatus,
     val text: String,
     val plan: JsonArray = JsonArray(emptyList()),
     val tools: List<JsonObject> = emptyList(),

@@ -133,7 +133,7 @@ describe('Harness conversation', () => {
   it('opens saved memories in the content editor and explains their independent retention', () => {
     const NuxtLink = { props: ['to'], template: '<a :href="to"><slot /></a>' }
     const wrapper = mount(KitHarnessContext, { global: { stubs: { Button, NuxtLink } }, props: { context: {
-      sources: [{ kind: 'memory', id: 'saved', title: 'Prefer concise answers' }], integrations: ['bosca'], notices: [],
+      sources: [{ kind: 'MEMORY', id: 'saved', title: 'Prefer concise answers' }], integrations: ['bosca'], notices: [],
     } } })
     expect(wrapper.get('a').attributes('href')).toBe('/cms/editor/saved')
     expect(wrapper.text()).toContain('Saved memory')
@@ -142,13 +142,13 @@ describe('Harness conversation', () => {
   })
   it('renders current source labels as text and removes revoked sources after refresh', async () => {
     const wrapper = mount(KitHarnessContext, { global: { stubs: { Button } }, props: { attachments: ['source'], context: {
-      sources: [{ kind: 'metadata', id: 'source', title: '<script>private title</script>' }], integrations: ['bosca'], notices: [],
+      sources: [{ kind: 'METADATA', id: 'source', title: '<script>private title</script>' }], integrations: ['bosca'], notices: [],
     } } })
     expect(wrapper.find('script').exists()).toBe(false)
     expect(wrapper.text()).toContain('<script>private title</script>')
     expect(wrapper.text()).toContain('Bosca tools are available')
     await wrapper.get('[aria-label="Remove <script>private title</script> from context"]').trigger('click')
-    expect(wrapper.emitted('remove')).toEqual([['metadata', 'source']])
+    expect(wrapper.emitted('remove')).toEqual([['METADATA', 'source']])
     await wrapper.findAll('button').find(button => button.text() === 'Add content')!.trigger('click')
     expect(wrapper.emitted('addContent')).toEqual([[]])
     await wrapper.setProps({ context: { sources: [], integrations: ['bosca'], notices: ['Some selected sources are unavailable.'] } })
@@ -175,14 +175,14 @@ describe('Harness conversation', () => {
 
   it('keeps Git files in one repository distinct and removes the selected ref and path', async () => {
     const wrapper = mount(KitHarnessContext, { global: { stubs: { Button } }, props: { context: {
-      sources: [{ kind: 'git_file', id: 'repository', title: 'First file', ref: 'main', path: 'one.md', selected: true },
-        { kind: 'git_file', id: 'repository', title: 'Second file', ref: 'release', path: 'two.md', selected: true }],
+      sources: [{ kind: 'GIT_FILE', id: 'repository', title: 'First file', ref: 'main', path: 'one.md', selected: true },
+        { kind: 'GIT_FILE', id: 'repository', title: 'Second file', ref: 'release', path: 'two.md', selected: true }],
       integrations: [], notices: [],
     } } })
     expect(wrapper.findAll('li')).toHaveLength(2)
     await wrapper.get('[aria-label="Remove Second file (release) from context"]').trigger('click')
     expect(wrapper.find('[aria-label="Remove First file (main) from context"]').exists()).toBe(true)
-    expect(wrapper.emitted('remove')).toEqual([['git_file', 'repository', 'release', 'two.md']])
+    expect(wrapper.emitted('remove')).toEqual([['GIT_FILE', 'repository', 'release', 'two.md']])
     await wrapper.findAll('button').find(button => button.text() === 'Add WorkOps')!.trigger('click')
     expect(wrapper.emitted('addWorkOps')).toEqual([[]])
     await wrapper.setProps({ context: { sources: [], integrations: [], notices: ['Unavailable sources'], selectionCount: 16 } })
@@ -192,7 +192,7 @@ describe('Harness conversation', () => {
 
   it('does not treat a managed domain source as a content attachment with the same id', () => {
     const wrapper = mount(KitHarnessContext, { global: { stubs: { Button } }, props: { attachments: ['shared-id'], context: {
-      sources: [{ kind: 'spec', id: 'shared-id', title: 'Managed source', selected: false }], integrations: [], notices: [],
+      sources: [{ kind: 'SPEC', id: 'shared-id', title: 'Managed source', selected: false }], integrations: [], notices: [],
     } } })
     expect(wrapper.find('[aria-label="Remove Managed source from context"]').exists()).toBe(false)
   })

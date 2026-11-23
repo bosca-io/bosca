@@ -174,18 +174,54 @@ input KitContextSelection {
     path: String
 }
 
+"Lifecycle of a managed Kit session. RESUMING indicates startup with a saved archive."
+enum KitRuntimeSessionState {
+    STOPPED
+    STARTING
+    READY
+    BUSY
+    WAITING_FOR_APPROVAL
+    STOPPING
+    FAILED
+    RESUMING
+}
+
 "Public lifecycle of the conversation's harness."
 type KitHarnessStatus {
-    state: String!
+    state: KitRuntimeSessionState!
     cancellationRequested: Boolean!
     failure: String
+}
+
+"Origin of the effective harness profile selection."
+enum KitHarnessSource {
+    "The deployment or private policy's default profile."
+    SYSTEM
+    "The private policy's profile default for the conversation's Agent."
+    AGENT
+    "An authorized profile override saved on the conversation."
+    CHAT
+    "A child profile selected under the parent's delegation policy."
+    DELEGATION
+}
+
+"Origin of an effective model or reasoning setting."
+enum KitModelSettingsSource {
+    "The native harness chooses its default because no managed or conversation value is selected."
+    HARNESS
+    "The private policy's managed default for this profile."
+    SYSTEM
+    "The private policy's model or reasoning default for the conversation's Agent."
+    AGENT
+    "An authorized model or reasoning override saved on the conversation."
+    CHAT
 }
 
 "Public effective settings; infrastructure and credentials remain private."
 type KitHarnessSettings {
     policyVersion: String!
     effectiveProfile: String!
-    source: String!
+    source: KitHarnessSource!
     canOverride: Boolean!
     choices: [String!]!
     requestedProfile: String
@@ -197,8 +233,8 @@ type KitHarnessSettings {
     capabilityVersion: String
     model: String
     reasoning: String
-    modelSource: String!
-    reasoningSource: String!
+    modelSource: KitModelSettingsSource!
+    reasoningSource: KitModelSettingsSource!
     requestedModel: String
     requestedReasoning: String
     models: [KitModelOption!]!
@@ -261,8 +297,19 @@ type KitContextStatus {
     notices: [String!]!
 }
 
+"Kind of a permitted context reference."
+enum KitContextReferenceKind {
+    METADATA
+    COLLECTION
+    MEMORY
+    TASK
+    SPEC
+    REQUIREMENT
+    GIT_FILE
+}
+
 type KitContextReference {
-    kind: String!
+    kind: KitContextReferenceKind!
     id: String!
     title: String!
     ref: String

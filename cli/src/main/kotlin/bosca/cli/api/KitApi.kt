@@ -156,7 +156,7 @@ class KitApi(
     private fun KitChatSession.hasCompletedResponse(existingIds: Set<Uuid>): Boolean {
         val fresh = messages.filterNot { it.id in existingIds }
         val turns = fresh.harnessTurns()
-        return if (turns.isNotEmpty()) turns.all { it.status in setOf("COMPLETED", "CANCELLED", "FAILED", "INTERRUPTED") }
+        return if (turns.isNotEmpty()) turns.all { it.status.terminal }
         else fresh.any { it.isAssistantMessage() }
     }
 

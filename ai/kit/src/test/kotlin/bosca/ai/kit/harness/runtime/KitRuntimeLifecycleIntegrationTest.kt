@@ -329,7 +329,7 @@ class KitRuntimeLifecycleIntegrationTest {
         coEvery { jobs.cancel(any()) } coAnswers {
             val current = assertNotNull(repository.get(sessionId))
             if (instanceFencingOnly) assertTrue(current.credentialId in revoked, "Revoke access before removing any incarnation")
-            if (current.state == "STOPPING") {
+            if (current.state == KitRuntimeSessionState.STOPPING) {
                 assertEquals("kit/runtime/$sessionId/${current.generation}.tar.gz", current.archiveKey)
                 assertTrue(archives.isNotEmpty(), "Never delete the runtime before verified object storage commitment")
                 assertTrue(current.credentialId in revoked, "Revoke the generation credential before workload removal")
@@ -373,7 +373,7 @@ class KitRuntimeLifecycleIntegrationTest {
             suspend fun settle() = withTimeout(20_000) {
                 while (true) {
                     drive()
-                    val waiting = withConnectionManager { repository.next(sessionId) != null || repository.get(sessionId)?.state in setOf("STARTING", "STOPPING") }
+                    val waiting = withConnectionManager { repository.next(sessionId) != null || repository.get(sessionId)?.state in setOf(KitRuntimeSessionState.STARTING, KitRuntimeSessionState.STOPPING) }
                     if (!waiting) break
                 }
             }
@@ -389,7 +389,7 @@ class KitRuntimeLifecycleIntegrationTest {
             val uploadsBeforeQuota = uploads
             assertFailsWith<KitArchiveQuotaException> { drive() }
             withConnectionManager {
-                assertEquals("STOPPING", repository.get(sessionId)?.state)
+                assertEquals(KitRuntimeSessionState.STOPPING, repository.get(sessionId)?.state)
                 assertEquals(previousKey, repository.get(sessionId)?.archiveKey)
                 assertEquals(previousBytes, repository.archiveBytes(principalId), "Rejected reservations do not consume quota")
                 assertContains(assertNotNull(service.state(sessionId)?.failure), "storage is full")
@@ -409,7 +409,7 @@ class KitRuntimeLifecycleIntegrationTest {
             assertContains(assertFailsWith<IllegalStateException> { drive() }.message.orEmpty(), "archive deletion failure")
             val afterCommit = withConnectionManager {
                 val current = assertNotNull(repository.get(sessionId))
-                assertEquals("STOPPED", current.state)
+                assertEquals(KitRuntimeSessionState.STOPPED, current.state)
                 assertNull(current.dispatchId, "Object collection does not retain a removed workload's capacity")
                 assertEquals(2, repository.archives(sessionId).size)
                 assertTrue(repository.pending(100, 0, 0).any { it.sessionId == sessionId })
@@ -419,7 +419,7 @@ class KitRuntimeLifecycleIntegrationTest {
             val uploadsBeforeCleanupRetry = uploads
             send("queued-during-archive-cleanup")
             assertFailsWith<IllegalStateException> { drive() }
-            withConnectionManager { assertEquals("QUEUED", repository.next(sessionId)?.status) }
+            withConnectionManager { assertEquals(KitRuntimeTurnStatus.QUEUED, repository.next(sessionId)?.status) }
             failArchiveDelete = false
             settle()
             assertEquals(uploadsBeforeCleanupRetry, uploads, "Cleanup never recreates the committed archive")
@@ -474,7 +474,7 @@ class KitRuntimeLifecycleIntegrationTest {
             val budgetCheckpoint = withConnectionManager {
                 service.retire(sessionId)
                 val current = assertNotNull(repository.get(sessionId))
-                assertEquals("READY", current.state)
+                assertEquals(KitRuntimeSessionState.READY, current.state)
                 assertTrue(!current.idleAt.isAfter(OffsetDateTime.now()), "Runner claims retirement after the requested idle expiry")
                 assertNull(repository.next(sessionId))
                 assertNotNull(current.dispatchId)
@@ -551,13 +551,13 @@ class KitRuntimeLifecycleIntegrationTest {
                 assertFalse(Files.exists(replacementRoot.resolve("native-started")), "A replacement must not execute native work with the old generation's credential")
                 withConnectionManager {
                     val failed = assertNotNull(repository.get(sessionId))
-                    assertEquals("FAILED", failed.state)
+                    assertEquals(KitRuntimeSessionState.FAILED, failed.state)
                     assertContains(assertNotNull(failed.failure), "process was replaced")
                     assertEquals(original.runtimeInstanceId, failed.runtimeInstanceId)
                     assertEquals(checkpoint, failed.archiveKey)
-                    assertEquals("QUEUED", repository.turn(queued)?.status)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(queued)?.status)
                     assertNull(repository.turn(queued)?.deadline)
-                    if (sent != null) assertEquals("INTERRUPTED", repository.turn(sent)?.status)
+                    if (sent != null) assertEquals(KitRuntimeTurnStatus.INTERRUPTED, repository.turn(sent)?.status)
                     assertTrue(original.credentialId in revoked)
                     assertEquals(uploadsBeforeFailure, archives.size, "A replacement cannot overwrite the saved checkpoint")
                     service.activate(auth, sessionId)
@@ -567,8 +567,8 @@ class KitRuntimeLifecycleIntegrationTest {
                     val recovered = assertNotNull(repository.get(sessionId))
                     assertEquals(original.generation + 1, recovered.generation)
                     assertNotEquals(original.runtimeInstanceId, recovered.runtimeInstanceId)
-                    assertEquals("COMPLETED", repository.turn(queued)?.status)
-                    if (sent != null) assertEquals("INTERRUPTED", repository.turn(sent)?.status)
+                    assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(queued)?.status)
+                    if (sent != null) assertEquals(KitRuntimeTurnStatus.INTERRUPTED, repository.turn(sent)?.status)
                 }
                 assertEquals("queued-after-replacement", Files.readString(root.resolve("harness/$nativeState")))
                 Files.deleteIfExists(root.resolve("harness/waiting-pid"))
@@ -657,7 +657,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 }
                 assertEquals(true, released, "Approval waits must release database connections between polls")
                 withConnectionManager {
-                    assertEquals("WAITING_FOR_APPROVAL", repository.get(sessionId)?.state)
+                    assertEquals(KitRuntimeSessionState.WAITING_FOR_APPROVAL, repository.get(sessionId)?.state)
                     assertFailsWith<IllegalArgumentException> { service.retire(sessionId) }
                     service.decide(auth, sessionId, approval.id, "allow")
                 }
@@ -670,7 +670,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 failUpload = true
                 assertFailsWith<IllegalStateException> { drive() }
                 assertTrue(requireNotNull(process).isAlive)
-                withConnectionManager { assertEquals("STOPPING", repository.get(sessionId)?.state); assertEquals("kit/runtime/$sessionId/1.tar.gz", repository.get(sessionId)?.archiveKey) }
+                withConnectionManager { assertEquals(KitRuntimeSessionState.STOPPING, repository.get(sessionId)?.state); assertEquals("kit/runtime/$sessionId/1.tar.gz", repository.get(sessionId)?.archiveKey) }
                 send("third") // Message accepted after the archival claim must stay queued.
                 failUpload = false
                 corruptRead = true
@@ -685,7 +685,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 assertTrue(requireNotNull(process).isAlive)
                 assertFalse(2L in revoked)
                 val committed = withConnectionManager { assertNotNull(repository.get(sessionId)) }
-                assertEquals("STOPPING", committed.state)
+                assertEquals(KitRuntimeSessionState.STOPPING, committed.state)
                 assertEquals("kit/runtime/$sessionId/2.tar.gz", committed.archiveKey)
                 val committedBytes = archives.getValue(assertNotNull(committed.archiveKey)).copyOf()
                 val uploadsAtCommit = uploads
@@ -700,22 +700,22 @@ class KitRuntimeLifecycleIntegrationTest {
                 delayRemoval = true
                 assertFailsWith<bosca.sharedqueue.jobs.DelayException> { drive() }
                 withConnectionManager {
-                    assertEquals("STOPPING", repository.get(sessionId)?.state)
-                    assertEquals("QUEUED", repository.next(sessionId)?.status)
+                    assertEquals(KitRuntimeSessionState.STOPPING, repository.get(sessionId)?.state)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.next(sessionId)?.status)
                 }
                 assertEquals(2, launches, "Do not launch a replacement before removal is confirmed")
                 delayRemoval = false
                 drive()
-                withConnectionManager { assertEquals("STOPPED", repository.get(sessionId)?.state); assertNotNull(repository.next(sessionId)) }
+                withConnectionManager { assertEquals(KitRuntimeSessionState.STOPPED, repository.get(sessionId)?.state); assertNotNull(repository.next(sessionId)) }
                 assertEquals(uploadsAtCommit, uploads, "Cleanup retries must not export or upload again")
                 assertContentEquals(committedBytes, archives.getValue(assertNotNull(committed.archiveKey)))
 
                 corruptRead = true
                 assertContains(assertFailsWith<IllegalStateException> { drive() }.message.orEmpty(), "Stored archive verification failed")
                 withConnectionManager {
-                    assertEquals("STARTING", repository.get(sessionId)?.state)
+                    assertEquals(KitRuntimeSessionState.STARTING, repository.get(sessionId)?.state)
                     assertEquals(committed.archiveKey, repository.get(sessionId)?.archiveKey)
-                    assertEquals("QUEUED", repository.next(sessionId)?.status)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.next(sessionId)?.status)
                 }
                 assertFalse(Files.exists(root.resolve("harness/$nativeState")), "Do not hydrate corrupt state or submit a queued prompt")
                 corruptRead = false
@@ -724,7 +724,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 assertEquals(3L, issued)
                 assertEquals("third", Files.readString(root.resolve("harness/$nativeState")))
                 withConnectionManager {
-                    assertEquals("READY", repository.get(sessionId)?.state)
+                    assertEquals(KitRuntimeSessionState.READY, repository.get(sessionId)?.state)
                     assertEquals(3L, repository.get(sessionId)?.generation)
                     assertEquals("native-test", repository.get(sessionId)?.nativeSessionId)
                     assertNull(repository.next(sessionId))
@@ -755,7 +755,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 val active = withTimeout(10_000) {
                     var turn: UUID? = null
                     while (turn == null) {
-                        turn = withConnectionManager { repository.get(sessionId)?.activeTurn?.takeIf { repository.turn(it)?.status == "SENT" } }
+                        turn = withConnectionManager { repository.get(sessionId)?.activeTurn?.takeIf { repository.turn(it)?.status == KitRuntimeTurnStatus.SENT } }
                         if (turn == null) delay(10)
                     }
                     turn
@@ -766,8 +766,8 @@ class KitRuntimeLifecycleIntegrationTest {
                 send("after-cancel")
                 running.await()
                 withConnectionManager {
-                    assertEquals("CANCELLED", repository.turn(active)?.status)
-                    assertEquals("CANCELLED", repository.turn(queued)?.status)
+                    assertEquals(KitRuntimeTurnStatus.CANCELLED, repository.turn(active)?.status)
+                    assertEquals(KitRuntimeTurnStatus.CANCELLED, repository.turn(queued)?.status)
                     assertNotNull(repository.next(sessionId), "Messages accepted after cancellation remain queued")
                     assertFalse(assertNotNull(service.state(sessionId)).cancellationRequested)
                 }
@@ -825,7 +825,7 @@ class KitRuntimeLifecycleIntegrationTest {
                     while (Files.readString(root.resolve("harness/$nativeState")) != "permission") delay(10)
                 }
                 drive()
-                withConnectionManager { assertEquals("COMPLETED", repository.turn(durableApproval.turnId)?.status) }
+                withConnectionManager { assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(durableApproval.turnId)?.status) }
 
                 send("approval-sentinel"); drive()
                 send("permission")
@@ -840,7 +840,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 policyValue = policyValue.copy(agentDefaults = mapOf("kit" to "kit"))
                 policyWait.await()
                 withConnectionManager {
-                    assertEquals("CANCELLED", repository.turn(stalePolicy.turnId)?.status)
+                    assertEquals(KitRuntimeTurnStatus.CANCELLED, repository.turn(stalePolicy.turnId)?.status)
                     assertEquals("cancelled", repository.approval(stalePolicy.turnId, stalePolicy.requestId)?.decision)
                 }
                 assertEquals("approval-sentinel", Files.readString(root.resolve("harness/$nativeState")), "Changed policy cannot authorize the native write")
@@ -863,12 +863,12 @@ class KitRuntimeLifecycleIntegrationTest {
                     if (change == "policy") policyValue = policyValue.copy(agentDefaults = mapOf("kit" to "kit"))
                     else coEvery { security.getPrincipalGroups(principalId) } returns emptyList()
                     withTimeout(10_000) {
-                        while (withConnectionManager { repository.turn(approved.turnId)?.status } == "SENT") {
+                        while (withConnectionManager { repository.turn(approved.turnId)?.status } == KitRuntimeTurnStatus.SENT) {
                             try { drive() } catch (_: bosca.sharedqueue.jobs.DelayException) { delay(25) }
                         }
                     }
                     withConnectionManager {
-                        assertEquals("CANCELLED", repository.turn(approved.turnId)?.status)
+                        assertEquals(KitRuntimeTurnStatus.CANCELLED, repository.turn(approved.turnId)?.status)
                         assertEquals("allow", repository.approval(approved.turnId, approved.requestId)?.decision, "Retain the user's original decision for audit")
                     }
                     assertEquals("approval-sentinel", Files.readString(root.resolve("harness/$nativeState")), "Invalidated consent cannot reach the native write")
@@ -882,7 +882,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 send("cancel-during-startup")
                 withConnectionManager { service.cancel(sessionId) }
                 drive()
-                withConnectionManager { assertEquals("STOPPED", repository.get(sessionId)?.state) }
+                withConnectionManager { assertEquals(KitRuntimeSessionState.STOPPED, repository.get(sessionId)?.state) }
                 assertEquals(beforeStartupCancel, launches, "Cancelled startup cannot launch a workload")
                 send("after-startup-cancel"); drive()
                 val uncertain = UUID.random()
@@ -890,10 +890,10 @@ class KitRuntimeLifecycleIntegrationTest {
                     val current = assertNotNull(repository.lock(sessionId))
                     repository.add(KitRuntimeTurn(uncertain, sessionId, message = JsonObject(emptyMap())))
                     repository.send(uncertain, OffsetDateTime.now().plusSeconds(config.promptSeconds))
-                    assertEquals(1, repository.save(current.copy(state = "BUSY", activeTurn = uncertain)))
+                    assertEquals(1, repository.save(current.copy(state = KitRuntimeSessionState.BUSY, activeTurn = uncertain)))
                 } }
                 drive()
-                withConnectionManager { assertEquals("INTERRUPTED", repository.turn(uncertain)?.status) }
+                withConnectionManager { assertEquals(KitRuntimeTurnStatus.INTERRUPTED, repository.turn(uncertain)?.status) }
                 assertEquals("after-startup-cancel", Files.readString(root.resolve("harness/$nativeState")), "Uncertain prompt must never be replayed")
                 send("ignore-cancel")
                 val unresponsive = launch { drive() }
@@ -915,8 +915,8 @@ class KitRuntimeLifecycleIntegrationTest {
                 }
                 assertFailsWith<IllegalStateException> { drive() }
                 withConnectionManager {
-                    assertEquals("INTERRUPTED", repository.turn(unconfirmed)?.status)
-                    assertEquals("FAILED", repository.get(sessionId)?.state)
+                    assertEquals(KitRuntimeTurnStatus.INTERRUPTED, repository.turn(unconfirmed)?.status)
+                    assertEquals(KitRuntimeSessionState.FAILED, repository.get(sessionId)?.state)
                     assertContains(assertNotNull(repository.get(sessionId)?.failure), "did not confirm cancellation")
                 }
                 send("recover-after-timeout"); drive()
@@ -946,7 +946,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 send("new-profile")
                 val switchedTurn = withConnectionManager { assertNotNull(repository.next(sessionId)).id }
                 drive() // Drain the old generation before applying policy.
-                withConnectionManager { assertEquals("STOPPED", repository.get(sessionId)?.state) }
+                withConnectionManager { assertEquals(KitRuntimeSessionState.STOPPED, repository.get(sessionId)?.state) }
                 drive()
                 assertEquals("uncommitted-work", Files.readString(root.resolve("workspace/keep.txt")))
                 assertFalse(Files.exists(oldNativeContext))
@@ -954,7 +954,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 withConnectionManager {
                     val snapshot = json.decodeFromJsonElement(KitHarnessResolution.serializer(), assertNotNull(repository.turn(switchedTurn)?.resolvedSettings))
                     assertEquals("kit-alternate", snapshot.configuration.profile)
-                    assertEquals("CHAT", snapshot.source)
+                    assertEquals(KitHarnessSource.CHAT, snapshot.source)
                 }
                 grants = emptyList()
                 send("managed-after-revocation")
@@ -991,7 +991,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 delayRemoval = false
                 withConnectionManager { jobs.cancel(cancelledDispatch) }
                 drive() // Redelivery finishes the persisted cancellation after the controller removes the workload.
-                withConnectionManager { assertEquals("STOPPED", repository.get(sessionId)?.state); assertNotNull(repository.next(sessionId)) }
+                withConnectionManager { assertEquals(KitRuntimeSessionState.STOPPED, repository.get(sessionId)?.state); assertNotNull(repository.next(sessionId)) }
                 drive()
                 assertEquals("policy-changed-during-startup", Files.readString(root.resolve("harness/$nativeState")))
                 send("held-for-policy-repair")
@@ -999,7 +999,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 assertFailsWith<IllegalStateException> { drive() }
                 withConnectionManager {
                     val failed = assertNotNull(repository.get(sessionId))
-                    assertEquals("FAILED", failed.state)
+                    assertEquals(KitRuntimeSessionState.FAILED, failed.state)
                     assertNull(failed.dispatchId)
                     assertNotNull(failed.archiveKey)
                     assertNotNull(repository.next(sessionId))
@@ -1042,9 +1042,9 @@ class KitRuntimeLifecycleIntegrationTest {
                 sourceAvailable = false // Revoke while the replacement workload is still preparing.
                 exposeExecution = true
                 drive() // Cancel the prepared generation before hydrating its stale archive.
-                withConnectionManager { assertEquals("STOPPED", repository.get(sessionId)?.state) }
+                withConnectionManager { assertEquals(KitRuntimeSessionState.STOPPED, repository.get(sessionId)?.state) }
                 drive() // Fresh warm runtime, still without a queued turn.
-                withConnectionManager { assertEquals("READY", repository.get(sessionId)?.state) }
+                withConnectionManager { assertEquals(KitRuntimeSessionState.READY, repository.get(sessionId)?.state) }
                 assertFalse(Files.exists(root.resolve("workspace/keep-instructions.txt")))
                 send("after-context-revocation"); drive()
                 val revokedPrompt = Files.readString(root.resolve("harness/last-prompt.json"))
@@ -1065,8 +1065,8 @@ class KitRuntimeLifecycleIntegrationTest {
                 assertFailsWith<IllegalArgumentException> { drive() }
                 assertFailsWith<IllegalStateException> { drive() } // Finish archival before surfacing the failed configuration.
                 withConnectionManager {
-                    assertEquals("FAILED", repository.get(sessionId)?.state)
-                    assertEquals("QUEUED", repository.turn(held)?.status)
+                    assertEquals(KitRuntimeSessionState.FAILED, repository.get(sessionId)?.state)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(held)?.status)
                     assertNull(repository.turn(held)?.contextManifest)
                     assertContains(assertNotNull(service.state(sessionId)?.failure), "Context could not be prepared")
                 }
@@ -1085,7 +1085,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 assertFailsWith<IllegalArgumentException> { drive() }
                 withConnectionManager {
                     val failed = assertNotNull(repository.get(sessionId))
-                    assertEquals("FAILED", failed.state)
+                    assertEquals(KitRuntimeSessionState.FAILED, failed.state)
                     assertNull(failed.dispatchId)
                     assertEquals(previousArchive, failed.archiveKey, "Never replace a committed workspace with an unhydrated generation")
                 }
@@ -1164,8 +1164,8 @@ class KitRuntimeLifecycleIntegrationTest {
                 mcpRequired = true
                 send("required-unsupported"); drive()
                 withConnectionManager {
-                    assertEquals("FAILED", repository.get(sessionId)?.state)
-                    assertEquals("QUEUED", repository.next(sessionId)?.status)
+                    assertEquals(KitRuntimeSessionState.FAILED, repository.get(sessionId)?.state)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.next(sessionId)?.status)
                     assertContains(assertNotNull(service.state(sessionId)?.failure), "MCP fixture")
                 }
                 mcpRegistration = null
@@ -1198,7 +1198,7 @@ class KitRuntimeLifecycleIntegrationTest {
                     val turn = assertNotNull(repository.turn(assertNotNull(repository.get(sessionId)?.activeTurn)))
                     val settings = json.decodeFromJsonElement(KitHarnessResolution.serializer(), assertNotNull(turn.resolvedSettings))
                     assertEquals("large", settings.modelCapabilities?.effective?.model)
-                    assertEquals("CHAT", settings.modelSource)
+                    assertEquals(KitModelSettingsSource.CHAT, settings.modelSource)
                     service.decide(auth, sessionId, approval.id, "allow")
                 }
                 active.await()
@@ -1219,8 +1219,8 @@ class KitRuntimeLifecycleIntegrationTest {
                 send("held-for-capability-repair")
                 assertFailsWith<bosca.ai.kit.harness.acp.KitModelConfigurationException> { drive() }
                 withConnectionManager {
-                    assertEquals("FAILED", repository.get(sessionId)?.state)
-                    assertEquals("QUEUED", repository.next(sessionId)?.status)
+                    assertEquals(KitRuntimeSessionState.FAILED, repository.get(sessionId)?.state)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.next(sessionId)?.status)
                     assertContains(assertNotNull(service.state(sessionId)?.failure), "reasoning effort is unavailable")
                 }
                 choose("large", "medium")
@@ -1234,7 +1234,7 @@ class KitRuntimeLifecycleIntegrationTest {
                     val settings = assertNotNull(service.settings(auth, sessionId))
                     assertFalse(settings.canOverride)
                     assertTrue(settings.models.isEmpty())
-                    assertEquals("SYSTEM", settings.modelSource)
+                    assertEquals(KitModelSettingsSource.SYSTEM, settings.modelSource)
                     assertContains(assertNotNull(settings.notice), "removed")
                 }
                 Files.delete(root.resolve("disable-high"))
@@ -1242,10 +1242,10 @@ class KitRuntimeLifecycleIntegrationTest {
             checkModelControls()
             suspend fun checkRichResults() {
                 suspend fun checkResult(id: UUID) {
-                    withConnectionManager { assertEquals("COMPLETED", repository.turn(id)?.status) }
+                    withConnectionManager { assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(id)?.status) }
                     val display = assertNotNull(displayMessages[id]).event
                     val event = json.decodeFromJsonElement(KitHarnessTurnEvent.serializer(), display)
-                    assertEquals("COMPLETED", event.status)
+                    assertEquals(KitHarnessTurnStatus.COMPLETED, event.status)
                     val content = event.tools.single().getValue("content").jsonArray
                         .map { it.jsonObject.getValue("content").jsonObject }
                     assertEquals(listOf("resource", "image", "resource_link"), content.map { it.getValue("type").jsonPrimitive.content })
@@ -1291,7 +1291,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 withConnectionManager {
                     assertNotNull(repository.get(sessionId)?.cancelRequestedAt)
                     assertContains(assertNotNull(repository.get(sessionId)?.failure), "startup deadline")
-                    assertEquals("QUEUED", repository.turn(pending)?.status)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(pending)?.status)
                 }
                 failRevocation = false
                 delayRemoval = true
@@ -1301,10 +1301,10 @@ class KitRuntimeLifecycleIntegrationTest {
                 drive()
                 withConnectionManager {
                     val failed = assertNotNull(repository.get(sessionId))
-                    assertEquals("FAILED", failed.state)
+                    assertEquals(KitRuntimeSessionState.FAILED, failed.state)
                     assertNull(failed.dispatchId)
                     assertEquals(checkpoint, failed.archiveKey)
-                    assertEquals("QUEUED", repository.turn(pending)?.status)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(pending)?.status)
                     assertNull(repository.turn(pending)?.resolvedSettings)
                 }
                 exposeExecution = true
@@ -1319,7 +1319,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 interrupted.cancelAndJoin()
                 withConnectionManager {
                     val current = assertNotNull(repository.get(sessionId))
-                    assertEquals("STARTING", current.state)
+                    assertEquals(KitRuntimeSessionState.STARTING, current.state)
                     assertNull(current.failure, "Parent cancellation must not be mistaken for startup expiry")
                     assertNull(current.cancelRequestedAt)
                 }
@@ -1338,10 +1338,10 @@ class KitRuntimeLifecycleIntegrationTest {
                     withTimeout(15_000) { drive() }
                     withConnectionManager {
                         val failed = assertNotNull(repository.get(sessionId))
-                        assertEquals("FAILED", failed.state)
+                        assertEquals(KitRuntimeSessionState.FAILED, failed.state)
                         assertNull(failed.dispatchId)
                         assertEquals(beforeTimeout.archiveKey, failed.archiveKey)
-                        assertEquals("QUEUED", repository.next(sessionId)?.status)
+                        assertEquals(KitRuntimeTurnStatus.QUEUED, repository.next(sessionId)?.status)
                         assertContains(assertNotNull(failed.failure), "startup deadline")
                     }
                     assertEquals(uploadsBeforeTimeout, uploads, "Do not replace the checkpoint with a partially prepared runtime")
@@ -1369,10 +1369,10 @@ class KitRuntimeLifecycleIntegrationTest {
                     drive()
                     withConnectionManager {
                         val stopped = assertNotNull(repository.get(sessionId))
-                        assertEquals("STOPPED", stopped.state)
+                        assertEquals(KitRuntimeSessionState.STOPPED, stopped.state)
                         assertEquals("kit/runtime/$sessionId/${full.generation}.tar.gz", stopped.archiveKey)
-                        assertEquals("COMPLETED", repository.turn(first)?.status)
-                        assertEquals("QUEUED", repository.turn(pending)?.status)
+                        assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(first)?.status)
+                        assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(pending)?.status)
                         assertNull(repository.turn(pending)?.resolvedSettings)
                     }
                     assertEquals(beforeRetirement, launches)
@@ -1380,7 +1380,7 @@ class KitRuntimeLifecycleIntegrationTest {
                     drive()
                     assertEquals(beforeRetirement + 1, launches)
                     withConnectionManager {
-                        assertEquals("COMPLETED", repository.turn(pending)?.status)
+                        assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(pending)?.status)
                         assertEquals(full.generation + 1, repository.get(sessionId)?.generation)
                     }
                     assertEquals("queued-after-journal-$limit", Files.readString(root.resolve("harness/$nativeState")))
@@ -1405,17 +1405,17 @@ class KitRuntimeLifecycleIntegrationTest {
                 drive()
                 withConnectionManager {
                     val failed = assertNotNull(repository.get(sessionId))
-                    assertEquals("FAILED", failed.state)
-                    assertEquals("INTERRUPTED", repository.turn(uncertain)?.status)
-                    assertEquals("QUEUED", repository.turn(pending)?.status)
+                    assertEquals(KitRuntimeSessionState.FAILED, failed.state)
+                    assertEquals(KitRuntimeTurnStatus.INTERRUPTED, repository.turn(uncertain)?.status)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(pending)?.status)
                     assertEquals(checkpoint, failed.archiveKey)
                     assertContains(assertNotNull(failed.failure), "journal exceeded")
                 }
                 assertEquals(previousUploads, uploads)
                 withConnectionManager { service.activate(auth, sessionId) }; drive()
                 withConnectionManager {
-                    assertEquals("COMPLETED", repository.turn(pending)?.status)
-                    assertEquals("INTERRUPTED", repository.turn(uncertain)?.status)
+                    assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(pending)?.status)
+                    assertEquals(KitRuntimeTurnStatus.INTERRUPTED, repository.turn(uncertain)?.status)
                 }
                 assertFalse(Files.exists(pidFile), "Recovery must not replay the overflowing prompt")
                 assertEquals("queued-after-journal-overflow", Files.readString(root.resolve("harness/$nativeState")))
@@ -1440,11 +1440,11 @@ class KitRuntimeLifecycleIntegrationTest {
                 }
                 val restoring = withConnectionManager {
                     val current = assertNotNull(repository.get(sessionId))
-                    assertEquals("STARTING", current.state)
+                    assertEquals(KitRuntimeSessionState.STARTING, current.state)
                     assertEquals(checkpoint, current.archiveKey)
                     assertNull(current.failure)
                     assertNull(current.cancelRequestedAt)
-                    assertEquals("QUEUED", repository.turn(restoreTurn)?.status)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(restoreTurn)?.status)
                     assertNull(repository.turn(restoreTurn)?.resolvedSettings)
                     current
                 }
@@ -1452,7 +1452,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 stallArchiveRead = false
                 drive()
                 withConnectionManager {
-                    assertEquals("COMPLETED", repository.turn(restoreTurn)?.status)
+                    assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(restoreTurn)?.status)
                     assertEquals(restoring.dispatchId, repository.get(sessionId)?.dispatchId)
                 }
                 assertEquals(restoreLaunches, launches, "A phase retry retains the original generation and startup deadline")
@@ -1467,8 +1467,8 @@ class KitRuntimeLifecycleIntegrationTest {
                 }
                 val preparing = withConnectionManager {
                     val current = assertNotNull(repository.get(sessionId))
-                    assertEquals("STARTING", current.state)
-                    assertEquals("QUEUED", repository.turn(readyTurn)?.status)
+                    assertEquals(KitRuntimeSessionState.STARTING, current.state)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(readyTurn)?.status)
                     assertNull(repository.turn(readyTurn)?.resolvedSettings)
                     current
                 }
@@ -1483,20 +1483,20 @@ class KitRuntimeLifecycleIntegrationTest {
                             assertContains(error.message.orEmpty(), "readiness deadline")
                             withConnectionManager {
                                 assertEquals(preparing.dispatchId, repository.get(sessionId)?.dispatchId)
-                                assertEquals("QUEUED", repository.turn(readyTurn)?.status)
+                                assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(readyTurn)?.status)
                                 assertNull(repository.turn(readyTurn)?.resolvedSettings)
                             }
                         }
                     }
                 }
                 withConnectionManager {
-                    assertEquals("COMPLETED", repository.turn(readyTurn)?.status)
+                    assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(readyTurn)?.status)
                     assertEquals(preparing.dispatchId, repository.get(sessionId)?.dispatchId)
                 }
                 send("slow-turn")
                 val slow = withConnectionManager { assertNotNull(repository.next(sessionId)).id }
                 drive()
-                withConnectionManager { assertEquals("COMPLETED", repository.turn(slow)?.status) }
+                withConnectionManager { assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(slow)?.status) }
                 assertEquals("slow-turn", Files.readString(root.resolve("harness/$nativeState")), "Readiness expiry must not cancel an already submitted prompt")
 
                 withConnectionManager { service.retire(sessionId) }; drive()
@@ -1507,7 +1507,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 assertTrue(java.time.Duration.between(OffsetDateTime.now(), liveApproval.expires).seconds in 0..2)
                 withTimeout(10_000) { live.await() }
                 withConnectionManager {
-                    assertEquals("CANCELLED", repository.turn(liveApproval.turnId)?.status)
+                    assertEquals(KitRuntimeTurnStatus.CANCELLED, repository.turn(liveApproval.turnId)?.status)
                     assertEquals("cancelled", repository.approval(liveApproval.turnId, liveApproval.requestId)?.decision)
                 }
                 assertEquals("slow-turn", Files.readString(root.resolve("harness/$nativeState")), "Expired approval must preserve the last completed native write")
@@ -1532,7 +1532,7 @@ class KitRuntimeLifecycleIntegrationTest {
                     while (!Files.readString(root.resolve("control/${recoveredApproval.turnId}.jsonl")).contains("cancelled")) delay(10)
                 }
                 drive()
-                withConnectionManager { assertEquals("CANCELLED", repository.turn(recoveredApproval.turnId)?.status) }
+                withConnectionManager { assertEquals(KitRuntimeTurnStatus.CANCELLED, repository.turn(recoveredApproval.turnId)?.status) }
                 assertEquals("slow-turn", Files.readString(root.resolve("harness/$nativeState")), "Recovered expired approval must preserve the last completed native write")
             }
             checkPhaseBudgets()
@@ -1546,7 +1546,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 suspend fun waitingTurn(): KitRuntimeTurn = withTimeout(10_000) {
                     while (true) {
                         val turn = withConnectionManager { repository.get(sessionId)?.activeTurn?.let { repository.turn(it) } }
-                        if (turn?.status == "SENT" && Files.exists(root.resolve("harness/waiting-pid"))) return@withTimeout turn
+                        if (turn?.status == KitRuntimeTurnStatus.SENT && Files.exists(root.resolve("harness/waiting-pid"))) return@withTimeout turn
                         delay(10)
                     }
                     error("unreachable")
@@ -1555,7 +1555,7 @@ class KitRuntimeLifecycleIntegrationTest {
                     while (true) {
                         try { drive() }
                         catch (_: bosca.sharedqueue.jobs.DelayException) { }
-                        if (withConnectionManager { repository.turn(id)?.status } != "SENT") return@withTimeout
+                        if (withConnectionManager { repository.turn(id)?.status } != KitRuntimeTurnStatus.SENT) return@withTimeout
                         delay(10)
                     }
                 }
@@ -1572,13 +1572,13 @@ class KitRuntimeLifecycleIntegrationTest {
                 val queued = withConnectionManager { assertNotNull(repository.next(sessionId)).id }
                 withTimeout(10_000) { live.await() }
                 withConnectionManager {
-                    assertEquals("CANCELLED", repository.turn(timed.id)?.status)
-                    assertEquals("QUEUED", repository.turn(queued)?.status)
+                    assertEquals(KitRuntimeTurnStatus.CANCELLED, repository.turn(timed.id)?.status)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(queued)?.status)
                     assertNull(repository.turn(queued)?.deadline)
                     assertNull(repository.get(sessionId)?.cancelRequestedAt)
                 }
                 drive()
-                withConnectionManager { assertEquals("COMPLETED", repository.turn(queued)?.status) }
+                withConnectionManager { assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(queued)?.status) }
 
                 send("permission")
                 val lost = launch { drive() }
@@ -1595,7 +1595,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 reconcileCompleted(approval.turnId)
                 withConnectionManager {
                     assertEquals(deadline, repository.turn(approval.turnId)?.deadline)
-                    assertEquals("CANCELLED", repository.turn(approval.turnId)?.status)
+                    assertEquals(KitRuntimeTurnStatus.CANCELLED, repository.turn(approval.turnId)?.status)
                     assertEquals("cancelled", repository.approval(approval.turnId, approval.requestId)?.decision)
                 }
                 assertEquals("queued-after-prompt-deadline", Files.readString(root.resolve("harness/$nativeState")))
@@ -1612,14 +1612,14 @@ class KitRuntimeLifecycleIntegrationTest {
                 }
                 drive() // Workload removal may disconnect ACP before the live owner finishes cleanup.
                 withConnectionManager {
-                    assertEquals("INTERRUPTED", repository.turn(unconfirmed.id)?.status)
-                    assertEquals("FAILED", repository.get(sessionId)?.state)
-                    assertEquals("QUEUED", repository.turn(preserved)?.status)
+                    assertEquals(KitRuntimeTurnStatus.INTERRUPTED, repository.turn(unconfirmed.id)?.status)
+                    assertEquals(KitRuntimeSessionState.FAILED, repository.get(sessionId)?.state)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(preserved)?.status)
                     assertContains(assertNotNull(repository.get(sessionId)?.failure), "did not confirm cancellation")
                     service.activate(auth, sessionId)
                 }
                 drive()
-                withConnectionManager { assertEquals("COMPLETED", repository.turn(preserved)?.status) }
+                withConnectionManager { assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(preserved)?.status) }
 
                 withConnectionManager { service.retire(sessionId) }; drive()
                 configure(hard = 8)
@@ -1644,27 +1644,27 @@ class KitRuntimeLifecycleIntegrationTest {
                     val current = assertNotNull(repository.get(sessionId))
                     assertContains(assertNotNull(current.failure), "hard-runtime deadline")
                     assertNotNull(current.cancelRequestedAt)
-                    assertEquals("SENT", repository.turn(interrupted.id)?.status)
-                    assertEquals("QUEUED", repository.turn(pending)?.status)
+                    assertEquals(KitRuntimeTurnStatus.SENT, repository.turn(interrupted.id)?.status)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(pending)?.status)
                     assertEquals(beforeExpiry.archiveKey, current.archiveKey)
                 }
                 failRevocation = false
                 delayRemoval = true
                 assertFailsWith<bosca.sharedqueue.jobs.DelayException> { drive() }
-                withConnectionManager { assertEquals("SENT", repository.turn(interrupted.id)?.status) }
+                withConnectionManager { assertEquals(KitRuntimeTurnStatus.SENT, repository.turn(interrupted.id)?.status) }
                 delayRemoval = false
                 drive()
                 withConnectionManager {
-                    assertEquals("FAILED", repository.get(sessionId)?.state)
-                    assertEquals("INTERRUPTED", repository.turn(interrupted.id)?.status)
-                    assertEquals("QUEUED", repository.turn(pending)?.status)
+                    assertEquals(KitRuntimeSessionState.FAILED, repository.get(sessionId)?.state)
+                    assertEquals(KitRuntimeTurnStatus.INTERRUPTED, repository.turn(interrupted.id)?.status)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(pending)?.status)
                 }
                 configure()
                 withConnectionManager { service.activate(auth, sessionId) }
                 drive()
                 withConnectionManager {
-                    assertEquals("COMPLETED", repository.turn(pending)?.status)
-                    assertEquals("INTERRUPTED", repository.turn(interrupted.id)?.status)
+                    assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(pending)?.status)
+                    assertEquals(KitRuntimeTurnStatus.INTERRUPTED, repository.turn(interrupted.id)?.status)
                 }
                 assertEquals("queued-after-hard-deadline", Files.readString(root.resolve("harness/$nativeState")))
 
@@ -1679,8 +1679,8 @@ class KitRuntimeLifecycleIntegrationTest {
                 withTimeout(15_000) { liveHardExpiry.await() }
                 drive()
                 withConnectionManager {
-                    assertEquals("FAILED", repository.get(sessionId)?.state)
-                    assertEquals("INTERRUPTED", repository.turn(hardLimited.id)?.status)
+                    assertEquals(KitRuntimeSessionState.FAILED, repository.get(sessionId)?.state)
+                    assertEquals(KitRuntimeTurnStatus.INTERRUPTED, repository.turn(hardLimited.id)?.status)
                     assertContains(assertNotNull(repository.get(sessionId)?.failure), "hard-runtime deadline")
                 }
                 configure()
@@ -1694,9 +1694,9 @@ class KitRuntimeLifecycleIntegrationTest {
                 withTimeout(15_000) { drive() }
                 withConnectionManager {
                     val failed = assertNotNull(repository.get(sessionId))
-                    assertEquals("FAILED", failed.state)
+                    assertEquals(KitRuntimeSessionState.FAILED, failed.state)
                     assertContains(assertNotNull(failed.failure), "hard-runtime deadline during startup")
-                    assertEquals("QUEUED", repository.turn(unsent)?.status)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(unsent)?.status)
                     assertNull(repository.turn(unsent)?.deadline)
                     assertNull(failed.dispatchId)
                 }
@@ -1704,7 +1704,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 configure()
                 withConnectionManager { service.activate(auth, sessionId) }
                 drive()
-                withConnectionManager { assertEquals("COMPLETED", repository.turn(unsent)?.status) }
+                withConnectionManager { assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(unsent)?.status) }
             }
             checkTurnAndRuntimeDeadlines()
             suspend fun checkAdmission() {
@@ -1723,7 +1723,7 @@ class KitRuntimeLifecycleIntegrationTest {
                         JsonObject(emptyMap()), idleAt = OffsetDateTime.now())
                     withConnectionManager {
                         repository.create(blocker)
-                        assertEquals(1, repository.save(blocker.copy(state = "STOPPING", dispatchId = UUID.random())))
+                        assertEquals(1, repository.save(blocker.copy(state = KitRuntimeSessionState.STOPPING, dispatchId = UUID.random())))
                     }
                     try {
                         val before = withConnectionManager { assertNotNull(repository.get(sessionId)) }
@@ -1736,11 +1736,11 @@ class KitRuntimeLifecycleIntegrationTest {
                             drive()
                             withConnectionManager {
                                 val limited = assertNotNull(repository.get(sessionId))
-                                assertEquals("FAILED", limited.state)
+                                assertEquals(KitRuntimeSessionState.FAILED, limited.state)
                                 assertContains(assertNotNull(limited.failure), "capacity is in use")
                                 assertNull(limited.dispatchId); assertNull(limited.credentialId); assertNull(limited.secrets)
                                 assertEquals(before.archiveKey, limited.archiveKey)
-                                assertEquals("QUEUED", repository.turn(turn)?.status)
+                                assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(turn)?.status)
                                 assertNull(repository.turn(turn)?.deadline)
                                 assertFalse(repository.pending(100, 0, 0).any { pending -> pending.sessionId == sessionId })
                             }
@@ -1749,11 +1749,11 @@ class KitRuntimeLifecycleIntegrationTest {
                         }
                         withConnectionManager {
                             val removed = assertNotNull(repository.get(blocker.sessionId))
-                            assertEquals(1, repository.save(removed.copy(state = "FAILED")))
+                            assertEquals(1, repository.save(removed.copy(state = KitRuntimeSessionState.FAILED)))
                             service.activate(auth, sessionId)
                         }
                         drive()
-                        withConnectionManager { assertEquals("COMPLETED", repository.turn(turn)?.status) }
+                        withConnectionManager { assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(turn)?.status) }
                         assertEquals(previousLaunches + 1, launches)
                         assertEquals(previousIssued + 1, issued)
                         assertEquals("queued-at-$limit-capacity", Files.readString(root.resolve("harness/$nativeState")))
@@ -1779,8 +1779,8 @@ class KitRuntimeLifecycleIntegrationTest {
                 observedImageId = null
                 assertFailsWith<bosca.sharedqueue.jobs.DelayException> { drive() }
                 withConnectionManager {
-                    assertEquals("STARTING", repository.get(sessionId)?.state)
-                    assertEquals("QUEUED", repository.turn(turn)?.status)
+                    assertEquals(KitRuntimeSessionState.STARTING, repository.get(sessionId)?.state)
+                    assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(turn)?.status)
                 }
                 assertFalse(Files.exists(root.resolve("native-started")), "Missing image observation must not launch native work")
                 val dispatch = withConnectionManager { assertNotNull(repository.get(sessionId)?.dispatchId) }
@@ -1796,12 +1796,12 @@ class KitRuntimeLifecycleIntegrationTest {
                 for (mismatch in listOf("image", "cli", "adapter", "harness", "statePolicy")) {
                     withConnectionManager {
                         val failed = assertNotNull(repository.get(sessionId))
-                        assertEquals("FAILED", failed.state)
+                        assertEquals(KitRuntimeSessionState.FAILED, failed.state)
                         assertContains(assertNotNull(failed.failure), "does not match")
                         assertEquals(checkpoint, failed.archiveKey)
                         assertNull(failed.credentialId)
                         assertTrue(issued in revoked)
-                        assertEquals("QUEUED", repository.turn(turn)?.status)
+                        assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(turn)?.status)
                         assertNull(repository.turn(turn)?.deadline)
                         assertNull(failed.dispatchId)
                         assertTrue(executions.values.all { it.status.isTerminal })
@@ -1817,12 +1817,12 @@ class KitRuntimeLifecycleIntegrationTest {
                     }) })
                     withConnectionManager { service.activate(auth, sessionId) }; drive()
                 }
-                withConnectionManager { assertEquals("FAILED", repository.get(sessionId)?.state); assertEquals("QUEUED", repository.turn(turn)?.status) }
+                withConnectionManager { assertEquals(KitRuntimeSessionState.FAILED, repository.get(sessionId)?.state); assertEquals(KitRuntimeTurnStatus.QUEUED, repository.turn(turn)?.status) }
                 assertFalse(Files.exists(root.resolve("native-started")), "Mismatched runtime must not launch native work")
                 assertEquals(reads, archiveReads, "Mismatched runtime must not receive a checkpoint")
                 deployment = deployment.copy(profiles = deployment.profiles.map { it.copy(versions = config.versions) })
                 withConnectionManager { service.activate(auth, sessionId) }; drive()
-                withConnectionManager { assertEquals("COMPLETED", repository.turn(turn)?.status) }
+                withConnectionManager { assertEquals(KitRuntimeTurnStatus.COMPLETED, repository.turn(turn)?.status) }
                 assertEquals("identity-qualified-turn", Files.readString(root.resolve("harness/$nativeState")))
             }
             checkRuntimeIdentity()
@@ -1843,8 +1843,8 @@ class KitRuntimeLifecycleIntegrationTest {
                 drive(); drive()
                 val original = withConnectionManager { assertNotNull(repository.turn(turn)?.contextManifest) }
                 val manifest = json.decodeFromJsonElement(KitContextManifest.serializer(), original)
-                assertTrue(manifest.sources.any { it.kind == "spec" && it.id == specification.id.toString() })
-                assertEquals(gitCommit, manifest.sources.single { it.kind == "git_file" }.version)
+                assertTrue(manifest.sources.any { it.kind == KitContextReferenceKind.SPEC && it.id == specification.id.toString() })
+                assertEquals(gitCommit, manifest.sources.single { it.kind == KitContextReferenceKind.GIT_FILE }.version)
                 assertContains(Files.readString(root.resolve("harness/last-prompt.json")), "Domain Git source at $gitCommit")
                 val warm = launches
                 send("unchanged-domain-context"); drive()
@@ -1865,7 +1865,7 @@ class KitRuntimeLifecycleIntegrationTest {
                 assertFalse(Files.exists(root.resolve("workspace/domain-work.txt")), "Revoked domain context cannot survive in restored workspace files")
                 assertFalse(Files.readString(root.resolve("harness/last-prompt.json")).contains("Domain Git source"))
                 withConnectionManager {
-                    assertTrue(service.context(auth, sessionId)?.sources.orEmpty().none { it.kind in setOf("spec", "git_file") })
+                    assertTrue(service.context(auth, sessionId)?.sources.orEmpty().none { it.kind in setOf(KitContextReferenceKind.SPEC, KitContextReferenceKind.GIT_FILE) })
                     service.selectContext(sessionId, specSource, true)
                     service.selectContext(sessionId, fileSource, true)
                     val selections = (0 until 16).map { KitContextSelection(KitContextSourceKind.SPEC, UUID.random()) }

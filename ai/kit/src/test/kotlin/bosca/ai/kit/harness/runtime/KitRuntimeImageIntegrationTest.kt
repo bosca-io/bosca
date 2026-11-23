@@ -1,5 +1,6 @@
 package bosca.ai.kit.harness.runtime
 
+import bosca.ai.kit.harness.KitRuntimePhase
 import bosca.ai.kit.harness.KitHarnessConfiguration
 import bosca.ai.kit.harness.KitRuntimeSession
 import bosca.ai.kit.harness.RuntimeVersions
@@ -102,7 +103,7 @@ class KitRuntimeImageIntegrationTest {
                     val mcp = first.execInContainer("node", "/opt/test/tests/check_cli.mjs", "/usr/local/bin/bosca", family)
                     assertEquals(0, mcp.exitCode, mcp.stderr)
                     val prepared = client.claim(session, oldToken)
-                    assertEquals("PREPARED", prepared.phase)
+                    assertEquals(KitRuntimePhase.PREPARED, prepared.phase)
                     firstInstance = prepared.instanceId
                     session = session.copy(runtimeInstanceId = firstInstance)
                     assertEquals(versions, client.status(session, oldToken).versions)
@@ -115,7 +116,7 @@ class KitRuntimeImageIntegrationTest {
                     assertEquals(versions.adapter, capabilities.getValue("adapter").jsonPrimitive.content)
                     assertEquals(versions.harness, capabilities.getValue("harness").jsonPrimitive.content)
                     assertEquals(workspace, capabilities.getValue("paths").jsonObject.getValue("workspace").jsonPrimitive.content)
-                    assertEquals("READY", client.start(session, oldToken).phase)
+                    assertEquals(KitRuntimePhase.READY, client.start(session, oldToken).phase)
                     assertTrue(client.configureMcp(session, oldToken, emptyList()).isEmpty())
                     assertNativeMcp(first)
                     HttpClient(CIO) { install(WebSockets) }.use { acpHttp ->
@@ -142,7 +143,7 @@ class KitRuntimeImageIntegrationTest {
                             val receipt = client.archive(session, oldToken)
                             archiveSha = receipt.sha256
                             assertEquals(1, receipt.formatVersion)
-                            assertEquals("ARCHIVED", client.status(session, oldToken).phase)
+                            assertEquals(KitRuntimePhase.ARCHIVED, client.status(session, oldToken).phase)
                             assertEquals(503, request(session, oldToken, "/readyz").statusCode())
                             for (pid in listOf(nativePid, writerPid)) {
                                 assertTrue(pid.matches(Regex("[0-9]+")))
@@ -163,16 +164,16 @@ class KitRuntimeImageIntegrationTest {
                     second.start()
                     var session = session(second, 2, versions).copy(archiveSha256 = archiveSha)
                     val prepared = client.claim(session, newToken)
-                    assertEquals("PREPARED", prepared.phase)
+                    assertEquals(KitRuntimePhase.PREPARED, prepared.phase)
                     assertNotEquals(firstInstance, prepared.instanceId, "Restoration must not restore the old process identity")
                     session = session.copy(runtimeInstanceId = prepared.instanceId)
                     assertFailsWith<KitRuntimeReplacedException> { client.start(session.copy(runtimeInstanceId = firstInstance), newToken) }
                     assertEquals(401, request(session, oldToken, "/v1/start", "POST").statusCode())
-                    assertEquals("RESTORED", client.restore(session, newToken, archive).phase)
+                    assertEquals(KitRuntimePhase.RESTORED, client.restore(session, newToken, archive).phase)
                     assertEquals("saved workspace", read(second, "$workspace/artifact.txt"))
                     assertEquals("nested workspace", read(second, "$workspace/repository/src/Main.kt"))
                     assertEquals("spawn-writer", read(second, state("harness/" + if (family == "claude") "projects/fixture/test.jsonl" else "sessions/test.json")))
-                    assertEquals("READY", client.start(session, newToken).phase)
+                    assertEquals(KitRuntimePhase.READY, client.start(session, newToken).phase)
                     client.configureMcp(session, newToken, emptyList())
                     val processes = read(second, state("control/mcp-processes.json"))
                     assertTrue(processes.contains(newCredential))

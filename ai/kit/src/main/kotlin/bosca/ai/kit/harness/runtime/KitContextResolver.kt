@@ -88,10 +88,11 @@ class KitContextResolver(
         val references = mutableListOf<KitContextReference>()
         val resources = mutableListOf<Pair<String, String>>()
         var used = instructions.length
-        fun add(kind: String, id: UUID, version: String, title: String, body: String, revision: String, contentAllowed: Boolean,
+        fun add(kind: KitContextReferenceKind, id: UUID, version: String, title: String, body: String, revision: String, contentAllowed: Boolean,
                 selection: KitContextSelection? = null, metadataId: String? = null, chosen: Boolean = false) {
-            val uri = if (kind == "git_file") "bosca://git/repositories/$id/blob/$version?path=" +
-                java.net.URLEncoder.encode(requireNotNull(selection?.path), Charsets.UTF_8) else "bosca://$kind/$id"
+            val sourceKind = kind.name.lowercase()
+            val uri = if (kind == KitContextReferenceKind.GIT_FILE) "bosca://git/repositories/$id/blob/$version?path=" +
+                java.net.URLEncoder.encode(requireNotNull(selection?.path), Charsets.UTF_8) else "bosca://$sourceKind/$id"
             val header = "Source: $uri (version $version)\n" +
                 (selection?.ref?.let { "Requested ref: $it\n" } ?: "") + "${title.take(256)}\n"
             val remaining = budget - used
@@ -112,7 +113,7 @@ class KitContextResolver(
             val body = "Remembered ${provenance.scope.name.lowercase()}: ${memory.statement}\n" +
                 "Source: ${provenance.sourceMetadataId?.let { "bosca://metadata/$it (version ${provenance.sourceVersion})" } ?: "Explicit user statement"}\n" +
                 if (memory.sourceChanged) "Source has changed; this memory is uncertain. Read the current source before relying on it.\n" else ""
-            add("memory", memory.id, memory.version.toString(), memory.statement.take(120), body,
+            add(KitContextReferenceKind.MEMORY, memory.id, memory.version.toString(), memory.statement.take(120), body,
                 hash(memory.revision + memory.sourceChanged), true)
         }
         fun selected(key: String): List<UUID> = (state?.get(key) as? JsonArray).orEmpty().mapNotNull {
@@ -129,9 +130,9 @@ class KitContextResolver(
         if (candidates.size > 16) omissions.add("Only the first 16 selected sources were considered.")
         for (selection in candidates.take(16)) {
             selection.validate()
-            val kind = selection.kind.name.lowercase()
+            val kind = KitContextReferenceKind.valueOf(selection.kind.name)
             val id = selection.id
-            if (kind == "metadata") {
+            if (kind == KitContextReferenceKind.METADATA) {
                 val item = metadata.getById(id)
                 if (item == null || item.deleted || !metadataPermissions.isAllowed(authentication, item, PermissionAction.VIEW)) {
                     omissions.add("Some selected sources are unavailable."); continue
@@ -147,7 +148,7 @@ class KitContextResolver(
                 // Editable documents can change without incrementing Metadata.version.
                 val revision = hash(item.version.toString() + item.name + canRead + (document?.let { json.encodeToString(bosca.content.metadata.model.Document.serializer(), it) } ?: ""))
                 add(kind, id, item.version.toString(), item.name, body, revision, canRead, chosen = selection in explicit)
-            } else if (kind == "collection") {
+            } else if (kind == KitContextReferenceKind.COLLECTION) {
                 val item = collections.getById(id)
                 if (item == null || item.deleted || !collectionPermissions.isAllowed(authentication, item, PermissionAction.VIEW)) {
                     omissions.add("Some selected sources are unavailable."); continue
@@ -196,7 +197,7 @@ class KitContextResolver(
                     append(read.metadataId).append(':').append(memory?.revision).append(':').append(memory?.sourceChanged).append(';')
                 }
                 if (memory != null && memory.id !in injectedMemories) sources.add(KitContextSource(
-                    "memory", memory.id.toString(), memory.version.toString(), hash(memory.revision + memory.sourceChanged), true))
+                    KitContextReferenceKind.MEMORY, memory.id.toString(), memory.version.toString(), hash(memory.revision + memory.sourceChanged), true))
             }
         }
         val revision = hash(instructionRevision + budget + selectedSources + toolRevisions)
@@ -219,21 +220,21 @@ class KitContextResolver(
         for (source in previous.sources) {
             val id = UUID.parse(source.id)
             when (source.kind) {
-                "metadata" -> {
+                KitContextReferenceKind.METADATA -> {
                     val item = metadata.getById(id) ?: return false
                     if (item.deleted || !metadataPermissions.isAllowed(authentication, item, PermissionAction.VIEW) ||
                         source.contentAllowed && !metadataPermissions.isContentAllowed(authentication, item, PermissionAction.VIEW)) return false
                 }
-                "collection" -> {
+                KitContextReferenceKind.COLLECTION -> {
                     val item = collections.getById(id) ?: return false
                     if (item.deleted || !collectionPermissions.isAllowed(authentication, item, PermissionAction.VIEW)) return false
                 }
-                "memory" -> {
+                KitContextReferenceKind.MEMORY -> {
                     val memory = memories.get(authentication, id) ?: return false
                     if (source.revision != hash(memory.revision + memory.sourceChanged)) return false
                 }
-                "task", "spec", "requirement" -> {
-                    val selection = KitContextSelection(KitContextSourceKind.valueOf(source.kind.uppercase()), id)
+                KitContextReferenceKind.TASK, KitContextReferenceKind.SPEC, KitContextReferenceKind.REQUIREMENT -> {
+                    val selection = KitContextSelection(KitContextSourceKind.valueOf(source.kind.name), id)
                     if (domainSource(authentication, selection) == null) return false
                     source.metadataId?.let { metadataId ->
                         val item = metadata.getById(UUID.parse(metadataId)) ?: return false
@@ -241,12 +242,11 @@ class KitContextResolver(
                             source.contentAllowed && !metadataPermissions.isContentAllowed(authentication, item, PermissionAction.VIEW)) return false
                     }
                 }
-                "git_file" -> {
+                KitContextReferenceKind.GIT_FILE -> {
                     if (!repositories.exists || !repositoryPermissions.exists) return false
                     val repository = repositories.get().findById(id) ?: return false
                     if (repository.deleted || !repositoryPermissions.get().isAllowed(authentication, repository, PermissionAction.VIEW)) return false
                 }
-                else -> return false
             }
         }
         return true
@@ -257,7 +257,7 @@ class KitContextResolver(
 
     private suspend fun domainSource(authentication: AuthenticationContext, selection: KitContextSelection): KitResolvedSource? {
         val id = selection.id
-        val kind = selection.kind.name.lowercase()
+        val kind = KitContextReferenceKind.valueOf(selection.kind.name)
         if (selection.kind == KitContextSourceKind.GIT_FILE) {
             if (!repositories.exists || !browse.exists || !repositoryPermissions.exists) return null
             val repository = repositories.get().findById(id) ?: return null

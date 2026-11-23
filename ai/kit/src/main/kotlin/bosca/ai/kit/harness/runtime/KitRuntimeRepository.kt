@@ -1,5 +1,6 @@
 package bosca.ai.kit.harness.runtime
 
+import bosca.ai.kit.harness.KitRuntimeTurnStatus
 import bosca.ai.kit.harness.KitRuntimeSession
 import bosca.ai.kit.harness.KitRuntimeTurn
 import bosca.ai.kit.harness.KitRuntimeArchive
@@ -103,7 +104,7 @@ interface KitRuntimeRepository {
 
     /** Commits only the current optimistic version. */
     @Query("""update kit.runtime_session set configuration=:configuration, requested_settings=:requestedSettings, resolved_settings=:resolvedSettings, restore_workspace_only=:restoreWorkspaceOnly,
-        context_manifest=:contextManifest, context_reset=:contextReset, state=:state, generation=:generation, epoch=:epoch, needs_context=:needsContext, owner=:owner,
+        context_manifest=:contextManifest, context_reset=upper(:contextReset)::kit.context_reset, state=upper(:state)::kit.runtime_session_state, generation=:generation, epoch=:epoch, needs_context=:needsContext, owner=:owner,
         lease_until=:leaseUntil, dispatch_id=:dispatchId, endpoint=:endpoint, runtime_instance_id=:runtimeInstanceId, secrets=:secrets, credential_id=:credentialId,
         native_session_id=:nativeSessionId, active_turn=:activeTurn, cancel_requested_at=:cancelRequestedAt, idle_at=:idleAt,
         archive_key=:archiveKey, archive_sha256=:archiveSha256, archive_size=:archiveSize, archive_created=:archiveCreated, archive_failure=:archiveFailure, failure=:failure, deleted_at=:deletedAt,
@@ -140,8 +141,8 @@ interface KitRuntimeRepository {
     suspend fun send(id: UUID, deadline: bosca.serialization.OffsetDateTime): Int
 
     /** Records terminal outcomes; a terminal turn is never eligible for re-execution. */
-    @Query("update kit.runtime_turn set status=:status, result=:result where id=:id and status in ('QUEUED','SENT')", returnUpdateCount = true)
-    suspend fun finish(id: UUID, status: String, result: JsonElement?): Int
+    @Query("update kit.runtime_turn set status=upper(:status)::kit.runtime_turn_status, result=:result where id=:id and status in ('QUEUED','SENT')", returnUpdateCount = true)
+    suspend fun finish(id: UUID, status: KitRuntimeTurnStatus, result: JsonElement?): Int
 
     /** Renews current ownership; an expired owner cannot resurrect its lease. */
     @Query("update kit.runtime_session set lease_until=now()+interval '60 seconds' where session_id=:sessionId and owner=:owner and epoch=:epoch and lease_until>now() and deleted_at is null", returnUpdateCount = true)

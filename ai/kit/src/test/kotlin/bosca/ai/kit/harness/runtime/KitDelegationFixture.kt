@@ -143,7 +143,7 @@ internal class KitDelegationFixture(val scopes: List<String> = listOf("ai:delega
         check(runtimes.resolve(next.id, resolved) == 1); check(runtimes.send(next.id, OffsetDateTime.now().plusSeconds(300)) == 1)
         val environment = """{"BOSCA_RUNTIME_EXPIRES":"${java.time.Instant.now().epochSecond + 600}"}""".encodeToByteArray()
         val secret = KitRuntimeSecrets(UUID.random(), Base64.getEncoder().encodeToString(byteArrayOf(1)), Base64.getEncoder().encodeToString(environment), listOf("BOSCA_RUNTIME_EXPIRES"))
-        check(runtimes.save(session.copy(state = "BUSY", activeTurn = next.id, credentialId = credential,
+        check(runtimes.save(session.copy(state = KitRuntimeSessionState.BUSY, activeTurn = next.id, credentialId = credential,
             secrets = json.encodeToJsonElement(KitRuntimeSecrets.serializer(), secret))) == 1)
         return requireNotNull(runtimes.turn(next.id))
     }

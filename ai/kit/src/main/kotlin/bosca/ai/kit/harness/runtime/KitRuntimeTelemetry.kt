@@ -27,7 +27,7 @@ class KitRuntimeTelemetry(private val counter: Counter, private val json: Json,
             Tracing.currentTraceId()?.let { put("traceId", it) }
             session?.let {
                 put("sessionId", it.sessionId.toString()); put("principalId", it.principalId.toString())
-                put("generation", it.generation); put("epoch", it.epoch); put("state", it.state)
+                put("generation", it.generation); put("epoch", it.epoch); put("state", it.state.name)
                 it.dispatchId?.let { id -> put("dispatchId", id.toString()) }
                 // Select fields explicitly: these snapshots also contain settings, scopes and secret references.
                 val resolution = (turn?.resolvedSettings ?: it.resolvedSettings)?.let { value -> decode(KitHarnessResolution.serializer(), value) }
@@ -36,7 +36,7 @@ class KitRuntimeTelemetry(private val counter: Counter, private val json: Json,
                 context?.let { value ->
                     put("contextRevision", value.revision); put("instructionRevision", value.instructionRevision)
                     putJsonArray("sources") { value.sources.forEach { source -> add(buildJsonObject {
-                        put("kind", source.kind); put("id", source.id); put("version", source.version)
+                        put("kind", source.kind.name.lowercase()); put("id", source.id); put("version", source.version)
                         put("revision", source.revision); put("contentAllowed", source.contentAllowed)
                     }) } }
                 }

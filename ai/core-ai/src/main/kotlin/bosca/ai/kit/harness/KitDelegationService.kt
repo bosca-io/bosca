@@ -28,7 +28,7 @@ interface KitDelegationService : Service {
     /** Reports an outstanding child-result wait for the current parent turn. */
     suspend fun waiting(turnId: UUID): Boolean
     /** Confirms child completion from a fenced terminal turn, then republishes the parent's reconciliation. */
-    suspend fun finish(session: KitRuntimeSession, turn: KitRuntimeTurn, status: String, summary: String)
+    suspend fun finish(session: KitRuntimeSession, turn: KitRuntimeTurn, status: KitRuntimeTurnStatus, summary: String)
     /** Reconciles admission failures and terminal queued turns without submitting native work again. */
     suspend fun reconcile(session: KitRuntimeSession)
     /** Verifies selected input snapshots before a child's first native prompt. */
