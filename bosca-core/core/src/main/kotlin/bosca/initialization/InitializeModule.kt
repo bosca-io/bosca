@@ -10,6 +10,7 @@ import bosca.db.ConnectionConfig.Companion.get
 import bosca.db.ConnectionConfig.Companion.getOrNull
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionPool
+import bosca.db.PostgresInfrastructurePoolProvider
 import bosca.db.migrations.Migration
 import bosca.db.migrations.Migrations
 import bosca.db.use
@@ -100,6 +101,7 @@ class InitializeModule(
     @OptIn(InternalDI::class)
     override suspend fun install(application: BoscaApplication) = with(application) {
         provides(singleton = true) { ConnectionPool(provide()) }
+        register(ConnectionPool::class, PostgresInfrastructurePoolProvider(application), PostgresInfrastructurePoolProvider.NAME, true)
 
         register(CoreProviderRegistrar())
         register(*providers)
@@ -122,6 +124,7 @@ class InitializeModule(
             }
             onShutdown {
                 for (provider in ProviderRegistry.findAll(ConnectionPool::class)) {
+                    if (!provider.exists) continue
                     runCatching {
                         provider.get().close()
                     }
