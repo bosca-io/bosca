@@ -1,20 +1,35 @@
 package bosca.content.image.service
 
+import bosca.attributes.AttributeType
+import bosca.attributes.AttributeUiType
+import bosca.content.attributes.model.TemplateAttribute
 import bosca.content.collection.model.Collection
 import bosca.content.collection.model.CollectionLanguageVariantMetadataRelationship
 import bosca.content.collection.model.CollectionMetadataRelationship
+import bosca.content.collection.model.CollectionMetadataRelationshipInput
+import bosca.content.collection.model.CollectionTemplateAttribute
 import bosca.content.collection.service.CollectionService
 import bosca.content.image.model.Coordinates
+import bosca.content.image.model.ImageAttachment
 import bosca.content.image.model.ImageAttributes
 import bosca.content.image.model.ImageResizerConfiguration
 import bosca.content.image.model.ImageSize
+import bosca.content.image.model.TemplateImageAttribute
+import bosca.content.image.repository.ImageAttachmentRepository
 import bosca.content.metadata.model.Metadata
 import bosca.content.metadata.model.MetadataRelationship
+import bosca.content.metadata.model.MetadataRelationshipInput
 import bosca.content.metadata.model.MetadataSupplementaryInput
+import bosca.content.metadata.service.CollectionTemplateService
+import bosca.content.metadata.service.DataService
+import bosca.content.metadata.service.DataTemplateService
+import bosca.content.metadata.service.DocumentService
+import bosca.content.metadata.service.DocumentTemplateService
 import bosca.content.metadata.service.MetadataService
 import bosca.content.model.ContentRelationship
 import bosca.content.timeevent.model.TimeEventMetadataRelationship
 import bosca.content.timeevent.service.TimeEventService
+import bosca.db.transaction
 import bosca.events.eventManager
 import bosca.http.Client
 import bosca.lock.DistributedLockFactory
@@ -22,18 +37,14 @@ import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.upload
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.jsonObject
 import java.io.File
 import java.net.URLEncoder
 import javax.imageio.ImageIO
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.*
 
 @ServiceImplementation
 class ImageServiceImpl(
@@ -44,7 +55,13 @@ class ImageServiceImpl(
     private val timeEventService: TimeEventService,
     private val client: Client,
     private val json: Json,
-    private val distributedLockFactory: DistributedLockFactory
+    private val distributedLockFactory: DistributedLockFactory,
+    private val documentService: DocumentService,
+    private val dataService: DataService,
+    private val documentTemplateService: DocumentTemplateService,
+    private val dataTemplateService: DataTemplateService,
+    private val collectionTemplateService: CollectionTemplateService,
+    private val attachments: ImageAttachmentRepository,
 ) : ImageService {
 
     override suspend fun optimize(collection: Collection): List<UUID> {
@@ -283,6 +300,262 @@ class ImageServiceImpl(
         val contentLength = storage.upload(metadata, supplementary.id, file)
         metadataService.setSupplementaryUploaded(supplementary.id, contentType, contentLength)
         return Triple(supplementary.id, supplementary.key, true)
+    }
+
+    override suspend fun attach(image: Metadata, target: Metadata, attributeKey: String?, crop: Coordinates?): ImageAttachment {
+        validateImage(image)
+        val attributes = metadataImageAttributes(target)
+        val selected = selectAttribute(attributeKey, attributes)
+            ?: return selectionFailure(attributeKey, attributes)
+        val warnings = mutableListOf<String>()
+        optimizeSource(image, warnings)
+        val source = metadataService.getById(image.id) ?: image
+        val relationshipAttributes = relationshipAttributes(source, selected, crop)
+        transaction {
+            check(attachments.lock("metadata:${target.id}"))
+            metadataService.removeFromCache(target)
+            val existing = metadataService.getRelationships(target.id)
+            existing.filter { it.relationship == selected.relationship && (!selected.list || it.metadataId2 == source.id) }
+                .forEach { metadataService.removeRelationship(target.id, it.metadataId2, it.relationship) }
+            metadataService.addRelationship(MetadataRelationshipInput(target.id, source.id, selected.relationship, relationshipAttributes))
+        }
+        val optimized = optimizeTarget(target, warnings)
+        var collaborationUpdated = true
+        try {
+            metadataService.markCollaborationRelationshipsDirty(target.id)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) {
+            collaborationUpdated = false
+            warnings += "The image is attached, but collaboration state could not be updated: ${failure.message}"
+        }
+        return attachment(selected, relationshipAttributes.crop(), collaborationUpdated, optimized, warnings)
+    }
+
+    override suspend fun attach(image: Metadata, target: Collection, languageTag: String?, attributeKey: String?, crop: Coordinates?): ImageAttachment {
+        validateImage(image)
+        val variant = languageTag?.takeIf { it.isNotBlank() && it != target.languageTag }?.let {
+            collectionService.getLanguageVariant(target.id, it) ?: error("Collection language variant not found")
+        }
+        val attributes = collectionImageAttributes(target)
+        val selected = selectAttribute(attributeKey, attributes)
+            ?: return selectionFailure(attributeKey, attributes)
+        val warnings = mutableListOf<String>()
+        optimizeSource(image, warnings)
+        val source = metadataService.getById(image.id) ?: image
+        val relationshipAttributes = relationshipAttributes(source, selected, crop)
+        transaction {
+            check(attachments.lock("collection:${target.id}"))
+            collectionService.removeFromCache(target.id)
+            val existing = if (variant == null) collectionService.getMetadataRelationships(target.id)
+                else collectionService.getMetadataRelationships(target.id, variant.languageTag)
+            existing.filter { it.relationship == selected.relationship && (!selected.list || it.id2 == source.id) }.forEach {
+                if (variant == null) collectionService.deleteMetadataRelationship(target.id, it.id2, it.relationship)
+                else collectionService.deleteMetadataRelationship(target.id, variant.languageTag, it.id2, it.relationship)
+            }
+            collectionService.addMetadataRelationship(CollectionMetadataRelationshipInput(
+                target.id, variant?.languageTag, source.id, selected.relationship, relationshipAttributes,
+            ))
+        }
+        return attachment(selected, relationshipAttributes.crop(), true, optimizeTarget(target, warnings), warnings)
+            .copy(targetLanguageTag = variant?.languageTag ?: target.languageTag)
+    }
+
+    private fun validateImage(image: Metadata) {
+        require(image.contentType.startsWith("image/")) { "Source metadata is not an image" }
+        require(image.uploaded != null && image.contentLength != null) { "Source image has not finished uploading" }
+    }
+
+    private fun selectAttribute(key: String?, attributes: List<TemplateImageAttribute>): TemplateImageAttribute? =
+        if (key.isNullOrBlank()) attributes.singleOrNull() else attributes.firstOrNull { it.key == key.trim() }
+
+    private fun selectionFailure(key: String?, attributes: List<TemplateImageAttribute>) = ImageAttachment(
+        success = false,
+        availableAttributes = attributes,
+        error = when {
+            attributes.isEmpty() -> "The target template has no compatible IMAGE attribute with an image.* relationship."
+            key.isNullOrBlank() -> "Multiple image attributes are available; choose attributeKey from availableAttributes."
+            else -> "Image attribute '$key' is not available on the target template."
+        },
+    )
+
+    private fun attachment(attribute: TemplateImageAttribute, crop: Coordinates?, collaborationUpdated: Boolean, optimized: Boolean, warnings: List<String>) =
+        ImageAttachment(success = true, attached = true, attribute = attribute, availableAttributes = listOf(attribute),
+            crop = crop, collaborationUpdated = collaborationUpdated, optimized = optimized,
+            warning = warnings.takeIf { it.isNotEmpty() }?.joinToString(" "))
+
+    private suspend fun metadataImageAttributes(target: Metadata): List<TemplateImageAttribute> {
+        val document = documentService.getDocument(target.id, target.version)
+        val documentTemplateId = document?.templateMetadataId
+        val documentTemplateVersion = document?.templateMetadataVersion
+        if (documentTemplateId != null && documentTemplateVersion != null) {
+            return documentTemplateService.getTemplateAttributes(
+                documentTemplateId,
+                documentTemplateVersion,
+            ).mapNotNull { it.toImageAttribute() }
+        }
+
+        val data = dataService.getData(target.id, target.version)
+        val dataTemplateId = data?.templateMetadataId
+        val dataTemplateVersion = data?.templateMetadataVersion
+        if (dataTemplateId != null && dataTemplateVersion != null) {
+            return dataTemplateService.getTemplateAttributes(
+                dataTemplateId,
+                dataTemplateVersion,
+            ).mapNotNull { it.toImageAttribute() }
+        }
+        return emptyList()
+    }
+
+    private suspend fun collectionImageAttributes(collection: Collection): List<TemplateImageAttribute> {
+        val templateId = collection.templateMetadataId ?: return emptyList()
+        val templateVersion = collection.templateMetadataVersion ?: return emptyList()
+        return collectionTemplateService.getCollectionTemplateAttributes(templateId, templateVersion)
+            .mapNotNull { it.toImageAttribute() }
+    }
+
+    private suspend fun optimizeSource(image: Metadata, warnings: MutableList<String>) {
+        try {
+            optimize(image)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            warnings += "Source image optimization did not complete: ${e.message}"
+        }
+    }
+
+    private suspend fun optimizeTarget(target: Metadata, warnings: MutableList<String>): Boolean {
+        return try {
+            optimize(target)
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            warnings += "The image is attached, but relationship optimization did not complete: ${e.message}"
+            false
+        }
+    }
+
+    private suspend fun optimizeTarget(target: Collection, warnings: MutableList<String>): Boolean {
+        return try {
+            optimize(target)
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            warnings += "The image is attached, but relationship optimization did not complete: ${e.message}"
+            false
+        }
+    }
+
+    private fun relationshipAttributes(
+        image: Metadata,
+        attribute: TemplateImageAttribute,
+        requestedCrop: Coordinates?,
+    ): JsonObject {
+        val attributes = image.attributes?.let { it as? JsonObject }?.toMutableMap() ?: mutableMapOf()
+        attribute.targetSize?.let { attributes["targetSize"] = JsonArray(it.map(::JsonPrimitive)) }
+        val crop = requestedCrop?.normalize(image) ?: centeredCrop(image, attribute.defaultAspectRatio)
+        crop?.let { attributes["crop"] = it.toJson() }
+        return JsonObject(attributes)
+    }
+
+    private fun centeredCrop(image: Metadata, aspectRatio: Double?): Coordinates? {
+        val dimensions = image.dimensions() ?: return null
+        val (sourceWidth, sourceHeight) = dimensions
+        if (aspectRatio == null) return Coordinates(0f, 0f, sourceWidth, sourceHeight)
+
+        val sourceRatio = sourceWidth / sourceHeight
+        return if (sourceRatio > aspectRatio) {
+            val width = sourceHeight * aspectRatio
+            Coordinates(0f, ((sourceWidth - width) / 2.0).toFloat(), width.toFloat(), sourceHeight)
+        } else {
+            val height = sourceWidth / aspectRatio
+            Coordinates(((sourceHeight - height) / 2.0).toFloat(), 0f, sourceWidth, height.toFloat())
+        }
+    }
+
+    private fun Coordinates.normalize(image: Metadata): Coordinates? {
+        if (top.isFinite() && left.isFinite() && width.isFinite() && height.isFinite() &&
+            top >= 0f && left >= 0f && width > 0f && height > 0f
+        ) {
+            return this
+        }
+        val (imageWidth, imageHeight) = image.dimensions() ?: return null
+        return Coordinates(top = 0f, left = 0f, width = imageWidth, height = imageHeight)
+    }
+
+    private fun Metadata.dimensions(): Pair<Float, Float>? {
+        return attributes?.let { it as? JsonObject }
+            ?.get("size")
+            ?.let { it as? JsonPrimitive }
+            ?.contentOrNull
+            ?.parseDimensions()
+    }
+
+    private fun Coordinates.toJson() = JsonObject(
+        mapOf(
+            "top" to JsonPrimitive(top),
+            "left" to JsonPrimitive(left),
+            "width" to JsonPrimitive(width),
+            "height" to JsonPrimitive(height),
+        )
+    )
+
+    private fun JsonObject.crop(): Coordinates? {
+        val crop = get("crop") as? JsonObject ?: return null
+        return Coordinates(
+            top = crop["top"]?.jsonPrimitive?.doubleOrNull?.toFloat() ?: return null,
+            left = crop["left"]?.jsonPrimitive?.doubleOrNull?.toFloat() ?: return null,
+            width = crop["width"]?.jsonPrimitive?.doubleOrNull?.toFloat() ?: return null,
+            height = crop["height"]?.jsonPrimitive?.doubleOrNull?.toFloat() ?: return null,
+        )
+    }
+
+    private fun String.parseDimensions(): Pair<Float, Float>? {
+        val parts = split('x', limit = 2)
+        if (parts.size != 2) return null
+        val width = parts[0].toFloatOrNull() ?: return null
+        val height = parts[1].toFloatOrNull() ?: return null
+        if (!width.isFinite() || !height.isFinite() || width <= 0f || height <= 0f) return null
+        return width to height
+    }
+
+    private fun TemplateAttribute.toImageAttribute(): TemplateImageAttribute? {
+        if (type != AttributeType.METADATA || ui != AttributeUiType.IMAGE) return null
+        return resolvedImageAttribute(key, name, description, list, configuration)
+    }
+
+    private fun CollectionTemplateAttribute.toImageAttribute(): TemplateImageAttribute? {
+        if (type != AttributeType.METADATA || ui != AttributeUiType.IMAGE) return null
+        return resolvedImageAttribute(key, name, description, list, configuration)
+    }
+
+    private fun resolvedImageAttribute(
+        key: String,
+        name: String,
+        description: String,
+        list: Boolean,
+        configuration: JsonElement?,
+    ): TemplateImageAttribute? {
+        val config = configuration as? JsonObject ?: return null
+        val relationship = (config["relationship"] as? JsonPrimitive)?.contentOrNull?.trim()
+            ?.takeIf { it.startsWith("image.") }
+            ?: return null
+        val targetSizeElement = (config["targetSize"] as? JsonArray)?.takeIf { array ->
+            array.size == 2 && array.all {
+                (it as? JsonPrimitive)?.intOrNull?.let { value -> value > 0 } == true
+            }
+        }
+        val targetSize = targetSizeElement?.mapNotNull { (it as? JsonPrimitive)?.intOrNull }
+        val defaultAspectRatio = (config["aspectRatios"] as? JsonArray)
+            ?.firstOrNull()
+            ?.let { it as? JsonObject }
+            ?.takeIf { (it["default"] as? JsonPrimitive)?.booleanOrNull == true }
+            ?.get("value")
+            ?.let { it as? JsonPrimitive }
+            ?.doubleOrNull
+            ?.takeIf { it.isFinite() && it > 0.0 }
+        return TemplateImageAttribute(key, name, description, relationship, list, targetSize, defaultAspectRatio)
     }
 
     companion object {

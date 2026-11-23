@@ -6,6 +6,7 @@ import bosca.bible.Reference
 import bosca.content.metadata.model.Bible
 import bosca.content.metadata.model.BibleBook
 import bosca.content.metadata.model.BibleBookChapter
+import bosca.content.metadata.model.BibleReference
 import bosca.content.metadata.model.FindBibleResult
 import bosca.content.metadata.model.toJson
 import bosca.content.metadata.service.BibleService
@@ -108,20 +109,42 @@ class BibleController(
 
     @Field
     suspend fun find(bible: Bible, human: String): List<FindBibleResult> {
+        return find(bible, human, BibleContentUse.DISPLAY)
+    }
+
+    /** Resolves references without retrieving Scripture content or consuming a provider content-use grant. */
+    @Field
+    suspend fun references(bible: Bible, human: String): List<BibleReference> =
+        bibleService.getReferences(bible, human).map { reference ->
+            BibleReference(reference.usfm, bibleService.getHumanLong(bible, reference), bibleService.getHuman(bible, reference))
+        }
+
+    /** Retrieves exact passages for an AI caller under content access and the source's AI_CONTEXT grant. */
+    @Field
+    suspend fun aiContext(authentication: AuthenticationContext?, bible: Bible, human: String): List<FindBibleResult> {
+        val metadata = metadataService.getById(bible.metadataId, bible.version)?.takeUnless { it.deleted }
+            ?: throw NoSuchElementException("Bible metadata was not found")
+        metadataPermissionEvaluator.verifyContentAllowed(authentication, metadata, PermissionAction.VIEW)
+        return find(bible, human, BibleContentUse.AI_CONTEXT)
+    }
+
+    private suspend fun find(bible: Bible, human: String, use: BibleContentUse): List<FindBibleResult> {
         val references = bibleService.getReferences(bible, human)
         val books = bibleService.getBooks(bible)
         return references.mapNotNull { reference ->
             val book = books.find { it.usfm == reference.bookUsfm } ?: return@mapNotNull null
-            val chapter = bibleService.getChapter(book, reference.chapterUsfm)
-            val content = bibleService.getChapterContent(book, reference.chapterUsfm, BibleContentUse.DISPLAY)
-            if (content.chapter[Reference(reference.chapterUsfm)] == null) return@mapNotNull null
-            val filtered = references.mapNotNull {
-                content.chapter[it]?.toJson()
+            if (reference.chapterUsfm.isEmpty()) {
+                // Display search skips book-only references; AI callers are told to narrow the request.
+                require(use != BibleContentUse.AI_CONTEXT) { "Select a chapter or verse range for ${book.nameLong}" }
+                return@mapNotNull null
             }
+            val chapter = bibleService.getChapter(book, reference.chapterUsfm)
+            val content = bibleService.getChapterContent(book, reference.chapterUsfm, use)
+            val filtered = content.chapter[reference]?.toJson() ?: return@mapNotNull null
             FindBibleResult(
                 book = book,
                 chapter = chapter,
-                component = JsonArray(filtered),
+                component = JsonArray(listOf(filtered)),
                 human = bibleService.getHumanLong(bible, reference),
                 humanShort = bibleService.getHuman(bible, reference),
                 reference = reference,
