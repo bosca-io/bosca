@@ -18,8 +18,10 @@ data class ChatMessage(
     val sequence: Long,
     @Contextual
     val timestamp: OffsetDateTime,
+    @ColumnName("sender_id")
     @Contextual
     val senderId: UUID,
+    @ColumnName("client_id")
     @Contextual
     val clientId: UUID = UUID.NIL,
     val content: List<MessageContent>,
