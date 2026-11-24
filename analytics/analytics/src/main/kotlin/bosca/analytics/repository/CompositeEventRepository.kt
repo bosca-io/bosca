@@ -20,6 +20,15 @@ class CompositeEventRepository(
     override suspend fun process(events: Events) {
         // Keep storage outside the catch below: a failed write must fail the delivery.
         storageRepository.process(events)
+        processOptional(events)
+    }
+
+    override suspend fun store(batches: List<Events>) {
+        storageRepository.store(batches)
+        for (events in batches) processOptional(events)
+    }
+
+    private suspend fun processOptional(events: Events) {
         for (optionalRepository in optionalRepositories) {
             try {
                 optionalRepository.process(events)

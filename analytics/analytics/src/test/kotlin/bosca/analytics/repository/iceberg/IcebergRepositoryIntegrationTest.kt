@@ -12,6 +12,10 @@ import bosca.analytics.model.Page
 import bosca.analytics.transform.iceberg.IcebergEventsToRecordTransform
 import bosca.analytics.transform.EventsTransform
 import io.mockk.mockk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
@@ -31,8 +35,15 @@ import kotlin.io.path.exists
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 class IcebergRepositoryIntegrationTest {
     private val roots = mutableListOf<Path>()
@@ -115,6 +126,95 @@ class IcebergRepositoryIntegrationTest {
         assertEquals(2, persisted)
         assertEquals(listOf("first", "second"), repository.getEvents().toList().map { it.context?.sessionId })
         assertTrue(local.toFile().listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun `failed append rejects additional staging until it can be committed`() = runTest {
+        val root = root()
+        val table = table(root)
+        val local = Files.createDirectories(root.resolve("buffer"))
+        var failing = true
+        val records = IcebergEventsToRecordTransform(EventSchema)
+        val transform = object : EventsTransform<List<Record>> {
+            override suspend fun transform(item: Events): List<Record> {
+                if (failing) throw java.io.IOException("Synthetic append failure")
+                return records.transform(item)
+            }
+        }
+        val repository = IcebergEventRepository(table, transform, local.toString(), ProtoBuf).also(repositories::add)
+        repository.process(events("before", null, false))
+        kotlin.test.assertFailsWith<java.io.IOException> { repository.flush() }
+        kotlin.test.assertFailsWith<java.io.IOException> { repository.process(events("after", null, false)) }
+        kotlin.test.assertFailsWith<java.io.IOException> { repository.flush(force = false) }
+        assertEquals(0, table.snapshots().count())
+
+        failing = false
+        repository.process(events("after", null, false))
+        repository.flush()
+        assertEquals(setOf("client-before", "client-after"), IcebergGenerics.read(table).build().use { rows -> rows.map { it.getField("client_id") }.toSet() })
+        assertEquals(2, table.snapshots().count())
+        repository.flush()
+        assertEquals(2, table.snapshots().count())
+        assertTrue(local.toFile().listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun `persistent storage failure does not accumulate retry copies in staging`() = runTest {
+        val root = root()
+        val table = table(root)
+        val local = Files.createDirectories(root.resolve("buffer"))
+        var failing = true
+        val records = IcebergEventsToRecordTransform(EventSchema)
+        val transform = object : EventsTransform<List<Record>> {
+            override suspend fun transform(item: Events): List<Record> {
+                if (failing) throw java.io.IOException("Synthetic storage outage")
+                return records.transform(item)
+            }
+        }
+        val repository = IcebergEventRepository(table, transform, local.toString(), ProtoBuf).also(repositories::add)
+        val delivery = events("retry", null, false)
+        repository.process(delivery)
+        kotlin.test.assertFailsWith<java.io.IOException> { repository.flush() }
+        val acceptedFiles = local.toFile().listFiles().orEmpty().associate { it.name to it.readBytes().toList() }
+        repeat(10) {
+            kotlin.test.assertFailsWith<java.io.IOException> { repository.process(delivery) }
+            assertEquals(acceptedFiles, local.toFile().listFiles().orEmpty().associate { it.name to it.readBytes().toList() })
+        }
+        failing = false
+        repository.process(delivery)
+        repository.flush()
+        assertEquals(2, IcebergGenerics.read(table).build().use { it.count() }, "A retry after recovery retains the at-least-once contract")
+        assertTrue(local.toFile().listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun `retry after an ambiguous commit preserves already committed data files`() = runTest {
+        val root = root()
+        val table = table(root)
+        var ambiguous = true
+        val unreliable = object : Table by table {
+            override fun newAppend(): org.apache.iceberg.AppendFiles {
+                val append = table.newAppend()
+                return object : org.apache.iceberg.AppendFiles by append {
+                    override fun commit() {
+                        append.commit()
+                        if (ambiguous) {
+                            ambiguous = false
+                            throw java.io.IOException("Synthetic lost commit response")
+                        }
+                    }
+                }
+            }
+        }
+        val repository = IcebergEventRepository(unreliable, IcebergEventsToRecordTransform(EventSchema), root.resolve("buffer").toString(), ProtoBuf)
+            .also(repositories::add)
+        repository.process(events("ambiguous", null, false))
+        kotlin.test.assertFailsWith<java.io.IOException> { repository.flush() }
+        val committedId = IcebergGenerics.read(table).build().use { it.single().getField("id") }
+        repository.flush()
+        val ids = IcebergGenerics.read(table).build().use { rows -> rows.map { it.getField("id") }.toSet() }
+        assertTrue(committedId in ids)
+        assertEquals(2, ids.size, "At-least-once retries may duplicate an ambiguous commit, but never replace its immutable file")
     }
 
     @Test
@@ -209,20 +309,21 @@ class IcebergRepositoryIntegrationTest {
     }
 
     @Test
-    fun `parquet writer counts rejected records and still finishes`() {
+    fun `parquet writer propagates record failure and refuses to commit`() {
         val root = root()
         val table = table(root)
         val writer = ParquetWriter(table, root.resolve("bad.parquet").toFile())
 
-        writer.addAll(listOf(mockk<Record>()))
-        writer.finish()
-
-        assertEquals(0, writer.recordsAdded)
-        assertEquals(1, writer.recordsFailed)
+        try {
+            kotlin.test.assertFails { writer.addAll(listOf(mockk<Record>())) }
+            kotlin.test.assertFailsWith<IllegalStateException> { writer.finish() }
+            assertEquals(0, writer.recordsAdded)
+            assertEquals(1, writer.recordsFailed)
+        } finally { writer.close() }
     }
 
     @Test
-    fun `repository cleans stale files and supports asynchronous rolling`() = runTest {
+    fun `repository cleans stale files before committing staged data`() = runTest {
         val root = root()
         val table = table(root)
         val local = Files.createDirectories(root.resolve("buffer"))
@@ -235,7 +336,7 @@ class IcebergRepositoryIntegrationTest {
         assertFalse(parquet.exists())
 
         repository.process(events("async", null, includeElement = false))
-        repository.maybeAppend(sync = false, force = true)?.join()
+        repository.flush()
         assertEquals(1, IcebergGenerics.read(table).build().use { rows -> rows.count() })
     }
 
@@ -294,5 +395,84 @@ class IcebergRepositoryIntegrationTest {
         }
 
         kotlin.test.assertFailsWith<IllegalStateException> { repository.process(invalid) }
+    }
+
+    private fun groupCommitRepository(
+        root: Path,
+        table: Table,
+        transform: EventsTransform<List<Record>> = IcebergEventsToRecordTransform(EventSchema),
+        commitInterval: Duration = 1.minutes,
+        commitMaxRecords: Int = Int.MAX_VALUE,
+        storeConcurrency: Int = Int.MAX_VALUE,
+    ) = IcebergEventRepository(
+        table, transform, Files.createDirectories(root.resolve("buffer")).toString(), ProtoBuf,
+        commitInterval, commitMaxRecords, storeConcurrency,
+    ).also(repositories::add)
+
+    private fun rows(table: Table) = IcebergGenerics.read(table).build().use { it.count() }
+
+    @Test
+    fun `concurrent stores share one commit once every caller is waiting`() = runBlocking {
+        val root = root()
+        val table = table(root)
+        val repository = groupCommitRepository(root, table, storeConcurrency = 3)
+        val started = TimeSource.Monotonic.markNow()
+        coroutineScope {
+            listOf("a", "b", "c").map { session -> async(Dispatchers.IO) { repository.store(listOf(events(session, null))) } }.awaitAll()
+        }
+        assertTrue(started.elapsedNow() < 30.seconds, "A full group must not wait for the commit interval")
+        assertEquals(1, table.snapshots().count())
+        assertEquals(3, rows(table))
+    }
+
+    @Test
+    fun `a lone store commits after the commit interval and the record limit commits early`() = runBlocking {
+        val root = root()
+        val table = table(root)
+        val interval = groupCommitRepository(root, table, commitInterval = 200.milliseconds)
+        val started = TimeSource.Monotonic.markNow()
+        interval.store(listOf(events("lone", null)))
+        assertTrue(started.elapsedNow() >= 200.milliseconds)
+        assertEquals(1, table.snapshots().count())
+
+        val limited = groupCommitRepository(root(), table, commitMaxRecords = 1)
+        val early = TimeSource.Monotonic.markNow()
+        limited.store(listOf(events("limited", null)))
+        assertTrue(early.elapsedNow() < 30.seconds)
+        assertEquals(2, table.snapshots().count())
+        assertEquals(2, rows(table))
+    }
+
+    @Test
+    fun `a transform failure fails only its own store in a shared commit`() = runBlocking {
+        val root = root()
+        val table = table(root)
+        val records = IcebergEventsToRecordTransform(EventSchema)
+        val transform = object : EventsTransform<List<Record>> {
+            override suspend fun transform(item: Events): List<Record> =
+                if (item.context?.sessionId == "bad") throw IllegalStateException("bad event") else records.transform(item)
+        }
+        val repository = groupCommitRepository(root, table, transform, storeConcurrency = 2)
+        coroutineScope {
+            val bad = async(Dispatchers.IO) { runCatching { repository.store(listOf(events("bad", null))) } }
+            val good = async(Dispatchers.IO) { repository.store(listOf(events("good", null))) }
+            assertIs<IllegalStateException>(bad.await().exceptionOrNull())
+            good.await()
+        }
+        assertEquals(1, table.snapshots().count())
+        assertEquals(1, rows(table))
+    }
+
+    @Test
+    fun `shutdown fails waiting and later stores without committing them`() = runBlocking {
+        val root = root()
+        val table = table(root)
+        val repository = groupCommitRepository(root, table)
+        val waiting = async(Dispatchers.IO) { runCatching { repository.store(listOf(events("waiting", null))) } }
+        delay(100)
+        repository.shutdown()
+        assertIs<IllegalStateException>(waiting.await().exceptionOrNull())
+        assertFailsWith<IllegalStateException> { repository.store(listOf(events("late", null))) }
+        assertEquals(0, table.snapshots().count())
     }
 }
