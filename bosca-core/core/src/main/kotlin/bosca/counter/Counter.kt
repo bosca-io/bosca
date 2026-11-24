@@ -17,6 +17,15 @@ interface Counter : Service {
     /** Atomically add [by] (may be negative) to the counter at [key] and return the new total. */
     suspend fun increment(key: String, by: Long = 1): Long
 
+    /**
+     * Adds [by] to the counter at [key] without returning the total. A backend may buffer additions and
+     * apply them shortly afterwards, so [get] can briefly omit them; use [increment] when the caller needs
+     * the total or read-your-write ordering.
+     */
+    suspend fun add(key: String, by: Long = 1) {
+        increment(key, by)
+    }
+
     /** The current value at [key], or `0` when it was never incremented (or has since expired). */
     suspend fun get(key: String): Long
 

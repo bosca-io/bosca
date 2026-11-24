@@ -25,6 +25,7 @@ class CacheModule : BoscaApplicationModule {
                 }
             }
             "nats" -> NatsCacheManager.register()
+            "postgres" -> bosca.di.provides<CacheManager>(true) { bosca.cache.postgres.PostgresCacheManager(bosca.di.provide<bosca.db.ConnectionPool>(bosca.db.PostgresInfrastructurePoolProvider.NAME)) }
             else -> error("Unknown cache type: $type")
         }
     }

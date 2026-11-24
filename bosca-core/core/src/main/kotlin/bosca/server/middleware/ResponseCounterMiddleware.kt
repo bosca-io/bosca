@@ -27,7 +27,7 @@ class ResponseCounterMiddleware(
         if (!filter(call)) return
         val status = call.response.status()?.value ?: 200
         val minute = nowEpochSeconds() / 60
-        resolveCounter().increment("$KEY_PREFIX.$serviceName.${status / 100}xx.$minute")
+        resolveCounter().add("$KEY_PREFIX.$serviceName.${status / 100}xx.$minute")
     }
 
     private suspend fun resolveCounter(): Counter =

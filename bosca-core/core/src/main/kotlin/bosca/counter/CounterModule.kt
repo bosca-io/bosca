@@ -18,6 +18,10 @@ import kotlinx.serialization.json.Json
 class CounterModule : BoscaApplicationModule {
     override suspend fun install(application: BoscaApplication) = with(application) {
         when (val type = environment.config.propertyOrNull("counter.type")?.getString() ?: "redis") {
+            "postgres" -> provides<Counter>(true) {
+                bosca.counter.postgres.PostgresCounter(provide<bosca.db.ConnectionPool>(bosca.db.PostgresInfrastructurePoolProvider.NAME))
+                    .also { counter -> onShutdown { counter.close() } }
+            }
             "redis" -> provides<Counter>(true) { RedisCounter(provide<RedisConnectionPool>()) }
             "nats" -> provides<Counter>(true) { NatsCounter(provide<NatsConnectionPool>(), provide<Json>()) }
             else -> error("Unknown counter type: $type")
