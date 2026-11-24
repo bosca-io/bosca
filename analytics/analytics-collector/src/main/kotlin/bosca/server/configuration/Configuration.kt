@@ -51,7 +51,7 @@ class Configuration {
      * `pubsub.type` configuration property. Defaults to Redis when unset so
      * the binding is still satisfied in Redis-only deployments.
      */
-    @Provider
+    @Provider(singleton = true)
     suspend fun pubsubService(
         application: BoscaApplication,
         natsConnectionPool: ObjectProvider<NatsConnectionPool>,
@@ -59,6 +59,7 @@ class Configuration {
         json: Json
     ): PubSubService {
         return when (application.environment.config.propertyOrNull("pubsub.type")?.getString()) {
+            "postgres" -> bosca.pubsub.PostgresPubSubService.create(application)
             "nats" -> NatsPubSubServiceImpl(json, natsConnectionPool.get())
             else -> RedisPubSubServiceImpl(json, redisConnectionPool.get())
         }

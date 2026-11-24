@@ -54,7 +54,7 @@ class Configuration {
      * Required by [bosca.security.service.ApiTokenServiceImpl] for cross-instance
      * token cache invalidation on revocation.
      */
-    @Provider
+    @Provider(singleton = true)
     suspend fun pubsubService(
         application: BoscaApplication,
         natsConnectionPool: ObjectProvider<NatsConnectionPool>,
@@ -62,6 +62,7 @@ class Configuration {
         json: Json,
     ): PubSubService {
         return when (application.environment.config.propertyOrNull("pubsub.type")?.getString()) {
+            "postgres" -> bosca.pubsub.PostgresPubSubService.create(application)
             "nats" -> NatsPubSubServiceImpl(json, natsConnectionPool.get())
             else -> RedisPubSubServiceImpl(json, redisConnectionPool.get())
         }

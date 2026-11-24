@@ -24,7 +24,7 @@ import kotlinx.serialization.json.Json
 class Configuration {
 
     /** Selects the site's pub/sub backend for Git events shared with the server and runner. */
-    @Provider
+    @Provider(singleton = true)
     suspend fun pubsubService(
         application: BoscaApplication,
         natsConnectionPool: ObjectProvider<NatsConnectionPool>,
@@ -32,6 +32,7 @@ class Configuration {
         json: Json,
     ): PubSubService {
         return when (application.environment.config.propertyOrNull("pubsub.type")?.getString()) {
+            "postgres" -> bosca.pubsub.PostgresPubSubService.create(application)
             "nats" -> NatsPubSubServiceImpl(json, natsConnectionPool.get())
             else -> RedisPubSubServiceImpl(json, redisConnectionPool.get())
         }
