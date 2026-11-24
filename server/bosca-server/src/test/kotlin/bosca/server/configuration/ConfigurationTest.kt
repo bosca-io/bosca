@@ -215,4 +215,13 @@ class ConfigurationTest {
         assertTrue(provider.exists)
         assertIs<CoreMigration>(provider.get())
     }
+    @Test
+    fun `production registrar exposes the named shared queue migration`(): Unit = runTest {
+        BoscaProviderRegistrar().register()
+        val migration = ProviderRegistry.get(Migration::class, "sharedqueue-migrations").get()
+        assertIs<bosca.sharedqueue.jobs.postgres.PostgresJobQueueMigration>(migration)
+        assertEquals("sharedqueue", migration.schema)
+        assertEquals(listOf("V1__postgres_job_queue.sql", "V2__postgres_job_queue_claim_index.sql"), migration.resources)
+    }
+
 }

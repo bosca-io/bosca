@@ -30,6 +30,9 @@ import kotlinx.serialization.json.Json
 
 @Providers
 class Configuration {
+
+    @Provider(name = "sharedqueue-migrations")
+    fun sharedQueueMigration(): bosca.db.migrations.Migration = bosca.sharedqueue.jobs.postgres.PostgresJobQueueMigration()
     @Provider(name = "search-index")
     fun searchIndexInstaller(
         storageSystemService: StorageSystemService,
@@ -121,6 +124,10 @@ class Configuration {
     ): JobQueueFactory {
         val callbacks = listOf(JobCallback(listener = ScheduledJobExecutionListener::class))
         val factories: Pair<JobQueueFactory, JobQueueFactory> = when (application.environment.config.propertyOrNull("jobQueue.factory")?.getString()) {
+            "postgres" -> {
+                val factory = bosca.sharedqueue.jobs.postgres.PostgresJobQueueFactory(bosca.di.provide(bosca.db.PostgresInfrastructurePoolProvider.NAME), json, enqueueEventChannel, callbacks)
+                factory to factory
+            }
             "nats" -> {
                 val connection = natsConnectionPool.get()
                 NatsJobQueueFactory(connection, json, distributedLockFactory, enqueueEventChannel, callbacks, false) to

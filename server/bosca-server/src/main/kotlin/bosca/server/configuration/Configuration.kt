@@ -94,6 +94,9 @@ import kotlinx.serialization.json.JsonElement
 @Providers
 class Configuration {
 
+    @Provider(name = "sharedqueue-migrations")
+    fun sharedQueueMigration(): bosca.db.migrations.Migration = bosca.sharedqueue.jobs.postgres.PostgresJobQueueMigration()
+
     @Provider(name = "search-index")
     fun searchIndexInstaller(
         storageSystemService: StorageSystemService,
@@ -454,6 +457,7 @@ class Configuration {
         )
         val processExpiredJobs = application.environment.config.propertyOrNull("jobQueue.processExpiredJobs")?.getAs<Boolean>() ?: false
         return when (application.environment.config.propertyOrNull("jobQueue.factory")?.getString()) {
+            "postgres" -> bosca.sharedqueue.jobs.postgres.PostgresJobQueueFactory(bosca.di.provide(bosca.db.PostgresInfrastructurePoolProvider.NAME), json, enqueueEventChannel, enqueueCallbacks)
             "nats" -> NatsJobQueueFactory(natsConnectionPool.get(), json, distributedLockFactory, enqueueEventChannel, enqueueCallbacks, processExpiredJobs)
             else -> RedisJobQueueFactory(redisConnectionPool.get(), json, distributedLockFactory, enqueueEventChannel, enqueueCallbacks, processExpiredJobs)
         }
