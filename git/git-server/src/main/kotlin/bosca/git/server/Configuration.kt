@@ -23,6 +23,9 @@ import kotlinx.serialization.json.Json
 @Providers
 class Configuration {
 
+    @Provider(name = "sharedqueue-migrations")
+    fun sharedQueueMigration(): bosca.db.migrations.Migration = bosca.sharedqueue.jobs.postgres.PostgresJobQueueMigration()
+
     /** Selects the site's pub/sub backend for Git events shared with the server and runner. */
     @Provider(singleton = true)
     suspend fun pubsubService(
@@ -47,6 +50,7 @@ class Configuration {
         distributedLockFactory: DistributedLockFactory,
     ): JobQueueFactory {
         return when (application.environment.config.propertyOrNull("jobQueue.factory")?.getString()) {
+            "postgres" -> bosca.sharedqueue.jobs.postgres.PostgresJobQueueFactory(bosca.di.provide(bosca.db.PostgresInfrastructurePoolProvider.NAME), json, null, emptyList())
             "nats" -> NatsJobQueueFactory(natsConnectionPool.get(), json, distributedLockFactory, null, emptyList(), false)
             else -> RedisJobQueueFactory(redisConnectionPool.get(), json, distributedLockFactory, null, emptyList(), false)
         }

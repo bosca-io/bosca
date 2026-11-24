@@ -37,6 +37,9 @@ import kotlinx.serialization.json.Json
 @Providers
 class Configuration {
 
+    @Provider(name = "sharedqueue-migrations")
+    fun sharedQueueMigration(): bosca.db.migrations.Migration = bosca.sharedqueue.jobs.postgres.PostgresJobQueueMigration()
+
     @Provider(singleton = true)
     fun natsEventConsumer(
         nats: NatsConnectionPool,
@@ -62,6 +65,7 @@ class Configuration {
             JobCallback(listener = ScheduledJobExecutionListener::class)
         )
         return when (application.environment.config.propertyOrNull("jobQueue.factory")?.getString()) {
+            "postgres" -> bosca.sharedqueue.jobs.postgres.PostgresJobQueueFactory(bosca.di.provide(bosca.db.PostgresInfrastructurePoolProvider.NAME), json, enqueueEventChannel, enqueueCallbacks)
             "nats" -> NatsJobQueueFactory(natsConnectionPool.get(), json, distributedLockFactory, enqueueEventChannel, enqueueCallbacks, false)
             else -> RedisJobQueueFactory(redisConnectionPool.get(), json, distributedLockFactory, enqueueEventChannel, enqueueCallbacks, false)
         }

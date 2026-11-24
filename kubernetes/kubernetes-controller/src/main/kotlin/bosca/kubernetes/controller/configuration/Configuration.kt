@@ -42,6 +42,9 @@ import kotlinx.serialization.json.Json
 @Providers
 class Configuration {
 
+    @Provider(name = "sharedqueue-migrations")
+    fun sharedQueueMigration(): bosca.db.migrations.Migration = bosca.sharedqueue.jobs.postgres.PostgresJobQueueMigration()
+
     @Provider(singleton = true)
     fun servingModelController(pool: ClusterClientPool, clusters: ClusterRepository, json: Json, locks: DistributedLockFactory) =
         ServingModelController(pool, clusters, ServingModelDiscovery(
@@ -77,6 +80,7 @@ class Configuration {
     ): JobQueueFactory = when (
         application.environment.config.propertyOrNull("jobQueue.factory")?.getString()
     ) {
+        "postgres" -> bosca.sharedqueue.jobs.postgres.PostgresJobQueueFactory(bosca.di.provide(bosca.db.PostgresInfrastructurePoolProvider.NAME), json, null, emptyList())
         "redis" -> RedisJobQueueFactory(
             redisConnectionPool.get(),
             json,

@@ -30,6 +30,9 @@ import kotlinx.serialization.json.Json
 @Providers
 class Configuration {
 
+    @Provider(name = "sharedqueue-migrations")
+    fun sharedQueueMigration(): bosca.db.migrations.Migration = bosca.sharedqueue.jobs.postgres.PostgresJobQueueMigration()
+
     // Registry writes produce ordinary pipeline events; the Bosca runner matches and executes them.
     @Provider(singleton = true)
     fun pipelineEventDispatcher(json: Json): PipelineEventDispatcher = PipelineEventDispatcherImpl(null, json)
@@ -45,6 +48,7 @@ class Configuration {
         json: Json,
         distributedLockFactory: DistributedLockFactory,
     ): JobQueueFactory = when (application.environment.config.propertyOrNull("jobQueue.factory")?.getString()) {
+        "postgres" -> bosca.sharedqueue.jobs.postgres.PostgresJobQueueFactory(bosca.di.provide(bosca.db.PostgresInfrastructurePoolProvider.NAME), json, null, emptyList())
         "nats" -> NatsJobQueueFactory(natsConnectionPool.get(), json, distributedLockFactory, null, emptyList(), processExpiredJobs = false)
         else -> RedisJobQueueFactory(redisConnectionPool.get(), json, distributedLockFactory, null, emptyList(), processExpiredJobs = false)
     }

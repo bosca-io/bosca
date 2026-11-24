@@ -33,6 +33,9 @@ import kotlinx.serialization.json.Json
 @Providers
 class Configuration {
 
+    @Provider(name = "sharedqueue-migrations")
+    fun sharedQueueMigration(): bosca.db.migrations.Migration = bosca.sharedqueue.jobs.postgres.PostgresJobQueueMigration()
+
     /** Provides the configured job transport for enqueueing FUMS delivery. */
     @Provider
     suspend fun jobQueueFactory(
@@ -42,6 +45,7 @@ class Configuration {
         json: Json,
         locks: DistributedLockFactory,
     ): JobQueueFactory = when (application.environment.config.propertyOrNull("jobQueue.factory")?.getString()) {
+        "postgres" -> bosca.sharedqueue.jobs.postgres.PostgresJobQueueFactory(bosca.di.provide(bosca.db.PostgresInfrastructurePoolProvider.NAME), json, null, emptyList())
         "nats" -> NatsJobQueueFactory(nats.get(), json, locks, null, emptyList(), false)
         else -> RedisJobQueueFactory(redis.get(), json, locks, null, emptyList(), false)
     }
