@@ -473,7 +473,7 @@ class Configuration {
 
     /**
      * Selects the NATS or Redis [LiveSessionsService] backend for the live sessions map, from `liveSessions.type`
-     * (falling back to `pubsub.type`). Config-selected, so — like [pubsubService] — the server wires it here
+     * (falling back to `pubsub.type`). PostgreSQL and `disabled` select the disabled live-session implementation. Config-selected, so — like [pubsubService] — the server wires it here
      * rather than via KSP discovery.
      */
     @Provider(singleton = true)
