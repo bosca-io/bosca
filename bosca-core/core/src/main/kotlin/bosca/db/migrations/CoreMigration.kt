@@ -201,7 +201,8 @@ class CoreMigration : Migration {
                 "V198__bible_fums_tokens.sql",
                 "V199__guide_step_metadata_index.sql",
                 "V200__postgres_infrastructure.sql",
-                "V201__postgres_cache_counters.sql"
+                "V201__postgres_cache_counters.sql",
+                "V202__postgres_locks.sql"
             )
             return base
         }

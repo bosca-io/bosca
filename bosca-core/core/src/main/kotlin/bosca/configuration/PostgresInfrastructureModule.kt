@@ -21,7 +21,7 @@ class PostgresInfrastructureModule : BoscaApplicationModule {
                 delay(60_000)
                 try {
                     val pool = infrastructurePool.get()
-                    for (table in listOf("cache_entries", "counters")) {
+                    for (table in listOf("cache_entries", "counters", "locks")) {
                         pool.connection().use { manager -> manager.useStatement("delete from infrastructure.$table where expires <= clock_timestamp()") { it.executeUpdate() } }
                     }
                 } catch (e: CancellationException) { throw e }

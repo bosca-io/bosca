@@ -16,6 +16,7 @@ class DistributedLockConfiguration {
         application: BoscaApplication,
         redisConnectionPool: ObjectProvider<RedisConnectionPool>
     ): DistributedLockFactory = when (application.environment.config.propertyOrNull("distributedLock.type")?.getString()) {
+        "postgres" -> bosca.lock.postgres.PostgresDistributedLockFactory(bosca.di.provide<bosca.db.ConnectionPool>(bosca.db.PostgresInfrastructurePoolProvider.NAME))
         null, "redis" -> RedisDistributedLockFactory(redisConnectionPool.get())
         else -> error("Unsupported distributedLock.type; use redis and configure the shared Redis connection")
     }
