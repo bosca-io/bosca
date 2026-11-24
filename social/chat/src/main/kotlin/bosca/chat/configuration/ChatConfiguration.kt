@@ -20,7 +20,6 @@ import bosca.di.annotation.Provider
 import bosca.di.annotation.Providers
 import bosca.nats.NatsConnectionPool
 import bosca.profile.profile.service.ProfileCleanupHandler
-import bosca.profile.profile.service.ProfileService
 import bosca.security.service.GroupEvaluator
 import bosca.security.service.SecurityService
 
@@ -70,24 +69,27 @@ class ChatConfiguration {
         presenceStore,
     )
 
-    /**
-     * KV-backed reaction store. Singleton because each instance lazily
-     * caches the [io.nats.client.KeyValue] handle for the bucket; many
-     * instances would each open their own and waste connection-level
-     * caching on the NATS client.
-     */
-    @Provider(singleton = true)
-    fun chatReactionStore(nats: NatsConnectionPool): ChatReactionStore = bosca.chat.state.NatsChatReactionStore(nats)
+    private fun postgres(application: bosca.server.BoscaApplication): Boolean =
+        application.environment.config.propertyOrNull("chat.storage")?.getString() == "postgres"
 
     @Provider(singleton = true)
-    fun chatTypingStore(nats: NatsConnectionPool): ChatTypingStore = bosca.chat.state.NatsChatTypingStore(nats)
+    suspend fun chatMessageStore(application: bosca.server.BoscaApplication, nats: bosca.di.ObjectProvider<NatsConnectionPool>, pubsub: bosca.pubsub.PubSubService, json: kotlinx.serialization.json.Json): bosca.chat.message.ChatMessageStore =
+        if (postgres(application)) bosca.chat.message.PostgresChatMessageStore(bosca.di.provide(), pubsub, json).also { store -> application.onShutdown { store.shutdown() } }
+        else bosca.chat.message.NatsChatMessageStore(nats.get(), json)
 
     @Provider(singleton = true)
-    fun chatPresenceStore(nats: NatsConnectionPool): ChatPresenceStore = bosca.chat.state.NatsChatPresenceStore(nats)
+    suspend fun chatReactionStore(application: bosca.server.BoscaApplication, nats: bosca.di.ObjectProvider<NatsConnectionPool>): ChatReactionStore =
+        if (postgres(application)) bosca.chat.state.PostgresChatReactionStore(bosca.di.provide()) else bosca.chat.state.NatsChatReactionStore(nats.get())
 
     @Provider(singleton = true)
-    fun chatReadStateStore(nats: NatsConnectionPool): ChatReadStateStore = bosca.chat.state.NatsChatReadStateStore(nats)
+    suspend fun chatTypingStore(application: bosca.server.BoscaApplication, nats: bosca.di.ObjectProvider<NatsConnectionPool>): ChatTypingStore =
+        if (postgres(application)) bosca.chat.state.PostgresChatTypingStore(bosca.di.provide()) else bosca.chat.state.NatsChatTypingStore(nats.get())
+
     @Provider(singleton = true)
-    fun chatMessageStore(nats: NatsConnectionPool, json: kotlinx.serialization.json.Json): bosca.chat.message.ChatMessageStore =
-        bosca.chat.message.NatsChatMessageStore(nats, json)
+    suspend fun chatPresenceStore(application: bosca.server.BoscaApplication, nats: bosca.di.ObjectProvider<NatsConnectionPool>): ChatPresenceStore =
+        if (postgres(application)) bosca.chat.state.PostgresChatPresenceStore(bosca.di.provide()) else bosca.chat.state.NatsChatPresenceStore(nats.get())
+
+    @Provider(singleton = true)
+    suspend fun chatReadStateStore(application: bosca.server.BoscaApplication, nats: bosca.di.ObjectProvider<NatsConnectionPool>): ChatReadStateStore =
+        if (postgres(application)) bosca.chat.state.PostgresChatReadStateStore(bosca.di.provide()) else bosca.chat.state.NatsChatReadStateStore(nats.get())
 }
