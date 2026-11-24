@@ -32,17 +32,17 @@ class EventProcessingHealthTest {
     fun `NATS failures survive successful processing and retain their own grace period`() {
         var now = 0L
         val health = EventProcessingHealth { now }
-        health.natsFailed()
+        health.queueFailed()
         health.processingRecovered()
         assertFalse(health.isReady)
         now = 59.seconds.inWholeNanoseconds
-        health.natsFailed()
+        health.queueFailed()
         assertTrue(health.isLive)
         now = 60.seconds.inWholeNanoseconds
         assertFalse(health.isLive)
 
         health.processingFailed()
-        health.natsRecovered()
+        health.queueRecovered()
         assertFalse(health.isReady)
         assertTrue(health.isLive)
         health.processingRecovered()

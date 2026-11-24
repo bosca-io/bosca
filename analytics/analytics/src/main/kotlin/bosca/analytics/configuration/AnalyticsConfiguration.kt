@@ -7,7 +7,6 @@ import bosca.analytics.repository.CompositeEventRepository
 import bosca.analytics.repository.ErrorGroupEventRepository
 import bosca.analytics.repository.EventRepository
 import bosca.analytics.repository.iceberg.IcebergEventRepository
-import bosca.analytics.repository.nats.NatsEventRepository
 import bosca.analytics.service.ErrorGroupService
 import bosca.analytics.service.AnalyticsQueryService
 import bosca.analytics.service.EventProcessingHealth
@@ -42,6 +41,7 @@ import org.apache.iceberg.catalog.SupportsNamespaces
 import org.apache.iceberg.catalog.TableIdentifier
 import org.apache.iceberg.data.Record
 import org.apache.iceberg.jdbc.JdbcCatalog
+import kotlin.time.Duration.Companion.milliseconds
 import org.slf4j.LoggerFactory
 
 @Providers
@@ -57,13 +57,14 @@ class AnalyticsConfiguration {
 
     @Provider(singleton = true)
     fun eventProcessingConfiguration(application: BoscaApplication): EventProcessingConfiguration {
-        return application.environment.config.propertyOrNull("eventProcessing")?.getAs() ?: EventProcessingConfiguration()
+        val value = application.environment.config.propertyOrNull("eventProcessing") ?: return EventProcessingConfiguration()
+        return value.getAs()
     }
 
     @Provider(singleton = true)
     fun analyticsQueryCacheConfiguration(application: BoscaApplication): AnalyticsQueryCacheConfiguration {
-        val configured = application.environment.config.propertyOrNull("analyticsQueryCache")?.getAs()
-            ?: AnalyticsQueryCacheConfiguration()
+        val value = application.environment.config.propertyOrNull("analyticsQueryCache")
+        val configured = if (value == null) AnalyticsQueryCacheConfiguration() else value.getAs<AnalyticsQueryCacheConfiguration>()
         val normalized = configured.copy(
             maxEntriesPerQuery = configured.maxEntriesPerQuery.coerceAtLeast(1),
             idleRetentionDays = configured.idleRetentionDays.coerceAtLeast(1),
@@ -221,41 +222,59 @@ class AnalyticsConfiguration {
         schema: Schema
     ): EventsTransform<List<Record>> = IcebergEventsToRecordTransform(schema)
 
+    @Provider(singleton = true)
+    suspend fun analyticsEventQueue(application: BoscaApplication, nats: ObjectProvider<NatsConnectionPool>, json: Json, health: EventProcessingHealth): bosca.analytics.queue.AnalyticsEventQueue {
+        val queue = when (val type = setting(application, "analyticsEventQueue.type", "nats")) {
+            "nats" -> bosca.analytics.queue.NatsAnalyticsEventQueue(nats.get(), json, health)
+            else -> error("Unknown analytics event queue type: $type")
+        }
+        application.onShutdown { queue.shutdown() }
+        return queue
+    }
+
+    @Provider(singleton = true, name = "analytics-event-storage")
+    fun analyticsEventStorage(
+        application: BoscaApplication,
+        icebergConfiguration: IcebergConfiguration,
+        @ProviderName(name = "icebergEventTable") icebergTable: Table,
+        @ProviderName(name = "icebergEventTransform") icebergTransform: EventsTransform<List<Record>>,
+        protoBuf: ProtoBuf,
+        errorGroupService: ErrorGroupService,
+        eventProcessingConfiguration: EventProcessingConfiguration,
+    ): EventRepository {
+        // Consumer workers are the only store callers, so a group is complete once every worker is waiting.
+        val storage = IcebergEventRepository(
+            icebergTable, icebergTransform, icebergConfiguration.localPath, protoBuf,
+            commitInterval = icebergConfiguration.commitIntervalMillis.milliseconds,
+            commitMaxRecords = icebergConfiguration.commitMaxRecords,
+            storeConcurrency = eventProcessingConfiguration.workerCount,
+        )
+        application.onShutdown { storage.shutdown() }
+        return CompositeEventRepository(storage, listOf(ErrorGroupEventRepository(errorGroupService)))
+    }
+
     /**
      * Stores events in the configured backend before updating error groups. Storage must
      * succeed for delivery to succeed; error-group aggregation is optional and logs failures.
      *
      * The storage backend is selected by the `eventRepository.type` config:
-     * - `nats` — forwards events to a NATS JetStream stream for downstream processing
-     * - unset / anything else — writes events directly to an Apache Iceberg table
+     * - `nats` / `queue` — forwards events to the configured [bosca.analytics.queue.AnalyticsEventQueue]
+     * - unset / anything else — writes events directly to Apache Iceberg through `analytics-event-storage`
      */
     @Provider(singleton = true)
     suspend fun eventRepository(
         application: BoscaApplication,
-        natsConnectionPool: ObjectProvider<NatsConnectionPool>,
-        json: ObjectProvider<Json>,
-        icebergConfiguration: ObjectProvider<IcebergConfiguration>,
-        @ProviderName(name = "icebergEventTable") icebergTable: ObjectProvider<Table>,
-        @ProviderName(name = "icebergEventTransform") icebergTransform: ObjectProvider<EventsTransform<List<Record>>>,
-        protoBuf: ObjectProvider<ProtoBuf>,
+        eventQueue: ObjectProvider<bosca.analytics.queue.AnalyticsEventQueue>,
+        // Shares the consumer's repository so one process never has two writers on the staging directory.
+        @ProviderName(name = "analytics-event-storage") eventStorage: ObjectProvider<EventRepository>,
         errorGroupService: ErrorGroupService,
         health: EventProcessingHealth,
-    ): EventRepository {
-        val storageRepository = when (application.environment.config.propertyOrNull("eventRepository.type")?.getString()) {
-            "nats" -> NatsEventRepository(natsConnectionPool.get(), json.get(), health)
-            else -> IcebergEventRepository(
-                icebergTable.get(),
-                icebergTransform.get(),
-                icebergConfiguration.get().localPath,
-                protoBuf.get(),
-            ).also { repository ->
-                application.onShutdown { repository.shutdown() }
-            }
-        }
-        return CompositeEventRepository(
-            storageRepository = storageRepository,
+    ): EventRepository = when (application.environment.config.propertyOrNull("eventRepository.type")?.getString()) {
+        "nats", "queue" -> CompositeEventRepository(
+            storageRepository = bosca.analytics.repository.QueuedEventRepository(eventQueue.get(), health),
             optionalRepositories = listOf(ErrorGroupEventRepository(errorGroupService)),
         )
+        else -> eventStorage.get()
     }
 
     @Provider(singleton = true, name = JobQueueNames.analyticsJobQueue)
@@ -312,7 +331,12 @@ class AnalyticsConfiguration {
      * this installation for every Trino query the platform installs.
      */
     private fun experimentationSetting(application: BoscaApplication, name: String, default: String): String =
-        application.environment.config.propertyOrNull("experimentation.$name")?.getString() ?: default
+        setting(application, "experimentation.$name", default)
+
+    private fun setting(application: BoscaApplication, name: String, default: String): String {
+        val value = application.environment.config.propertyOrNull(name) ?: return default
+        return value.getString()
+    }
 
     @Provider(name = "analytics-queries")
     fun analyticsQueriesPackage(): PackageInstallation = PackageInstallation(

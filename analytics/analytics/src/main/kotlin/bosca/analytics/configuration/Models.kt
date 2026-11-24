@@ -72,5 +72,9 @@ class IcebergConfiguration(
     val table: String,
     val database: IcebergDatabaseConfiguration,
     val warehouseLocation: String?,
-    val s3: IcebergS3Configuration? = null
+    val s3: IcebergS3Configuration? = null,
+    /** Longest time a stored delivery group waits to share a table commit with concurrent groups. */
+    val commitIntervalMillis: Long = 10_000,
+    /** Event count at which waiting delivery groups are committed without waiting for the interval. */
+    val commitMaxRecords: Int = 100_000,
 )

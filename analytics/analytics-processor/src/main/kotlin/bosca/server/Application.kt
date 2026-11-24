@@ -3,7 +3,7 @@ package bosca.server
 import bosca.ai.configuration.AILlmExecutorModule
 import bosca.analytics.configuration.JobQueueNames
 import bosca.analytics.server.AnalyticsServerClientModule
-import bosca.analytics.service.NatsEventConsumer
+import bosca.analytics.service.AnalyticsEventConsumer
 import bosca.di.AnalyticsProcessorProviderRegistrar
 import bosca.di.AnalyticsProviderRegistrar
 import bosca.di.AnalyticsAIProviderRegistrar
@@ -83,7 +83,7 @@ suspend fun BoscaApplication.module() {
     }
 
     launch {
-        val consumer = provide<NatsEventConsumer>()
+        val consumer = provide<AnalyticsEventConsumer>()
         while (true) {
             try {
                 log.info("starting analytics event consumer")

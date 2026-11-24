@@ -95,14 +95,14 @@ class EventProcessingRecoveryTest {
     fun `NATS publish failure reaches the caller and recovers independently of request processing`() = runBlocking {
         val processing = service(object : EventRepository {
             override suspend fun process(events: Events) {
-                health.natsFailed()
+                health.queueFailed()
                 throw NatsPublishException(IOException("NATS unavailable"))
             }
             override suspend fun flush() = Unit
         })
         assertFailsWith<NatsPublishException> { processing.queueAndWait(context, events) }
         assertFalse(health.isReady)
-        health.natsRecovered()
+        health.queueRecovered()
         assertTrue(health.isReady)
     }
 

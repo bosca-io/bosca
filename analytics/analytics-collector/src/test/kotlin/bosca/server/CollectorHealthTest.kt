@@ -13,7 +13,7 @@ import bosca.analytics.service.ErrorGroupService
 import bosca.analytics.service.EventProcessingHealth
 import bosca.analytics.service.EventProcessingService
 import bosca.analytics.routes.AddEvent
-import bosca.analytics.repository.nats.NatsEventRepository
+import bosca.analytics.queue.NatsAnalyticsEventQueue
 import bosca.cache.CacheManager
 import bosca.cache.RequestCacheSerializer
 import bosca.db.ConnectionManager
@@ -30,6 +30,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import org.testcontainers.containers.GenericContainer
 import java.time.Duration
 import kotlin.test.AfterTest
@@ -121,7 +122,7 @@ class CollectorHealthTest {
                 assertEquals(200, status(application, "ready"))
                 assertEquals(202, ingest(application, service, events))
                 val connection = nats.systemConnection()
-                assertEquals(1L, connection.jetStreamManagement().getStreamInfo(NatsEventRepository.STREAM_NAME).streamState.msgCount)
+                assertEquals(1L, connection.jetStreamManagement().getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME).streamState.msgCount)
 
                 server.dockerClient.pauseContainerCmd(server.containerId).exec()
                 try {
@@ -140,11 +141,12 @@ class CollectorHealthTest {
                 assertEquals(200, status(application, "live"))
                 assertEquals(202, ingest(application, service, retry.copy(sent = 3)))
                 assertEquals(202, ingest(application, service, retry.copy(sent = 4)))
-                assertEquals(2L, connection.jetStreamManagement().getStreamInfo(NatsEventRepository.STREAM_NAME).streamState.msgCount)
+                assertEquals(2L, connection.jetStreamManagement().getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME).streamState.msgCount)
             } finally {
                 application.shutdown()
                 nats.close()
             }
         }
     }
+
 }

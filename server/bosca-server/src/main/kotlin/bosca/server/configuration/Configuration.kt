@@ -35,7 +35,7 @@ import bosca.content.transformations.ReferencesListToBookListTransformation
 import bosca.analytics.configuration.EventPipelineTransforms
 import bosca.analytics.configuration.EventProcessingConfiguration
 import bosca.analytics.repository.EventRepository
-import bosca.analytics.service.NatsEventConsumer
+import bosca.analytics.service.AnalyticsEventConsumer
 import bosca.artifacts.ml.installer.MlArtifactsConfiguration
 import bosca.artifacts.service.ArtifactRepositoryService
 import bosca.di.ObjectProvider
@@ -387,13 +387,12 @@ class Configuration {
      * in-process instead of requiring a separate analytics-processor deployment.
      */
     @Provider(singleton = true)
-    fun natsEventConsumer(
-        nats: NatsConnectionPool,
-        json: Json,
-        eventRepository: EventRepository,
+    fun analyticsEventConsumer(
+        queue: bosca.analytics.queue.AnalyticsEventQueue,
+        @bosca.di.annotation.ProviderName("analytics-event-storage") eventRepository: EventRepository,
         eventTransforms: EventPipelineTransforms,
         config: EventProcessingConfiguration,
-    ): NatsEventConsumer = NatsEventConsumer(nats, json, eventRepository, eventTransforms, config)
+    ): AnalyticsEventConsumer = AnalyticsEventConsumer(queue, eventRepository, eventTransforms, config)
 
     @Provider(singleton = true, name = "workops")
     fun workopsJobQueue(factory: JobQueueFactory): JobQueue = factory.create("workops")

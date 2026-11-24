@@ -92,7 +92,7 @@ import bosca.scheduler.listeners.JobEnqueueEventForwarder
 import bosca.scheduler.runner.SchedulerRunner
 import bosca.ai.configuration.AIModule
 import bosca.analytics.server.AnalyticsServerClientModule
-import bosca.analytics.service.NatsEventConsumer
+import bosca.analytics.service.AnalyticsEventConsumer
 import bosca.pipelines.configuration.PipelinesModule
 import bosca.server.netty.NettyServerEngine
 import bosca.sharedqueue.jobs.JobRunner
@@ -314,7 +314,7 @@ suspend fun BoscaApplication.module() {
     // consumer still runs for the process lifetime and is cancelled on shutdown.
     if (Features.analyticsProcessor) {
         launch {
-            val consumer = provide<NatsEventConsumer>()
+            val consumer = provide<AnalyticsEventConsumer>()
             while (true) {
                 try {
                     log.info("starting analytics event consumer")
