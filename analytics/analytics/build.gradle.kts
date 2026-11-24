@@ -75,7 +75,21 @@ ksp {
     arg("ProviderRegistrarPrefix", "Analytics")
 }
 
+// Run independently of tests so coverage instrumentation does not distort disk timings.
+val benchmark = sourceSets.create("benchmark") {
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += sourceSets.main.get().output
+}
+configurations[benchmark.implementationConfigurationName].extendsFrom(configurations.implementation.get())
+configurations[benchmark.runtimeOnlyConfigurationName].extendsFrom(configurations.runtimeOnly.get())
+
 kover {
+    currentProject {
+        sources {
+            // Measurement harnesses follow the core module's non-production source-set policy.
+            excludedSourceSets.add(benchmark.name)
+        }
+    }
     reports {
         filters {
             excludes {
@@ -95,7 +109,37 @@ kover {
     }
 }
 
-// Failure-injection tests exercise RandomAccessFile without changing the production I/O path.
+
+
+
+// This executable verifies queue code and serializers; native collector wiring is checked separately.
+val nativeQueueClasspath = benchmark.runtimeClasspath.filter { file ->
+    !file.name.endsWith(".jar") || listOf(
+        "kotlin-stdlib-", "kotlinx-coroutines-core-jvm-", "kotlinx-serialization-json-jvm-",
+        "kotlinx-serialization-core-jvm-", "slf4j-api-", "core-analytics-", "analytics-models-",
+    ).any { file.name.startsWith(it) }
+}
+val nativeQueueExecutable = layout.buildDirectory.file("native/diskQueueSmoke/analytics-disk-queue-smoke")
+val compileNativeDiskAnalyticsQueueSmoke = tasks.register<Exec>("compileNativeDiskAnalyticsQueueSmoke") {
+    group = "verification"
+    description = "Builds the disk queue smoke executable with GraalVM native-image on PATH."
+    dependsOn(benchmark.classesTaskName)
+    inputs.files(nativeQueueClasspath).withPropertyName("nativeQueueClasspath").withNormalizer(ClasspathNormalizer::class)
+    outputs.file(nativeQueueExecutable)
+    commandLine("native-image", "--no-fallback", "-O2", "-J-Xmx6g", "-cp", nativeQueueClasspath.asPath,
+        "bosca.analytics.queue.DiskAnalyticsNativeSmoke", nativeQueueExecutable.get().asFile.absolutePath)
+    val outputDirectory = nativeQueueExecutable.get().asFile.parentFile
+    doFirst { outputDirectory.mkdirs() }
+}
+tasks.register<Exec>("nativeDiskAnalyticsQueueSmoke") {
+    group = "verification"
+    description = "Checks native enqueue, independent retries and acknowledgment recovery across processes."
+    dependsOn(compileNativeDiskAnalyticsQueueSmoke)
+    commandLine(nativeQueueExecutable.get().asFile.absolutePath, "verify")
+    outputs.upToDateWhen { false }
+}
+
+// Read-failure injection spies on RandomAccessFile without changing the production I/O path.
 tasks.test {
     jvmArgs("--add-opens=java.base/java.io=ALL-UNNAMED")
 }

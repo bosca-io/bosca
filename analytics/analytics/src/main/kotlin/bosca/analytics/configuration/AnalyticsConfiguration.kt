@@ -226,9 +226,19 @@ class AnalyticsConfiguration {
     suspend fun analyticsEventQueue(application: BoscaApplication, nats: ObjectProvider<NatsConnectionPool>, json: Json, health: EventProcessingHealth): bosca.analytics.queue.AnalyticsEventQueue {
         val queue = when (val type = setting(application, "analyticsEventQueue.type", "nats")) {
             "nats" -> bosca.analytics.queue.NatsAnalyticsEventQueue(nats.get(), json, health)
+            "disk" -> bosca.analytics.queue.DiskAnalyticsEventQueue(
+                java.nio.file.Path.of(setting(application, "analyticsEventQueue.path", "./data/analytics-events")), json,
+                setting(application, "analyticsEventQueue.maxBytes", "1073741824").toLong(),
+                maxSegmentEvents = setting(application, "analyticsEventQueue.segmentMaxEvents", "10000").toInt(),
+                maxSegmentAge = (setting(application, "analyticsEventQueue.segmentMaxAgeMillis", "1000").toLong()).milliseconds,
+            )
             else -> error("Unknown analytics event queue type: $type")
         }
         application.onShutdown { queue.shutdown() }
+        if (queue is bosca.analytics.queue.DiskAnalyticsEventQueue &&
+            setting(application, "eventRepository.type", "iceberg") in setOf("queue", "nats")) {
+            queue.startProducer()
+        }
         return queue
     }
 
