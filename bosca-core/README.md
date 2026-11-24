@@ -6,7 +6,7 @@ Backend infrastructure foundation for the Bosca platform. Provides HTTP/GraphQL 
 
 | Module | Description |
 |--------|-------------|
-| `core` | Bosca Server (Netty), PostgreSQL, Redis/NATS, Caffeine cache, OpenTelemetry |
+| `core` | Bosca Server (Netty), database access, Redis/NATS/PostgreSQL infrastructure backends, Caffeine cache, OpenTelemetry |
 | `core-annotations` | `@TypeController`, `@Repository`, `@JobDefinition`, `@RouteController` |
 | `core-ksp` | KSP processor that generates GraphQL dispatchers and repository impls |
 | `core-security` | Security interfaces: authentication, authorization, permissions |
@@ -43,6 +43,13 @@ Run these commands from the **workspace root**. `bosca-core` is part of the root
 Database tests can use `SharedPostgreSQLContainer.copy()` to create a started, independent copy
 of a migrated fixture, including its seed data and sequence values. Close the source fixture's
 connections before copying it, and stop every copy and its source when the test class finishes.
+
+PostgreSQL pub/sub bounds each subscription to 64 queued payloads. If a subscriber
+falls behind and exhausts its mailbox, its pending payloads are dropped and the
+flow resubscribes without failing, the same at-most-once delivery as the NATS and
+Redis backends; other subscribers and channels continue receiving messages.
+Consumers that need every message detect gaps from durable state, such as chat
+message sequence numbers, and reload it through the owning service.
 
 ## Local Infrastructure
 

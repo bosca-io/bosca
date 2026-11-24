@@ -27,6 +27,7 @@ class NatsModule : BoscaApplicationModule {
 
     @OptIn(InternalDI::class)
     override suspend fun install(application: BoscaApplication) = with(application) {
+        if (environment.config.propertyOrNull("nats.enabled")?.getString()?.toBooleanStrictOrNull() == false) return@with
         val nats = environment.config.propertyOrNull("nats")?.getAs<NatsConnectionConfig>()
         if (nats != null) {
             val maxConnections = nats.maxConnections ?: NatsConnectionPool.DEFAULT_MAX_CONNECTIONS

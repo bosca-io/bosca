@@ -224,4 +224,16 @@ class ConfigurationTest {
         assertEquals(listOf("V1__postgres_job_queue.sql", "V2__postgres_job_queue_claim_index.sql"), migration.resources)
     }
 
+    @Test
+    fun `empty live sessions selector retains Redis fallback and disabled mode needs no broker`(): Unit = runTest {
+        val app = BoscaApplication(ApplicationConfig.load("pubsub:\n  type: redis\nliveSessions:\n  type: ''".byteInputStream()))
+        val nats = bosca.di.MissingObjectProvider(NatsConnectionPool::class, null)
+        val redis = mockk<RedisConnectionPool>().asProvider()
+        assertIs<bosca.analytics.livesessions.redis.RedisLiveSessions>(configuration.liveSessions(app, nats, redis, Json))
+        val disabled = BoscaApplication(ApplicationConfig.load("liveSessions:\n  type: disabled".byteInputStream()))
+        assertIs<bosca.analytics.livesessions.DisabledLiveSessions>(configuration.liveSessions(disabled, nats, bosca.di.MissingObjectProvider(RedisConnectionPool::class, null), Json))
+        val postgres = BoscaApplication(ApplicationConfig.load("pubsub:\n  type: postgres\nliveSessions:\n  type: ''".byteInputStream()))
+        assertIs<bosca.analytics.livesessions.DisabledLiveSessions>(configuration.liveSessions(postgres, nats, bosca.di.MissingObjectProvider(RedisConnectionPool::class, null), Json))
+    }
+
 }

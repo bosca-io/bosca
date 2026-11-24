@@ -478,9 +478,11 @@ class Configuration {
      */
     @Provider(singleton = true)
     suspend fun liveSessions(application: BoscaApplication, natsConnectionPool: ObjectProvider<NatsConnectionPool>, redisConnectionPool: ObjectProvider<RedisConnectionPool>, json: Json): LiveSessionsService {
-        val type = application.environment.config.propertyOrNull("liveSessions.type")?.getString()
+        val type = application.environment.config.propertyOrNull("liveSessions.type")?.getString()?.takeIf(String::isNotBlank)
             ?: application.environment.config.propertyOrNull("pubsub.type")?.getString()
         return when (type) {
+            // Live-session maps have no PostgreSQL backend, so PostgreSQL pub/sub disables them.
+            "disabled", "postgres" -> bosca.analytics.livesessions.DisabledLiveSessions()
             "nats" -> NatsLiveSessions(natsConnectionPool.get(), json)
             else -> RedisLiveSessions(redisConnectionPool.get(), json)
         }
