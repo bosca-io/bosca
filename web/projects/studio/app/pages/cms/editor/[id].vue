@@ -5,9 +5,10 @@ import type { Metadata, Profile } from '~/types/graphql'
 import { applyAttributes } from '~/utils/editor/attributes'
 import { executeTool, type TemplateAttributeTool } from '~/utils/editor/tool'
 import type { AttributeState } from '~/utils/editor/attribute'
-import { captureYDocRevision, markYDocSaved } from '~/utils/editor/ydoc'
+import { captureYDocRevision, getYDocSlugs, markYDocSaved } from '~/utils/editor/ydoc'
 import DocumentEditor from "~/components/document/DocumentEditor.vue";
 import type { OverflowMenuItem } from '@bosca/ui'
+import type { YMapEvent } from 'yjs'
 
 const { accent } = useCurrentSubsystem()
 const route = useRoute()
@@ -180,8 +181,8 @@ const profile = computed<Profile>(() => data.value?.profiles?.current ?? { id: '
 const initialLoadDone = ref(status.value === 'success')
 watch(status, (s) => { if (s === 'success') initialLoadDone.value = true })
 const isLoading = computed(() => !initialLoadDone.value && status.value === 'pending')
-const documentName = ref('')
-watch(metadata, (m) => { if (m?.name?.trim()) documentName.value = m.name.trim() }, { immediate: true })
+const editorTitle = ref('')
+const documentName = computed(() => editorTitle.value || metadata.value?.name?.trim() || '')
 
 const item = computed(() => metadata.value)
 const collab = useCollaborationAndAttributes(
@@ -193,19 +194,61 @@ const ydocReady = collab.ready
 const uploader = useUploader()
 
 const saving = ref(false)
+const slugSaving = ref(false)
+const publishing = ref(false)
 const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+const saveError = ref('')
 const hasUnsavedChanges = ref(false)
-const editorRef = ref<any>(null)
-const attributesSidebarRef = ref<{ slugEditor?: { setSlugFromTitle: (title: string) => void; saveSlug: () => Promise<void> } | null } | null>(null)
+const hasManualSlug = ref(false)
+const pendingSlugTitle = ref<string>()
+const editorRef = ref<InstanceType<typeof DocumentEditor> | null>(null)
 
-watch(ydoc, (doc) => {
+watch(ydoc, (doc, _, onCleanup) => {
   if (!doc) return
   const changesText = doc.getText('changes')
-  hasUnsavedChanges.value = changesText.getAttribute('changes') === 'true'
-  changesText.observe(() => {
+  const slugs = getYDocSlugs(doc)
+  const updateUnsavedChanges = () => {
     hasUnsavedChanges.value = changesText.getAttribute('changes') === 'true'
+  }
+  const updateSlugs = (event?: YMapEvent<string>) => {
+    hasManualSlug.value = slugs.get('manual-slug') === 'true'
+    pendingSlugTitle.value = slugs.get('pending-title')
+    if (event && !event.transaction.local && event.keysChanged.has('saved-slug')) {
+      void refresh()
+    }
+  }
+  updateUnsavedChanges()
+  updateSlugs()
+  changesText.observe(updateUnsavedChanges)
+  slugs.observe(updateSlugs)
+  onCleanup(() => {
+    changesText.unobserve(updateUnsavedChanges)
+    slugs.unobserve(updateSlugs)
   })
 }, { immediate: true })
+
+const currentSlug = computed(() => {
+  const m = metadata.value
+  if (!m) return ''
+  const slug = m.slug ?? ''
+  const title = editorTitle.value
+  if (!title || hasManualSlug.value || m.workflow?.state === 'published') return slug
+
+  const savedTitle = m.document?.title?.trim() || m.name.trim()
+  const generatedSlug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+  const hasPlaceholderSlug = /^new-document(?:-?\d+)?$/.test(slug) || slug === `new-document${m.id}`
+  const shouldReplacePlaceholder = hasPlaceholderSlug && generatedSlug !== 'new-document'
+  if (title !== savedTitle || title === pendingSlugTitle.value || shouldReplacePlaceholder) {
+    return generatedSlug || slug
+  }
+  return slug
+})
+const needsSave = computed(() => hasUnsavedChanges.value || currentSlug.value !== (metadata.value?.slug ?? ''))
 
 const saveDocumentGql = gql`
   mutation SaveDocument($id: UUID!, $version: Int!, $document: DocumentInput!) {
@@ -253,24 +296,37 @@ const setRelationshipsGql = gql`
 `
 
 async function onSave() {
-  if (!metadata.value || saving.value) return
-  const saveRevision = collab.ydoc.value ? captureYDocRevision(collab.ydoc.value) : null
+  const m = metadata.value
+  if (!m || saving.value || slugSaving.value) return false
+  const doc = ydoc.value
+  const slugs = doc ? getYDocSlugs(doc) : null
+  const saveRevision = doc ? captureYDocRevision(doc) : null
   saving.value = true
   saveStatus.value = 'saving'
+  saveError.value = ''
   try {
-    const doc = editorRef.value?.getDocument?.()
-    if (doc) {
+    const document = editorRef.value?.getDocument()
+    const name = documentName.value
+    const title = editorTitle.value
+    const slug = currentSlug.value
+    const shouldSaveSlug = !!document && !!slug && slug !== m.slug
+    if (shouldSaveSlug) {
+      // Keep the generated slug pending if a write fails after the title has been saved.
+      slugs?.set('pending-title', title)
+    }
+
+    if (document) {
       await gqlMutation(saveDocumentGql, {
-        id: metadata.value.id,
-        version: metadata.value.version,
-        document: doc,
+        id: m.id,
+        version: m.version,
+        document,
       })
     }
 
     const parentCollections: any[] = []
     const relationships: any[] = []
     applyAttributes(
-      metadata.value,
+      m,
       collab.attributes,
       collab.rawAttributes,
       parentCollections,
@@ -278,27 +334,32 @@ async function onSave() {
     )
 
     await gqlMutation(saveAttributesGql, {
-      id: metadata.value.id,
+      id: m.id,
       attributes: collab.rawAttributes.value,
     })
     await gqlMutation(setCollectionsGql, {
-      id: metadata.value.id,
+      id: m.id,
       collections: parentCollections,
     })
     await gqlMutation(setRelationshipsGql, {
-      id: metadata.value.id,
+      id: m.id,
       relationships: relationships,
     })
 
-    const trimmedName = documentName.value.trim()
-    if (trimmedName && trimmedName !== metadata.value.name) {
-      await gqlMutation(setNameGql, { id: metadata.value.id, name: trimmedName })
+    if (name && name !== m.name) {
+      await gqlMutation(setNameGql, { id: m.id, name })
     }
 
-    await attributesSidebarRef.value?.slugEditor?.saveSlug()
+    if (shouldSaveSlug && slugs?.get('manual-slug') !== 'true') {
+      const savedSlug = await persistSlug(m.id, slug)
+      slugs?.set('saved-slug', savedSlug)
+    }
+    if (slugs?.get('pending-title') === title) {
+      slugs.delete('pending-title')
+    }
 
-    if (collab.ydoc.value && saveRevision) {
-      markYDocSaved(collab.ydoc.value, saveRevision)
+    if (doc && saveRevision) {
+      markYDocSaved(doc, saveRevision)
     }
 
     // Re-read relationships/collections so connection indicators reflect the save
@@ -308,20 +369,19 @@ async function onSave() {
 
     saveStatus.value = 'saved'
     setTimeout(() => { saveStatus.value = 'idle' }, 3000)
+    return true
   } catch (e) {
     console.error('Save failed', e)
+    saveError.value = e instanceof Error ? e.message : ''
     saveStatus.value = 'error'
+    return false
   } finally {
     saving.value = false
   }
 }
 
 function onTitleUpdate(title: string) {
-  const trimmed = title.trim()
-  if (trimmed) {
-    documentName.value = trimmed
-    attributesSidebarRef.value?.slugEditor?.setSlugFromTitle(trimmed)
-  }
+  editorTitle.value = title.trim()
 }
 
 function onRunTool(attribute: AttributeState, tool: TemplateAttributeTool) {
@@ -334,8 +394,8 @@ const saveStatusLabel = computed(() => {
   switch (saveStatus.value) {
     case 'saving': return 'Saving…'
     case 'saved': return 'Saved'
-    case 'error': return 'Save failed'
-    default: return hasUnsavedChanges.value ? 'Draft' : ''
+    case 'error': return saveError.value ? `Save failed — ${saveError.value}` : 'Save failed'
+    default: return needsSave.value ? 'Draft' : ''
   }
 })
 
@@ -343,11 +403,16 @@ const publishModalOpen = ref(false)
 const deleteModalOpen = ref(false)
 const slugModalOpen = ref(false)
 const slugValue = ref('')
-const slugSaving = ref(false)
 const slugError = ref('')
 const slugInputRef = ref<{ available: boolean | null } | null>(null)
 const deleting = ref(false)
 const deleteError = ref('')
+
+watch(currentSlug, (slug, previousSlug) => {
+  if (slugModalOpen.value && !slugSaving.value && slugValue.value === previousSlug) {
+    slugValue.value = slug
+  }
+})
 
 const slugAvailableGql = gql`
   query CheckSlug($slug: String!) {
@@ -366,31 +431,39 @@ async function checkSlugAvailable(slugVal: string): Promise<boolean> {
 }
 
 function openSlugModal() {
-  slugValue.value = metadata.value?.slug || ''
+  slugValue.value = currentSlug.value
   slugError.value = ''
-  slugSaving.value = false
   slugModalOpen.value = true
 }
 
 const canSaveSlug = computed(() => {
   return slugValue.value
     && !slugSaving.value
+    && !saving.value
+    && !publishing.value
     && slugInputRef.value?.available !== false
 })
 
 async function onSaveSlug() {
   const m = metadata.value
-  if (!m || !slugValue.value || slugSaving.value) return
-  if (slugValue.value === m.slug) {
+  const doc = ydoc.value
+  const slug = slugValue.value
+  if (!m || !canSaveSlug.value) return
+  if (slug === m.slug && currentSlug.value === m.slug) {
     slugModalOpen.value = false
     return
   }
   slugSaving.value = true
   slugError.value = ''
   try {
-    await gqlMutation(setSlugGql, { id: m.id, slug: slugValue.value })
+    const savedSlug = slug === m.slug ? slug : await persistSlug(m.id, slug)
+    doc?.transact(() => {
+      const slugs = getYDocSlugs(doc)
+      slugs.set('manual-slug', 'true')
+      slugs.set('saved-slug', savedSlug)
+      slugs.delete('pending-title')
+    })
     slugModalOpen.value = false
-    // Refresh so the read-only slug field in the sidebar reflects the change
     await refresh()
   } catch (e: any) {
     slugError.value = e?.message || 'Failed to update slug'
@@ -418,6 +491,19 @@ const setSlugGql = gql`
     content { metadata { setMetadataSlug(id: $id, slug: $slug) } }
   }
 `
+
+async function persistSlug(id: Metadata['id'], slug: string) {
+  const result = await gqlMutation<{ content: { metadata: { setMetadataSlug: string } } }>(setSlugGql, { id, slug })
+  const savedSlug = result.content.metadata.setMetadataSlug
+  const current = data.value
+  if (current?.content?.metadata?.id === id) {
+    data.value = {
+      ...current,
+      content: { metadata: { ...current.content.metadata, slug: savedSlug } },
+    }
+  }
+  return savedSlug
+}
 
 const setLockedGql = gql`
   mutation SetLocked($id: UUID!, $locked: Boolean!) {
@@ -515,21 +601,18 @@ function onResetDocument() {
 const editorStateOpen = ref(false)
 
 async function onMarkReady() {
-  if (!metadata.value || readyLoading.value) return
+  if (!metadata.value || readyLoading.value || saving.value || slugSaving.value) return
   readyLoading.value = true
   try {
-    if (hasUnsavedChanges.value) {
-      await onSave()
-    }
-    await gqlMutation(setReadyGql, { id: metadata.value.id })
+    if (needsSave.value && (!await onSave() || needsSave.value)) return
+    const m = metadata.value
+    if (m) await gqlMutation(setReadyGql, { id: m.id })
   } catch (e: any) {
     console.error('Mark ready failed', e)
   } finally {
     readyLoading.value = false
   }
 }
-
-const publishing = ref(false)
 
 const canPublish = computed(() => {
   const w = metadata.value?.workflow
@@ -544,15 +627,15 @@ const canUnpublish = computed(() => {
 })
 
 async function onPublish() {
-  if (!metadata.value || publishing.value) return
+  if (!metadata.value || publishing.value || saving.value || slugSaving.value) return
   publishing.value = true
   try {
-    if (hasUnsavedChanges.value) {
-      await onSave()
-    }
+    if (needsSave.value && (!await onSave() || needsSave.value)) return
+    const m = metadata.value
+    if (!m) return
     await gqlMutation(transitionGql, {
-      id: metadata.value.id,
-      version: metadata.value.version,
+      id: m.id,
+      version: m.version,
       state: 'published',
       status: 'Admin Published',
     })
@@ -602,7 +685,7 @@ const overflowItems = computed<OverflowMenuItem[]>(() => {
     { id: 'view-json', label: 'View as JSON', icon: 'code' },
     { id: 'editor-state', label: 'View Editor State', icon: 'code' },
     { id: 'separator-2', label: '', separator: true },
-    { id: 'reset', label: 'Reset Unsaved Changes', icon: 'refresh', disabled: !hasUnsavedChanges.value },
+    { id: 'reset', label: 'Reset Unsaved Changes', icon: 'refresh', disabled: !needsSave.value },
     { id: 'lock', label: locked ? 'Unlock' : 'Lock', icon: locked ? 'unlock' : 'lock' },
   )
   if (m.ready) {
@@ -673,7 +756,7 @@ async function onOverflowAction(id: string) {
       >
         <template #actions>
           <span v-if="saveStatusLabel" class="save-status">
-            <span :class="saveStatus === 'saved' ? 'dot ok' : saveStatus === 'error' ? 'dot err' : saveStatus === 'idle' && hasUnsavedChanges ? 'dot warn' : 'dot info'" />
+            <span :class="saveStatus === 'saved' ? 'dot ok' : saveStatus === 'error' ? 'dot err' : saveStatus === 'idle' && needsSave ? 'dot warn' : 'dot info'" />
             {{ saveStatusLabel }}
           </span>
 
@@ -682,7 +765,7 @@ async function onOverflowAction(id: string) {
             icon="save"
             primary
             :accent="accent"
-            :disabled="saving"
+            :disabled="saving || slugSaving || publishing"
             @click="onSave">
             Save
           </Button>
@@ -692,7 +775,7 @@ async function onOverflowAction(id: string) {
             size="sm"
             icon="check"
             :accent="accent"
-            :disabled="readyLoading"
+            :disabled="readyLoading || saving || slugSaving"
             @click="onMarkReady">
             {{ readyLoading ? 'Marking…' : 'Mark Ready' }}
           </Button>
@@ -703,7 +786,7 @@ async function onOverflowAction(id: string) {
             icon="globe"
             primary
             :accent="accent"
-            :disabled="publishing"
+            :disabled="publishing || saving || slugSaving"
             @click="onPublish">
             {{ publishing ? 'Publishing…' : 'Publish' }}
           </Button>
@@ -849,8 +932,8 @@ async function onOverflowAction(id: string) {
       <div class="attr-panel">
         <AttributesSidebar
           v-if="metadata && ydoc && collab.attributes"
-          ref="attributesSidebarRef"
           :content="metadata"
+          :slug="currentSlug"
           :state="metadata.workflow"
           :ydoc="ydoc"
           :attributes="collab.attributes"

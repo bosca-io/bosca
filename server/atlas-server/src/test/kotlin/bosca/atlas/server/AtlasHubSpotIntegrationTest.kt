@@ -56,6 +56,7 @@ class AtlasHubSpotIntegrationTest {
                 ok(invoke(origin, "preview", "sync", args(true)))
             }
             fixture.start("hubspot-worker", mapOf("ATLAS_API_ENABLED" to "false", "ATLAS_GIT_ENABLED" to "false", "ATLAS_ARTIFACTS_ENABLED" to "false", "ATLAS_UI_ENABLED" to "false", "ATLAS_RUNNER_QUEUES" to "profile,index", "ATLAS_RUNNER_LISTENERS_ENABLED" to "false", "ATLAS_SCHEDULER_ENABLED" to "false"), "bosca.atlas.server.AtlasHubSpotFixtureKt")
+            fixture.awaitAdminProfileSearchFilter(api, admin)
             fixture.graphql(api, """mutation { storageSystems { reindex(storageName:"Admin Search Index", deleteFirst:false, metadata:false, collections:false, profiles:true) } }""", admin)
             fixture.await("HubSpot profile search is indexed") {
                 fixture.graphql(api, """{ search { search(query:{query:"HubSpot",filter:["_type = \"profile\""],storageSystemName:"Admin Search Index",limit:20,offset:0}) { documents { profile { id name } } } } }""", admin)
