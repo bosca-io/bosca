@@ -77,14 +77,17 @@ class ChatConfiguration {
      * caching on the NATS client.
      */
     @Provider(singleton = true)
-    fun chatReactionStore(nats: NatsConnectionPool) = ChatReactionStore(nats)
+    fun chatReactionStore(nats: NatsConnectionPool): ChatReactionStore = bosca.chat.state.NatsChatReactionStore(nats)
 
     @Provider(singleton = true)
-    fun chatTypingStore(nats: NatsConnectionPool) = ChatTypingStore(nats)
+    fun chatTypingStore(nats: NatsConnectionPool): ChatTypingStore = bosca.chat.state.NatsChatTypingStore(nats)
 
     @Provider(singleton = true)
-    fun chatPresenceStore(nats: NatsConnectionPool) = ChatPresenceStore(nats)
+    fun chatPresenceStore(nats: NatsConnectionPool): ChatPresenceStore = bosca.chat.state.NatsChatPresenceStore(nats)
 
     @Provider(singleton = true)
-    fun chatReadStateStore(nats: NatsConnectionPool) = ChatReadStateStore(nats)
+    fun chatReadStateStore(nats: NatsConnectionPool): ChatReadStateStore = bosca.chat.state.NatsChatReadStateStore(nats)
+    @Provider(singleton = true)
+    fun chatMessageStore(nats: NatsConnectionPool, json: kotlinx.serialization.json.Json): bosca.chat.message.ChatMessageStore =
+        bosca.chat.message.NatsChatMessageStore(nats, json)
 }

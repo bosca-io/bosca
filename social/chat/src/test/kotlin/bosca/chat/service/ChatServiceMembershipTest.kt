@@ -58,7 +58,7 @@ class ChatServiceMembershipTest {
     private val typingStore = mockk<ChatTypingStore>(relaxed = true)
     private val readStateStore = mockk<ChatReadStateStore>(relaxed = true)
     private val service = ChatServiceImpl(
-        nats = mockk<NatsConnectionPool>(),
+        messageStore = mockk<bosca.chat.message.ChatMessageStore>(),
         chatChannelRepository = repository,
         chatChannelPermissionRepository = permissionRepository,
         reactionStore = mockk<ChatReactionStore>(),

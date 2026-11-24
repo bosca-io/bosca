@@ -30,7 +30,6 @@ import bosca.db.transaction
 import bosca.db.withConnectionManager
 import bosca.graphql.Batch
 import bosca.communications.model.MessageContent
-import bosca.nats.NatsConnectionPool
 import bosca.profile.profile.service.ProfileService
 import bosca.pubsub.Message
 import bosca.pubsub.PubSubService
@@ -42,21 +41,12 @@ import bosca.security.model.PermissionInput
 import bosca.security.service.SecurityService
 import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
-import io.nats.client.Connection
-import io.nats.client.JetStreamApiException
-import io.nats.client.PublishOptions
-import io.nats.client.PullSubscribeOptions
-import io.nats.client.PushSubscribeOptions
-import io.nats.client.api.ConsumerConfiguration
-import io.nats.client.api.DeliverPolicy
-import io.nats.client.api.StreamConfiguration
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -64,13 +54,8 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import org.slf4j.LoggerFactory
@@ -78,16 +63,7 @@ import java.nio.charset.StandardCharsets
 import java.time.Duration
 
 /**
- * NATS JetStream-backed implementation of [ChatService]. Messages are stored
- * as NATS JetStream records and high-frequency / ephemeral state — reactions,
- * typing indicators, presence, and per-user last-read pointers — lives in
- * dedicated NATS KV buckets. Channel metadata, memberships, and permissions
- * are still persisted in PostgreSQL because they're administrative truth
- * (auditable, joinable with profile rows).
- *
- * Realtime fanout for typing/presence/reactions stays on NATS pub/sub for
- * latency; the KV stores are the durable read-side that lets a freshly-
- * connected client render current state without waiting for the next event.
+ * Chat domain orchestration with selectable message and state persistence.
  *
  * Chat identity deliberately spans two layers. A [ChatChannelMember] records
  * the participating profile and its channel role, while the principal linked
@@ -98,7 +74,7 @@ import java.time.Duration
  */
 @ServiceImplementation
 class ChatServiceImpl(
-    private val nats: NatsConnectionPool,
+    private val messageStore: bosca.chat.message.ChatMessageStore,
     private val chatChannelRepository: ChatChannelRepository,
     private val chatChannelPermissionRepository: ChatChannelPermissionRepository,
     private val reactionStore: ChatReactionStore,
@@ -111,9 +87,6 @@ class ChatServiceImpl(
     private val json: Json,
 ) : ChatService {
 
-    private val streamName = "CHAT"
-    private val subjectPattern = "bosca.chat.v1.channels.*.messages"
-    private val initMutex = Mutex()
     private val subscriptionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val memberRemovalEvents: SharedFlow<Message<ChatChannelMemberRemovedEvent>> by lazy {
         pubSubService.subscribe(
@@ -127,49 +100,10 @@ class ChatServiceImpl(
             ChatProfileUnavailableEvent.serializer(),
         ).shareIn(subscriptionScope, SharingStarted.Eagerly)
     }
-    @Volatile
-    private var initialized = false
-
-    private suspend fun ensureInitialized() {
-        if (initialized) return
-        initMutex.withLock {
-            if (initialized) return
-            withContext(Dispatchers.IO) {
-                val jsm = nats.systemConnection().jetStreamManagement()
-                try {
-                    val streamInfo = jsm.getStreamInfo(streamName)
-                    if (streamInfo.config.duplicateWindow != MESSAGE_DEDUPLICATION_WINDOW) {
-                        jsm.updateStream(
-                            StreamConfiguration.builder(streamInfo.config)
-                                .duplicateWindow(MESSAGE_DEDUPLICATION_WINDOW)
-                                .build()
-                        )
-                    }
-                } catch (e: JetStreamApiException) {
-                    if (e.apiErrorCode != STREAM_NOT_FOUND_ERROR) throw e
-                    try {
-                        jsm.addStream(
-                            StreamConfiguration.builder()
-                                .name(streamName)
-                                .subjects(subjectPattern)
-                                .duplicateWindow(MESSAGE_DEDUPLICATION_WINDOW)
-                                .build()
-                        )
-                    } catch (creationFailure: JetStreamApiException) {
-                        // Initialization is process-local, so another replica may create the
-                        // stream between our lookup and add. Only accept the failed add when a
-                        // follow-up lookup proves the required stream now exists.
-                        try {
-                            jsm.getStreamInfo(streamName)
-                        } catch (verificationFailure: Exception) {
-                            creationFailure.addSuppressed(verificationFailure)
-                            throw creationFailure
-                        }
-                    }
-                }
-            }
-            initialized = true
-        }
+    override suspend fun shutdown() {
+        val subscriptions = subscriptionScope.coroutineContext[kotlinx.coroutines.Job]
+        subscriptions?.cancel()
+        subscriptions?.join()
     }
 
     override suspend fun getById(id: UUID): ChatChannel? {
@@ -179,93 +113,19 @@ class ChatServiceImpl(
     override fun subscribe(channelId: UUID, profileId: UUID): Flow<ChatMessage> =
         subscribeInternal(channelId).closeWhenMemberRemoved(channelId, profileId)
 
-    private fun subscribeInternal(channelId: UUID): Flow<ChatMessage> = flow {
-        val subject = "bosca.chat.v1.channels.$channelId.messages"
-        val deletionSubject = "$subject.deleted"
-        ensureInitialized()
-        val connection = nats.openConnection()
-        try {
-            val options = PushSubscribeOptions.builder()
-                .stream(streamName)
-                .configuration(
-                    ConsumerConfiguration.builder()
-                        .deliverPolicy(DeliverPolicy.New)
-                        .build()
-                    )
-                .build()
-
-            connection.subscribeJetStreamAndCore(subject, options, deletionSubject) {
-                connection.flush(SUBSCRIPTION_READY_TIMEOUT)
-            }.collect { message ->
-                try {
-                    if (message.subject == deletionSubject) {
-                        emit(json.decodeFromString<ChatMessage>(message.data.toString(Charsets.UTF_8)))
-                        return@collect
-                    }
-                    val chatMessage = json.decodeFromString<ChatMessage>(message.data.toString(Charsets.UTF_8))
-                    val meta = message.metaData()
-                    emit(chatMessage.copy(
-                        sequence = meta.streamSequence(),
-                        timestamp = java.time.OffsetDateTime.ofInstant(
-                            meta.timestamp().toInstant(),
-                            java.time.ZoneId.systemDefault()
-                        )
-                    ))
-                    message.ack()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    // JetStream messages remain unacknowledged so the active consumer can redeliver
-                    // them; malformed core tombstones are skipped without killing the subscription.
-                    log.warn("Failed to process chat event on subject '{}'", message.subject, e)
-                }
-            }
-        } finally {
-            connection.close()
-        }
-    }.retryNatsSubscription("chat messages for channel $channelId").flowOn(Dispatchers.IO)
+    private fun subscribeInternal(channelId: UUID): Flow<ChatMessage> = messageStore.subscribe(channelId)
 
     override fun subscribeTyping(channelId: UUID, profileId: UUID): Flow<UserTypingEvent> =
         subscribeTypingInternal(channelId).closeWhenMemberRemoved(channelId, profileId)
 
-    private fun subscribeTypingInternal(channelId: UUID): Flow<UserTypingEvent> = flow {
-        val subject = "bosca.chat.v1.channels.$channelId.typing"
-        val connection = nats.openConnection()
-        try {
-            connection.subscribe(subject).collect { message ->
-                try {
-                    emit(json.decodeFromString<UserTypingEvent>(message.data.toString(Charsets.UTF_8)))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    log.warn("Ignoring malformed chat typing event on subject '{}'", message.subject, e)
-                }
-            }
-        } finally {
-            connection.close()
-        }
-    }.retryNatsSubscription("typing events for channel $channelId").flowOn(Dispatchers.IO)
+    private fun subscribeTypingInternal(channelId: UUID): Flow<UserTypingEvent> =
+        pubSubService.subscribe("bosca.chat.v1.channels.$channelId.typing", UserTypingEvent.serializer()).map { it.message }
 
     override fun subscribePresence(channelId: UUID, profileId: UUID): Flow<PresenceUpdateEvent> =
         subscribePresenceInternal(channelId).closeWhenMemberRemoved(channelId, profileId)
 
-    private fun subscribePresenceInternal(channelId: UUID): Flow<PresenceUpdateEvent> = flow {
-        val subject = "bosca.chat.v1.channels.$channelId.presence"
-        val connection = nats.openConnection()
-        try {
-            connection.subscribe(subject).collect { message ->
-                try {
-                    emit(json.decodeFromString<PresenceUpdateEvent>(message.data.toString(Charsets.UTF_8)))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    log.warn("Ignoring malformed chat presence event on subject '{}'", message.subject, e)
-                }
-            }
-        } finally {
-            connection.close()
-        }
-    }.retryNatsSubscription("presence events for channel $channelId").flowOn(Dispatchers.IO)
+    private fun subscribePresenceInternal(channelId: UUID): Flow<PresenceUpdateEvent> =
+        pubSubService.subscribe("bosca.chat.v1.channels.$channelId.presence", PresenceUpdateEvent.serializer()).map { it.message }
 
     override suspend fun sendTyping(channelId: UUID, profileId: UUID, isTyping: Boolean) {
         // Update the durable KV state first so a freshly-connected client
@@ -274,14 +134,7 @@ class ChatServiceImpl(
         if (isTyping) typingStore.setTyping(channelId, profileId)
         else typingStore.clearTyping(channelId, profileId)
 
-        val subject = "bosca.chat.v1.channels.$channelId.typing"
-        val payload = json.encodeToString(UserTypingEvent.serializer(), UserTypingEvent(channelId, profileId, isTyping))
-        val connection = nats.openConnection(subject)
-        try {
-            connection.publish(subject, payload.toByteArray(Charsets.UTF_8))
-        } finally {
-            connection.close()
-        }
+        pubSubService.publish("bosca.chat.v1.channels.$channelId.typing", UserTypingEvent.serializer(), UserTypingEvent(channelId, profileId, isTyping))
     }
 
     override suspend fun getActiveTypers(channelId: UUID): List<UserTypingEvent> =
@@ -290,20 +143,8 @@ class ChatServiceImpl(
     override suspend fun setPresence(profileId: UUID, status: String) {
         // Same pattern as typing — write KV state then fan out via pub/sub.
         presenceStore.setPresence(profileId, status)
-        val payload = json.encodeToString(
-            PresenceUpdateEvent.serializer(),
-            PresenceUpdateEvent(profileId = profileId, status = status),
-        )
-        val connection = nats.openConnection(profileId.toString())
-        try {
-            getChannels(profileId).forEach { channel ->
-                connection.publish(
-                    "bosca.chat.v1.channels.${channel.id}.presence",
-                    payload.toByteArray(Charsets.UTF_8),
-                )
-            }
-        } finally {
-            connection.close()
+        getChannels(profileId).forEach { channel ->
+            pubSubService.publish("bosca.chat.v1.channels.${channel.id}.presence", PresenceUpdateEvent.serializer(), PresenceUpdateEvent(profileId, status))
         }
     }
 
@@ -488,200 +329,30 @@ class ChatServiceImpl(
         attributes: JsonElement?,
         parentSequence: Long?,
     ): ChatMessageSendResult {
-        ensureInitialized()
-        val subject = "bosca.chat.v1.channels.$channelId.messages"
-        val pendingMessage = ChatMessage(
-            sequence = 0,
-            timestamp = java.time.OffsetDateTime.now(),
-            senderId = senderId,
-            clientId = clientId,
-            content = content,
-            attributes = attributes,
-            parentSequence = parentSequence,
-        )
-        val payload = json.encodeToString(
-            ChatMessage.serializer(),
-            pendingMessage,
-        )
-        val result = withContext(Dispatchers.IO) {
-            val connection = nats.openConnection(subject)
-            try {
-                connection.withConnection { physicalConnection ->
-                    val ack = physicalConnection.jetStream().publish(
-                        subject,
-                        payload.toByteArray(Charsets.UTF_8),
-                        PublishOptions.builder()
-                            .messageId("$channelId:$senderId:$clientId")
-                            .build(),
-                    )
-                    ChatMessageSendResult(
-                        sequence = ack.seqno,
-                        duplicate = ack.isDuplicate,
-                    )
-                }
-            } finally {
-                connection.close()
-            }
-        }
+        val result = messageStore.sendMessage(channelId, senderId, clientId, content, attributes, parentSequence)
         if (!result.duplicate) {
             ChatMessageSentEvent(
                 channelId = channelId,
-                senderId = pendingMessage.senderId,
+                senderId = senderId,
                 sequence = result.sequence,
-                content = pendingMessage.content,
-                sentAt = pendingMessage.timestamp,
-                attributes = pendingMessage.attributes,
+                content = content,
+                sentAt = java.time.OffsetDateTime.now(),
+                attributes = attributes
             ).dispatch()
         }
         return result
     }
 
-    override suspend fun getMessages(
-        channelId: UUID,
-        before: Long?,
-        after: Long?,
-        limit: Int
-    ): List<ChatMessage> = withContext(Dispatchers.IO) {
-        ensureInitialized()
-        val subject = "bosca.chat.v1.channels.$channelId.messages"
-        val builder = ConsumerConfiguration.builder()
-            .filterSubject(subject)
-        val connection = nats.openConnection(subject)
-        try {
-            val sliced = connection.withConnection { physicalConnection ->
-                if (after != null) {
-                    builder.deliverPolicy(DeliverPolicy.ByStartSequence)
-                        .startSequence(after + 1)
-                } else if (before != null) {
-                    builder.deliverPolicy(DeliverPolicy.ByStartSequence)
-                        .startSequence((before - limit.toLong() * 10).coerceAtLeast(1L))
-                } else {
-                    val si = try {
-                        physicalConnection.jetStreamManagement().getStreamInfo(streamName)
-                    } catch (e: JetStreamApiException) {
-                        if (e.apiErrorCode == STREAM_NOT_FOUND_ERROR) {
-                            return@withConnection emptyList()
-                        }
-                        throw e
-                    }
-                    val lastSeq = si.streamState.lastSequence
-                    builder.deliverPolicy(DeliverPolicy.ByStartSequence)
-                        .startSequence((lastSeq - limit.toLong() * 10).coerceAtLeast(1L))
-                }
-
-                val config = builder.build()
-                val sub = physicalConnection.jetStream().subscribe(
-                    subject,
-                    PullSubscribeOptions.builder().configuration(config).build(),
-                )
-
-                try {
-                    val messages = mutableListOf<ChatMessage>()
-                    val natsMessages = sub.fetch(limit * 5, Duration.ofMillis(500))
-                    for (msg in natsMessages) {
-                        val chatMessage = json.decodeFromString<ChatMessage>(msg.data.toString(Charsets.UTF_8))
-                        val meta = msg.metaData()
-                        val sequence = meta.streamSequence()
-
-                        if (before != null && sequence >= before) continue
-
-                        messages.add(
-                            chatMessage.copy(
-                                sequence = sequence,
-                                timestamp = java.time.OffsetDateTime.ofInstant(
-                                    meta.timestamp().toInstant(),
-                                    java.time.ZoneId.systemDefault(),
-                                ),
-                            )
-                        )
-                        msg.ack()
-                    }
-
-                    if (before != null || after == null) {
-                        messages.takeLast(limit)
-                    } else {
-                        messages.take(limit)
-                    }
-                } finally {
-                    sub.unsubscribe()
-                }
-            }
-            if (sliced.isEmpty()) return@withContext sliced
-
-            // Reactions live in NATS KV (`chat-reactions` bucket) because the JetStream message
-            // payload itself is immutable. Query only the returned messages' filtered subjects.
-            val sequences = sliced.map { it.sequence }
-            val reactionsBySequence = reactionStore.getForMessages(channelId, sequences)
-            sliced.map { message ->
-                val reactions = reactionsBySequence[message.sequence].orEmpty()
-                if (reactions.isEmpty()) message else message.copy(reactions = reactions)
-            }
-        } finally {
-            connection.close()
-        }
+    override suspend fun getMessages(channelId: UUID, before: Long?, after: Long?, limit: Int): List<ChatMessage> {
+        val messages = messageStore.getMessages(channelId, before, after, limit)
+        val reactions = reactionStore.getForMessages(channelId, messages.map { it.sequence })
+        return messages.map { it.copy(reactions = reactions[it.sequence].orEmpty()) }
     }
-
-    override suspend fun getMessage(channelId: UUID, sequence: Long): ChatMessage? {
-        ensureInitialized()
-        val subject = "bosca.chat.v1.channels.$channelId.messages"
-        val connection = nats.openConnection(subject)
-        try {
-            return withContext(Dispatchers.IO) {
-                connection.withConnection { physicalConnection ->
-                    storedMessage(physicalConnection, channelId, sequence)
-                }
-            }
-        } finally {
-            connection.close()
-        }
-    }
-
+    override suspend fun getMessage(channelId: UUID, sequence: Long): ChatMessage? = messageStore.getMessage(channelId, sequence)
     override suspend fun deleteMessage(channelId: UUID, sequence: Long): Boolean {
-        ensureInitialized()
-        val subject = "bosca.chat.v1.channels.$channelId.messages"
-        val connection = nats.openConnection(subject)
-        val deleted = try {
-            withContext(Dispatchers.IO) {
-                connection.withConnection { physicalConnection ->
-                    val message = storedMessage(physicalConnection, channelId, sequence)
-                        ?: return@withConnection false
-                    if (!physicalConnection.jetStreamManagement().deleteMessage(streamName, sequence)) {
-                        return@withConnection false
-                    }
-                    val tombstone = message.copy(
-                        content = emptyList(),
-                        attributes = null,
-                        reactions = emptyList(),
-                        deleted = true,
-                    )
-                    physicalConnection.publish(
-                        "$subject.deleted",
-                        json.encodeToString(ChatMessage.serializer(), tombstone).toByteArray(Charsets.UTF_8),
-                    )
-                    true
-                }
-            }
-        } finally {
-            connection.close()
-        }
+        val deleted = messageStore.deleteMessage(channelId, sequence)
         if (deleted) reactionStore.clearMessage(channelId, sequence)
         return deleted
-    }
-
-    private fun storedMessage(connection: Connection, channelId: UUID, sequence: Long): ChatMessage? {
-        val messageInfo = try {
-            connection.jetStreamManagement().getMessage(streamName, sequence)
-        } catch (e: JetStreamApiException) {
-            if (e.apiErrorCode == MESSAGE_NOT_FOUND_ERROR || e.apiErrorCode == STREAM_NOT_FOUND_ERROR) return null
-            throw e
-        } ?: return null
-        if (messageInfo.subject != "bosca.chat.v1.channels.$channelId.messages") return null
-        val data = checkNotNull(messageInfo.data) { "chat message $sequence has no payload" }
-        val timestamp = checkNotNull(messageInfo.time) { "chat message $sequence has no timestamp" }
-        return json.decodeFromString<ChatMessage>(data.toString(Charsets.UTF_8)).copy(
-            sequence = sequence,
-            timestamp = timestamp.toOffsetDateTime(),
-        )
     }
 
     override suspend fun updateLastRead(channelId: UUID, profileId: UUID, sequence: Long) {
@@ -811,23 +482,8 @@ class ChatServiceImpl(
     override fun subscribeReactions(channelId: UUID, profileId: UUID): Flow<MessageReactionEvent> =
         subscribeReactionsInternal(channelId).closeWhenMemberRemoved(channelId, profileId)
 
-    private fun subscribeReactionsInternal(channelId: UUID): Flow<MessageReactionEvent> = flow {
-        val subject = "bosca.chat.v1.channels.$channelId.reactions"
-        val connection = nats.openConnection()
-        try {
-            connection.subscribe(subject).collect { message ->
-                try {
-                    emit(json.decodeFromString<MessageReactionEvent>(message.data.toString(Charsets.UTF_8)))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    log.warn("Ignoring malformed chat reaction event on subject '{}'", message.subject, e)
-                }
-            }
-        } finally {
-            connection.close()
-        }
-    }.retryNatsSubscription("reaction events for channel $channelId").flowOn(Dispatchers.IO)
+    private fun subscribeReactionsInternal(channelId: UUID): Flow<MessageReactionEvent> =
+        pubSubService.subscribe("bosca.chat.v1.channels.$channelId.reactions", MessageReactionEvent.serializer()).map { it.message }
 
     private suspend fun publishReactionEvent(
         channelId: UUID,
@@ -836,14 +492,7 @@ class ChatServiceImpl(
         emoji: String,
         added: Boolean,
     ) {
-        val subject = "bosca.chat.v1.channels.$channelId.reactions"
-        val payload = json.encodeToString(MessageReactionEvent(channelId, sequence, profileId, emoji, added))
-        val connection = nats.openConnection(subject)
-        try {
-            connection.publish(subject, payload.toByteArray(Charsets.UTF_8))
-        } finally {
-            connection.close()
-        }
+        pubSubService.publish("bosca.chat.v1.channels.$channelId.reactions", MessageReactionEvent.serializer(), MessageReactionEvent(channelId, sequence, profileId, emoji, added))
     }
 
     private fun <T> Flow<T>.closeWhenMemberRemoved(channelId: UUID, profileId: UUID): Flow<T> = callbackFlow {
@@ -878,20 +527,7 @@ class ChatServiceImpl(
         }
     }
 
-    private fun <T> Flow<T>.retryNatsSubscription(name: String): Flow<T> = retryWhen { cause, attempt ->
-        if (cause is CancellationException) return@retryWhen false
-        val delayMs = ((attempt + 1).coerceAtMost(10)) * SUBSCRIPTION_RETRY_DELAY_MS
-        log.warn("NATS {} subscription failed; retrying in {}ms", name, delayMs, cause)
-        delay(delayMs)
-        true
-    }
-
     private companion object {
-        const val STREAM_NOT_FOUND_ERROR = 10059
-        const val MESSAGE_NOT_FOUND_ERROR = 10037
-        const val SUBSCRIPTION_RETRY_DELAY_MS = 100L
-        val SUBSCRIPTION_READY_TIMEOUT: Duration = Duration.ofSeconds(5)
-        val MESSAGE_DEDUPLICATION_WINDOW: Duration = Duration.ofHours(24)
         val log = LoggerFactory.getLogger(ChatServiceImpl::class.java)
 
         fun directChannelId(profileId1: UUID, profileId2: UUID): UUID {

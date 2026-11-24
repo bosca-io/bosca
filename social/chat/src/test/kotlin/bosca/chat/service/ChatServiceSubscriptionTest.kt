@@ -102,7 +102,7 @@ class ChatServiceSubscriptionTest {
         every { ack.isDuplicate } returnsMany listOf(false, true, false)
         val securityService = mockk<SecurityService>()
         val service = ChatServiceImpl(
-            nats = nats,
+            messageStore = bosca.chat.message.NatsChatMessageStore(nats, Json),
             chatChannelRepository = mockk<ChatChannelRepository>(),
             chatChannelPermissionRepository = mockk<ChatChannelPermissionRepository>(),
             reactionStore = mockk<ChatReactionStore>(),
@@ -214,7 +214,7 @@ class ChatServiceSubscriptionTest {
         coEvery { channelRepository.getMember(channelId, profileId) } returns
             bosca.chat.model.ChatChannelMember(channelId, profileId, "member")
         val service = ChatServiceImpl(
-            nats = nats,
+            messageStore = bosca.chat.message.NatsChatMessageStore(nats, Json),
             chatChannelRepository = channelRepository,
             chatChannelPermissionRepository = mockk<ChatChannelPermissionRepository>(),
             reactionStore = mockk<ChatReactionStore>(),
@@ -288,7 +288,7 @@ class ChatServiceSubscriptionTest {
         coEvery { channelRepository.getMember(channelId, profileId) } returns
             bosca.chat.model.ChatChannelMember(channelId, profileId, "member")
         val service = ChatServiceImpl(
-            nats = nats,
+            messageStore = bosca.chat.message.NatsChatMessageStore(nats, Json),
             chatChannelRepository = channelRepository,
             chatChannelPermissionRepository = mockk<ChatChannelPermissionRepository>(),
             reactionStore = mockk<ChatReactionStore>(),

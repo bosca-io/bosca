@@ -21,7 +21,7 @@ import kotlinx.serialization.json.JsonElement
 /**
  * Manages real-time chat functionality including channel lifecycle, message delivery,
  * member management, typing indicators, and presence tracking. Messages are persisted
- * in a streaming store (NATS JetStream) while channel metadata and memberships are
+ * in the configured message backend while channel metadata and memberships are
  * stored in PostgreSQL. Extends [PermissionService] to enforce access control on
  * [ChatChannel] entities.
  */

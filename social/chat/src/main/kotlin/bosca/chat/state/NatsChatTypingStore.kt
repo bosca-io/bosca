@@ -19,9 +19,9 @@ import kotlinx.coroutines.withContext
  * the durable read-side that lets a freshly-connected client list who
  * is currently typing without waiting for the next event.
  */
-class ChatTypingStore(
+class NatsChatTypingStore(
     nats: NatsConnectionPool,
-) {
+) : ChatTypingStore {
     private val accessor = NatsKeyValueAccessor(nats, BUCKET) {
         storageType(StorageType.Memory)
         ttl(TYPING_TTL)
@@ -29,19 +29,19 @@ class ChatTypingStore(
     }
 
     /** Mark [profileId] as typing in [channelId]. The TTL refresh extends life. */
-    suspend fun setTyping(channelId: UUID, profileId: UUID) {
+    override suspend fun setTyping(channelId: UUID, profileId: UUID) {
         val kv = accessor.get()
         withContext(Dispatchers.IO) { kv.put(key(channelId, profileId), EMPTY_VALUE) }
     }
 
     /** Explicitly clear a user's typing marker before the TTL fires (e.g. on send). */
-    suspend fun clearTyping(channelId: UUID, profileId: UUID) {
+    override suspend fun clearTyping(channelId: UUID, profileId: UUID) {
         val kv = accessor.get()
         withContext(Dispatchers.IO) { kv.delete(key(channelId, profileId)) }
     }
 
     /** Drops every typing marker owned by a permanently deleted profile. */
-    suspend fun clearProfile(profileId: UUID) {
+    override suspend fun clearProfile(profileId: UUID) {
         val kv = accessor.get()
         withContext(Dispatchers.IO) {
             kv.keys("*.$profileId").forEach(kv::delete)
@@ -49,7 +49,7 @@ class ChatTypingStore(
     }
 
     /** Drops every typing marker for a deleted channel. */
-    suspend fun clearChannel(channelId: UUID) {
+    override suspend fun clearChannel(channelId: UUID) {
         val kv = accessor.get()
         withContext(Dispatchers.IO) {
             kv.keys("$channelId.*").forEach(kv::delete)
@@ -62,7 +62,7 @@ class ChatTypingStore(
      * indicator immediately rather than waiting for the next pub/sub
      * event from a peer.
      */
-    suspend fun activeTypers(channelId: UUID): List<UserTypingEvent> {
+    override suspend fun activeTypers(channelId: UUID): List<UserTypingEvent> {
         val kv = accessor.get()
         return withContext(Dispatchers.IO) {
             kv.keys("$channelId.>").asSequence()

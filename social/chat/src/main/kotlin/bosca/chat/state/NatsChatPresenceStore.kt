@@ -20,9 +20,9 @@ import kotlinx.coroutines.withContext
  * which already carries only `profileId` + `status` and not a
  * channel id.
  */
-class ChatPresenceStore(
+class NatsChatPresenceStore(
     nats: NatsConnectionPool,
-) {
+) : ChatPresenceStore {
     private val accessor = NatsKeyValueAccessor(nats, BUCKET) {
         storageType(StorageType.Memory)
         ttl(PRESENCE_TTL)
@@ -30,19 +30,19 @@ class ChatPresenceStore(
     }
 
     /** Updates [profileId]'s presence to [status]. TTL extends on every write. */
-    suspend fun setPresence(profileId: UUID, status: String) {
+    override suspend fun setPresence(profileId: UUID, status: String) {
         val kv = accessor.get()
         withContext(Dispatchers.IO) { kv.put(key(profileId), status.toByteArray(Charsets.UTF_8)) }
     }
 
     /** Removes the presence marker — equivalent to "offline now, don't wait for TTL". */
-    suspend fun clearPresence(profileId: UUID) {
+    override suspend fun clearPresence(profileId: UUID) {
         val kv = accessor.get()
         withContext(Dispatchers.IO) { kv.delete(key(profileId)) }
     }
 
     /** Returns the cached status for [profileId], or null if no recent heartbeat. */
-    suspend fun getPresence(profileId: UUID): PresenceUpdateEvent? {
+    override suspend fun getPresence(profileId: UUID): PresenceUpdateEvent? {
         val kv = accessor.get()
         return withContext(Dispatchers.IO) {
             val entry = kv.get(key(profileId)) ?: return@withContext null
@@ -52,7 +52,7 @@ class ChatPresenceStore(
     }
 
     /** Bulk lookup. Used when rendering a member list on first connect. */
-    suspend fun getPresences(profileIds: Collection<UUID>): Map<UUID, PresenceUpdateEvent> {
+    override suspend fun getPresences(profileIds: Collection<UUID>): Map<UUID, PresenceUpdateEvent> {
         if (profileIds.isEmpty()) return emptyMap()
         val kv = accessor.get()
         return withContext(Dispatchers.IO) {
