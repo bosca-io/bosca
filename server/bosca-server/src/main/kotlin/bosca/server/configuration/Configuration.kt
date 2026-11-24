@@ -381,8 +381,8 @@ class Configuration {
     fun bibleFactory(): BibleFactory = BibleFactoryImpl()
 
     /**
-     * Provides the NATS event consumer that bridges the analytics collector's NATS
-     * JetStream output to the local event repository (typically Iceberg). When enabled
+     * Provides the event consumer that bridges the collector's configured queue
+     * to the local event repository (typically Iceberg). When enabled
      * via configuration, this allows the bosca server to process analytics events
      * in-process instead of requiring a separate analytics-processor deployment.
      */
@@ -473,7 +473,7 @@ class Configuration {
 
     /**
      * Selects the NATS or Redis [LiveSessionsService] backend for the live sessions map, from `liveSessions.type`
-     * (falling back to `pubsub.type`). Config-selected, so — like [pubsubService] — the server wires it here
+     * (falling back to `pubsub.type`). PostgreSQL and `disabled` select the disabled live-session implementation. Config-selected, so — like [pubsubService] — the server wires it here
      * rather than via KSP discovery.
      */
     @Provider(singleton = true)

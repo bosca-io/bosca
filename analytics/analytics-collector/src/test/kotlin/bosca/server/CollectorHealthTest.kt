@@ -148,5 +148,45 @@ class CollectorHealthTest {
             }
         }
     }
+    @Test
+    fun `generated collector recovers idle disk data and accepts events without broker providers`(): Unit = runBlocking {
+        val directory = java.nio.file.Files.createTempDirectory("collector-disk")
+        val original = bosca.analytics.queue.DiskAnalyticsEventQueue(directory, Json)
+        original.enqueue(Events(events = listOf(Event(0, type = EventType.Session)), sent = 0, sentMicros = 0))
+        original.shutdown()
+        val active = directory.resolve("00000000000000000001.open")
+        java.nio.file.Files.move(directory.resolve("00000000000000000001.segment"), active)
+        java.io.RandomAccessFile(active.toFile(), "rw").use { it.setLength(it.length() - 24) }
+        val application = BoscaApplication(ApplicationConfig.load("""
+            eventRepository:
+              type: queue
+            analyticsEventQueue:
+              type: disk
+              path: "$directory"
+              segmentMaxEvents: 1
+        """.trimIndent().byteInputStream()))
+        AnalyticsProviderRegistrar().register()
+        provides<EventPipelineTransforms>(overrideExisting = true) { EventPipelineTransforms(emptyList()) }
+        provides<EventProcessingConfiguration>(overrideExisting = true) { EventProcessingConfiguration(workerCount = 1) }
+        provides<CacheManager> { mockk(relaxed = true) }
+        provides<RequestCacheSerializer> { mockk(relaxed = true) }
+        val pool = mockk<ConnectionPool>()
+        every { pool.connection() } answers { ConnectionManager(pool) }
+        provides<ConnectionPool> { pool }
+        val errors = mockk<ErrorGroupService>()
+        coEvery { errors.recordBatch(any()) } returns Unit
+        provides<ErrorGroupService>(overrideExisting = true) { errors }
+        application.configureCollectorHealth()
+        try {
+            kotlin.test.assertFalse(ProviderRegistry.getProvider<NatsConnectionPool>().exists)
+            assertEquals(200, status(application, "ready"))
+            kotlin.test.assertFalse(java.nio.file.Files.exists(active))
+            assertEquals(1L, provide<bosca.analytics.queue.AnalyticsEventQueue>().status().pending)
+            val events = Events(events = listOf(Event(1, type = EventType.Session)), sent = 1, sentMicros = 0)
+            assertEquals(202, ingest(application, provide<EventProcessingService>(), events))
+            assertEquals(200, status(application, "ready"))
+            assertEquals(2L, provide<bosca.analytics.queue.AnalyticsEventQueue>().status().pending)
+        } finally { application.shutdown(); directory.toFile().deleteRecursively() }
+    }
 
 }
