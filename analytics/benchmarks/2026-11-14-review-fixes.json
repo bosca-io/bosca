@@ -1,0 +1,208 @@
+{
+  "date": "2026-11-14",
+  "fixes": [
+    "Propagate Parquet record write failure and prevent committing failed writers",
+    "Roll back incomplete RAF staging frames before reuse or flush; rollback failures remain retryable",
+    "Initialize and recover the collector producer before traffic; consumer and observer construction retain independent roles",
+    "Validate event/frame counts for sealed segments and interrupted files with intact footers; quarantine mismatches"
+  ],
+  "validation": {
+    "analytics/analytics": {
+      "tests": 761,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "analytics/analytics-collector": {
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "coverage": {
+      "BRANCH": {
+        "covered": 1437,
+        "missed": 27,
+        "percent": 98.1557
+      },
+      "LINE": {
+        "covered": 3296,
+        "missed": 25,
+        "percent": 99.2472
+      }
+    }
+  },
+  "pipelineRuns": [
+    {
+      "scenario": "local-iceberg-endurance",
+      "java": "25.0.3+9-LTS-jvmci-b01",
+      "fileStore": "/System/Volumes/Data (/dev/disk3s1)",
+      "maxHeapMiB": 1024,
+      "events": 600100,
+      "offeredEventsPerSecond": 10000,
+      "producerSeconds": 60.003047666,
+      "totalSeconds": 61.739702791,
+      "producerEventsPerSecond": 10001.158663479679,
+      "failedSegmentRetries": 12,
+      "icebergSnapshots": 61,
+      "quarantined": 0,
+      "handoffLatency": {
+        "samples": 6001,
+        "p50Millis": 884.1,
+        "p95Millis": 2367.1,
+        "p99Millis": 4383.1,
+        "maxMillis": 4922.0
+      },
+      "icebergFlushLatency": {
+        "samples": 61,
+        "p50Millis": 250.1,
+        "p95Millis": 492.5,
+        "p99Millis": 3375.7,
+        "maxMillis": 3375.643542
+      },
+      "windows": [
+        {
+          "elapsedSeconds": 10,
+          "accepted": 100000,
+          "committed": 90000,
+          "pendingEvents": 20000,
+          "heapUsedMiB": 230.53939819335938
+        },
+        {
+          "elapsedSeconds": 20,
+          "accepted": 200000,
+          "committed": 190000,
+          "pendingEvents": 20000,
+          "heapUsedMiB": 667.5393981933594
+        },
+        {
+          "elapsedSeconds": 30,
+          "accepted": 300000,
+          "committed": 290000,
+          "pendingEvents": 20000,
+          "heapUsedMiB": 487.0393981933594
+        },
+        {
+          "elapsedSeconds": 40,
+          "accepted": 400100,
+          "committed": 390000,
+          "pendingEvents": 20000,
+          "heapUsedMiB": 276.6167297363281
+        },
+        {
+          "elapsedSeconds": 50,
+          "accepted": 500100,
+          "committed": 489500,
+          "pendingEvents": 20000,
+          "heapUsedMiB": 88.53939819335938
+        },
+        {
+          "elapsedSeconds": 60,
+          "accepted": 600100,
+          "committed": 589500,
+          "pendingEvents": 20000,
+          "heapUsedMiB": 480.5393981933594
+        }
+      ],
+      "integrity": "passed",
+      "scope": "Local queue, protobuf staging, event record transform, Parquet and HadoopTables commits; excludes HTTP, domain transforms, remote catalog/object store and deployment volume"
+    },
+    {
+      "scenario": "local-iceberg-endurance",
+      "java": "25.0.3+9-LTS-jvmci-b01",
+      "fileStore": "/System/Volumes/Data (/dev/disk3s1)",
+      "maxHeapMiB": 1024,
+      "events": 594700,
+      "offeredEventsPerSecond": 10000,
+      "producerSeconds": 60.296550625,
+      "totalSeconds": 61.935215875,
+      "producerEventsPerSecond": 9862.919086343672,
+      "failedSegmentRetries": 12,
+      "icebergSnapshots": 62,
+      "quarantined": 0,
+      "handoffLatency": {
+        "samples": 5947,
+        "p50Millis": 828.1,
+        "p95Millis": 1636.1,
+        "p99Millis": 2796.1,
+        "maxMillis": 3122.0
+      },
+      "icebergFlushLatency": {
+        "samples": 62,
+        "p50Millis": 213.1,
+        "p95Millis": 404.3,
+        "p99Millis": 1924.7,
+        "maxMillis": 1924.6435
+      },
+      "windows": [
+        {
+          "elapsedSeconds": 10,
+          "accepted": 100000,
+          "committed": 90000,
+          "pendingEvents": 20000,
+          "heapUsedMiB": 236.6595916748047
+        },
+        {
+          "elapsedSeconds": 20,
+          "accepted": 200000,
+          "committed": 190000,
+          "pendingEvents": 20000,
+          "heapUsedMiB": 76.81532287597656
+        },
+        {
+          "elapsedSeconds": 30,
+          "accepted": 300000,
+          "committed": 290000,
+          "pendingEvents": 20000,
+          "heapUsedMiB": 507.4121856689453
+        },
+        {
+          "elapsedSeconds": 40,
+          "accepted": 400000,
+          "committed": 390000,
+          "pendingEvents": 20000,
+          "heapUsedMiB": 316.41249084472656
+        },
+        {
+          "elapsedSeconds": 50,
+          "accepted": 500000,
+          "committed": 490000,
+          "pendingEvents": 20000,
+          "heapUsedMiB": 102.34198760986328
+        },
+        {
+          "elapsedSeconds": 60,
+          "accepted": 594700,
+          "committed": 587600,
+          "pendingEvents": 17000,
+          "heapUsedMiB": 542.0655822753906
+        }
+      ],
+      "integrity": "passed",
+      "scope": "Local queue, protobuf staging, event record transform, Parquet and HadoopTables commits; excludes HTTP, domain transforms, remote catalog/object store and deployment volume"
+    }
+  ],
+  "environmentNotes": [
+    "Shared developer host and local APFS, 1 GiB JVM heap, production queue fsync enabled",
+    "First pipeline run overlapped collector Gradle validation; second started after it finished",
+    "No controlled before/after performance comparison or deployment capacity claim"
+  ],
+  "sourceSha256": {
+    "analytics/analytics/src/main/kotlin/bosca/analytics/configuration/AnalyticsConfiguration.kt": "da50a193919176d1a01b2784e3ac25d5e2974035a65ac805223b8d7f3425811a",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/queue/CorruptAnalyticsSegmentException.kt": "8d91e4f824da7d4a8c30accac8fe6b19b3ffd55c8f107165dbf2aef5bb969d69",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/queue/DiskAnalyticsCapacityException.kt": "4c9ed091b5d10e4d79a5dbabff116d744a7a1150ad2f86f0a21e8dc62d14efc6",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/queue/DiskAnalyticsDelivery.kt": "ec297b66c5934db60370f66b9f9dcf50e552376cd40ea405b27fffd14f08f4f2",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/queue/DiskAnalyticsEventQueue.kt": "0ab31543acc816d062ac8e454ec9d82a4c1f0be3be1b9c3bc94a6fac718a241e",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/queue/DiskAnalyticsFormat.kt": "b49c3b7f48e253ca9d672ec54c8281efb46e8664c015076332f703fe355471b3",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/queue/DiskAnalyticsReader.kt": "375c28a9ad0cf78ab5a0f33773a3b28152637064ba086160b66f37a3f659ad33",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/queue/DiskAnalyticsRecord.kt": "d2f3c9d7c65802a9eb5a7517b60407cadfbdfdfa237d29fa978a48e338426465",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/queue/DiskAnalyticsRole.kt": "7450bb10cc743b1791c6b4f752aa022bcfc30e6f188ef96d6136e4c7d3273827",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/queue/DiskAnalyticsStatusReader.kt": "f286f18649e953dcda44fa7ecd20f82e92bceac3eae82ca4fece89c088f77454",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/queue/DiskAnalyticsWriter.kt": "c4c07d0e618b80adc0b049ffc33a76932f8effd17cf865dbb78d3579564d603c",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/queue/NatsAnalyticsEventDelivery.kt": "74c34772b15e4f34402a1ca16847d66926fcdf9baadd220e95cd85fb2bd5cd21",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/queue/NatsAnalyticsEventQueue.kt": "b5a6929675b6bb311e8bc9b3e455b426c49f836105b563a9fd48c01f1b9e6926",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/queue/eventIdentityPrefix.kt": "0d4e9985b25626ebac22716ebaf828fc99d7ef62034652494edad8a3714ee24c",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/repository/iceberg/LocalEventsFile.kt": "3f6100c691f1f86c98f18da46e5effb030379598e7f438fa35efce3f252e71c8",
+    "analytics/analytics/src/main/kotlin/bosca/analytics/repository/iceberg/ParquetWriter.kt": "83975818c77c7aeb24be720b71fef1df39460090dd1e1f0dc852db9412e63bd1"
+  }
+}

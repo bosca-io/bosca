@@ -227,3 +227,7 @@ analytics event-queue backend. Live sessions can be explicitly disabled with
 
 See the [installation and recovery settings](../server/docs/postgresql-installation.md)
 for directory ownership, persistence, capacity, quarantine, and topology constraints.
+
+The opt-in `:analytics:analytics:benchmarkDiskAnalyticsQueue` task measures durable
+queue operations without coverage instrumentation. See the [benchmark instructions](benchmarks/README.md)
+and [local measurements](benchmarks/2026-11-14-review-fixes.md) for workloads, results, and limits.
