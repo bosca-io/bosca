@@ -8,13 +8,13 @@ import org.apache.iceberg.io.FileAppender
 import org.apache.iceberg.io.OutputFile
 import org.apache.iceberg.parquet.Parquet
 import org.apache.iceberg.parquet.ParquetSchemaUtil
-import org.slf4j.LoggerFactory
+import java.io.Closeable
 import java.io.File
 
 class ParquetWriter(
     private val table: Table,
     file: File
-) {
+) : Closeable {
 
     private var finished = false
     var recordsAdded: Int = 0
@@ -45,22 +45,21 @@ class ParquetWriter(
                 recordsAdded += 1
             } catch (e: Exception) {
                 recordsFailed += 1
-                log.error("Failed to write record: $record", e)
+                throw e
             }
-        }
-        if (recordsFailed > 0) {
-            log.error("$recordsFailed of ${records.size} records failed to write")
         }
     }
 
     fun finish(): OutputFile {
-        finished = true
-        writer.close()
+        check(recordsFailed == 0) { "Cannot commit a Parquet file with failed records" }
+        close()
         return localOutputFile
     }
 
-    companion object {
-
-        private val log = LoggerFactory.getLogger(ParquetWriter::class.java)
+    override fun close() {
+        if (!finished) {
+            finished = true
+            writer.close()
+        }
     }
 }

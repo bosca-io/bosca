@@ -94,3 +94,8 @@ kover {
         }
     }
 }
+
+// Failure-injection tests exercise RandomAccessFile without changing the production I/O path.
+tasks.test {
+    jvmArgs("--add-opens=java.base/java.io=ALL-UNNAMED")
+}
