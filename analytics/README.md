@@ -89,10 +89,25 @@ produce duplicates. Deduplication lasts for the stream's configured duplicate wi
 This does not provide unlimited deduplication
 or prevent repeated transform and optional-sink side effects.
 
-The processor acknowledges messages after primary storage and request cleanup
-succeed. Primary Iceberg staging failures propagate, leaving messages eligible for
-NATS redelivery. The existing local staging and later Iceberg commit behavior is
-unchanged; staging storage must survive pod replacement to preserve staged data.
+The processor acknowledges a processing group after its Iceberg commit and request
+cleanup succeed. Concurrent processing groups share one data file and table commit.
+A commit starts when every consumer worker is waiting on storage, when the waiting
+groups hold `iceberg.commitMaxRecords` events (default 100,000), or
+`iceberg.commitIntervalMillis` after the first group starts waiting (default
+10,000), whichever comes first. A write or commit failure leaves every group in
+that commit eligible for redelivery, and none of their events stays buffered. A
+transform failure retries only that delivery; healthy peers in the fetched group
+can still commit and be acknowledged.
+
+Direct Iceberg ingestion stages events in a local file instead. A failed staging
+file stays pending and must commit before another file can accept events. Staging
+append and flush operations share one mutex. Further staging writes retry a failed
+append first, so an outage does not accumulate another staged copy on every
+retry. Staging storage must survive pod replacement to preserve staged data
+during recovery.
+An interrupted staging write is truncated back to its frame boundary before the
+file is reused or flushed. A failed rollback remains retryable and prevents new
+writes. Parquet record-write errors fail the flush and retain the staged data.
 
 ## Bible usage reporting
 
@@ -179,3 +194,36 @@ dependencies {
 ```
 
 Published `io.bosca:*` coordinates used by existing catalogs also resolve to these local projects in the root build.
+
+## Local event spooling
+
+`AnalyticsEventQueue` selects NATS or a persistent local-disk spool using
+`analyticsEventQueue.type`. The collector forwards through the queue when
+`eventRepository.type=queue`; the processor applies its transforms and flushes
+final analytical storage before acknowledging a processing group. The disk backend
+appends collector batches to a `RandomAccessFile`, rolling segments after 10,000
+events or one second (including idle rollover). These limits are configurable.
+It syncs once per enqueue. One sealed segment is one delivery containing its
+original event batches. The processor transforms and stores those batches,
+flushes final storage, then acknowledges by deleting the segment and syncing the
+directory. A failure or consumer restart replays the whole retained segment;
+events already committed within that segment can be duplicated. Transforms and
+sinks must tolerate replay. Disk enqueue retries can also duplicate events; the
+disk spool does not maintain a client deduplication index.
+
+The consumer process owns an exclusive file lock. It needs no per-record leases,
+checkpoint journal, or compaction. Status counts sealed pending events and all
+data bytes; unsealed events enter the pending count at rollover. Retrying a segment releases its claim and
+applies an in-memory delay while other files remain available. Worker count
+bounds concurrent processing; the disk backend returns one segment per receive.
+Collector queue initialization acquires the producer role and seals recoverable
+active data before accepting traffic, so restart recovery does not require a new
+event. Consumers and status observers do not acquire the producer role. Both
+sealed files and interrupted files with intact footers must match their declared
+event and frame counts; mismatches are preserved in quarantine.
+PostgreSQL is not an
+analytics event-queue backend. Live sessions can be explicitly disabled with
+`liveSessions.type=disabled` when NATS/Redis are absent.
+
+See the [installation and recovery settings](../server/docs/postgresql-installation.md)
+for directory ownership, persistence, capacity, quarantine, and topology constraints.

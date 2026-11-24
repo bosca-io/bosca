@@ -25,6 +25,7 @@ class RedisModule : BoscaApplicationModule {
 
     @OptIn(InternalDI::class)
     override suspend fun install(application: BoscaApplication) = with(application) {
+        if (environment.config.propertyOrNull("redis.enabled")?.getString()?.toBooleanStrictOrNull() == false) return@with
         val redis = environment.config.propertyOrNull("redis")?.getAs<RedisConnectionConfig>()
         if (redis != null) {
             val database = redis.database.takeIf { it >= 0 } ?: run {

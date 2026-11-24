@@ -1,14 +1,17 @@
 package bosca.analytics.repository
 
+import bosca.analytics.livesessions.DisabledLiveSessions
 import bosca.analytics.model.Event
 import bosca.analytics.model.Events
 import bosca.analytics.model.EventType
+import bosca.analytics.model.LiveSession
 import bosca.analytics.queue.AnalyticsEventQueue
 import bosca.analytics.queue.DiskAnalyticsEventQueue
 import bosca.analytics.service.EventProcessingHealth
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import java.io.IOException
@@ -40,5 +43,10 @@ class QueuedEventRepositoryTest {
         coEvery { queue.enqueue(any()) } throws IOException("unavailable")
         assertFailsWith<IOException> { QueuedEventRepository(queue, health).process(events) }
         assertFalse(health.isReady)
+    }
+    @Test fun `disabled live sessions do not require a transport`(): Unit = runBlocking {
+        val sessions = DisabledLiveSessions()
+        sessions.publish("app", LiveSession("session", 1.0, 2.0))
+        assertTrue(sessions.subscribe(null, null).toList().isEmpty())
     }
 }

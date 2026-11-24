@@ -141,6 +141,7 @@ comments:
 # cluster to opt the entire family out — schema, providers, routes, and
 # all.
 chat:
+  storage: "${CHAT_STORAGE:nats}"
   enabled: "${CHAT_ENABLED:true}"
 
 workops:
@@ -187,12 +188,14 @@ gateway:
     sharedToken: "${GATEWAY_PROXY_SHARED_TOKEN:dev-gateway-proxy-shared-token-not-for-prod}"
 
 redis:
+  enabled: "${REDIS_ENABLED:true}"
   host: "$REDIS_HOST:localhost"
   port: ${REDIS_PORT:6380}
   database: ${REDIS_DATABASE:0}
   namespace: "$REDIS_NAMESPACE:"
 
 nats:
+  enabled: "${NATS_ENABLED:true}"
   url: "$NATS_HOST:localhost:4222"
   token: "$NATS_TOKEN:OAVKZTG7ST62YCPUJYJ6LBQDMKLAUD4NRBPZ4GXUXNUJW2ATCFKKYGHV"
   username: "$NATS_USERNAME:"
@@ -360,3 +363,16 @@ analyticsServer:
 
 analyticsProcessor:
   enabled: "${ANALYTICS_PROCESSOR_ENABLED:false}"
+
+analyticsEventQueue:
+  type: "${ANALYTICS_EVENT_QUEUE_TYPE:nats}"
+  path: "${ANALYTICS_EVENT_QUEUE_PATH:./data/analytics-events}"
+  maxBytes: ${ANALYTICS_EVENT_QUEUE_MAX_BYTES:1073741824}
+  segmentMaxEvents: ${ANALYTICS_EVENT_QUEUE_SEGMENT_MAX_EVENTS:10000}
+  segmentMaxAgeMillis: ${ANALYTICS_EVENT_QUEUE_SEGMENT_MAX_AGE_MILLIS:1000}
+
+liveSessions:
+  type: "${LIVE_SESSIONS_TYPE:}"
+
+eventRepository:
+  type: "${EVENT_REPOSITORY_TYPE:iceberg}"

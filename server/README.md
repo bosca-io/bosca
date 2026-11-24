@@ -90,3 +90,5 @@ The server itself contains minimal domain logic -- it is a composition root that
 - `io.bosca:sharedqueue` -- from bosca-sharedqueue
 - `io.bosca:core` from `bosca-core`, and `io.bosca:di` / `io.bosca:service` from `services-di`
 - Integration libraries (HubSpot, Meilisearch, Mux)
+
+For infrastructure without NATS or Redis, see [PostgreSQL infrastructure and local analytics spooling](docs/postgresql-installation.md).

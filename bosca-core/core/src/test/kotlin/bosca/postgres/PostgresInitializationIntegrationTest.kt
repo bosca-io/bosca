@@ -35,6 +35,10 @@ class PostgresInitializationIntegrationTest {
                 url: "${database.jdbcUrl}"
                 user: "${database.username}"
                 password: "${database.password}"
+            nats:
+              enabled: false
+            redis:
+              enabled: false
             cache:
               type: postgres
             counter:
@@ -44,9 +48,7 @@ class PostgresInitializationIntegrationTest {
         """.trimIndent().byteInputStream()))
         try {
             DriverManager.getConnection(database.jdbcUrl, database.username, database.password).use { c -> c.createStatement().use { stmt ->
-                for (resource in listOf("V200__postgres_infrastructure.sql", "V201__postgres_cache_counters.sql", "V202__postgres_locks.sql")) {
-                    stmt.execute(checkNotNull(javaClass.getResourceAsStream("/db/migrations/$resource")).bufferedReader().use { it.readText() })
-                }
+                stmt.execute(listOf("V200__postgres_infrastructure.sql", "V201__postgres_cache_counters.sql", "V202__postgres_locks.sql").joinToString(" ") { resource -> checkNotNull(javaClass.getResourceAsStream("/db/migrations/$resource")).bufferedReader().use { it.readText() } })
             } }
             application.install(InitializeModule(enableConnectionPool = false))
             assertFalse(ProviderRegistry.getProvider<NatsConnectionPool>().exists)
