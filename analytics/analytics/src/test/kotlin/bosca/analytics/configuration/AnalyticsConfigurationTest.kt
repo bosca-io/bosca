@@ -354,6 +354,82 @@ class AnalyticsConfigurationTest {
         icebergApplication.shutdown()
     }
     @Test
+    fun `disk queue configuration and named final storage resolve without NATS`(): Unit = runTest {
+        val directory = java.nio.file.Files.createTempDirectory("analytics-config-spool")
+        val app = application("""
+            analyticsEventQueue:
+              type: disk
+              path: "$directory"
+              maxBytes: 1024
+              segmentMaxEvents: 2
+              segmentMaxAgeMillis: 60000
+        """)
+        try {
+            val queue = configuration.analyticsEventQueue(app, bosca.di.MissingObjectProvider(NatsConnectionPool::class, null), Json, configuration.eventProcessingHealth())
+            queue.checkReadiness()
+            assertEquals(1024L, queue.status().capacityBytes)
+            val events = bosca.analytics.model.Events(events = listOf(bosca.analytics.model.Event(1, type = bosca.analytics.model.EventType.Session)), sent = 1, sentMicros = 0)
+            queue.enqueue(events)
+            kotlin.test.assertNull(queue.receive(kotlin.time.Duration.ZERO))
+            queue.enqueue(events)
+            val deliveries = queue.receiveBatch(10, kotlin.time.Duration.ZERO)
+            assertEquals(1, deliveries.size)
+            queue.acknowledgeBatch(deliveries)
+            assertIs<CompositeEventRepository>(configuration.analyticsEventStorage(app, iceberg(), mockk<Table>(), mockk<EventsTransform<List<Record>>>(), ProtoBuf, mockk<ErrorGroupService>(), EventProcessingConfiguration()))
+        } finally { app.shutdown(); directory.toFile().deleteRecursively() }
+        val invalid = application("analyticsEventQueue:\n  type: postgres")
+        kotlin.test.assertFailsWith<IllegalStateException> {
+            configuration.analyticsEventQueue(invalid, bosca.di.MissingObjectProvider(NatsConnectionPool::class, null), Json, configuration.eventProcessingHealth())
+        }
+        invalid.shutdown()
+    }
+
+    @Test
+    fun `collector startup recovers accepted active data while processor construction leaves producer ownership alone`(): Unit = kotlinx.coroutines.runBlocking {
+        for (repository in listOf("queue", "nats")) {
+            val directory = java.nio.file.Files.createTempDirectory("analytics-idle-startup")
+            val original = bosca.analytics.queue.DiskAnalyticsEventQueue(directory, Json)
+            val events = bosca.analytics.model.Events(events = listOf(bosca.analytics.model.Event(1, type = bosca.analytics.model.EventType.Session)), sent = 1, sentMicros = 0)
+            original.enqueue(events); original.shutdown()
+            val sealed = directory.resolve("00000000000000000001.segment")
+            val active = directory.resolve("00000000000000000001.open")
+            java.nio.file.Files.move(sealed, active)
+            java.io.RandomAccessFile(active.toFile(), "rw").use { it.setLength(it.length() - 24) }
+            fun yaml(type: String) = "eventRepository:\n  type: $type\nanalyticsEventQueue:\n  type: disk\n  path: '$directory'"
+            val collector = application(yaml(repository))
+            val processor = application(yaml("iceberg"))
+            try {
+                val producer = configuration.analyticsEventQueue(collector, bosca.di.MissingObjectProvider(NatsConnectionPool::class, null), Json, configuration.eventProcessingHealth())
+                producer.checkReadiness()
+                val consumer = configuration.analyticsEventQueue(processor, bosca.di.MissingObjectProvider(NatsConnectionPool::class, null), Json, configuration.eventProcessingHealth())
+                consumer.checkReadiness()
+                kotlin.test.assertFalse(java.nio.file.Files.exists(active))
+                val recovered = kotlin.test.assertNotNull(consumer.receive(kotlin.time.Duration.ZERO))
+                assertEquals(listOf(events), recovered.batches)
+                recovered.acknowledge()
+                producer.enqueue(events)
+            } finally { collector.shutdown(); processor.shutdown(); directory.toFile().deleteRecursively() }
+        }
+    }
+
+
+    @Test
+    fun `default disk queue limits and idle rollover work without broker providers`(): Unit = kotlinx.coroutines.runBlocking {
+        val directory = java.nio.file.Files.createTempDirectory("analytics-default-spool")
+        val app = application("analyticsEventQueue:\n  type: disk\n  path: '$directory'")
+        try {
+            val queue = configuration.analyticsEventQueue(app, bosca.di.MissingObjectProvider(NatsConnectionPool::class, null), Json, configuration.eventProcessingHealth())
+            val events = bosca.analytics.model.Events(events = listOf(bosca.analytics.model.Event(1, type = bosca.analytics.model.EventType.Session)), sent = 1, sentMicros = 0)
+            queue.enqueue(events)
+            assertEquals(1_073_741_824L, queue.status().capacityBytes)
+            kotlin.test.assertNull(queue.receive(kotlin.time.Duration.ZERO))
+            val delivery = kotlin.test.assertNotNull(queue.receive(kotlin.time.Duration.parse("3s")))
+            assertEquals(listOf(events), delivery.batches); delivery.acknowledge()
+            queue.checkReadiness()
+        } finally { app.shutdown(); directory.toFile().deleteRecursively() }
+    }
+
+    @Test
     fun `default and explicit NATS queue bindings remain lazy until use`(): Unit = runTest {
         val nats = mockk<NatsConnectionPool>()
         for (yaml in listOf("bosca: {}", "analyticsEventQueue:\n  type: nats")) {
@@ -364,6 +440,15 @@ class AnalyticsConfigurationTest {
             } finally { app.shutdown() }
         }
     }
+    @Test
+    fun `unused disk binding keeps default path lazy without creating storage`(): Unit = runTest {
+        val app = application("analyticsEventQueue:\n  type: disk")
+        try {
+            assertIs<bosca.analytics.queue.DiskAnalyticsEventQueue>(configuration.analyticsEventQueue(app, bosca.di.MissingObjectProvider(NatsConnectionPool::class, null), Json, configuration.eventProcessingHealth()))
+        } finally { app.shutdown() }
+    }
+
+
     @Test
     fun `fully specified processing and cache settings reach their configuration providers`(): Unit = runTest {
         val app = application("""
