@@ -1,0 +1,1694 @@
+{
+  "date": "2026-11-09",
+  "hardware": {
+    "cpu": "Apple M4 Max",
+    "logicalProcessors": 16,
+    "physicalMemoryGiB": 128,
+    "storage": "Local APFS on Apple Fabric SSD, 2 TB container, approximately 94% occupied",
+    "jvmMaxHeapMiB": 1024,
+    "isolation": "Shared developer machine; no CPU affinity or exclusive I/O control"
+  },
+  "runs": {
+    "main": {
+      "command": "./gradlew :analytics:analytics:benchmarkDiskAnalyticsQueue --args='--mode=all --events=50000 --seconds=10 --repeats=3 --output=/tmp/analytics-benchmark-main.jsonl'",
+      "records": [
+        {
+          "scenario": "environment",
+          "runId": "73f5eb45-9b3b-45d0-855d-82beb90177ec",
+          "java": "25.0.3+9-LTS-jvmci-b01",
+          "vm": "Java HotSpot(TM) 64-Bit Server VM",
+          "os": "Mac OS X 27.0.1 aarch64",
+          "processors": 16,
+          "maxHeapMiB": 1024,
+          "root": "/var/folders/_p/2j7nnhgj0_51zyg28t_vtbpr0000gn/T",
+          "fileStore": "/System/Volumes/Data (/dev/disk3s1)",
+          "paddingBytes": 256,
+          "repeats": 3,
+          "events": 50000,
+          "seconds": 10,
+          "note": "Queue only; production fsync/dedup enabled; no Iceberg, transforms or HTTP; percentile buckets have 0.1ms resolution"
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 50000,
+          "seconds": 2.604403041,
+          "eventsPerSecond": 19198.257417485485,
+          "heapUsedMiB": 43.17253112792969,
+          "batchSize": 1,
+          "enqueueLatency": {
+            "samples": 50000,
+            "p50Millis": 0.1,
+            "p95Millis": 0.1,
+            "p99Millis": 0.2,
+            "maxMillis": 24.789625
+          },
+          "spoolBytes": 55616885,
+          "encodedBytesPerEvent": 967.0,
+          "spoolFiles": 12
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 50000,
+          "seconds": 1.505087875,
+          "eventsPerSecond": 33220.65165131969,
+          "heapUsedMiB": 273.1725311279297,
+          "batchSize": 10,
+          "enqueueLatency": {
+            "samples": 5000,
+            "p50Millis": 0.1,
+            "p95Millis": 0.1,
+            "p99Millis": 1.5,
+            "maxMillis": 228.065959
+          },
+          "spoolBytes": 34793815,
+          "encodedBytesPerEvent": 589.0,
+          "spoolFiles": 12
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 50000,
+          "seconds": 0.212857209,
+          "eventsPerSecond": 234899.25586687552,
+          "heapUsedMiB": 486.6725311279297,
+          "batchSize": 100,
+          "enqueueLatency": {
+            "samples": 500,
+            "p50Millis": 0.2,
+            "p95Millis": 0.3,
+            "p99Millis": 10.3,
+            "maxMillis": 20.01925
+          },
+          "spoolBytes": 32674781,
+          "encodedBytesPerEvent": 552.1,
+          "spoolFiles": 12
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 50000,
+          "seconds": 0.189336958,
+          "eventsPerSecond": 264079.4514085306,
+          "heapUsedMiB": 95.79039001464844,
+          "batchSize": 1000,
+          "enqueueLatency": {
+            "samples": 50,
+            "p50Millis": 1.4,
+            "p95Millis": 15.5,
+            "p99Millis": 16.4,
+            "maxMillis": 16.38825
+          },
+          "spoolBytes": 32512345,
+          "encodedBytesPerEvent": 549.31,
+          "spoolFiles": 12
+        },
+        {
+          "scenario": "drain",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 20000,
+          "seconds": 123.409922542,
+          "eventsPerSecond": 162.06152299620328,
+          "heapUsedMiB": 515.7903900146484,
+          "batchSize": 1,
+          "acknowledgeGroup": 1,
+          "receiveLatency": {
+            "samples": 20000,
+            "p50Millis": 0.2,
+            "p95Millis": 0.4,
+            "p99Millis": 1.0,
+            "maxMillis": 11.265375
+          },
+          "acknowledgeLatency": {
+            "samples": 20000,
+            "p50Millis": 5.9,
+            "p95Millis": 7.3,
+            "p99Millis": 10.0,
+            "maxMillis": 142.353125
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "drain",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 20000,
+          "seconds": 1.181677834,
+          "eventsPerSecond": 16925.08687609012,
+          "heapUsedMiB": 222.19041442871094,
+          "batchSize": 1,
+          "acknowledgeGroup": 100,
+          "receiveLatency": {
+            "samples": 200,
+            "p50Millis": 0.6,
+            "p95Millis": 1.4,
+            "p99Millis": 2.9,
+            "maxMillis": 10.946958
+          },
+          "acknowledgeLatency": {
+            "samples": 200,
+            "p50Millis": 4.9,
+            "p95Millis": 5.8,
+            "p99Millis": 9.3,
+            "maxMillis": 23.078792
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "drain",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 20000,
+          "seconds": 1.343039833,
+          "eventsPerSecond": 14891.591082094137,
+          "heapUsedMiB": 372.69041442871094,
+          "batchSize": 100,
+          "acknowledgeGroup": 1,
+          "receiveLatency": {
+            "samples": 200,
+            "p50Millis": 0.7,
+            "p95Millis": 1.0,
+            "p99Millis": 2.1,
+            "maxMillis": 9.657333
+          },
+          "acknowledgeLatency": {
+            "samples": 200,
+            "p50Millis": 5.9,
+            "p95Millis": 6.9,
+            "p99Millis": 10.4,
+            "maxMillis": 17.257
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "drain",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 20000,
+          "seconds": 0.059159334,
+          "eventsPerSecond": 338070.0668469324,
+          "heapUsedMiB": 522.1904144287109,
+          "batchSize": 100,
+          "acknowledgeGroup": 100,
+          "receiveLatency": {
+            "samples": 2,
+            "p50Millis": 12.8,
+            "p95Millis": 15.5,
+            "p99Millis": 15.5,
+            "maxMillis": 15.480208
+          },
+          "acknowledgeLatency": {
+            "samples": 2,
+            "p50Millis": 14.9,
+            "p95Millis": 15.4,
+            "p99Millis": 15.4,
+            "maxMillis": 15.368583
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "live",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 10000,
+          "seconds": 10.101247334,
+          "eventsPerSecond": 989.9767493407265,
+          "heapUsedMiB": 83.22077941894531,
+          "offeredEventsPerSecond": 1000,
+          "batchSize": 1,
+          "workers": 1,
+          "producerSeconds": 10.001046209,
+          "producerEventsPerSecond": 999.8953900443877,
+          "backlogAtProducerStop": 885,
+          "maxBacklog": 1132,
+          "drainAfterStopMillis": 100.201125,
+          "enqueueLatency": {
+            "samples": 10000,
+            "p50Millis": 0.2,
+            "p95Millis": 0.5,
+            "p99Millis": 3.4,
+            "maxMillis": 84.3475
+          },
+          "acknowledgeLatency": {
+            "samples": 108,
+            "p50Millis": 6.0,
+            "p95Millis": 78.0,
+            "p99Millis": 81.9,
+            "maxMillis": 86.871375
+          },
+          "handoffLatency": {
+            "samples": 10000,
+            "p50Millis": 640.1,
+            "p95Millis": 1053.1,
+            "p99Millis": 1094.1,
+            "maxMillis": 1134.0
+          },
+          "remainingSpoolBytes": 990090,
+          "integrity": "passed",
+          "gcMillis": 16,
+          "windows": [
+            {
+              "elapsedSeconds": 10.006924042,
+              "eventsPerSecond": 999.308074891851,
+              "backlog": 885,
+              "heapUsedMiB": 76.38793182373047
+            }
+          ]
+        },
+        {
+          "scenario": "live",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 100000,
+          "seconds": 10.114751875,
+          "eventsPerSecond": 9886.549985191801,
+          "heapUsedMiB": 250.7207794189453,
+          "offeredEventsPerSecond": 10000,
+          "batchSize": 100,
+          "workers": 1,
+          "producerSeconds": 10.028660292,
+          "producerEventsPerSecond": 9971.421614487368,
+          "backlogAtProducerStop": 10000,
+          "maxBacklog": 11600,
+          "drainAfterStopMillis": 86.091583,
+          "enqueueLatency": {
+            "samples": 1000,
+            "p50Millis": 1.2,
+            "p95Millis": 1.8,
+            "p99Millis": 15.7,
+            "maxMillis": 38.002917
+          },
+          "acknowledgeLatency": {
+            "samples": 10,
+            "p50Millis": 17.3,
+            "p95Millis": 18.2,
+            "p99Millis": 18.2,
+            "maxMillis": 18.167125
+          },
+          "handoffLatency": {
+            "samples": 1000,
+            "p50Millis": 626.1,
+            "p95Millis": 1071.1,
+            "p99Millis": 1115.1,
+            "maxMillis": 1162.0
+          },
+          "remainingSpoolBytes": 9900090,
+          "integrity": "passed",
+          "gcMillis": 9,
+          "windows": [
+            {
+              "elapsedSeconds": 10.001324167,
+              "eventsPerSecond": 9988.67733231029,
+              "backlog": 9900,
+              "heapUsedMiB": 214.7207794189453
+            }
+          ]
+        },
+        {
+          "scenario": "live",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 100000,
+          "seconds": 10.156961166,
+          "eventsPerSecond": 9845.464442135093,
+          "heapUsedMiB": 457.6642379760742,
+          "offeredEventsPerSecond": 10000,
+          "batchSize": 100,
+          "workers": 16,
+          "producerSeconds": 10.020997458,
+          "producerEventsPerSecond": 9979.046538941853,
+          "backlogAtProducerStop": 10000,
+          "maxBacklog": 11600,
+          "drainAfterStopMillis": 135.963708,
+          "enqueueLatency": {
+            "samples": 1000,
+            "p50Millis": 0.9,
+            "p95Millis": 2.1,
+            "p99Millis": 16.1,
+            "maxMillis": 38.0385
+          },
+          "acknowledgeLatency": {
+            "samples": 10,
+            "p50Millis": 17.0,
+            "p95Millis": 18.4,
+            "p99Millis": 18.4,
+            "maxMillis": 18.373458
+          },
+          "handoffLatency": {
+            "samples": 1000,
+            "p50Millis": 594.1,
+            "p95Millis": 1036.1,
+            "p99Millis": 1102.1,
+            "maxMillis": 1162.0
+          },
+          "remainingSpoolBytes": 9900090,
+          "integrity": "passed",
+          "gcMillis": 21,
+          "windows": [
+            {
+              "elapsedSeconds": 10.000309375,
+              "eventsPerSecond": 9989.690943936423,
+              "backlog": 9900,
+              "heapUsedMiB": 421.4965057373047
+            }
+          ]
+        },
+        {
+          "scenario": "live",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 200000,
+          "seconds": 1.7377645,
+          "eventsPerSecond": 115090.3934336327,
+          "heapUsedMiB": 251.85972595214844,
+          "offeredEventsPerSecond": 0,
+          "batchSize": 100,
+          "workers": 16,
+          "producerSeconds": 1.651567334,
+          "producerEventsPerSecond": 121097.09115862181,
+          "backlogAtProducerStop": 20000,
+          "maxBacklog": 30000,
+          "drainAfterStopMillis": 86.197166,
+          "enqueueLatency": {
+            "samples": 2000,
+            "p50Millis": 0.3,
+            "p95Millis": 3.7,
+            "p99Millis": 17.3,
+            "maxMillis": 47.7275
+          },
+          "acknowledgeLatency": {
+            "samples": 20,
+            "p50Millis": 28.0,
+            "p95Millis": 64.1,
+            "p99Millis": 71.2,
+            "maxMillis": 71.153708
+          },
+          "handoffLatency": {
+            "samples": 2000,
+            "p50Millis": 130.1,
+            "p95Millis": 187.1,
+            "p99Millis": 208.1,
+            "maxMillis": 228.0
+          },
+          "remainingSpoolBytes": 19800180,
+          "integrity": "passed",
+          "gcMillis": 22,
+          "windows": []
+        },
+        {
+          "scenario": "recovery",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 105000,
+          "seconds": 0.068372583,
+          "eventsPerSecond": 1535703.2803631246,
+          "heapUsedMiB": 671.111457824707,
+          "recoveryMillis": 68.372583,
+          "drainEventsPerSecond": 198052.71738938225,
+          "receiveLatency": {
+            "samples": 11,
+            "p50Millis": 17.5,
+            "p95Millis": 33.9,
+            "p99Millis": 33.9,
+            "maxMillis": 33.855791
+          },
+          "acknowledgeLatency": {
+            "samples": 11,
+            "p50Millis": 31.9,
+            "p95Millis": 39.6,
+            "p99Millis": 39.6,
+            "maxMillis": 39.536459
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 50000,
+          "seconds": 3.199375,
+          "eventsPerSecond": 15628.052353975387,
+          "heapUsedMiB": 492.11145782470703,
+          "batchSize": 1,
+          "enqueueLatency": {
+            "samples": 50000,
+            "p50Millis": 0.1,
+            "p95Millis": 0.1,
+            "p99Millis": 0.1,
+            "maxMillis": 210.481416
+          },
+          "spoolBytes": 55625670,
+          "encodedBytesPerEvent": 967.0,
+          "spoolFiles": 12
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 50000,
+          "seconds": 1.366661084,
+          "eventsPerSecond": 36585.51530102689,
+          "heapUsedMiB": 721.111457824707,
+          "batchSize": 10,
+          "enqueueLatency": {
+            "samples": 5000,
+            "p50Millis": 0.1,
+            "p95Millis": 0.2,
+            "p99Millis": 1.8,
+            "maxMillis": 224.342166
+          },
+          "spoolBytes": 34798531,
+          "encodedBytesPerEvent": 589.0,
+          "spoolFiles": 12
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 50000,
+          "seconds": 0.35774875,
+          "eventsPerSecond": 139762.8922532923,
+          "heapUsedMiB": 375.22135162353516,
+          "batchSize": 100,
+          "enqueueLatency": {
+            "samples": 500,
+            "p50Millis": 0.3,
+            "p95Millis": 0.4,
+            "p99Millis": 14.5,
+            "maxMillis": 64.360709
+          },
+          "spoolBytes": 32693511,
+          "encodedBytesPerEvent": 552.1,
+          "spoolFiles": 12
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 50000,
+          "seconds": 0.193682125,
+          "eventsPerSecond": 258154.95363859728,
+          "heapUsedMiB": 661.2213516235352,
+          "batchSize": 1000,
+          "enqueueLatency": {
+            "samples": 50,
+            "p50Millis": 1.2,
+            "p95Millis": 16.3,
+            "p99Millis": 23.9,
+            "maxMillis": 23.896125
+          },
+          "spoolBytes": 32512345,
+          "encodedBytesPerEvent": 549.31,
+          "spoolFiles": 12
+        },
+        {
+          "scenario": "drain",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 20000,
+          "seconds": 155.559904083,
+          "eventsPerSecond": 128.5678344808497,
+          "heapUsedMiB": 449.22135162353516,
+          "batchSize": 1,
+          "acknowledgeGroup": 1,
+          "receiveLatency": {
+            "samples": 20000,
+            "p50Millis": 0.2,
+            "p95Millis": 0.4,
+            "p99Millis": 0.9,
+            "maxMillis": 17.719167
+          },
+          "acknowledgeLatency": {
+            "samples": 20000,
+            "p50Millis": 6.0,
+            "p95Millis": 16.1,
+            "p99Millis": 20.0,
+            "maxMillis": 108.899167
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "drain",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 20000,
+          "seconds": 3.339539792,
+          "eventsPerSecond": 5988.849136611815,
+          "heapUsedMiB": 751.7213516235352,
+          "batchSize": 1,
+          "acknowledgeGroup": 100,
+          "receiveLatency": {
+            "samples": 200,
+            "p50Millis": 2.1,
+            "p95Millis": 3.6,
+            "p99Millis": 5.2,
+            "maxMillis": 18.39575
+          },
+          "acknowledgeLatency": {
+            "samples": 200,
+            "p50Millis": 13.8,
+            "p95Millis": 18.7,
+            "p99Millis": 21.1,
+            "maxMillis": 64.921
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "drain",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 20000,
+          "seconds": 1.646178125,
+          "eventsPerSecond": 12149.353521509101,
+          "heapUsedMiB": 902.7743530273438,
+          "batchSize": 100,
+          "acknowledgeGroup": 1,
+          "receiveLatency": {
+            "samples": 200,
+            "p50Millis": 0.6,
+            "p95Millis": 1.2,
+            "p99Millis": 4.4,
+            "maxMillis": 30.953334
+          },
+          "acknowledgeLatency": {
+            "samples": 200,
+            "p50Millis": 5.6,
+            "p95Millis": 17.7,
+            "p99Millis": 26.3,
+            "maxMillis": 30.69125
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "drain",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 20000,
+          "seconds": 0.1204505,
+          "eventsPerSecond": 166043.31239803904,
+          "heapUsedMiB": 398.5390167236328,
+          "batchSize": 100,
+          "acknowledgeGroup": 100,
+          "receiveLatency": {
+            "samples": 2,
+            "p50Millis": 15.8,
+            "p95Millis": 18.5,
+            "p99Millis": 18.5,
+            "maxMillis": 18.477083
+          },
+          "acknowledgeLatency": {
+            "samples": 2,
+            "p50Millis": 42.3,
+            "p95Millis": 43.0,
+            "p99Millis": 43.0,
+            "maxMillis": 42.944708
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "live",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 9999,
+          "seconds": 10.228721875,
+          "eventsPerSecond": 977.5414878019645,
+          "heapUsedMiB": 554.6419448852539,
+          "offeredEventsPerSecond": 1000,
+          "batchSize": 1,
+          "workers": 1,
+          "producerSeconds": 10.000150834,
+          "producerEventsPerSecond": 999.8849183358228,
+          "backlogAtProducerStop": 825,
+          "maxBacklog": 1141,
+          "drainAfterStopMillis": 228.571041,
+          "enqueueLatency": {
+            "samples": 9999,
+            "p50Millis": 0.2,
+            "p95Millis": 0.5,
+            "p99Millis": 4.2,
+            "maxMillis": 130.020208
+          },
+          "acknowledgeLatency": {
+            "samples": 107,
+            "p50Millis": 14.2,
+            "p95Millis": 39.6,
+            "p99Millis": 68.4,
+            "maxMillis": 71.186083
+          },
+          "handoffLatency": {
+            "samples": 9999,
+            "p50Millis": 657.1,
+            "p95Millis": 1033.1,
+            "p99Millis": 1100.1,
+            "maxMillis": 1155.0
+          },
+          "remainingSpoolBytes": 989991,
+          "integrity": "passed",
+          "gcMillis": 0,
+          "windows": [
+            {
+              "elapsedSeconds": 10.000313334,
+              "eventsPerSecond": 999.8686707149931,
+              "backlog": 825,
+              "heapUsedMiB": 548.4036178588867
+            }
+          ]
+        },
+        {
+          "scenario": "live",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 100000,
+          "seconds": 10.1161075,
+          "eventsPerSecond": 9885.225122409978,
+          "heapUsedMiB": 652.5875778198242,
+          "offeredEventsPerSecond": 10000,
+          "batchSize": 100,
+          "workers": 1,
+          "producerSeconds": 10.0322725,
+          "producerEventsPerSecond": 9967.8313163842,
+          "backlogAtProducerStop": 10000,
+          "maxBacklog": 11900,
+          "drainAfterStopMillis": 83.835,
+          "enqueueLatency": {
+            "samples": 1000,
+            "p50Millis": 1.2,
+            "p95Millis": 3.1,
+            "p99Millis": 39.4,
+            "maxMillis": 50.648166
+          },
+          "acknowledgeLatency": {
+            "samples": 10,
+            "p50Millis": 28.8,
+            "p95Millis": 65.6,
+            "p99Millis": 65.6,
+            "maxMillis": 65.514042
+          },
+          "handoffLatency": {
+            "samples": 1000,
+            "p50Millis": 656.1,
+            "p95Millis": 1092.1,
+            "p99Millis": 1134.1,
+            "maxMillis": 1183.0
+          },
+          "remainingSpoolBytes": 9900090,
+          "integrity": "passed",
+          "gcMillis": 7,
+          "windows": [
+            {
+              "elapsedSeconds": 10.001622,
+              "eventsPerSecond": 9988.379884782687,
+              "backlog": 9900,
+              "heapUsedMiB": 616.5875778198242
+            }
+          ]
+        },
+        {
+          "scenario": "live",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 100000,
+          "seconds": 10.220667833,
+          "eventsPerSecond": 9784.09646355249,
+          "heapUsedMiB": 839.7833251953125,
+          "offeredEventsPerSecond": 10000,
+          "batchSize": 100,
+          "workers": 16,
+          "producerSeconds": 10.03201225,
+          "producerEventsPerSecond": 9968.089901405374,
+          "backlogAtProducerStop": 10000,
+          "maxBacklog": 11800,
+          "drainAfterStopMillis": 188.655583,
+          "enqueueLatency": {
+            "samples": 1000,
+            "p50Millis": 1.2,
+            "p95Millis": 3.0,
+            "p99Millis": 29.9,
+            "maxMillis": 50.56775
+          },
+          "acknowledgeLatency": {
+            "samples": 10,
+            "p50Millis": 26.7,
+            "p95Millis": 37.8,
+            "p99Millis": 37.8,
+            "maxMillis": 37.785834
+          },
+          "handoffLatency": {
+            "samples": 1000,
+            "p50Millis": 639.1,
+            "p95Millis": 1073.1,
+            "p99Millis": 1125.1,
+            "maxMillis": 1176.0
+          },
+          "remainingSpoolBytes": 9900090,
+          "integrity": "passed",
+          "gcMillis": 7,
+          "windows": [
+            {
+              "elapsedSeconds": 10.001320541,
+              "eventsPerSecond": 9988.680953726469,
+              "backlog": 9900,
+              "heapUsedMiB": 803.7193069458008
+            }
+          ]
+        },
+        {
+          "scenario": "live",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 200000,
+          "seconds": 5.124827541,
+          "eventsPerSecond": 39025.70347976516,
+          "heapUsedMiB": 632.3519973754883,
+          "offeredEventsPerSecond": 0,
+          "batchSize": 100,
+          "workers": 16,
+          "producerSeconds": 4.957477458,
+          "producerEventsPerSecond": 40343.09821767423,
+          "backlogAtProducerStop": 9600,
+          "maxBacklog": 21200,
+          "drainAfterStopMillis": 167.350083,
+          "enqueueLatency": {
+            "samples": 2000,
+            "p50Millis": 0.4,
+            "p95Millis": 8.0,
+            "p99Millis": 37.1,
+            "maxMillis": 639.445209
+          },
+          "acknowledgeLatency": {
+            "samples": 21,
+            "p50Millis": 63.3,
+            "p95Millis": 116.4,
+            "p99Millis": 801.7,
+            "maxMillis": 801.631875
+          },
+          "handoffLatency": {
+            "samples": 2000,
+            "p50Millis": 265.1,
+            "p95Millis": 1178.1,
+            "p99Millis": 1877.1,
+            "maxMillis": 1927.0
+          },
+          "remainingSpoolBytes": 19800189,
+          "integrity": "passed",
+          "gcMillis": 36,
+          "windows": []
+        },
+        {
+          "scenario": "recovery",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 105000,
+          "seconds": 0.050064083,
+          "eventsPerSecond": 2097311.9591544303,
+          "heapUsedMiB": 479.22135162353516,
+          "recoveryMillis": 50.064083,
+          "drainEventsPerSecond": 267655.88884378393,
+          "receiveLatency": {
+            "samples": 11,
+            "p50Millis": 13.5,
+            "p95Millis": 32.4,
+            "p99Millis": 32.4,
+            "maxMillis": 32.310834
+          },
+          "acknowledgeLatency": {
+            "samples": 11,
+            "p50Millis": 15.3,
+            "p95Millis": 39.8,
+            "p99Millis": 39.8,
+            "maxMillis": 39.70825
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 50000,
+          "seconds": 3.300508375,
+          "eventsPerSecond": 15149.181374217844,
+          "heapUsedMiB": 876.2024154663086,
+          "batchSize": 1,
+          "enqueueLatency": {
+            "samples": 50000,
+            "p50Millis": 0.1,
+            "p95Millis": 0.1,
+            "p99Millis": 0.1,
+            "maxMillis": 220.628458
+          },
+          "spoolBytes": 55619893,
+          "encodedBytesPerEvent": 967.0,
+          "spoolFiles": 12
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 50000,
+          "seconds": 1.608340708,
+          "eventsPerSecond": 31087.940354488623,
+          "heapUsedMiB": 559.7213516235352,
+          "batchSize": 10,
+          "enqueueLatency": {
+            "samples": 5000,
+            "p50Millis": 0.1,
+            "p95Millis": 0.2,
+            "p99Millis": 0.4,
+            "maxMillis": 256.330208
+          },
+          "spoolBytes": 34800535,
+          "encodedBytesPerEvent": 589.0,
+          "spoolFiles": 12
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 50000,
+          "seconds": 0.307241625,
+          "eventsPerSecond": 162738.36593593072,
+          "heapUsedMiB": 773.7213516235352,
+          "batchSize": 100,
+          "enqueueLatency": {
+            "samples": 500,
+            "p50Millis": 0.2,
+            "p95Millis": 0.4,
+            "p99Millis": 12.4,
+            "maxMillis": 58.119333
+          },
+          "spoolBytes": 32710495,
+          "encodedBytesPerEvent": 552.1,
+          "spoolFiles": 12
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 50000,
+          "seconds": 0.177060458,
+          "eventsPerSecond": 282389.4197766053,
+          "heapUsedMiB": 475.75594329833984,
+          "batchSize": 1000,
+          "enqueueLatency": {
+            "samples": 50,
+            "p50Millis": 1.2,
+            "p95Millis": 14.9,
+            "p99Millis": 16.2,
+            "maxMillis": 16.183583
+          },
+          "spoolBytes": 32512345,
+          "encodedBytesPerEvent": 549.31,
+          "spoolFiles": 12
+        },
+        {
+          "scenario": "drain",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 20000,
+          "seconds": 121.169936083,
+          "eventsPerSecond": 165.0574444992711,
+          "heapUsedMiB": 886.5463638305664,
+          "batchSize": 1,
+          "acknowledgeGroup": 1,
+          "receiveLatency": {
+            "samples": 20000,
+            "p50Millis": 0.2,
+            "p95Millis": 0.4,
+            "p99Millis": 0.9,
+            "maxMillis": 15.677209
+          },
+          "acknowledgeLatency": {
+            "samples": 20000,
+            "p50Millis": 5.6,
+            "p95Millis": 7.1,
+            "p99Millis": 10.0,
+            "maxMillis": 149.469292
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "drain",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 20000,
+          "seconds": 1.613917084,
+          "eventsPerSecond": 12392.21035471733,
+          "heapUsedMiB": 635.2559432983398,
+          "batchSize": 1,
+          "acknowledgeGroup": 100,
+          "receiveLatency": {
+            "samples": 200,
+            "p50Millis": 0.6,
+            "p95Millis": 3.0,
+            "p99Millis": 5.1,
+            "maxMillis": 10.529
+          },
+          "acknowledgeLatency": {
+            "samples": 200,
+            "p50Millis": 5.3,
+            "p95Millis": 12.2,
+            "p99Millis": 13.7,
+            "maxMillis": 41.395166
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "drain",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 20000,
+          "seconds": 1.494406541,
+          "eventsPerSecond": 13383.23906600192,
+          "heapUsedMiB": 786.2559432983398,
+          "batchSize": 100,
+          "acknowledgeGroup": 1,
+          "receiveLatency": {
+            "samples": 200,
+            "p50Millis": 0.3,
+            "p95Millis": 0.9,
+            "p99Millis": 6.3,
+            "maxMillis": 17.03425
+          },
+          "acknowledgeLatency": {
+            "samples": 200,
+            "p50Millis": 5.8,
+            "p95Millis": 15.2,
+            "p99Millis": 18.9,
+            "maxMillis": 19.14175
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "drain",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 20000,
+          "seconds": 0.075455333,
+          "eventsPerSecond": 265057.474466384,
+          "heapUsedMiB": 935.2559432983398,
+          "batchSize": 100,
+          "acknowledgeGroup": 100,
+          "receiveLatency": {
+            "samples": 2,
+            "p50Millis": 14.3,
+            "p95Millis": 18.6,
+            "p99Millis": 18.6,
+            "maxMillis": 18.572916
+          },
+          "acknowledgeLatency": {
+            "samples": 2,
+            "p50Millis": 19.5,
+            "p95Millis": 22.5,
+            "p99Millis": 22.5,
+            "maxMillis": 22.466041
+          },
+          "integrity": "passed"
+        },
+        {
+          "scenario": "live",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 10000,
+          "seconds": 10.137367666,
+          "eventsPerSecond": 986.4493751705661,
+          "heapUsedMiB": 547.7559432983398,
+          "offeredEventsPerSecond": 1000,
+          "batchSize": 1,
+          "workers": 1,
+          "producerSeconds": 10.001076875,
+          "producerEventsPerSecond": 999.892324095349,
+          "backlogAtProducerStop": 855,
+          "maxBacklog": 1127,
+          "drainAfterStopMillis": 136.290791,
+          "enqueueLatency": {
+            "samples": 10000,
+            "p50Millis": 0.2,
+            "p95Millis": 0.5,
+            "p99Millis": 3.5,
+            "maxMillis": 48.71475
+          },
+          "acknowledgeLatency": {
+            "samples": 107,
+            "p50Millis": 6.1,
+            "p95Millis": 23.0,
+            "p99Millis": 27.2,
+            "maxMillis": 37.8765
+          },
+          "handoffLatency": {
+            "samples": 10000,
+            "p50Millis": 624.1,
+            "p95Millis": 1044.1,
+            "p99Millis": 1075.1,
+            "maxMillis": 1130.0
+          },
+          "remainingSpoolBytes": 990090,
+          "integrity": "passed",
+          "gcMillis": 12,
+          "windows": [
+            {
+              "elapsedSeconds": 10.000317333,
+              "eventsPerSecond": 999.9682677069703,
+              "backlog": 855,
+              "heapUsedMiB": 540.7618637084961
+            }
+          ]
+        },
+        {
+          "scenario": "live",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 100000,
+          "seconds": 10.143270875,
+          "eventsPerSecond": 9858.752786191368,
+          "heapUsedMiB": 706.7687454223633,
+          "offeredEventsPerSecond": 10000,
+          "batchSize": 100,
+          "workers": 1,
+          "producerSeconds": 10.0343125,
+          "producerEventsPerSecond": 9965.804832169619,
+          "backlogAtProducerStop": 10000,
+          "maxBacklog": 11700,
+          "drainAfterStopMillis": 108.958375,
+          "enqueueLatency": {
+            "samples": 1000,
+            "p50Millis": 1.1,
+            "p95Millis": 2.4,
+            "p99Millis": 19.7,
+            "maxMillis": 61.7315
+          },
+          "acknowledgeLatency": {
+            "samples": 10,
+            "p50Millis": 17.2,
+            "p95Millis": 38.5,
+            "p99Millis": 38.5,
+            "maxMillis": 38.432416
+          },
+          "handoffLatency": {
+            "samples": 1000,
+            "p50Millis": 623.1,
+            "p95Millis": 1066.1,
+            "p99Millis": 1113.1,
+            "maxMillis": 1148.0
+          },
+          "remainingSpoolBytes": 9900090,
+          "integrity": "passed",
+          "gcMillis": 33,
+          "windows": [
+            {
+              "elapsedSeconds": 10.002042,
+              "eventsPerSecond": 9987.96045847438,
+              "backlog": 9900,
+              "heapUsedMiB": 670.3424453735352
+            }
+          ]
+        },
+        {
+          "scenario": "live",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 100000,
+          "seconds": 10.198352583,
+          "eventsPerSecond": 9805.505270203503,
+          "heapUsedMiB": 587.8936538696289,
+          "offeredEventsPerSecond": 10000,
+          "batchSize": 100,
+          "workers": 16,
+          "producerSeconds": 10.029192917,
+          "producerEventsPerSecond": 9970.892057574727,
+          "backlogAtProducerStop": 10000,
+          "maxBacklog": 11800,
+          "drainAfterStopMillis": 169.159666,
+          "enqueueLatency": {
+            "samples": 1000,
+            "p50Millis": 0.9,
+            "p95Millis": 2.1,
+            "p99Millis": 17.9,
+            "maxMillis": 49.524625
+          },
+          "acknowledgeLatency": {
+            "samples": 10,
+            "p50Millis": 16.1,
+            "p95Millis": 21.3,
+            "p99Millis": 21.3,
+            "maxMillis": 21.205667
+          },
+          "handoffLatency": {
+            "samples": 1000,
+            "p50Millis": 603.1,
+            "p95Millis": 1045.1,
+            "p99Millis": 1092.1,
+            "maxMillis": 1182.0
+          },
+          "remainingSpoolBytes": 9900090,
+          "integrity": "passed",
+          "gcMillis": 14,
+          "windows": [
+            {
+              "elapsedSeconds": 10.000438542,
+              "eventsPerSecond": 9989.561915753835,
+              "backlog": 9900,
+              "heapUsedMiB": 551.9937591552734
+            }
+          ]
+        },
+        {
+          "scenario": "live",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 200000,
+          "seconds": 1.344746292,
+          "eventsPerSecond": 148726.9391927797,
+          "heapUsedMiB": 409.4149627685547,
+          "offeredEventsPerSecond": 0,
+          "batchSize": 100,
+          "workers": 16,
+          "producerSeconds": 1.19536175,
+          "producerEventsPerSecond": 167313.3676897391,
+          "backlogAtProducerStop": 10000,
+          "maxBacklog": 31900,
+          "drainAfterStopMillis": 149.384542,
+          "enqueueLatency": {
+            "samples": 2000,
+            "p50Millis": 0.2,
+            "p95Millis": 0.7,
+            "p99Millis": 14.9,
+            "maxMillis": 58.053333
+          },
+          "acknowledgeLatency": {
+            "samples": 20,
+            "p50Millis": 17.1,
+            "p95Millis": 28.3,
+            "p99Millis": 35.5,
+            "maxMillis": 35.413209
+          },
+          "handoffLatency": {
+            "samples": 2000,
+            "p50Millis": 107.1,
+            "p95Millis": 149.1,
+            "p99Millis": 157.1,
+            "maxMillis": 186.0
+          },
+          "remainingSpoolBytes": 19800180,
+          "integrity": "passed",
+          "gcMillis": 11,
+          "windows": []
+        },
+        {
+          "scenario": "recovery",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 105000,
+          "seconds": 0.034877417,
+          "eventsPerSecond": 3010544.043442208,
+          "heapUsedMiB": 240.9149627685547,
+          "recoveryMillis": 34.877417,
+          "drainEventsPerSecond": 292402.8175634743,
+          "receiveLatency": {
+            "samples": 11,
+            "p50Millis": 13.4,
+            "p95Millis": 23.5,
+            "p99Millis": 23.5,
+            "maxMillis": 23.466583
+          },
+          "acknowledgeLatency": {
+            "samples": 11,
+            "p50Millis": 16.4,
+            "p95Millis": 26.3,
+            "p99Millis": 26.3,
+            "maxMillis": 26.221
+          },
+          "integrity": "passed"
+        }
+      ]
+    },
+    "large": {
+      "command": "./gradlew :analytics:analytics:benchmarkDiskAnalyticsQueue --args='--mode=enqueue --events=20000 --batches=100,1000 --padding=4096 --repeats=3 --output=/tmp/analytics-benchmark-large.jsonl'",
+      "records": [
+        {
+          "scenario": "environment",
+          "runId": "f314da74-1b9d-4b7a-badc-309764a0ece1",
+          "java": "25.0.3+9-LTS-jvmci-b01",
+          "vm": "Java HotSpot(TM) 64-Bit Server VM",
+          "os": "Mac OS X 27.0.1 aarch64",
+          "processors": 16,
+          "maxHeapMiB": 1024,
+          "root": "/var/folders/_p/2j7nnhgj0_51zyg28t_vtbpr0000gn/T",
+          "fileStore": "/System/Volumes/Data (/dev/disk3s1)",
+          "paddingBytes": 4096,
+          "repeats": 3,
+          "events": 20000,
+          "seconds": 10,
+          "note": "Queue only; production fsync/dedup enabled; no Iceberg, transforms or HTTP; percentile buckets have 0.1ms resolution"
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 1,
+          "paddingBytes": 4096,
+          "events": 20000,
+          "seconds": 0.221478458,
+          "eventsPerSecond": 90302.23607570899,
+          "heapUsedMiB": 90.06287384033203,
+          "batchSize": 100,
+          "enqueueLatency": {
+            "samples": 200,
+            "p50Millis": 0.7,
+            "p95Millis": 2.7,
+            "p99Millis": 11.4,
+            "maxMillis": 21.401958
+          },
+          "spoolBytes": 89878960,
+          "encodedBytesPerEvent": 4392.1,
+          "spoolFiles": 6
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 1,
+          "paddingBytes": 4096,
+          "events": 20000,
+          "seconds": 0.185184708,
+          "eventsPerSecond": 108000.27829511711,
+          "heapUsedMiB": 361.3993377685547,
+          "batchSize": 1000,
+          "enqueueLatency": {
+            "samples": 20,
+            "p50Millis": 6.0,
+            "p95Millis": 23.7,
+            "p99Millis": 27.9,
+            "maxMillis": 27.843625
+          },
+          "spoolBytes": 89798272,
+          "encodedBytesPerEvent": 4389.31,
+          "spoolFiles": 6
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 2,
+          "paddingBytes": 4096,
+          "events": 20000,
+          "seconds": 0.158939958,
+          "eventsPerSecond": 125833.6811690865,
+          "heapUsedMiB": 686.6562805175781,
+          "batchSize": 100,
+          "enqueueLatency": {
+            "samples": 200,
+            "p50Millis": 0.5,
+            "p95Millis": 0.6,
+            "p99Millis": 12.1,
+            "maxMillis": 24.202416
+          },
+          "spoolBytes": 89881612,
+          "encodedBytesPerEvent": 4392.1,
+          "spoolFiles": 6
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 2,
+          "paddingBytes": 4096,
+          "events": 20000,
+          "seconds": 0.15139775,
+          "eventsPerSecond": 132102.35951326886,
+          "heapUsedMiB": 243.35069274902344,
+          "batchSize": 1000,
+          "enqueueLatency": {
+            "samples": 20,
+            "p50Millis": 4.6,
+            "p95Millis": 18.9,
+            "p99Millis": 24.1,
+            "maxMillis": 24.013666
+          },
+          "spoolBytes": 89798272,
+          "encodedBytesPerEvent": 4389.31,
+          "spoolFiles": 6
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 3,
+          "paddingBytes": 4096,
+          "events": 20000,
+          "seconds": 0.229266083,
+          "eventsPerSecond": 87234.88332114088,
+          "heapUsedMiB": 567.1882476806641,
+          "batchSize": 100,
+          "enqueueLatency": {
+            "samples": 200,
+            "p50Millis": 0.5,
+            "p95Millis": 0.5,
+            "p99Millis": 12.1,
+            "maxMillis": 63.412125
+          },
+          "spoolBytes": 89881612,
+          "encodedBytesPerEvent": 4391.08,
+          "spoolFiles": 6
+        },
+        {
+          "scenario": "enqueue",
+          "trial": 3,
+          "paddingBytes": 4096,
+          "events": 20000,
+          "seconds": 0.145841583,
+          "eventsPerSecond": 137135.09952782124,
+          "heapUsedMiB": 122.65235137939453,
+          "batchSize": 1000,
+          "enqueueLatency": {
+            "samples": 20,
+            "p50Millis": 4.1,
+            "p95Millis": 20.8,
+            "p99Millis": 22.8,
+            "maxMillis": 22.738542
+          },
+          "spoolBytes": 89788252,
+          "encodedBytesPerEvent": 4389.31,
+          "spoolFiles": 6
+        }
+      ]
+    },
+    "single-live": {
+      "command": "./gradlew :analytics:analytics:benchmarkDiskAnalyticsQueue --args='--mode=live --rate=10000 --batch=1 --workers=16 --events=200000 --seconds=15 --repeats=3 --output=/tmp/analytics-benchmark-single-live.jsonl'",
+      "records": [
+        {
+          "scenario": "environment",
+          "runId": "9660629d-266d-4f5f-842f-e7542bbe4fe2",
+          "java": "25.0.3+9-LTS-jvmci-b01",
+          "vm": "Java HotSpot(TM) 64-Bit Server VM",
+          "os": "Mac OS X 27.0.1 aarch64",
+          "processors": 16,
+          "maxHeapMiB": 1024,
+          "root": "/var/folders/_p/2j7nnhgj0_51zyg28t_vtbpr0000gn/T",
+          "fileStore": "/System/Volumes/Data (/dev/disk3s1)",
+          "paddingBytes": 256,
+          "repeats": 3,
+          "events": 200000,
+          "seconds": 15,
+          "note": "Queue only; production fsync/dedup enabled; no Iceberg, transforms or HTTP; percentile buckets have 0.1ms resolution"
+        },
+        {
+          "scenario": "live",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 149991,
+          "seconds": 15.97379625,
+          "eventsPerSecond": 9389.815523658004,
+          "heapUsedMiB": 236.83330535888672,
+          "offeredEventsPerSecond": 10000,
+          "batchSize": 1,
+          "workers": 16,
+          "producerSeconds": 15.000282958,
+          "producerEventsPerSecond": 9999.211376209827,
+          "backlogAtProducerStop": 9991,
+          "maxBacklog": 11362,
+          "drainAfterStopMillis": 973.513292,
+          "enqueueLatency": {
+            "samples": 149991,
+            "p50Millis": 0.1,
+            "p95Millis": 0.1,
+            "p99Millis": 0.7,
+            "maxMillis": 35.040958
+          },
+          "acknowledgeLatency": {
+            "samples": 1500,
+            "p50Millis": 43.7,
+            "p95Millis": 79.8,
+            "p99Millis": 88.8,
+            "maxMillis": 114.464542
+          },
+          "handoffLatency": {
+            "samples": 149991,
+            "p50Millis": 669.1,
+            "p95Millis": 990.1,
+            "p99Millis": 1081.1,
+            "maxMillis": 1144.0
+          },
+          "remainingSpoolBytes": 14849244,
+          "integrity": "passed",
+          "gcMillis": 20,
+          "windows": [
+            {
+              "elapsedSeconds": 10.005856833,
+              "eventsPerSecond": 9994.046653775464,
+              "backlog": 9999,
+              "heapUsedMiB": 589.1842498779297
+            }
+          ]
+        },
+        {
+          "scenario": "live",
+          "trial": 2,
+          "paddingBytes": 256,
+          "events": 148474,
+          "seconds": 15.689403791,
+          "eventsPerSecond": 9463.329644506312,
+          "heapUsedMiB": 188.3558120727539,
+          "offeredEventsPerSecond": 10000,
+          "batchSize": 1,
+          "workers": 16,
+          "producerSeconds": 15.001735916,
+          "producerEventsPerSecond": 9897.121295252642,
+          "backlogAtProducerStop": 8729,
+          "maxBacklog": 11154,
+          "drainAfterStopMillis": 687.667875,
+          "enqueueLatency": {
+            "samples": 148474,
+            "p50Millis": 0.1,
+            "p95Millis": 0.2,
+            "p99Millis": 1.5,
+            "maxMillis": 27.59525
+          },
+          "acknowledgeLatency": {
+            "samples": 1486,
+            "p50Millis": 45.0,
+            "p95Millis": 79.4,
+            "p99Millis": 87.0,
+            "maxMillis": 116.940958
+          },
+          "handoffLatency": {
+            "samples": 148474,
+            "p50Millis": 625.1,
+            "p95Millis": 973.1,
+            "p99Millis": 1037.1,
+            "maxMillis": 1119.0
+          },
+          "remainingSpoolBytes": 14699070,
+          "integrity": "passed",
+          "gcMillis": 27,
+          "windows": [
+            {
+              "elapsedSeconds": 10.000725625,
+              "eventsPerSecond": 9938.778817362065,
+              "backlog": 9350,
+              "heapUsedMiB": 537.2213516235352
+            }
+          ]
+        },
+        {
+          "scenario": "live",
+          "trial": 3,
+          "paddingBytes": 256,
+          "events": 148616,
+          "seconds": 15.644179375,
+          "eventsPerSecond": 9499.763230629667,
+          "heapUsedMiB": 167.02296447753906,
+          "offeredEventsPerSecond": 10000,
+          "batchSize": 1,
+          "workers": 16,
+          "producerSeconds": 15.000118333,
+          "producerEventsPerSecond": 9907.655173162693,
+          "backlogAtProducerStop": 7844,
+          "maxBacklog": 11179,
+          "drainAfterStopMillis": 644.061042,
+          "enqueueLatency": {
+            "samples": 148616,
+            "p50Millis": 0.1,
+            "p95Millis": 0.2,
+            "p99Millis": 2.1,
+            "maxMillis": 77.029334
+          },
+          "acknowledgeLatency": {
+            "samples": 1489,
+            "p50Millis": 45.9,
+            "p95Millis": 82.0,
+            "p99Millis": 92.0,
+            "maxMillis": 121.922875
+          },
+          "handoffLatency": {
+            "samples": 148616,
+            "p50Millis": 601.1,
+            "p95Millis": 970.1,
+            "p99Millis": 1046.1,
+            "maxMillis": 1122.0
+          },
+          "remainingSpoolBytes": 14713128,
+          "integrity": "passed",
+          "gcMillis": 29,
+          "windows": [
+            {
+              "elapsedSeconds": 10.001395125,
+              "eventsPerSecond": 9858.624598635683,
+              "backlog": 7887,
+              "heapUsedMiB": 510.53881072998047
+            }
+          ]
+        }
+      ]
+    },
+    "long": {
+      "command": "./gradlew :analytics:analytics:benchmarkDiskAnalyticsQueue --args='--mode=live --rate=10000 --batch=100 --workers=16 --events=1600000 --seconds=150 --repeats=1 --output=/tmp/analytics-benchmark-long.jsonl'",
+      "records": [
+        {
+          "scenario": "environment",
+          "runId": "c0b3c079-ad9b-4132-b65b-c07888d6c6ea",
+          "java": "25.0.3+9-LTS-jvmci-b01",
+          "vm": "Java HotSpot(TM) 64-Bit Server VM",
+          "os": "Mac OS X 27.0.1 aarch64",
+          "processors": 16,
+          "maxHeapMiB": 1024,
+          "root": "/var/folders/_p/2j7nnhgj0_51zyg28t_vtbpr0000gn/T",
+          "fileStore": "/System/Volumes/Data (/dev/disk3s1)",
+          "paddingBytes": 256,
+          "repeats": 1,
+          "events": 1600000,
+          "seconds": 150,
+          "note": "Queue only; production fsync/dedup enabled; no Iceberg, transforms or HTTP; percentile buckets have 0.1ms resolution"
+        },
+        {
+          "scenario": "live",
+          "trial": 1,
+          "paddingBytes": 256,
+          "events": 1500000,
+          "seconds": 150.166418625,
+          "eventsPerSecond": 9988.91772031831,
+          "heapUsedMiB": 612.6539077758789,
+          "offeredEventsPerSecond": 10000,
+          "batchSize": 100,
+          "workers": 16,
+          "producerSeconds": 150.0380675,
+          "producerEventsPerSecond": 9997.46281056306,
+          "backlogAtProducerStop": 10000,
+          "maxBacklog": 11800,
+          "drainAfterStopMillis": 128.351125,
+          "enqueueLatency": {
+            "samples": 15000,
+            "p50Millis": 1.2,
+            "p95Millis": 2.4,
+            "p99Millis": 19.8,
+            "maxMillis": 50.178417
+          },
+          "acknowledgeLatency": {
+            "samples": 150,
+            "p50Millis": 17.7,
+            "p95Millis": 20.2,
+            "p99Millis": 28.3,
+            "maxMillis": 32.6525
+          },
+          "handoffLatency": {
+            "samples": 15000,
+            "p50Millis": 604.1,
+            "p95Millis": 1044.1,
+            "p99Millis": 1098.1,
+            "maxMillis": 1160.0
+          },
+          "remainingSpoolBytes": 118801080,
+          "integrity": "passed",
+          "gcMillis": 340,
+          "windows": [
+            {
+              "elapsedSeconds": 10.007965166,
+              "eventsPerSecond": 9982.049132164215,
+              "backlog": 9900,
+              "heapUsedMiB": 371.68455505371094
+            },
+            {
+              "elapsedSeconds": 20.009232875,
+              "eventsPerSecond": 9998.73245168824,
+              "backlog": 9900,
+              "heapUsedMiB": 597.9879455566406
+            },
+            {
+              "elapsedSeconds": 30.009865666,
+              "eventsPerSecond": 9999.367249039911,
+              "backlog": 9900,
+              "heapUsedMiB": 201.15392303466797
+            },
+            {
+              "elapsedSeconds": 40.010521041,
+              "eventsPerSecond": 9999.344667948824,
+              "backlog": 9900,
+              "heapUsedMiB": 413.35984802246094
+            },
+            {
+              "elapsedSeconds": 50.010712166,
+              "eventsPerSecond": 9999.808878652806,
+              "backlog": 9900,
+              "heapUsedMiB": 623.9704208374023
+            },
+            {
+              "elapsedSeconds": 60.010883375,
+              "eventsPerSecond": 9999.828793931201,
+              "backlog": 9900,
+              "heapUsedMiB": 284.646728515625
+            },
+            {
+              "elapsedSeconds": 70.012014666,
+              "eventsPerSecond": 9998.868836967456,
+              "backlog": 9900,
+              "heapUsedMiB": 529.0859375
+            },
+            {
+              "elapsedSeconds": 80.013275291,
+              "eventsPerSecond": 9998.739533897507,
+              "backlog": 9900,
+              "heapUsedMiB": 791.1572952270508
+            },
+            {
+              "elapsedSeconds": 90.014615333,
+              "eventsPerSecond": 9998.660137547196,
+              "backlog": 9900,
+              "heapUsedMiB": 492.1488342285156
+            },
+            {
+              "elapsedSeconds": 100.014941666,
+              "eventsPerSecond": 9999.673677648976,
+              "backlog": 9900,
+              "heapUsedMiB": 775.1351547241211
+            },
+            {
+              "elapsedSeconds": 110.016157708,
+              "eventsPerSecond": 9998.784105857834,
+              "backlog": 9900,
+              "heapUsedMiB": 488.5248794555664
+            },
+            {
+              "elapsedSeconds": 120.016929791,
+              "eventsPerSecond": 9999.227976606613,
+              "backlog": 9900,
+              "heapUsedMiB": 799.7213516235352
+            },
+            {
+              "elapsedSeconds": 130.017805833,
+              "eventsPerSecond": 9999.124034738235,
+              "backlog": 9900,
+              "heapUsedMiB": 526.6934280395508
+            },
+            {
+              "elapsedSeconds": 140.019038666,
+              "eventsPerSecond": 9998.767318968985,
+              "backlog": 9900,
+              "heapUsedMiB": 843.2213516235352
+            },
+            {
+              "elapsedSeconds": 150.019621708,
+              "eventsPerSecond": 9999.416991991815,
+              "backlog": 9900,
+              "heapUsedMiB": 579.6539077758789
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

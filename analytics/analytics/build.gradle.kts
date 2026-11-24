@@ -109,8 +109,28 @@ kover {
     }
 }
 
+tasks.register<JavaExec>("benchmarkDiskAnalyticsQueue") {
+    group = "verification"
+    description = "Measures the durable disk analytics queue on an isolated local spool."
+    dependsOn(benchmark.classesTaskName)
+    classpath = benchmark.runtimeClasspath
+    mainClass.set("bosca.analytics.queue.DiskAnalyticsQueueBenchmark")
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
+    jvmArgs("-Xms1g", "-Xmx1g")
+    outputs.upToDateWhen { false }
+}
 
 
+tasks.register<JavaExec>("benchmarkDiskAnalyticsPipeline") {
+    group = "verification"
+    description = "Measures isolated local queue-to-Parquet/Iceberg endurance while an earlier segment retries."
+    dependsOn(benchmark.classesTaskName)
+    classpath = benchmark.runtimeClasspath
+    mainClass.set("bosca.analytics.queue.DiskAnalyticsPipelineBenchmark")
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
+    jvmArgs("-Xms1g", "-Xmx1g", "--enable-native-access=ALL-UNNAMED")
+    outputs.upToDateWhen { false }
+}
 
 // This executable verifies queue code and serializers; native collector wiring is checked separately.
 val nativeQueueClasspath = benchmark.runtimeClasspath.filter { file ->
