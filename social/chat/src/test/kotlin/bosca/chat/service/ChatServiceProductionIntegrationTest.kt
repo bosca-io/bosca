@@ -290,7 +290,7 @@ class ChatServiceProductionIntegrationTest {
         assertEquals(reactorId, event.reactorId)
         assertEquals(message.senderId, event.messageAuthorId)
         assertEquals("👍", event.emoji)
-        val storedReaction = ChatReactionStore(nats).getForMessage(channelId, message.sequence).single()
+        val storedReaction = bosca.chat.state.NatsChatReactionStore(nats).getForMessage(channelId, message.sequence).single()
         assertEquals(event.reactionId, storedReaction.id)
         assertEquals("👍", storedReaction.emoji)
     }
@@ -303,7 +303,7 @@ class ChatServiceProductionIntegrationTest {
         val service = realDeliveryService()
         service.getMessages(channelId, limit = 1)
         val published = publishMessage(channelId)
-        val reactionStore = ChatReactionStore(nats)
+        val reactionStore = bosca.chat.state.NatsChatReactionStore(nats)
         reactionStore.add(channelId, published.sequence, profileId, UUID.random(), "thumbsup")
 
         assertNull(service.getMessage(otherChannelId, published.sequence))
@@ -377,10 +377,10 @@ class ChatServiceProductionIntegrationTest {
             channelRepository,
             ChatChannelInvitationRepositoryImpl(),
             securityService,
-            ChatReactionStore(nats),
-            ChatReadStateStore(nats),
-            ChatTypingStore(nats),
-            ChatPresenceStore(nats),
+            bosca.chat.state.NatsChatReactionStore(nats),
+            bosca.chat.state.NatsChatReadStateStore(nats),
+            bosca.chat.state.NatsChatTypingStore(nats),
+            bosca.chat.state.NatsChatPresenceStore(nats),
         )
 
         inDb { handler.onProfileCleanup(profileId, principalId) }
@@ -414,13 +414,13 @@ class ChatServiceProductionIntegrationTest {
         // either one, MockK throws instead of allowing the integration test to manufacture success.
         val securityService = mockk<SecurityService>()
         return ChatServiceImpl(
-            nats = nats,
+            messageStore = bosca.chat.message.NatsChatMessageStore(nats, json),
             chatChannelRepository = channelRepository,
             chatChannelPermissionRepository = permissionRepository,
-            reactionStore = ChatReactionStore(nats),
-            typingStore = ChatTypingStore(nats),
-            presenceStore = ChatPresenceStore(nats),
-            readStateStore = ChatReadStateStore(nats),
+            reactionStore = bosca.chat.state.NatsChatReactionStore(nats),
+            typingStore = bosca.chat.state.NatsChatTypingStore(nats),
+            presenceStore = bosca.chat.state.NatsChatPresenceStore(nats),
+            readStateStore = bosca.chat.state.NatsChatReadStateStore(nats),
             profileService = mockk<ProfileService>(),
             securityService = securityService,
             pubSubService = pubSub,

@@ -22,23 +22,23 @@ import kotlinx.coroutines.withContext
  * `last_read_sequence`, which moved off the relational schema with
  * the rest of chat state.
  */
-class ChatReadStateStore(
+class NatsChatReadStateStore(
     nats: NatsConnectionPool,
-) {
+) : ChatReadStateStore {
     private val accessor = NatsKeyValueAccessor(nats, BUCKET) {
         storageType(StorageType.File)
         description("Chat last-read sequence: <channelId>.<profileId> -> int64")
     }
 
     /** Records that [profileId] has read up through [sequence] in [channelId]. */
-    suspend fun set(channelId: UUID, profileId: UUID, sequence: Long) {
+    override suspend fun set(channelId: UUID, profileId: UUID, sequence: Long) {
         val kv = accessor.get()
         val payload = ByteBuffer.allocate(8).putLong(sequence).array()
         withContext(Dispatchers.IO) { kv.put(key(channelId, profileId), payload) }
     }
 
     /** Last-read sequence for one membership, or null if the user has never read. */
-    suspend fun get(channelId: UUID, profileId: UUID): Long? {
+    override suspend fun get(channelId: UUID, profileId: UUID): Long? {
         val kv = accessor.get()
         return withContext(Dispatchers.IO) {
             val entry = kv.get(key(channelId, profileId)) ?: return@withContext null
@@ -53,7 +53,7 @@ class ChatReadStateStore(
      * Used when rendering the channel members panel so we can fetch
      * one batch instead of N round-trips.
      */
-    suspend fun getAll(
+    override suspend fun getAll(
         memberships: Collection<Pair<UUID, UUID>>,
     ): Map<Pair<UUID, UUID>, Long> {
         if (memberships.isEmpty()) return emptyMap()
@@ -69,13 +69,13 @@ class ChatReadStateStore(
     }
 
     /** Drops the last-read marker — used when a user leaves a channel. */
-    suspend fun clear(channelId: UUID, profileId: UUID) {
+    override suspend fun clear(channelId: UUID, profileId: UUID) {
         val kv = accessor.get()
         withContext(Dispatchers.IO) { kv.delete(key(channelId, profileId)) }
     }
 
     /** Drops every last-read marker owned by a permanently deleted profile. */
-    suspend fun clearProfile(profileId: UUID) {
+    override suspend fun clearProfile(profileId: UUID) {
         val kv = accessor.get()
         withContext(Dispatchers.IO) {
             kv.keys("*.$profileId").forEach(kv::delete)
@@ -83,7 +83,7 @@ class ChatReadStateStore(
     }
 
     /** Drops every last-read marker for a deleted channel. */
-    suspend fun clearChannel(channelId: UUID) {
+    override suspend fun clearChannel(channelId: UUID) {
         val kv = accessor.get()
         withContext(Dispatchers.IO) {
             kv.keys("$channelId.*").forEach(kv::delete)

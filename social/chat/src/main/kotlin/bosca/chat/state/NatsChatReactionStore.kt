@@ -16,15 +16,15 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
-class ChatReactionStore(
+class NatsChatReactionStore(
     nats: NatsConnectionPool,
-) {
+) : ChatReactionStore {
     private val accessor = NatsKeyValueAccessor(nats, BUCKET) {
         storageType(StorageType.File)
         description("Chat message reactions: <channelId>.<sequence>.<profileId> -> JSON array of reaction records")
     }
 
-    suspend fun add(
+    override suspend fun add(
         channelId: UUID,
         sequence: Long,
         profileId: UUID,
@@ -41,7 +41,7 @@ class ChatReactionStore(
         }
     }
 
-    suspend fun remove(channelId: UUID, sequence: Long, profileId: UUID, emoji: String) {
+    override suspend fun remove(channelId: UUID, sequence: Long, profileId: UUID, emoji: String) {
         val kv = accessor.get()
         val k = key(channelId, sequence, profileId)
         withContext(Dispatchers.IO) {
@@ -55,11 +55,11 @@ class ChatReactionStore(
         }
     }
 
-    suspend fun getForMessage(channelId: UUID, sequence: Long): List<MessageReaction> {
+    override suspend fun getForMessage(channelId: UUID, sequence: Long): List<MessageReaction> {
         return getForMessages(channelId, listOf(sequence))[sequence].orEmpty()
     }
 
-    suspend fun getForMessages(
+    override suspend fun getForMessages(
         channelId: UUID,
         sequences: Collection<Long>,
     ): Map<Long, List<MessageReaction>> {
@@ -96,7 +96,7 @@ class ChatReactionStore(
     }
 
     /** Drops every reaction stored for one message in [channelId]. */
-    suspend fun clearMessage(channelId: UUID, sequence: Long) {
+    override suspend fun clearMessage(channelId: UUID, sequence: Long) {
         val kv = accessor.get()
         withContext(Dispatchers.IO) {
             kv.keys("$channelId.$sequence.>").forEach(kv::delete)
@@ -104,7 +104,7 @@ class ChatReactionStore(
     }
 
     /** Drops every reaction stored for [channelId]. */
-    suspend fun clearChannel(channelId: UUID) {
+    override suspend fun clearChannel(channelId: UUID) {
         val kv = accessor.get()
         withContext(Dispatchers.IO) {
             kv.keys("$channelId.>").forEach(kv::delete)
@@ -112,7 +112,7 @@ class ChatReactionStore(
     }
 
     /** Drops every reaction owned by a permanently deleted profile. */
-    suspend fun clearProfile(profileId: UUID) {
+    override suspend fun clearProfile(profileId: UUID) {
         val kv = accessor.get()
         withContext(Dispatchers.IO) {
             kv.keys("*.*.$profileId").forEach(kv::delete)

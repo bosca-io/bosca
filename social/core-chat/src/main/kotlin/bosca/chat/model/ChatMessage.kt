@@ -10,7 +10,7 @@ import kotlinx.serialization.json.JsonElement
 
 /**
  * A single message within a chat channel. Messages are ordered by a monotonically
- * increasing [sequence] number assigned by the underlying message store (NATS JetStream).
+ * increasing [sequence] number assigned by the selected message store.
  * Threading is supported via [parentSequence] which points to the root message of a thread.
  */
 @Serializable

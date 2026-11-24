@@ -28,7 +28,7 @@ class ChatFilteredStateStoreTest {
         val kv = mockk<KeyValue>()
         every { kv.get(key) } returns null
         every { kv.put(key, any<ByteArray>()) } returns 1L
-        val store = ChatReactionStore(pool(ChatReactionStore.BUCKET, kv))
+        val store = bosca.chat.state.NatsChatReactionStore(pool(ChatReactionStore.BUCKET, kv))
 
         assertTrue(store.add(channelId, sequence, profileId, reactionId, "👍"))
 
@@ -51,7 +51,7 @@ class ChatFilteredStateStoreTest {
         every { entry.value } returns """[{"id":"$reactionId","emoji":"👍"}]""".toByteArray()
         every { kv.keys(listOf("$channelId.$sequence.>")) } returns listOf(key)
         every { kv.get(key) } returns entry
-        val store = ChatReactionStore(pool(ChatReactionStore.BUCKET, kv))
+        val store = bosca.chat.state.NatsChatReactionStore(pool(ChatReactionStore.BUCKET, kv))
 
         val result = store.getForMessages(channelId, listOf(sequence))
 
@@ -70,7 +70,7 @@ class ChatFilteredStateStoreTest {
         every { entry.value } returns "[\"👍\"]".toByteArray()
         every { kv.keys(listOf("$channelId.$sequence.>")) } returns listOf(key)
         every { kv.get(key) } returns entry
-        val store = ChatReactionStore(pool(ChatReactionStore.BUCKET, kv))
+        val store = bosca.chat.state.NatsChatReactionStore(pool(ChatReactionStore.BUCKET, kv))
 
         val first = store.getForMessage(channelId, sequence).single()
         val second = store.getForMessage(channelId, sequence).single()
@@ -87,7 +87,7 @@ class ChatFilteredStateStoreTest {
         val profileId = UUID.random()
         val kv = mockk<KeyValue>()
         every { kv.keys("$channelId.>") } returns listOf("$channelId.$profileId")
-        val store = ChatTypingStore(pool(ChatTypingStore.BUCKET, kv))
+        val store = bosca.chat.state.NatsChatTypingStore(pool(ChatTypingStore.BUCKET, kv))
 
         assertEquals(
             listOf(UserTypingEvent(channelId, profileId, true)),
@@ -103,7 +103,7 @@ class ChatFilteredStateStoreTest {
         val kv = mockk<KeyValue>()
         every { kv.keys("*.$profileId") } returns keys
         every { kv.delete(any()) } returns Unit
-        val store = ChatReadStateStore(pool(ChatReadStateStore.BUCKET, kv))
+        val store = bosca.chat.state.NatsChatReadStateStore(pool(ChatReadStateStore.BUCKET, kv))
 
         store.clearProfile(profileId)
 
@@ -118,7 +118,7 @@ class ChatFilteredStateStoreTest {
         val kv = mockk<KeyValue>()
         every { kv.keys("*.$profileId") } returns keys
         every { kv.delete(any()) } returns Unit
-        val store = ChatTypingStore(pool(ChatTypingStore.BUCKET, kv))
+        val store = bosca.chat.state.NatsChatTypingStore(pool(ChatTypingStore.BUCKET, kv))
 
         store.clearProfile(profileId)
 
