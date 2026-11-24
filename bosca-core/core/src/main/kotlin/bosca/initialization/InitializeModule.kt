@@ -110,6 +110,7 @@ class InitializeModule(
         install(RedisModule())
         install(NatsModule())
         install(CacheModule())
+        install(bosca.configuration.PostgresInfrastructureModule())
         install(CounterModule())
         install(CdnModule())
         install(HttpModule())

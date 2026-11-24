@@ -200,7 +200,8 @@ class CoreMigration : Migration {
                 "V197__bible_chapter_retention_hours.sql",
                 "V198__bible_fums_tokens.sql",
                 "V199__guide_step_metadata_index.sql",
-                "V200__postgres_infrastructure.sql"
+                "V200__postgres_infrastructure.sql",
+                "V201__postgres_cache_counters.sql"
             )
             return base
         }

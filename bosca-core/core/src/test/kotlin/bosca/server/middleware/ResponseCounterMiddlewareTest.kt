@@ -60,27 +60,27 @@ class ResponseCounterMiddlewareTest {
     @Test
     fun `counts a 2xx into the service minute bucket`() = runTest {
         middleware().afterCall(call(HttpStatusCode.OK))
-        coVerify(exactly = 1) { counter.increment("http.web.2xx.100") }
+        coVerify(exactly = 1) { counter.add("http.web.2xx.100") }
     }
 
     @Test
     fun `maps 4xx and 5xx to their class buckets`() = runTest {
         middleware().afterCall(call(HttpStatusCode(404, "Not Found")))
         middleware().afterCall(call(HttpStatusCode(500, "Internal Server Error")))
-        coVerify(exactly = 1) { counter.increment("http.web.4xx.100") }
-        coVerify(exactly = 1) { counter.increment("http.web.5xx.100") }
+        coVerify(exactly = 1) { counter.add("http.web.4xx.100") }
+        coVerify(exactly = 1) { counter.add("http.web.5xx.100") }
     }
 
     @Test
     fun `a response with no explicit status counts as 2xx`() = runTest {
         middleware().afterCall(call(status = null))
-        coVerify(exactly = 1) { counter.increment("http.web.2xx.100") }
+        coVerify(exactly = 1) { counter.add("http.web.2xx.100") }
     }
 
     @Test
     fun `the filter excludes a call from counting`() = runTest {
         middleware(filter = { false }).afterCall(call())
-        coVerify(exactly = 0) { counter.increment(any()) }
+        coVerify(exactly = 0) { counter.add(any()) }
     }
 
     @Test
@@ -90,6 +90,6 @@ class ResponseCounterMiddlewareTest {
         middleware.afterCall(call())
         middleware.afterCall(call())
 
-        coVerify(exactly = 2) { counter.increment("http.web.2xx.100") }
+        coVerify(exactly = 2) { counter.add("http.web.2xx.100") }
     }
 }
