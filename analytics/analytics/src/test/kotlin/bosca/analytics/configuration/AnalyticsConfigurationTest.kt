@@ -1,3 +1,5 @@
+@file:OptIn(bosca.di.annotation.InternalDI::class)
+
 package bosca.analytics.configuration
 
 import bosca.analytics.repository.CompositeEventRepository
@@ -315,12 +317,7 @@ class AnalyticsConfigurationTest {
     }
 
     @Test
-    fun `repository provider selects NATS and Iceberg backends`() = runTest {
-        val natsPool = mockk<NatsConnectionPool>()
-        val json = Json { ignoreUnknownKeys = true }
-        val table = mockk<Table>()
-        val transform = mockk<EventsTransform<List<Record>>>()
-        val protoBuf = ProtoBuf
+    fun `repository provider selects queue forwarding or the shared Iceberg storage instance`() = runTest {
         val errors = mockk<ErrorGroupService>()
         val health = configuration.eventProcessingHealth()
         val natsApplication = application(
@@ -330,33 +327,89 @@ class AnalyticsConfigurationTest {
             """,
         )
         val icebergApplication = application("bosca: {}")
+        val storage = mockk<EventRepository>()
+        val unusedStorage = mockk<bosca.di.ObjectProvider<EventRepository>>()
+        coEvery { unusedStorage.get() } throws AssertionError("Queue forwarding must not resolve Iceberg storage")
 
         assertIs<CompositeEventRepository>(
             configuration.eventRepository(
                 natsApplication,
-                natsPool.asProvider(),
-                json.asProvider(),
-                iceberg().asProvider(),
-                table.asProvider(),
-                transform.asProvider(),
-                protoBuf.asProvider(),
+                mockk<bosca.analytics.queue.AnalyticsEventQueue>(relaxed = true).asProvider(),
+                unusedStorage,
                 errors,
                 health,
             ),
         )
-        assertIs<CompositeEventRepository>(
+        assertSame(
+            storage,
             configuration.eventRepository(
                 icebergApplication,
-                natsPool.asProvider(),
-                json.asProvider(),
-                iceberg().asProvider(),
-                table.asProvider(),
-                transform.asProvider(),
-                protoBuf.asProvider(),
+                bosca.di.MissingObjectProvider(bosca.analytics.queue.AnalyticsEventQueue::class, null),
+                storage.asProvider(),
                 errors,
                 health,
             ),
         )
+        natsApplication.shutdown()
         icebergApplication.shutdown()
+    }
+    @Test
+    fun `default and explicit NATS queue bindings remain lazy until use`(): Unit = runTest {
+        val nats = mockk<NatsConnectionPool>()
+        for (yaml in listOf("bosca: {}", "analyticsEventQueue:\n  type: nats")) {
+            val app = application(yaml)
+            try {
+                assertIs<bosca.analytics.queue.NatsAnalyticsEventQueue>(configuration.analyticsEventQueue(app, nats.asProvider(), Json, configuration.eventProcessingHealth()))
+                io.mockk.coVerify(exactly = 0) { nats.systemConnection() }
+            } finally { app.shutdown() }
+        }
+    }
+    @Test
+    fun `fully specified processing and cache settings reach their configuration providers`(): Unit = runTest {
+        val app = application("""
+            eventProcessing:
+              workerCount: 2
+              channelCapacity: 3
+              natsBatchSize: 4
+              natsFetchTimeoutSeconds: 6
+              scriptServiceAccount: analytics-test
+              fumsEnabled: true
+            analyticsQueryCache:
+              maxEntriesPerQuery: 9
+              idleRetentionDays: 8
+              maxStaleIntervals: 7
+              refreshQueryBatchSize: 6
+              pruneBatchSize: 5
+        """)
+        try {
+            val processing = configuration.eventProcessingConfiguration(app)
+            assertEquals(2, processing.workerCount)
+            assertEquals(3, processing.channelCapacity)
+            assertEquals(4, processing.natsBatchSize)
+            assertEquals(6L, processing.natsFetchTimeoutSeconds)
+            assertEquals("analytics-test", processing.scriptServiceAccount)
+            kotlin.test.assertTrue(processing.fumsEnabled)
+            val cache = configuration.analyticsQueryCacheConfiguration(app)
+            assertEquals(9, cache.maxEntriesPerQuery)
+            assertEquals(8, cache.idleRetentionDays)
+            assertEquals(7, cache.maxStaleIntervals)
+            assertEquals(6, cache.refreshQueryBatchSize)
+            assertEquals(5, cache.pruneBatchSize)
+        } finally { app.shutdown() }
+    }
+
+    @Test
+    fun `queue forwarding repository resolves without any broker or Iceberg binding`(): Unit = runTest {
+        val app = application("eventRepository:\n  type: queue")
+        val queue = mockk<bosca.analytics.queue.AnalyticsEventQueue>(relaxed = true)
+        val unusedStorage = mockk<bosca.di.ObjectProvider<EventRepository>>()
+        coEvery { unusedStorage.get() } throws AssertionError("Queue forwarding must not resolve Iceberg storage")
+        try {
+            val repository = configuration.eventRepository(app, queue.asProvider(), unusedStorage,
+                mockk<ErrorGroupService>(relaxed = true), configuration.eventProcessingHealth())
+            val events = bosca.analytics.model.Events(events = listOf(bosca.analytics.model.Event(1, type = bosca.analytics.model.EventType.Session)), sent = 1, sentMicros = 0)
+            repository.process(events); repository.flush()
+            io.mockk.coVerify(exactly = 1) { queue.enqueue(events) }
+        } finally { app.shutdown() }
     }
 }

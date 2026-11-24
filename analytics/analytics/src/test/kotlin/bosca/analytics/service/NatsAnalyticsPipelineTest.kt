@@ -12,7 +12,8 @@ import bosca.analytics.model.EventType
 import bosca.analytics.model.Events
 import bosca.analytics.repository.EventRepository
 import bosca.analytics.repository.CompositeEventRepository
-import bosca.analytics.repository.nats.NatsEventRepository
+import bosca.analytics.queue.NatsAnalyticsEventQueue
+import bosca.analytics.repository.QueuedEventRepository
 import bosca.analytics.transform.EventPipelineTransform
 import bosca.cache.CacheManager
 import bosca.cache.RequestCacheSerializer
@@ -38,6 +39,7 @@ import io.nats.client.Message
 import io.nats.client.PullSubscribeOptions
 import io.nats.client.api.PublishAck
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -101,6 +103,7 @@ class NatsAnalyticsPipelineTest {
         every { connection.jetStreamManagement() } returns management
         every { connection.jetStreamManagement(any<io.nats.client.JetStreamOptions>()) } returns management
         every { connection.jetStream() } returns jetStream
+        coJustRun { eventRepository.store(any()) }
     }
 
     @AfterTest
@@ -115,12 +118,12 @@ class NatsAnalyticsPipelineTest {
 
     @Test
     fun `readiness records connection failures and recovers after JetStream responds`() = runBlocking {
-        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } throws IOException("NATS unavailable")
-        NatsEventRepository.checkReadiness(nats, health)
+        every { management.getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME) } throws IOException("NATS unavailable")
+        health.recordQueueReadiness(NatsAnalyticsEventQueue(nats, json, health))
         assertFalse(health.isReady)
 
-        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
-        NatsEventRepository.checkReadiness(nats, health)
+        every { management.getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME) } returns mockk()
+        health.recordQueueReadiness(NatsAnalyticsEventQueue(nats, json, health))
         assertTrue(health.isReady)
     }
 
@@ -128,13 +131,13 @@ class NatsAnalyticsPipelineTest {
     fun `readiness times out connection acquisition but preserves caller cancellation`() = runTest {
         val pool = mockk<NatsConnectionPool>()
         coEvery { pool.systemConnection() } coAnswers { awaitCancellation() }
-        NatsEventRepository.checkReadiness(pool, health)
+        health.recordQueueReadiness(NatsAnalyticsEventQueue(pool, json, health))
         assertFalse(health.isReady)
 
-        health.natsRecovered()
+        health.queueRecovered()
         val started = CompletableDeferred<Unit>()
         coEvery { pool.systemConnection() } coAnswers { started.complete(Unit); awaitCancellation() }
-        val request = async { NatsEventRepository.checkReadiness(pool, health) }
+        val request = async { health.recordQueueReadiness(NatsAnalyticsEventQueue(pool, json, health)) }
         started.await()
         request.cancelAndJoin()
         assertTrue(request.isCancelled)
@@ -144,9 +147,9 @@ class NatsAnalyticsPipelineTest {
     @Test
     fun `publisher deduplicates retries only with an installation and event ID`() = runTest {
         val options = mutableListOf<io.nats.client.PublishOptions>()
-        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
+        every { management.getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME) } returns mockk()
         every { jetStream.publishAsync(any(), any<ByteArray>(), capture(options)) } returns CompletableFuture.completedFuture(mockk<PublishAck>())
-        val repository = NatsEventRepository(nats, json, health)
+        val repository = QueuedEventRepository(NatsAnalyticsEventQueue(nats, json, health), health)
         val batch = events.copy(context = eventContext, events = listOf(events.events.first()))
         repository.process(batch)
         repository.process(batch.copy(sent = 100, sentMicros = 20, received = 200, receivedMicros = 30))
@@ -165,9 +168,9 @@ class NatsAnalyticsPipelineTest {
     @Test
     fun `publisher scopes IDs by app installation user and event without separator collisions`() = runTest {
         val options = mutableListOf<io.nats.client.PublishOptions>()
-        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
+        every { management.getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME) } returns mockk()
         every { jetStream.publishAsync(any(), any<ByteArray>(), capture(options)) } returns CompletableFuture.completedFuture(mockk<PublishAck>())
-        val repository = NatsEventRepository(nats, json, health)
+        val repository = QueuedEventRepository(NatsAnalyticsEventQueue(nats, json, health), health)
         val batch = events.copy(context = eventContext, events = listOf(events.events.first()))
         val distinctBatches = listOf(
             batch,
@@ -197,44 +200,45 @@ class NatsAnalyticsPipelineTest {
         val primary = mockk<EventRepository>()
         coEvery { primary.process(any()) } throws IOException("disk unavailable")
         val composite = CompositeEventRepository(primary, emptyList())
-        val consumer = NatsEventConsumer(nats, json, composite, EventPipelineTransforms(emptyList()), EventProcessingConfiguration())
+        val consumer = NatsConsumerTestFixture(nats, json, composite, EventPipelineTransforms(emptyList()), EventProcessingConfiguration())
         val failedStorage = message()
         consumer.processMessage(failedStorage)
-        verify(exactly = 0) { failedStorage.ack() }
-        verify(exactly = 1) { failedStorage.nak() }
+        verify(exactly = 0) { failedStorage.ackSync(any()) }
+        verify(exactly = 1) { failedStorage.nakWithDelay(any<Duration>()) }
 
         coJustRun { primary.process(any()) }
+        coJustRun { primary.flush() }
         coEvery { connectionManager.release() } throws IOException("cleanup unavailable")
         val failedCleanup = message()
         consumer.processMessage(failedCleanup)
-        verify(exactly = 0) { failedCleanup.ack() }
-        verify(exactly = 1) { failedCleanup.nak() }
+        verify(exactly = 0) { failedCleanup.ackSync(any()) }
+        verify(exactly = 1) { failedCleanup.nakWithDelay(any<Duration>()) }
     }
 
     @Test
     fun `publisher initializes stream once and publishes one envelope per event`() = runTest {
-        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
+        every { management.getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME) } returns mockk()
         every { jetStream.publishAsync(any(), any<ByteArray>(), any<io.nats.client.PublishOptions>()) } returns CompletableFuture.completedFuture(mockk<PublishAck>())
-        val repository = NatsEventRepository(nats, json, health)
+        val repository = QueuedEventRepository(NatsAnalyticsEventQueue(nats, json, health), health)
 
         repository.process(events)
         repository.process(events.copy(events = listOf(events.events.first())))
         repository.flush()
 
-        verify(exactly = 3) { jetStream.publishAsync(NatsEventRepository.STREAM_SUBJECT, any<ByteArray>(), any<io.nats.client.PublishOptions>()) }
+        verify(exactly = 3) { jetStream.publishAsync(NatsAnalyticsEventQueue.STREAM_SUBJECT, any<ByteArray>(), any<io.nats.client.PublishOptions>()) }
         verify(exactly = 1) { connection.jetStreamManagement() }
     }
 
     @Test
     fun `publisher sends the whole batch before waiting and requires every acknowledgment`() = runBlocking {
-        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
+        every { management.getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME) } returns mockk()
         val responses = events.events.map { CompletableFuture<PublishAck>() }
         val published = CompletableDeferred<Unit>()
         var count = 0
         every { jetStream.publishAsync(any(), any<ByteArray>(), any<io.nats.client.PublishOptions>()) } answers {
             responses[count++].also { if (count == responses.size) published.complete(Unit) }
         }
-        val repository = NatsEventRepository(nats, json, health)
+        val repository = QueuedEventRepository(NatsAnalyticsEventQueue(nats, json, health), health)
         val pending = async { repository.process(events) }
 
         withTimeout(5000) { published.await() }
@@ -248,13 +252,13 @@ class NatsAnalyticsPipelineTest {
 
     @Test
     fun `publisher reports NATS future cancellation as a failure and publishes subsequent batches`() = runTest {
-        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
+        every { management.getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME) } returns mockk()
         val response = CompletableFuture<PublishAck>()
         val cancelled = response.thenApply { it }
         response.cancel(false)
         every { jetStream.publishAsync(any(), any<ByteArray>(), any<io.nats.client.PublishOptions>()) } returns cancelled andThen
             CompletableFuture.completedFuture(mockk<PublishAck>())
-        val repository = NatsEventRepository(nats, json, health)
+        val repository = QueuedEventRepository(NatsAnalyticsEventQueue(nats, json, health), health)
         val batch = events.copy(events = events.events.take(1))
 
         assertFailsWith<IOException> { repository.process(batch) }
@@ -262,18 +266,18 @@ class NatsAnalyticsPipelineTest {
         repository.process(batch)
         assertTrue(health.isReady)
 
-        verify(exactly = 2) { jetStream.publishAsync(NatsEventRepository.STREAM_SUBJECT, any<ByteArray>(), any<io.nats.client.PublishOptions>()) }
+        verify(exactly = 2) { jetStream.publishAsync(NatsAnalyticsEventQueue.STREAM_SUBJECT, any<ByteArray>(), any<io.nats.client.PublishOptions>()) }
     }
 
     @Test
     fun `publisher preserves caller cancellation while awaiting NATS`() = runTest {
-        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
+        every { management.getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME) } returns mockk()
         val published = CompletableDeferred<Unit>()
         every { jetStream.publishAsync(any(), any<ByteArray>(), any<io.nats.client.PublishOptions>()) } answers {
             published.complete(Unit)
             CompletableFuture<PublishAck>()
         }
-        val repository = NatsEventRepository(nats, json, health)
+        val repository = QueuedEventRepository(NatsAnalyticsEventQueue(nats, json, health), health)
         val pending = async { repository.process(events) }
 
         published.await()
@@ -286,12 +290,12 @@ class NatsAnalyticsPipelineTest {
     fun `concurrent publishers reuse initialization completed by the lock holder`() = runTest {
         val initializationEntered = CountDownLatch(1)
         val allowInitialization = CountDownLatch(1)
-        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } answers {
+        every { management.getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME) } answers {
             initializationEntered.countDown()
             check(allowInitialization.await(10, TimeUnit.SECONDS))
             mockk()
         }
-        val repository = NatsEventRepository(nats, json, health)
+        val repository = QueuedEventRepository(NatsAnalyticsEventQueue(nats, json, health), health)
         val noEvents = events.copy(events = emptyList())
 
         val first = async(Dispatchers.Default) { repository.process(noEvents) }
@@ -314,17 +318,17 @@ class NatsAnalyticsPipelineTest {
     fun `ensureStream creates missing work queue stream and propagates other API errors`() {
         val missing = mockk<JetStreamApiException>()
         every { missing.apiErrorCode } returns 10059
-        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } throws missing
+        every { management.getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME) } throws missing
         every { management.addStream(any<io.nats.client.api.StreamConfiguration>()) } returns mockk()
 
-        NatsEventRepository.ensureStream(management)
+        NatsAnalyticsEventQueue.ensureStream(management)
 
-        verify(exactly = 1) { management.addStream(match { it.name == NatsEventRepository.STREAM_NAME }) }
+        verify(exactly = 1) { management.addStream(match { it.name == NatsAnalyticsEventQueue.STREAM_NAME }) }
 
         val other = mockk<JetStreamApiException>()
         every { other.apiErrorCode } returns 10000
-        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } throws other
-        assertSame(other, assertFailsWith<JetStreamApiException> { NatsEventRepository.ensureStream(management) })
+        every { management.getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME) } throws other
+        assertSame(other, assertFailsWith<JetStreamApiException> { NatsAnalyticsEventQueue.ensureStream(management) })
     }
 
     @Test
@@ -332,55 +336,107 @@ class NatsAnalyticsPipelineTest {
         val transformed = events.copy(sent = 99)
         val transform = mockk<EventPipelineTransform>()
         coEvery { transform.transform(any(), events) } returns transformed
-        coJustRun { eventRepository.process(transformed) }
+        coJustRun { eventRepository.store(listOf(transformed)) }
         val message = message()
-        val consumer = NatsEventConsumer(nats, json, eventRepository, EventPipelineTransforms(listOf(transform)), EventProcessingConfiguration())
+        val consumer = NatsConsumerTestFixture(nats, json, eventRepository, EventPipelineTransforms(listOf(transform)), EventProcessingConfiguration())
 
         consumer.processMessage(message)
 
-        verify(exactly = 1) { message.ack() }
-        verify(exactly = 0) { message.nak() }
+        verify(exactly = 1) { message.ackSync(any()) }
+        verify(exactly = 0) { message.nakWithDelay(any<Duration>()) }
     }
 
     @Test
     fun `consumer NAKs decode transform and repository failures`() = runTest {
         val invalid = message("not-json")
-        val consumer = NatsEventConsumer(nats, json, eventRepository, EventPipelineTransforms(emptyList()), EventProcessingConfiguration())
+        val consumer = NatsConsumerTestFixture(nats, json, eventRepository, EventPipelineTransforms(emptyList()), EventProcessingConfiguration())
         consumer.processMessage(invalid)
-        verify(exactly = 1) { invalid.nak() }
+        verify(exactly = 1) { invalid.nakWithDelay(any<Duration>()) }
 
         val transform = mockk<EventPipelineTransform>()
         coEvery { transform.transform(any(), any()) } throws IllegalStateException("transform")
         val transformMessage = message()
-        NatsEventConsumer(nats, json, eventRepository, EventPipelineTransforms(listOf(transform)), EventProcessingConfiguration())
+        NatsConsumerTestFixture(nats, json, eventRepository, EventPipelineTransforms(listOf(transform)), EventProcessingConfiguration())
             .processMessage(transformMessage)
-        verify(exactly = 1) { transformMessage.nak() }
+        verify(exactly = 1) { transformMessage.nakWithDelay(any<Duration>()) }
 
-        coEvery { eventRepository.process(any()) } throws IllegalStateException("repository")
+        coEvery { eventRepository.store(any()) } throws IllegalStateException("repository")
         val repositoryMessage = message()
         consumer.processMessage(repositoryMessage)
-        verify(exactly = 1) { repositoryMessage.nak() }
+        verify(exactly = 1) { repositoryMessage.nakWithDelay(any<Duration>()) }
+    }
+
+    @Test
+    fun `malformed delivery does not prevent a healthy peer from flushing and acknowledging`() = runTest {
+        val malformed = message("not-json")
+        val healthy = message()
+        coJustRun { eventRepository.store(listOf(events)) }
+        val consumer = NatsConsumerTestFixture(nats, json, eventRepository, EventPipelineTransforms(emptyList()), EventProcessingConfiguration())
+        consumer.processMessages(listOf(malformed, healthy))
+        verify(exactly = 1) { malformed.nakWithDelay(any<Duration>()); healthy.ackSync(any()) }
+        verify(exactly = 0) { malformed.ackSync(any()); healthy.nakWithDelay(any<Duration>()) }
+        coVerify(exactly = 1) { eventRepository.store(listOf(events)) }
+    }
+
+    @Test
+    fun `storage commit failure retries every claim even when one delivery was malformed`() = runTest {
+        val malformed = message("not-json")
+        val healthy = message()
+        coEvery { eventRepository.store(listOf(events)) } throws IOException("Storage unavailable")
+        val consumer = NatsConsumerTestFixture(nats, json, eventRepository, EventPipelineTransforms(emptyList()), EventProcessingConfiguration())
+        consumer.processMessages(listOf(malformed, healthy))
+        verify(exactly = 1) { malformed.nakWithDelay(any<Duration>()); healthy.nakWithDelay(any<Duration>()) }
+        verify(exactly = 0) { malformed.ackSync(any()); healthy.ackSync(any()) }
+    }
+
+    @Test
+    fun `ambiguous queue acknowledgment failure propagates without retrying released ownership`() = runTest {
+        val healthy = message()
+        val failure = IOException("Lost acknowledgment response")
+        coJustRun { eventRepository.store(listOf(events)) }
+        every { healthy.ackSync(any()) } throws failure
+        val consumer = NatsConsumerTestFixture(nats, json, eventRepository, EventPipelineTransforms(emptyList()), EventProcessingConfiguration())
+        assertEquals(failure.message, assertFailsWith<IOException> { consumer.processMessage(healthy) }.message)
+        verify(exactly = 0) { healthy.nakWithDelay(any<Duration>()) }
+    }
+
+    @Test
+    fun `in-progress lease renewal finishes before acknowledgment releases ownership`() = runTest {
+        val delivery = mockk<bosca.analytics.queue.AnalyticsEventDelivery>()
+        val queue = mockk<bosca.analytics.queue.AnalyticsEventQueue>()
+        every { delivery.batches } returns listOf(events)
+        var renewalFinished = false
+        coEvery { delivery.renew() } coAnswers {
+            withContext(NonCancellable) { delay(2000) }
+            renewalFinished = true
+        }
+        coEvery { eventRepository.store(listOf(events)) } coAnswers { delay(31_000) }
+        coEvery { queue.acknowledgeBatch(listOf(delivery)) } coAnswers { assertTrue(renewalFinished) }
+        val consumer = AnalyticsEventConsumer(queue, eventRepository, EventPipelineTransforms(emptyList()), EventProcessingConfiguration())
+        consumer.processDelivery(delivery)
+        coVerify(exactly = 1) { delivery.renew(); queue.acknowledgeBatch(listOf(delivery)) }
+        coVerify(exactly = 0) { queue.retryBatch(any(), any()) }
     }
 
     @Test
     fun `consumer preserves cancellation from transform`() = runTest {
         val transform = mockk<EventPipelineTransform>()
         coEvery { transform.transform(any(), any()) } throws CancellationException("cancelled")
-        val consumer = NatsEventConsumer(nats, json, eventRepository, EventPipelineTransforms(listOf(transform)), EventProcessingConfiguration())
+        val consumer = NatsConsumerTestFixture(nats, json, eventRepository, EventPipelineTransforms(listOf(transform)), EventProcessingConfiguration())
 
         assertFailsWith<CancellationException> { consumer.processMessage(message()) }
     }
 
     @Test
     fun `consumer run drains fetched messages and stops on fetch cancellation`() = runTest {
-        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
+        every { management.getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME) } returns mockk()
         val subscription = mockk<JetStreamSubscription>()
         every { jetStream.subscribe(any(), any<PullSubscribeOptions>()) } returns subscription
         val message = message()
         every { subscription.fetch(1, any<Duration>()) } returns listOf(message) andThenThrows
             IllegalStateException("temporary") andThenThrows CancellationException("stop")
-        coJustRun { eventRepository.process(events) }
-        val consumer = NatsEventConsumer(
+        coJustRun { eventRepository.store(listOf(events)) }
+        val consumer = NatsConsumerTestFixture(
             nats,
             json,
             eventRepository,
@@ -388,8 +444,27 @@ class NatsAnalyticsPipelineTest {
             EventProcessingConfiguration(workerCount = 1, channelCapacity = 1, natsBatchSize = 1),
         )
 
-        consumer.run()
+        assertFailsWith<CancellationException> { consumer.run() }
 
-        verify(exactly = 1) { message.ack() }
+        verify(exactly = 1) { message.ackSync(any()) }
     }
+    @Test
+    fun `queue independently probes JetStream reports status and handles an empty pull`(): Unit = runBlocking {
+        val info = mockk<io.nats.client.api.StreamInfo>()
+        val state = mockk<io.nats.client.api.StreamState>()
+        every { info.streamState } returns state
+        every { state.msgCount } returns 3L
+        every { state.byteCount } returns 100L
+        every { management.getStreamInfo(NatsAnalyticsEventQueue.STREAM_NAME) } returns info
+        val subscription = mockk<JetStreamSubscription>(relaxed = true)
+        every { jetStream.subscribe(any(), any<PullSubscribeOptions>()) } returns subscription
+        every { subscription.fetch(1, any<Duration>()) } returns emptyList()
+        val queue = bosca.analytics.queue.NatsAnalyticsEventQueue(nats, json, health)
+        queue.checkReadiness()
+        assertEquals(3L, queue.status().pending)
+        assertNull(queue.receive(kotlin.time.Duration.ZERO))
+        queue.shutdown()
+        verify { subscription.unsubscribe() }
+    }
+
 }

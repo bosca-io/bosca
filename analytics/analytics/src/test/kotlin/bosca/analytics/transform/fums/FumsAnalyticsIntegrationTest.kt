@@ -5,11 +5,12 @@ package bosca.analytics.transform.fums
 import bosca.analytics.service.EventProcessingHealth
 import bosca.analytics.jobs.FumsDeliveryJob
 import bosca.analytics.repository.EventRepository
-import bosca.analytics.repository.nats.NatsEventRepository
+import bosca.analytics.queue.NatsAnalyticsEventQueue
+import bosca.analytics.repository.QueuedEventRepository
 import bosca.analytics.service.EventProcessingServiceImpl
 import bosca.analytics.configuration.EventPipelineTransforms
 import bosca.analytics.configuration.EventProcessingConfiguration
-import bosca.analytics.service.NatsEventConsumer
+import bosca.analytics.service.NatsConsumerTestFixture
 import bosca.analytics.model.*
 import bosca.bible.providers.service.BibleProviderService
 import bosca.cache.CacheManager
@@ -125,11 +126,11 @@ class FumsAnalyticsIntegrationTest {
                 mockk<Counter>(relaxed = true), mockk(relaxed = true), queue.asProvider(),
             )
             val health = EventProcessingHealth()
-            val ingest = EventProcessingServiceImpl(app, NatsEventRepository(natsPool, json, health),
+            val ingest = EventProcessingServiceImpl(app, QueuedEventRepository(NatsAnalyticsEventQueue(natsPool, json, health), health),
                 transforms(ingestion), EventProcessingConfiguration(workerCount = 1), health)
             val storage = mockk<EventRepository>()
-            coJustRun { storage.process(any()) }
-            val consumer = NatsEventConsumer(natsPool, json, storage,
+            coJustRun { storage.store(any()) }
+            val consumer = NatsConsumerTestFixture(natsPool, json, storage,
                 transforms(!ingestion), EventProcessingConfiguration())
             val (_, subscription) = consumer.initializeJetStream()
             withTimeout(60_000) {
@@ -138,7 +139,7 @@ class FumsAnalyticsIntegrationTest {
                 val messages = subscription.fetch(2, java.time.Duration.ofSeconds(5))
                 assertEquals(2, messages.size)
                 for (message in messages) consumer.processMessage(message)
-                coVerify(exactly = 2) { storage.process(any()) }
+                coVerify(exactly = 2) { storage.store(match { it.size == 1 }) }
                 assertNull(contentQueue.dequeue(100.milliseconds))
                 assertNull(analyticsQueue.dequeue(100.milliseconds))
                 val first = assertNotNull(queue.dequeue())

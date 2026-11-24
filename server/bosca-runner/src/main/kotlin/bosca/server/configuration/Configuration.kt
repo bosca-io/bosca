@@ -8,7 +8,7 @@ import bosca.analytics.livesessions.LiveSessionsService
 import bosca.analytics.livesessions.nats.NatsLiveSessions
 import bosca.analytics.livesessions.redis.RedisLiveSessions
 import bosca.analytics.repository.EventRepository
-import bosca.analytics.service.NatsEventConsumer
+import bosca.analytics.service.AnalyticsEventConsumer
 import bosca.bible.BibleContentUse
 import bosca.bible.BibleFactory
 import bosca.bible.processor.BibleFactoryImpl
@@ -274,13 +274,12 @@ class Configuration {
      * enrichment already ran in the collector).
      */
     @Provider(singleton = true)
-    fun natsEventConsumer(
-        nats: NatsConnectionPool,
-        json: Json,
-        eventRepository: EventRepository,
+    fun analyticsEventConsumer(
+        queue: bosca.analytics.queue.AnalyticsEventQueue,
+        @bosca.di.annotation.ProviderName("analytics-event-storage") eventRepository: EventRepository,
         eventTransforms: EventPipelineTransforms,
         config: EventProcessingConfiguration,
-    ): NatsEventConsumer = NatsEventConsumer(nats, json, eventRepository, eventTransforms, config)
+    ): AnalyticsEventConsumer = AnalyticsEventConsumer(queue, eventRepository, eventTransforms, config)
 
     @Provider
     fun bibleFactory(): BibleFactory = BibleFactoryImpl()

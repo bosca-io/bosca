@@ -1,7 +1,6 @@
-package bosca.analytics.repository.nats
+package bosca.analytics.queue
 
 import bosca.analytics.model.Events
-import bosca.analytics.repository.EventRepository
 import bosca.analytics.service.EventProcessingHealth
 import bosca.nats.NatsConnectionPool
 import io.nats.client.Connection
@@ -25,51 +24,33 @@ import java.io.IOException
 import java.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-/**
- * [EventRepository] implementation that publishes processed analytics events to a
- * NATS JetStream stream instead of writing them to a local data store.
- *
- * Designed for the GraalVM native analytics collector, where events have already
- * passed through the collector's transform chain (e.g., geo-enrichment) but cannot
- * be stored locally or processed by dynamic scripting. The analytics-processor
- * subscribes to this stream, applies its own transform chain (e.g., script
- * transforms and triggers), and writes the final events to Iceberg.
- */
-class NatsEventRepository(
+/** Durable JetStream handoff from collector enrichment to processor transforms and storage. */
+class NatsAnalyticsEventQueue(
     private val nats: NatsConnectionPool,
     private val json: Json,
     private val health: EventProcessingHealth,
-) : EventRepository {
+) : AnalyticsEventQueue {
 
     @Volatile
     private var js: Pair<Connection, JetStream>? = null
     private val initMutex = Mutex()
 
-    override suspend fun process(events: Events) {
+    override suspend fun enqueue(events: Events) {
         try {
             publish(events)
-            health.natsRecovered()
+            health.queueRecovered()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            health.natsFailed()
-            throw NatsPublishException(e)
+            health.queueFailed()
+            throw bosca.analytics.repository.nats.NatsPublishException(e)
         }
     }
 
     private suspend fun publish(events: Events) {
         val jetStream = ensureInitialized()
         val futures = withContext(Dispatchers.IO) {
-            // Client event IDs are scoped to an installation and user within an app.
-            // Compute that scope once per batch; lengths keep ':' inside IDs unambiguous.
-            val messageIdPrefix = events.context?.takeIf { it.device.installationId.isNotBlank() }?.let { context ->
-                val appId = context.appId
-                val installationId = context.device.installationId
-                val userId = context.userId
-                // A missing user ID (anonymous) is distinct from an empty user ID.
-                "${appId.length}:$appId:${installationId.length}:$installationId:" +
-                    "${userId?.length ?: -1}:${userId.orEmpty()}:"
-            }
+            val messageIdPrefix = eventIdentityPrefix(events.context)
             events.events.map { event ->
                 val message = events.copy(events = listOf(event))
                 val payload = json.encodeToString(Events.serializer(), message)
@@ -87,9 +68,47 @@ class NatsEventRepository(
         }
     }
 
-    override suspend fun flush() {
-        // Events are published to NATS immediately on process(), nothing to flush
+    private val consumerMutex = Mutex()
+    private var consumer: io.nats.client.JetStreamSubscription? = null
+    private var consumerConnection: Connection? = null
+
+    override suspend fun receive(timeout: kotlin.time.Duration): AnalyticsEventDelivery? = receiveBatch(1, timeout).firstOrNull()
+
+    override suspend fun receiveBatch(limit: Int, timeout: kotlin.time.Duration): List<AnalyticsEventDelivery> {
+        require(limit > 0)
+        return withContext(Dispatchers.IO) {
+            subscription().fetch(limit, Duration.ofMillis(timeout.inWholeMilliseconds.coerceAtLeast(1)))
+                .map { NatsAnalyticsEventDelivery(it, json) }
+        }
     }
+    internal suspend fun subscription(): io.nats.client.JetStreamSubscription = consumerMutex.withLock {
+            val connection = nats.systemConnection()
+            if (consumerConnection !== connection) {
+                consumer?.unsubscribe()
+                ensureStream(connection.jetStreamManagement())
+                consumer = connection.jetStream().subscribe(STREAM_SUBJECT, io.nats.client.PullSubscribeOptions.builder().configuration(
+                    io.nats.client.api.ConsumerConfiguration.builder().durable("analytics-event-processor").ackWait(Duration.ofMinutes(2)).build()
+                ).build())
+                consumerConnection = connection
+            }
+            checkNotNull(consumer)
+        }
+
+    override suspend fun checkReadiness() {
+        // withTimeoutOrNull keeps a slow JetStream distinct from caller cancellation.
+        withTimeoutOrNull(READINESS_TIMEOUT) {
+            val connection = nats.systemConnection()
+            runInterruptible(Dispatchers.IO) {
+                val options = JetStreamOptions.builder().requestTimeout(Duration.ofSeconds(1)).build()
+                ensureStream(connection.jetStreamManagement(options))
+            }
+        } ?: throw IOException("NATS readiness check timed out after $READINESS_TIMEOUT")
+    }
+    override suspend fun status(): AnalyticsEventQueueStatus = withContext(Dispatchers.IO) {
+        val state = nats.systemConnection().jetStreamManagement().getStreamInfo(STREAM_NAME).streamState
+        AnalyticsEventQueueStatus(pending = state.msgCount, storageBytes = state.byteCount)
+    }
+    override suspend fun shutdown() { consumerMutex.withLock { consumer?.unsubscribe(); consumer = null; consumerConnection = null } }
 
     private suspend fun ensureInitialized(): JetStream {
         val connection = nats.systemConnection()
@@ -106,34 +125,15 @@ class NatsEventRepository(
     companion object {
         const val STREAM_NAME = "analytics-events-strm"
         const val STREAM_SUBJECT = "analytics.events-strm"
+        private val READINESS_TIMEOUT = 2.seconds
 
-        private val log = LoggerFactory.getLogger(NatsEventRepository::class.java)
-
-        /** Checks JetStream independently of incoming events so readiness can recover after traffic stops. */
-        suspend fun checkReadiness(nats: NatsConnectionPool, health: EventProcessingHealth) {
-            try {
-                val ready = withTimeoutOrNull(2.seconds) {
-                    val connection = nats.systemConnection()
-                    runInterruptible(Dispatchers.IO) {
-                        val options = JetStreamOptions.builder().requestTimeout(Duration.ofSeconds(1)).build()
-                        ensureStream(connection.jetStreamManagement(options))
-                    }
-                    true
-                } == true
-                if (ready) health.natsRecovered() else health.natsFailed()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                health.natsFailed()
-                log.warn("NATS readiness check failed", e)
-            }
-        }
+        private val log = LoggerFactory.getLogger(NatsAnalyticsEventQueue::class.java)
 
         /**
          * Creates the JetStream stream for analytics event forwarding if it does
          * not already exist. This is the single source of truth for stream
-         * configuration — both the publisher ([NatsEventRepository]) and consumer
-         * ([bosca.analytics.service.NatsEventConsumer]) call this method.
+         * configuration — both the publisher ([enqueue]) and consumer
+         * ([bosca.analytics.service.AnalyticsEventConsumer]) call this method.
          */
         fun ensureStream(jsm: io.nats.client.JetStreamManagement) {
             try {

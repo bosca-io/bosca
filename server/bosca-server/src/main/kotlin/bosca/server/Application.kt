@@ -1,7 +1,7 @@
 package bosca.server
 
 import bosca.ai.configuration.AIModule
-import bosca.analytics.service.NatsEventConsumer
+import bosca.analytics.service.AnalyticsEventConsumer
 import bosca.analytics.server.AnalyticsServerClientModule
 import bosca.cache.withRequestCache
 import bosca.configuration.GraphQLModule
@@ -387,7 +387,7 @@ suspend fun BoscaApplication.module() {
 
         if (Features.analyticsProcessor) {
             launch {
-                val consumer = provide<NatsEventConsumer>()
+                val consumer = provide<AnalyticsEventConsumer>()
                 while (true) {
                     try {
                         log.info("starting analytics event consumer")
