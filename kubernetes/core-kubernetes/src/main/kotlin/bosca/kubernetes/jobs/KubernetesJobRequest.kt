@@ -18,6 +18,10 @@ data class KubernetesJobRequest(
     val idempotencyKey: String,
     /** Environment variables injected into the profile's worker container. */
     val environment: Map<String, String> = emptyMap(),
+    /** Encrypted values are decrypted only by the controller and injected through secretKeyRef. */
+    val secrets: KubernetesJobSecrets? = null,
+    /** Internal Service port for a managed interactive workload, when requested by its producer. */
+    val servicePort: Int? = null,
     /** Optional replacement for the profile worker container's arguments. */
     val arguments: List<String>? = null,
     /** Labels added to the generated Job and pod template. */
@@ -37,6 +41,12 @@ data class KubernetesJobRequest(
     fun validate() {
         require(profile.length <= 253 && profile.split('.').all(::isDnsLabel)) {
             "Kubernetes Job profile must be a valid DNS subdomain"
+        }
+        require(servicePort == null || servicePort in 1..65535) { "Invalid workload service port" }
+        secrets?.let {
+            require(it.names.isNotEmpty() && it.names.distinct().size == it.names.size)
+            require(it.names.all { name -> name.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) })
+            require(it.names.none(environment::containsKey)) { "Secret environment overlaps plaintext environment" }
         }
         require(idempotencyKey.isNotBlank()) {
             "Kubernetes Job idempotency key is required"

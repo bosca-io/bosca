@@ -16,6 +16,7 @@ import bosca.pipelines.model.Pipeline
 import bosca.pipelines.model.PipelineEdge
 import bosca.pipelines.model.PipelineGraph
 import bosca.pipelines.model.PipelineRun
+import bosca.pipelines.model.PipelineRunAuthority
 import bosca.pipelines.model.PipelineRunAwait
 import bosca.pipelines.model.PipelineRunLog
 import bosca.pipelines.model.PipelineRunLogWithName
@@ -121,6 +122,7 @@ class PipelineRunServiceImplTest {
         securityService = securityService,
         config = config,
         pubSub = pubSub,
+        tokens = mockk(relaxed = true),
     )
 
     // An on-demand run (start with a non-null authentication) is now driven via an enqueued
@@ -139,6 +141,22 @@ class PipelineRunServiceImplTest {
 
     @AfterTest
     fun tearDownRegistry() = ProviderRegistry.clear()
+
+    @Test
+    fun `a child or iteration without its parent cannot manufacture system authority`() = runTest {
+        val runRepo = mockk<PipelineRunRepository>(relaxed = true)
+        coEvery { runRepo.getById(any()) } returns null
+        val pipelines = stubbedPipelineService()
+        coEvery { pipelines.get(pipeline.id) } returns pipeline
+        val sut = service(runRepo = runRepo, pipelineService = pipelines)
+        assertFailsWith<IllegalStateException> {
+            sut.runChildPipeline(UUID.random(), "child", pipeline.id, sampleInput, OffsetDateTime.now(), null, null)
+        }
+        assertFailsWith<IllegalStateException> {
+            sut.startIteration(UUID.random(), "each", pipeline.id, listOf(JsonNull), false, OffsetDateTime.now())
+        }
+        coVerify(exactly = 0) { runRepo.add(any()) }
+    }
 
     @Test
     fun `recovered events retain their typed payload and source time in the durable job`() = runTest {
@@ -166,7 +184,7 @@ class PipelineRunServiceImplTest {
     fun `recovery lookup matches source revisions in restarted input`() = runTest {
         val repository = mockk<PipelineRunRepository>()
         val input = buildJsonObject { put("id", "recovered-event"); put("modified", "2026-10-16T00:00:00Z") }
-        val restarted = PipelineRun(pipelineId = pipeline.id, eventName = "restart", inputType = "sample", input = input, graphSnapshot = JsonObject(emptyMap()))
+        val restarted = PipelineRun(authority = PipelineRunAuthority(system = true), pipelineId = pipeline.id, eventName = "restart", inputType = "sample", input = input, graphSnapshot = JsonObject(emptyMap()))
         coEvery { repository.findLatestByInput(pipeline.id, "sample", input) } returns restarted
         val sut = service(runRepo = repository)
         assertEquals(restarted, sut.findLatestByInput(pipeline.id, "sample", input))
@@ -209,7 +227,7 @@ class PipelineRunServiceImplTest {
     @Test
     fun `completed start remains correct when every external boundary suspends`() = runTest {
         val runId = UUID.random()
-        val created = PipelineRun(
+        val created = PipelineRun(authority = PipelineRunAuthority(system = true),
             id = runId,
             pipelineId = pipeline.id,
             status = PipelineRunStatus.RUNNING,
@@ -1154,6 +1172,7 @@ class PipelineRunServiceImplTest {
         val run = suspendedRun(runId).copy(
             status = PipelineRunStatus.RUNNING,
             principalId = principalId,
+            authority = bosca.pipelines.model.PipelineRunAuthority(system = false, groupIds = emptyList()),
             input = JsonNull,
             inputType = null,
         )
@@ -1946,6 +1965,9 @@ class PipelineRunServiceImplTest {
         // The rollback pipeline was replayed with the node's output.
         coVerify(exactly = 1) { executor.execute(rollbackPipeline, any(), any(), null) }
     }
+
+
+
 
     // ----------------------------------------------------------------------------------------------
     // runRollbacks (via finish, exercised through cancel) — reverse order, missing pipeline, failure isolation
@@ -3841,7 +3863,7 @@ class PipelineRunServiceImplTest {
         id: UUID,
         nodeOutputs: JsonObject = JsonObject(emptyMap()),
         awaiting: List<PipelineRunAwait> = emptyList(),
-    ) = PipelineRun(
+    ) = PipelineRun(authority = PipelineRunAuthority(system = true),
         id = id,
         pipelineId = pipeline.id,
         status = PipelineRunStatus.SUSPENDED,

@@ -27,7 +27,7 @@ internal object SwarmSecretEncryption {
     private val random = SecureRandom()
     private val sharedKeys = setOf("postgresAdmin", "meilisearchKey", "s3Access", "s3Secret", "backupPassword")
     private val siteKeys = setOf("database", "warehouse", "nats", "jwt", "securityEncryption", "storageSigner",
-        "initialAdmin", "initialSa", "pipeline", "gatewayProxy")
+        "initialAdmin", "initialSa", "pipeline", "gatewayProxy", "kitProvider", "kitController")
     private val mlKeys = setOf("boscaToken", "artifactsPushToken", "artifactsPullToken")
 
     fun hasEncryptedSecrets(document: JsonObject): Boolean {
