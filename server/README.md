@@ -37,8 +37,8 @@ Native server builds exclude the local Kotlin scripting engine and delegate scri
 the JVM runner. `scripts/release/build-image.sh bosca-server <version>` selects this variant
 automatically. JVM server builds retain local scripting by default.
 
-Native builds use Oracle GraalVM 25.5.5.0.3 (GDS stream `25i5`, JDK
-25.0.5.0.3). Set `JAVA_HOME` and `GRAALVM_HOME` to that installation and use
+Native builds use Oracle GraalVM 25.6.5.1 (GDS stream `25i6`, JDK
+25.0.5.1). Set `JAVA_HOME` and `GRAALVM_HOME` to that installation and use
 `--no-daemon --no-configuration-cache` when switching native toolchains. The
 GraalVM SDK dependency uses the GraalVM version, which differs from the JDK version.
 
