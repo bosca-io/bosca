@@ -1,0 +1,62 @@
+fragment ScriptureBible on Bible {
+    metadataId
+    version
+    variant
+    defaultVariant
+    name
+    nameLocal
+    abbreviation
+    abbreviationLocal
+}
+
+query ListScriptureBibles($offset: Int!, $limit: Int!) {
+    content {
+        findMetadata(query: {attributes: [], contentTypes: ["bosca/v-bible"], offset: $offset, limit: $limit}) {
+            id
+            bibles { ...ScriptureBible }
+        }
+    }
+}
+
+query GetScriptureBooks($id: UUID!, $version: Int, $variant: String) {
+    content {
+        metadata(id: $id, version: $version) {
+            bible(variant: $variant) {
+                ...ScriptureBible
+                books {
+                    nameLong
+                    nameShort
+                    abbreviation
+                    reference { usfm }
+                    chapters { reference { usfm human } }
+                }
+            }
+        }
+    }
+}
+
+query ResolveScriptureReferences($id: UUID!, $version: Int, $variant: String, $reference: String!) {
+    content {
+        metadata(id: $id, version: $version) {
+            bible(variant: $variant) {
+                ...ScriptureBible
+                references(human: $reference) { usfm human humanShort }
+            }
+        }
+    }
+}
+
+query GetScriptureVerses($id: UUID!, $version: Int, $variant: String, $reference: String!) {
+    content {
+        metadata(id: $id, version: $version) {
+            bible(variant: $variant) {
+                ...ScriptureBible
+                aiContext(human: $reference) {
+                    reference { usfm human humanShort }
+                    component
+                    attribution { copyright citation informationUrl }
+                }
+            }
+        }
+    }
+}

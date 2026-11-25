@@ -19,6 +19,9 @@ object ContentMutation
 class ContentMutationController : GraphQLController<ContentMutation> {
 
     @Field
+    fun images() = bosca.content.image.graphql.ImagesMutation
+
+    @Field
     fun collection() = CollectionMutation
 
     @Field

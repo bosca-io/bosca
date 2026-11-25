@@ -1,0 +1,72 @@
+apiVersion: kubernetes.bosca.io/v1alpha1
+kind: JobProfile
+metadata:
+  name: kit-codex
+  namespace: kit
+spec:
+  maxParallelism: 10
+  workerContainerName: worker
+  job:
+    backoffLimit: 0
+    activeDeadlineSeconds: 86400
+    startupFailureGraceSeconds: 120
+    ttlSecondsAfterFinished: 0
+  podTemplate:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          # Replace with the digest of the qualified image built for this deployment.
+          image: ghcr.io/bosca-io/bosca/kit-codex-runtime@sha256:REPLACE_WITH_QUALIFIED_DIGEST
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+              ephemeral-storage: 2Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+              ephemeral-storage: 32Gi
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kit-codex-provider
+                  key: api-key
+          ports:
+            - name: runtime
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: runtime
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: runtime
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: state
+              mountPath: /state
+      volumes:
+        - name: workspace
+          emptyDir:
+            sizeLimit: 8Gi
+        - name: state
+          emptyDir:
+            sizeLimit: 24Gi

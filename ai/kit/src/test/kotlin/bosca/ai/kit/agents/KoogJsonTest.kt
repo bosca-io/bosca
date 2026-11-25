@@ -1,50 +1,41 @@
 package bosca.ai.kit.agents
 
-import ai.koog.agents.core.dsl.extension.ReceivedToolResults
-import ai.koog.agents.core.dsl.extension.ToolCalls
 import ai.koog.prompt.message.Message
-import bosca.ai.kit.agents.chat.ChatRequest
-import bosca.ai.kit.agents.chat.ChatResponse
-import bosca.ai.kit.agents.graphql.GraphQLRequest
-import bosca.ai.kit.agents.graphql.GraphQLResponse
-import bosca.ai.kit.agents.graphql.GraphQLSummary
-import bosca.ai.kit.agents.routing.RouteRequest
-import bosca.ai.kit.agents.routing.RouteResponse
+import ai.koog.prompt.message.MessageMetaInfo
+import ai.koog.prompt.message.MessagePart
+import ai.koog.prompt.message.RequestMetaInfo
+import ai.koog.prompt.message.ResponseMetaInfo
 import kotlinx.serialization.json.Json
-import kotlin.reflect.KClass
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 class KoogJsonTest {
 
     /**
-     * The native image resolves checkpoint root types through the module's contextual registrations
-     * (the compiled-serializer lookup is reflective and returns null there), so losing one of these —
-     * e.g. via the `+` module merge — silently disables checkpointing for that node. The JVM compiled
-     * lookup masks such a loss everywhere else, hence this explicit guard.
+     * Koog resolves its sealed message interfaces through an open polymorphic serializer, which consults
+     * the module's polymorphic registrations rather than the sealed serializer. Losing one — e.g. via the
+     * `+` module merge — breaks decoding of stored conversation messages.
      */
     @Test
-    fun `checkpoint root types stay contextually registered for the native image`() {
+    fun `Koog message hierarchies stay polymorphically registered`() {
         val module = koogJson(Json { ignoreUnknownKeys = true }).serializersModule
 
-        val checkpointRoots: List<KClass<*>> = listOf(
-            Message.Assistant::class,
-            ToolCalls::class,
-            ReceivedToolResults::class,
-            KitState::class,
-            KitRequest::class,
-            KitResponse::class,
-            ChatRequest::class,
-            ChatResponse::class,
-            GraphQLRequest::class,
-            GraphQLResponse::class,
-            GraphQLSummary::class,
-            RouteRequest::class,
-            RouteResponse::class,
-        )
+        assertNotNull(module.getPolymorphic(Message::class, Message.System("x", RequestMetaInfo.Empty)), "Message.System")
+        assertNotNull(module.getPolymorphic(Message::class, Message.User("x", RequestMetaInfo.Empty)), "Message.User")
+        assertNotNull(module.getPolymorphic(Message::class, Message.Assistant("x", ResponseMetaInfo.Empty)), "Message.Assistant")
+        assertNotNull(module.getPolymorphic(MessagePart::class, MessagePart.Text("x")), "MessagePart.Text")
+        assertNotNull(module.getPolymorphic(MessageMetaInfo::class, RequestMetaInfo.Empty), "RequestMetaInfo")
+        assertNotNull(module.getPolymorphic(MessageMetaInfo::class, ResponseMetaInfo.Empty), "ResponseMetaInfo")
+    }
 
-        checkpointRoots.forEach { klass ->
-            assertNotNull(module.getContextual(klass), "No contextual serializer registered for ${klass.simpleName}")
-        }
+    @Test
+    fun `a stored Koog message round-trips through the Kit Json`() {
+        val json = koogJson(Json { ignoreUnknownKeys = true })
+        val message = Message.User("Hi Kit", RequestMetaInfo.Empty)
+
+        val decoded = json.decodeFromString(Message.serializer(), json.encodeToString(Message.serializer(), message))
+
+        assertEquals(message, decoded)
     }
 }

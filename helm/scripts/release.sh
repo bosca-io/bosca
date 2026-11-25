@@ -8,6 +8,7 @@ COMMAND="${1:-}"
 [[ $# -gt 0 ]] && shift
 OUTPUT=""
 VERSION=""
+KIT_IMAGES=""
 REPO="${HELM_REPO_URL:-}"
 OCI="${HELM_OCI_URL:-}"
 while [[ $# -gt 0 ]]; do
@@ -15,6 +16,7 @@ while [[ $# -gt 0 ]]; do
     --output) OUTPUT="${2:?Missing output directory}" ;;
     --version) VERSION="${2:?Missing release version}" ;;
     --charts) CHART_ROOT="${2:?Missing chart directory}" ;;
+    --kit-images) KIT_IMAGES="${2:?Missing Kit image metadata file}" ;;
     --repo) REPO="${2:?Missing HTTP repository URL}" ;;
     --oci) OCI="${2:?Missing OCI registry URL}" ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -123,6 +125,14 @@ package_charts() {
     rm -rf "${chart_yaml%/Chart.yaml}/charts"
   done
   python3 "$SCRIPT_DIR/release-metadata.py" stage "$TEMP/charts" "$VERSION"
+  if [[ -d "$TEMP/charts/bosca-common/files" ]]; then
+    if [[ -z "$KIT_IMAGES" ]]; then
+      KIT_IMAGES="$TEMP/kit-images.json"
+      node "$SCRIPT_DIR/kit-images.mjs" "$VERSION" "$KIT_IMAGES"
+    fi
+    node "$SCRIPT_DIR/kit-images.mjs" --verify "$VERSION" "$KIT_IMAGES"
+    cp "$KIT_IMAGES" "$TEMP/charts/bosca-common/files/kit-images.json"
+  fi
   for chart_yaml in "$TEMP/charts"/*/Chart.yaml; do
     key="${chart_yaml%/Chart.yaml}"
     helm show chart "$key" > "$TEMP/metadata/${key##*/}.yaml"
