@@ -22,6 +22,8 @@ import bosca.serialization.UUID
  * @param scopes the API token's scope restrictions, or `null` if unrestricted
  * @param allowedGroupIds the API token's group restrictions, or `null` if unrestricted
  * @param credentialId the `principal_credentials.id` of the API token credential, used for audit trails
+ * @param sessionBoundCredential whether the credential is retired with one runtime session, so durable
+ *   work it started keeps its captured authority after the credential is gone
  */
 class ScopedAuthenticatedPrincipal(
     principal: Principal,
@@ -29,6 +31,7 @@ class ScopedAuthenticatedPrincipal(
     scopes: List<String>?,
     allowedGroupIds: Set<UUID>?,
     val credentialId: Long,
+    val sessionBoundCredential: Boolean = false,
 ) : AuthenticatedPrincipal(
     principal,
     if (allowedGroupIds != null) allGroups.filter { it.id in allowedGroupIds } else allGroups

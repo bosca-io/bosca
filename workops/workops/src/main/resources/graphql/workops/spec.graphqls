@@ -75,6 +75,8 @@ type WorkOpsRequirement {
     id: UUID!
     key: String!
     metadataId: UUID!
+    "The linked content item, visible only with both requirement and content view access."
+    metadata: Metadata
     parentType: WorkOpsRequirementParent!
     parentId: UUID!
     status: WorkOpsStatus!

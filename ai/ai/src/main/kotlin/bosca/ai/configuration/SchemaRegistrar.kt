@@ -5,6 +5,8 @@ import bosca.graphql.annotations.Schemas
 
 @Schemas
 interface SchemaRegistrar {
+    @Schema("memories.graphqls")
+    val memories: String
 
     @Schema("agents.graphqls")
     val agents: String
