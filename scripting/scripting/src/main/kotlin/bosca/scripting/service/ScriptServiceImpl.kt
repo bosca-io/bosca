@@ -70,9 +70,16 @@ class ScriptServiceImpl(
         return repository.add(script)
     }
 
-    override suspend fun edit(id: UUID, input: ScriptInput): Script {
+    override suspend fun edit(id: UUID, input: ScriptInput): Script = editChecked(id, input, null)
+
+    override suspend fun edit(id: UUID, input: ScriptInput, expectedVersion: Int): Script = editChecked(id, input, expectedVersion)
+
+    private suspend fun editChecked(id: UUID, input: ScriptInput, expectedVersion: Int?): Script {
         engine.validate(input.source)
         val existing = repository.getById(id) ?: throw NoSuchElementException("Script not found: $id")
+        require(!(existing.type == ScriptType.EPHEMERAL && input.type == ScriptType.TOOL) &&
+            !(existing.type != ScriptType.EPHEMERAL && input.type == ScriptType.EPHEMERAL)) { "Create a new script for this type transition" }
+        check(expectedVersion == null || existing.version == expectedVersion) { "Script was modified concurrently; fetch the current version" }
         val updated = existing.copy(
             key = input.key,
             name = input.name,

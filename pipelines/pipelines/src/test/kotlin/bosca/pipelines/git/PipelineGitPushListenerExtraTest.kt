@@ -117,6 +117,17 @@ class PipelineGitPushListenerExtraTest {
     }
 
     @Test
+    fun `handle passes the pusher to the sync`() = runTest {
+        val pusher = bosca.serialization.UUID.random()
+        val listener = listener()
+        val event = pushEvent().copy(pusherPrincipalId = pusher)
+
+        listener.handle(event)
+
+        coVerify { pipelineGitSyncService.onPushEvent(event.repositoryId, "before", "after", pusher) }
+    }
+
+    @Test
     fun `host shutdown cancels the active pipeline push subscription`() = runBlocking {
         val subscribed = CompletableDeferred<Unit>()
         val stopped = CompletableDeferred<Unit>()
