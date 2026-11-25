@@ -1,6 +1,12 @@
 package bosca.analytics.service
 
 import bosca.analytics.model.AnalyticsQuery
+import bosca.analytics.model.AnalyticsQueryBinding
+import bosca.analytics.model.AnalyticsQueryEvidence
+import bosca.analytics.model.AnalyticsSqlResult
+import io.trino.sql.parser.SqlParser
+import io.trino.sql.tree.Node
+import io.trino.sql.tree.Query
 import bosca.analytics.model.AnalyticsQueryColumn
 import bosca.analytics.model.AnalyticsQueryExecutionParameterInput
 import bosca.analytics.model.AnalyticsQueryParameter
@@ -57,6 +63,92 @@ class AnalyticsQueryExecutionServiceImpl(
     /** Bounded probe cache keyed by a collision-resistant executable-definition fingerprint. */
     private val columnCache = ConcurrentHashMap<UUID, ColumnCacheEntry>()
     internal var currentTimeMillis: () -> Long = System::currentTimeMillis
+
+    override suspend fun listCatalogs(offset: Int, limit: Int): List<String> =
+        warehouseNames("SHOW CATALOGS", offset, limit)
+
+    override suspend fun listSchemas(catalog: String, offset: Int, limit: Int): List<String> =
+        warehouseNames("SHOW SCHEMAS FROM ${warehouseIdentifier(catalog)}", offset, limit)
+
+    override suspend fun listTables(catalog: String, schema: String, offset: Int, limit: Int): List<String> =
+        warehouseNames("SHOW TABLES FROM ${warehouseIdentifier(catalog)}.${warehouseIdentifier(schema)}", offset, limit)
+
+    override suspend fun describeTable(catalog: String, schema: String, table: String): List<AnalyticsQueryColumn> {
+        val sql = "SELECT * FROM ${warehouseIdentifier(catalog)}.${warehouseIdentifier(schema)}.${warehouseIdentifier(table)} LIMIT 0"
+        return connectionPool.get().connection().use { connection ->
+            connection.useReadOnlyStatement(sql) { statement ->
+                statement.queryTimeout = WAREHOUSE_QUERY_TIMEOUT_SECONDS
+                statement.executeQuery().use { warehouseColumns(it.metaData) }
+            }
+        }
+    }
+
+    override suspend fun executeSql(sql: String, limit: Int): AnalyticsSqlResult {
+        require(limit in 1..1000) { "limit must be between 1 and 1000" }
+        val parsed = SqlParser().createStatement(sql)
+        require(parsed is Query) { "Only read-only queries are allowed" }
+        validateWarehouseQuery(parsed)
+        val executedAt = OffsetDateTime.now()
+        val start = System.nanoTime()
+        return connectionPool.get().connection().use { connection ->
+            connection.useReadOnlyStatement(sql) { statement ->
+                statement.queryTimeout = WAREHOUSE_QUERY_TIMEOUT_SECONDS
+                statement.maxRows = limit + 1
+                statement.executeQuery().use { rows ->
+                    val columns = warehouseColumns(rows.metaData)
+                    require(columns.map { it.name }.distinct().size == columns.size) {
+                        "Query columns must have distinct names; add aliases"
+                    }
+                    val records = mutableListOf<JsonElement>()
+                    while (records.size < limit && rows.next()) {
+                        records += columns.mapIndexed { index, column ->
+                            column.name to rows.getObject(index + 1).toAnalyticsValue().toJsonElement()
+                        }.toMap().let(::JsonObject)
+                    }
+                    AnalyticsSqlResult(sql, columns, records, records.size == limit && rows.next(), executedAt, (System.nanoTime() - start) / 1_000_000)
+                }
+            }
+        }
+    }
+
+    private fun validateWarehouseQuery(node: Node) {
+        if (node is Query) {
+            require(node.functions.isEmpty() && node.sessionProperties.isEmpty()) {
+                "Inline functions and session overrides are not allowed"
+            }
+        }
+        node.children.forEach(::validateWarehouseQuery)
+    }
+
+    private suspend fun warehouseNames(sql: String, offset: Int, limit: Int): List<String> {
+        require(offset >= 0) { "offset must not be negative" }
+        require(limit in 1..1000) { "limit must be between 1 and 1000" }
+        val maxRows = Math.addExact(offset, limit)
+        return connectionPool.get().connection().use { connection ->
+            connection.useReadOnlyStatement(sql) { statement ->
+                statement.queryTimeout = WAREHOUSE_QUERY_TIMEOUT_SECONDS
+                statement.maxRows = maxRows
+                statement.executeQuery().use { rows ->
+                    var skipped = 0
+                    while (skipped < offset && rows.next()) skipped++
+                    buildList {
+                        while (size < limit && rows.next()) add(rows.getString(1))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun warehouseIdentifier(value: String): String {
+        require(value.isNotBlank() && value.none { it.isISOControl() }) { "Invalid warehouse identifier" }
+        return "\"${value.replace("\"", "\"\"")}\""
+    }
+
+    private fun warehouseColumns(metadata: ResultSetMetaData): List<AnalyticsQueryColumn> =
+        (1..metadata.columnCount).map { index ->
+            AnalyticsQueryColumn(metadata.getColumnLabel(index), metadata.getColumnTypeName(index),
+                metadata.isNullable(index) != ResultSetMetaData.columnNoNulls)
+        }
 
     override suspend fun execute(key: String, parameters: List<AnalyticsQueryExecutionParameterInput>): AnalyticsQueryResponse {
         val query = queryService.get().getQueryByKey(key) ?: error("Query not found: $key")
@@ -191,10 +283,12 @@ class AnalyticsQueryExecutionServiceImpl(
 
     private suspend fun executeQuery(query: AnalyticsQuery, prepared: PreparedExecution): AnalyticsQueryResponse = withContext(Dispatchers.IO) {
         val parameterValues = prepared.effectiveParameters.associateBy { it.parameter }
+        val executedAt = OffsetDateTime.now()
+        val start = System.nanoTime()
         val compiled = QueryCompiler.compileQuery(query.query, throwOnUnknown = false)
         connectionPool.get().connection().use { connection ->
             connection.useStatement(compiled.sql) { statement ->
-                bindParameters(connection, statement, prepared.availableParameters, parameterValues)
+                val bindings = bindParameters(connection, statement, prepared.availableParameters, parameterValues, executedAt)
 
                 statement.executeQuery().use { resultSet ->
                     val names = mutableMapOf<Int, String>()
@@ -211,7 +305,9 @@ class AnalyticsQueryExecutionServiceImpl(
                         }
                         results += map.toJsonElement()
                     }
-                    AnalyticsQueryResponse(results)
+                    AnalyticsQueryResponse(results, evidence = AnalyticsQueryEvidence(
+                        query.id, compiled.sql, bindings, executedAt, (System.nanoTime() - start) / 1_000_000,
+                    ))
                 }
             }
         }
@@ -262,18 +358,20 @@ class AnalyticsQueryExecutionServiceImpl(
     /**
      * Binds the query's declared [availableParameters] onto [statement] in order, using the supplied
      * [parameterValues] (falling back to each parameter's default when absent or null). Shared by query
-     * execution and the `LIMIT 0` column probe.
+     * execution and the `LIMIT 0` column probe. Returns the actual JDBC values, after defaults,
+     * coercion and relative-date resolution, for the execution evidence.
      */
     internal suspend fun bindParameters(
         connection: ConnectionManager,
         statement: PreparedStatement,
         availableParameters: List<AnalyticsQueryParameter>,
         parameterValues: Map<String, AnalyticsQueryExecutionParameterInput>,
-    ) {
-        availableParameters.forEachIndexed { index, parameter ->
+        executionTime: OffsetDateTime = OffsetDateTime.now(),
+    ): List<AnalyticsQueryBinding> =
+        availableParameters.mapIndexed { index, parameter ->
             val parameterValue = parameterValues[parameter.parameter]?.value
             val value = parameterValue?.takeIf { it !is JsonNull } ?: parameter.defaultValue
-            when (parameter.type) {
+            val boundValue: Any? = when (parameter.type) {
                 QueryParameterType.STRING -> {
                     val value = value.scalarValue()?.contentOrNull
                     if (value == null) {
@@ -281,6 +379,7 @@ class AnalyticsQueryExecutionServiceImpl(
                     } else {
                         statement.setString(index + 1, value)
                     }
+                    value
                 }
 
                 QueryParameterType.INTEGER -> {
@@ -290,6 +389,7 @@ class AnalyticsQueryExecutionServiceImpl(
                     } else {
                         statement.setInt(index + 1, value)
                     }
+                    value
                 }
 
                 QueryParameterType.FLOAT -> {
@@ -299,6 +399,7 @@ class AnalyticsQueryExecutionServiceImpl(
                     } else {
                         statement.setFloat(index + 1, value)
                     }
+                    value
                 }
 
                 QueryParameterType.BOOLEAN -> {
@@ -308,56 +409,35 @@ class AnalyticsQueryExecutionServiceImpl(
                     } else {
                         statement.setBoolean(index + 1, value)
                     }
+                    value
                 }
 
                 QueryParameterType.DATE -> {
                     val date = json.decodeFromJsonElement(AnalyticsQueryParameterDate.serializer(), value ?: JsonNull)
-                    if (date.now) {
-                        val now = OffsetDateTime.now()
-                        val nowDayOffset = date.nowDayOffset
-                        val target = if (nowDayOffset != null) {
-                            now.plusDays(nowDayOffset.toLong())
-                        } else {
-                            now
-                        }
-                        statement.setDate(index + 1, Date.valueOf(target.toLocalDate()))
-                    } else {
-                        val dateValue = date.value
-                        if (dateValue == null) {
-                            statement.setNull(index + 1, Types.DATE)
-                        } else {
-                            statement.setDate(index + 1, Date.valueOf(dateValue.toLocalDate()))
-                        }
-                    }
+                    val resolved = if (date.now) executionTime.plusDays(date.nowDayOffset?.toLong() ?: 0) else date.value
+                    val bound = resolved?.let { Date.valueOf(it.toLocalDate()) }
+                    if (bound == null) statement.setNull(index + 1, Types.DATE) else statement.setDate(index + 1, bound)
+                    bound
                 }
 
                 QueryParameterType.TIME -> {
-                    val value = value.scalarValue()?.longOrNull
-                    if (value == null) {
-                        statement.setNull(index + 1, Types.TIME)
-                    } else {
-                        statement.setTime(index + 1, Time(value))
-                    }
+                    val bound = value.scalarValue()?.longOrNull?.let(::Time)
+                    if (bound == null) statement.setNull(index + 1, Types.TIME) else statement.setTime(index + 1, bound)
+                    bound
                 }
 
                 QueryParameterType.DATETIME -> {
                     val date = json.decodeFromJsonElement(AnalyticsQueryParameterDate.serializer(), value ?: JsonNull)
-                    if (date.now) {
-                        val now = OffsetDateTime.now()
-                        val nowDayOffset = date.nowDayOffset
-                        if (nowDayOffset != null) {
-                            statement.setObject(index + 1, Timestamp.valueOf(now.plusDays(nowDayOffset.toLong()).toLocalDateTime()))
-                        } else {
-                            statement.setTimestamp(index + 1, Timestamp.valueOf(now.toLocalDateTime()))
-                        }
+                    val resolved = if (date.now) executionTime.plusDays(date.nowDayOffset?.toLong() ?: 0) else date.value
+                    val bound = resolved?.let { Timestamp.valueOf(it.toLocalDateTime()) }
+                    if (bound == null) {
+                        statement.setNull(index + 1, Types.TIMESTAMP)
+                    } else if (date.now && date.nowDayOffset == null) {
+                        statement.setTimestamp(index + 1, bound)
                     } else {
-                        val dateValue = date.value
-                        if (dateValue == null) {
-                            statement.setNull(index + 1, Types.TIMESTAMP)
-                        } else {
-                            statement.setObject(index + 1, Timestamp.valueOf(dateValue.toLocalDateTime()))
-                        }
+                        statement.setObject(index + 1, bound)
                     }
+                    bound
                 }
 
                 QueryParameterType.ARRAY -> {
@@ -375,6 +455,7 @@ class AnalyticsQueryExecutionServiceImpl(
                     }
                     val value: List<Any?> = value.wrappedArray()?.map(converter) ?: emptyList()
                     statement.setArray(index + 1, connection.createArrayOf(valueType, value.toTypedArray()))
+                    value
                 }
 
                 QueryParameterType.OBJECT -> {
@@ -384,11 +465,18 @@ class AnalyticsQueryExecutionServiceImpl(
                     } else {
                         statement.setString(index + 1, value)
                     }
+                    value
                 }
 
                 else -> error("Invalid parameter type: ${parameter.type}")
             }
+            AnalyticsQueryBinding(index + 1, parameter.parameter, parameter.type, boundValue.toBindingJson())
         }
+
+    private fun Any?.toBindingJson(): JsonElement = when (this) {
+        is Date, is Time, is Timestamp -> JsonPrimitive(toString())
+        is List<*> -> JsonArray(map { it.toBindingJson() })
+        else -> toJsonElement()
     }
 
     private fun JsonElement?.scalarValue(): JsonPrimitive? = when (this) {
@@ -416,5 +504,6 @@ class AnalyticsQueryExecutionServiceImpl(
     companion object {
         internal const val MAX_COLUMN_CACHE_ENTRIES = 1_024
         internal const val FAILED_COLUMN_PROBE_TTL_MILLIS = 30_000L
+        internal const val WAREHOUSE_QUERY_TIMEOUT_SECONDS = 300
     }
 }

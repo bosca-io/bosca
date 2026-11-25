@@ -96,6 +96,15 @@ export const SECTIONS: DocSection[] = [
         ]
       },
       {
+        title: 'Kit Reference',
+        links: [
+          { label: 'Getting Started with Kit', to: '/kit-reference/getting-started' },
+          { label: 'Configuration & Deployment', to: '/kit-reference/configuration' },
+          { label: 'Operations & Support', to: '/kit-reference/operations' },
+          { label: 'Extension Points', to: '/kit-reference/extending' }
+        ]
+      },
+      {
         title: 'Build on Bosca',
         links: [
           { label: 'Architecture', to: '/developers/architecture' },

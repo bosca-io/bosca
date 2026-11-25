@@ -16,6 +16,7 @@ class AiMigration : Migration {
         "V7__mcp_server_registrations_git_sync.sql",
         "V8__agent_tool_impl_variants.sql",
         "V9__agent_resources.sql",
-        "V10__chat_session_parent.sql"
+        "V10__chat_session_parent.sql",
+        "V11__memory_saves.sql"
     )
 }

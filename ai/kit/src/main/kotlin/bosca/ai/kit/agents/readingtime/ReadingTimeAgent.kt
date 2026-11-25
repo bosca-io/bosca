@@ -1,6 +1,5 @@
 package bosca.ai.kit.agents.readingtime
 
-import ai.koog.agents.chatMemory.feature.ChatMemory
 import ai.koog.agents.core.agent.AIAgentService
 import ai.koog.agents.core.agent.GraphAIAgentService
 import ai.koog.agents.core.agent.config.AIAgentConfig
@@ -9,7 +8,6 @@ import ai.koog.agents.core.dsl.builder.node
 import ai.koog.agents.core.dsl.builder.strategy
 import ai.koog.agents.core.dsl.extension.nodeLLMRequestStructured
 import ai.koog.agents.core.tools.ToolRegistry
-import ai.koog.agents.snapshot.feature.Persistence
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.model.PromptExecutor
 import ai.koog.prompt.llm.LLModel
@@ -17,9 +15,6 @@ import ai.koog.prompt.structure.StructuredResponse
 import ai.koog.serialization.kotlinx.KotlinxSerializer
 import bosca.ai.kit.agents.KitSerializer
 import bosca.ai.kit.agents.KitSubAgent
-import bosca.ai.kit.agents.session.BoscaChatMemoryProvider
-import bosca.ai.kit.agents.session.BoscaPersistenceStorageProvider
-import bosca.ai.kit.agents.session.KitSessionService
 import bosca.ai.kit.agents.strategy.kitStructuredConfig
 import bosca.ai.kit.configuration.KitJson
 import bosca.ai.prompts.model.Prompt
@@ -27,15 +22,12 @@ import kotlinx.serialization.json.Json
 
 /**
  * Kit's reading-time specialist: estimates a document's word count and reading time, returning a
- * structured [ReadingTimeResponse]. A single structured decision (no tools), mirroring
- * [bosca.ai.kit.agents.routing.RouteAgent]. The owning action extracts the document text and folds the
- * result into [bosca.ai.kit.agents.KitResponse.ReadingTime].
+ * structured [ReadingTimeResponse] to the direct metadata enrichment service.
  */
 class ReadingTimeAgent(
     promptExecutor: PromptExecutor,
     model: LLModel,
     json: KitJson,
-    sessionService: KitSessionService?,
     promptDefinition: Prompt? = null,
 ) : KitSubAgent<ReadingTimeRequest, ReadingTimeResponse>() {
 
@@ -59,12 +51,6 @@ class ReadingTimeAgent(
         ),
         strategy = strategy(),
         toolRegistry = ToolRegistry { },
-        installFeatures = {
-            sessionService?.let {
-                install(Persistence) { storage = BoscaPersistenceStorageProvider(it) }
-                install(ChatMemory) { chatHistoryProvider = BoscaChatMemoryProvider(sessionService) }
-            }
-        },
     )
 
     private fun strategy(): AIAgentGraphStrategy<ReadingTimeRequest, ReadingTimeResponse> = strategy("reading_time") {

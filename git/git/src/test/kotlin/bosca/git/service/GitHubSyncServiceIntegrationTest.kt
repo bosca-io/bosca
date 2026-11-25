@@ -1072,8 +1072,7 @@ class GitHubSyncServiceIntegrationTest {
                 val job = spyk(queued)
                 every { job.isLocked } returns true
                 withContext(queue.asCoroutineContext(job)) {
-                    bosca.pipelines.trigger.ExecuteNodeInJobExecutor(runService, pipelineService, resultStore, security,
-                        PipelinesRuntimeConfiguration()).execute()
+                    bosca.pipelines.trigger.ExecuteNodeInJobExecutor(runService, pipelineService, resultStore).execute()
                 }
                 assertNotNull(runRepository.getById(definition.runId))
                 val parent = spyk(jobs.getValue(requireNotNull(queued.getParentId())))
@@ -1096,6 +1095,7 @@ class GitHubSyncServiceIntegrationTest {
         connection().useStatement("""
             drop schema if exists pipelines cascade;
             create table if not exists groups (id uuid primary key, configuration jsonb not null default '{}');
+            create table if not exists public.principal_groups (principal uuid not null, group_id uuid not null);
             do $$ begin
                 if not exists (select 1 from pg_type where typname = 'permission_action') then
                     create type permission_action as enum ('view', 'edit', 'manage', 'delete', 'execute');
@@ -1172,6 +1172,7 @@ class GitHubSyncServiceIntegrationTest {
             securityService = security,
             config = PipelinesRuntimeConfiguration(),
             pubSub = mockk(relaxed = true),
+            tokens = mockk(relaxed = true),
         )
         provides<bosca.pipelines.service.PipelineRunService> { runService }
         val fixture = EventFixture(mutableListOf(graph.copy(id = record.id)), pipelines, runService, runRepository, graphJson, resultStore)

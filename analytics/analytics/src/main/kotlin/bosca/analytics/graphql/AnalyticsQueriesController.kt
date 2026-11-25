@@ -47,13 +47,17 @@ class AnalyticsQueriesController(
     suspend fun executeByKey(authentication: AuthenticationContext, key: String, parameters: List<AnalyticsQueryExecutionParameterInput>): AnalyticsQueryResponse {
         val query = queriesService.getQueryByKey(key) ?: error("Query not found: $key")
         permissionEvaluator.verifyAllowed(authentication, query, PermissionAction.EXECUTE)
-        return executionService.execute(key, parameters)
+        val response = executionService.execute(key, parameters)
+        if (response.evidence == null || permissionEvaluator.isAllowed(authentication, query, PermissionAction.VIEW)) return response
+        return AnalyticsQueryResponse(response.records, response.cached, response.refreshedAt, response.stale)
     }
 
     @Field
     suspend fun execute(authentication: AuthenticationContext, queryId: UUID, parameters: List<AnalyticsQueryExecutionParameterInput>): AnalyticsQueryResponse {
         val query = queriesService.getQueryById(queryId)
         permissionEvaluator.verifyAllowed(authentication, query, PermissionAction.EXECUTE)
-        return executionService.execute(queryId, parameters)
+        val response = executionService.execute(queryId, parameters)
+        if (response.evidence == null || permissionEvaluator.isAllowed(authentication, query, PermissionAction.VIEW)) return response
+        return AnalyticsQueryResponse(response.records, response.cached, response.refreshedAt, response.stale)
     }
 }

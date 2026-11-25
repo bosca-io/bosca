@@ -1,0 +1,17 @@
+query ListAnalyticsCatalogs($offset: Int!, $limit: Int!) {
+    analytics { warehouse { catalogs(offset: $offset, limit: $limit) } }
+}
+query ListAnalyticsSchemas($catalog: String!, $offset: Int!, $limit: Int!) {
+    analytics { warehouse { schemas(catalog: $catalog, offset: $offset, limit: $limit) } }
+}
+query ListAnalyticsTables($catalog: String!, $schema: String!, $offset: Int!, $limit: Int!) {
+    analytics { warehouse { tables(catalog: $catalog, schema: $schema, offset: $offset, limit: $limit) } }
+}
+query DescribeAnalyticsTable($catalog: String!, $schema: String!, $table: String!) {
+    analytics { warehouse { describe(catalog: $catalog, schema: $schema, table: $table) { name typeName nullable } } }
+}
+query ExecuteAnalyticsSql($sql: String!, $limit: Int!) {
+    analytics { warehouse { execute(sql: $sql, limit: $limit) {
+        sql columns { name typeName nullable } records truncated executedAt durationMs
+    } } }
+}

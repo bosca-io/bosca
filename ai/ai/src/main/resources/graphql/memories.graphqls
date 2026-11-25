@@ -1,0 +1,59 @@
+"Reusable, explicitly saved knowledge backed by Bosca content documents."
+type Memories {
+    get(id: UUID!, conversationId: UUID): Memory
+    search(query: MemoryQuery!, conversationId: UUID): [Memory!]!
+}
+
+type MemoriesMutation {
+    remember(input: RememberMemoryInput!): Memory!
+    update(id: UUID!, expectedRevision: String!, statement: String!, refreshSource: Boolean = false, conversationId: UUID): Memory!
+    forget(id: UUID!, expectedRevision: String!): Boolean!
+}
+
+enum MemoryScope { PERSONAL COLLECTION }
+
+type Memory {
+    id: UUID!
+    version: Int!
+    revision: String!
+    statement: String!
+    provenance: MemoryAttributes!
+    sourceChanged: Boolean!
+    tags: [String!]!
+    created: DateTime!
+    modified: DateTime
+}
+
+type MemoryAttributes {
+    scope: MemoryScope!
+    ownerId: UUID!
+    collectionId: UUID
+    sourceMetadataId: UUID
+    sourceVersion: Int
+    sourceRevision: String
+    conversationId: UUID
+    "Null retains this explicitly saved memory until it is forgotten, independently of its conversation."
+    expires: DateTime
+}
+
+input RememberMemoryInput {
+    "Caller-generated UUID; reuse the same UUID and input when retrying a save."
+    requestId: UUID!
+    statement: String!
+    scope: MemoryScope = PERSONAL
+    collectionId: UUID
+    sourceMetadataId: UUID
+    conversationId: UUID
+    expires: DateTime
+    tags: [String!] = []
+}
+
+input MemoryQuery {
+    text: String = ""
+    collectionIds: [UUID!] = []
+    ids: [UUID!] = []
+    tags: [String!] = []
+    personal: Boolean = true
+    offset: Long = 0
+    limit: Int = 5
+}

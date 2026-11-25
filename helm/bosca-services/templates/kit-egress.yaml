@@ -1,0 +1,113 @@
+{{- /*
+Kit egress proxy. Kit runtimes have no direct route out of the cluster (see
+kit-networkpolicy.yaml); they reach destinations other than Bosca through this
+proxy, which accepts only authenticated HTTPS CONNECT requests. It always permits
+the Gateway hostnames below and asks bosca-server for each session's approved
+destinations.
+*/ -}}
+{{- if include "bosca-services.kitEgressEnabled" . -}}
+{{- $kit := .Values.global.kit -}}
+{{- $egress := $kit.egress | default dict -}}
+{{- $profile := include "bosca-common.kitProfile" . | fromYaml -}}
+{{- $runtime := include "bosca-common.kitRuntime" . | fromYaml -}}
+{{- $name := include "bosca-common.kitEgressName" . -}}
+{{- $image := mergeOverwrite (dict "registry" "ghcr.io/bosca-io/bosca" "repository" "bosca-cli" "pullPolicy" "IfNotPresent") (deepCopy ($egress.image | default dict)) -}}
+{{- /* The proxy is a bosca CLI command; by default it runs the CLI release recorded for the Kit runtime image. */ -}}
+{{- $_ := set $image "tag" (default $runtime.versions.cli $image.tag) -}}
+{{- /* Like Kit Jobs, the proxy uses the controller's image pull secrets unless global.kit.egress sets its own. */ -}}
+{{- $pullSecrets := list -}}
+{{- if hasKey $egress "imagePullSecrets" -}}
+{{- $pullSecrets = $egress.imagePullSecrets -}}
+{{- else -}}
+{{- with index .Subcharts "bosca-kubernetes-controller" }}{{ $pullSecrets = .Values.imagePullSecrets }}{{ end -}}
+{{- end -}}
+{{- $security := mergeOverwrite (dict "runAsNonRoot" true "runAsUser" 10001 "runAsGroup" 10001 "readOnlyRootFilesystem" true "capabilities" (dict "drop" (list "ALL"))) ($egress.securityContext | default dict) -}}
+{{- $podSecurity := mergeOverwrite (dict "runAsNonRoot" true "runAsUser" 10001 "runAsGroup" 10001 "fsGroup" 10001) ($egress.podSecurityContext | default dict) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bosca-services.kitEgressLabels" . | nindent 4 }}
+spec:
+  replicas: {{ $egress.replicas | default 1 }}
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      {{- include "bosca-services.kitEgressSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bosca-services.kitEgressSelectorLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with $pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "bosca-common.podSecurityContext" (dict "Values" (dict "podSecurityContext" $podSecurity)) | nindent 8 }}
+      {{- with $egress.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $egress.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: kit-egress
+          image: {{ include "bosca-common.boscaImage" (dict "image" $image "global" .Values.global) | quote }}
+          imagePullPolicy: {{ include "bosca-common.imagePullPolicy" $image }}
+          args:
+            - harness
+            - egress
+            - --port
+            - "3128"
+            - --bosca-url
+            - {{ trimSuffix "/graphql" $profile.boscaEndpoint | quote }}
+            {{- range include "bosca-services.gatewayHostnames" . | fromJsonArray }}
+            - --allow
+            - {{ printf "%s:443" . | quote }}
+            {{- end }}
+          securityContext:
+            {{- include "bosca-common.securityContext" (dict "Values" (dict "securityContext" $security)) | nindent 12 }}
+          ports:
+            - name: proxy
+              containerPort: 3128
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: proxy
+          livenessProbe:
+            tcpSocket:
+              port: proxy
+            periodSeconds: 20
+          resources:
+            {{- toYaml ($egress.resources | default (dict "requests" (dict "cpu" "50m" "memory" "64Mi") "limits" (dict "cpu" "1" "memory" "256Mi"))) | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "bosca-services.kitEgressLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: proxy
+      port: 3128
+      targetPort: proxy
+      protocol: TCP
+  selector:
+    {{- include "bosca-services.kitEgressSelectorLabels" . | nindent 4 }}
+{{- end }}

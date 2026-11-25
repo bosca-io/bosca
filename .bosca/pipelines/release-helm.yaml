@@ -26,6 +26,10 @@ jobs:
         uses: setup-registry
         with:
           repository: bosca-maven
+      - name: Setup Node
+        uses: setup-node
+        with:
+          version: "22"
       - name: Setup Helm
         run: |
           set -euo pipefail
@@ -54,6 +58,8 @@ jobs:
         run: bash helm/scripts/release-test.sh
       - name: Test release versions
         run: python3 helm/tests/test_release_versions.py
+      - name: Test Kit image defaults
+        run: node --test helm/scripts/kit-images.test.mjs
       - name: Test Git gateway routing
         run: python3 helm/tests/test_git_routes.py
       - name: Test Atlas gateway routing

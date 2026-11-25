@@ -1,0 +1,10 @@
+{{- $kit := dig "kit" dict (.Values.global | default dict) -}}
+{{- if and $kit.enabled (not $kit.boscaEndpoint) (not (dig "profile" "boscaEndpoint" "" $kit)) -}}
+{{- with index .Subcharts "bosca-server" -}}
+{{- $actual := include "bosca-common.fullname" . -}}
+{{- $default := include "bosca-common.fullname" (dict "Chart" (dict "Name" "bosca-server") "Values" dict "Release" .Release) -}}
+{{- if ne $actual $default -}}
+{{- fail (printf "The Bosca API Service is named %s. Set global.kit.boscaEndpoint to its reachable GraphQL URL, such as http://%s.%s.svc:8080/graphql" $actual $actual .Release.Namespace) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

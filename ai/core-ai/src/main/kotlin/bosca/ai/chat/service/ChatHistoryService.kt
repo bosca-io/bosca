@@ -109,6 +109,9 @@ interface ChatHistoryService : Service {
      */
     suspend fun getMessages(sessionId: UUID): List<ChatHistoryMessage>
 
+    /** Returns at most [limit] conversational rows before a turn, newest first; excludes display events and future queued requests. */
+    suspend fun getRecentMessages(sessionId: UUID, before: bosca.serialization.OffsetDateTime, limit: Int): List<ChatHistoryMessage>
+
     suspend fun setMessages(sessionId: UUID, messages: List<ChatHistoryMessage>)
 
     /**
@@ -118,6 +121,9 @@ interface ChatHistoryService : Service {
      * @return the persisted message with its generated identifier and timestamp
      */
     suspend fun addMessage(message: ChatHistoryMessage): ChatHistoryMessage?
+
+    /** Replaces the snapshot for a stable message id and broadcasts it; the caller serializes writers. */
+    suspend fun upsertMessage(message: ChatHistoryMessage): ChatHistoryMessage
 
     /**
      * Updates the modified timestamp of a session to the current time,

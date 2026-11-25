@@ -124,6 +124,7 @@ input AnalyticsQueryExecutionParameterInput {
 
 "The result of executing an analytics query, containing the returned data rows"
 type AnalyticsQueryResponse {
+    evidence: AnalyticsQueryEvidence
     "Array of result records, where each record is a JSON object representing one row of data"
     records: [JSON!]!
     "Whether the records were served from the query result cache instead of being computed for this request"
@@ -181,6 +182,7 @@ type AnalyticsMutation {
 
 "Root analytics query type providing access to all analytics features"
 type Analytics {
+    warehouse: AnalyticsWarehouse!
 
     "Access analytics query operations"
     queries: AnalyticsQueries!
@@ -194,4 +196,43 @@ extend type Query {
 extend type Mutation {
     "Access analytics mutation operations"
     analytics: AnalyticsMutation!
+}
+
+
+"Direct read-only warehouse inspection, restricted to administrators or analytics managers with analytics:sql."
+type AnalyticsWarehouse {
+    catalogs(offset: Int! = 0, limit: Int! = 100): [String!]!
+    schemas(catalog: String!, offset: Int! = 0, limit: Int! = 100): [String!]!
+    tables(catalog: String!, schema: String!, offset: Int! = 0, limit: Int! = 100): [String!]!
+    describe(catalog: String!, schema: String!, table: String!): [AnalyticsQueryColumn!]!
+    execute(sql: String!, limit: Int! = 100): AnalyticsSqlResult!
+}
+
+"Uncached execution evidence for the exact SQL submitted, with at most the requested number of rows."
+type AnalyticsSqlResult {
+    sql: String!
+    columns: [AnalyticsQueryColumn!]!
+    records: [JSON!]!
+    truncated: Boolean!
+    executedAt: DateTime!
+    durationMs: Long!
+}
+
+
+"Original execution evidence, returned only with query VIEW permission."
+type AnalyticsQueryEvidence {
+    queryId: UUID!
+    "The SQL sent to JDBC, with positional placeholders resolved by parameters."
+    sql: String!
+    parameters: [AnalyticsQueryBinding!]!
+    executedAt: DateTime!
+    durationMs: Long!
+}
+
+"A parameter's actual bound value after defaulting, coercion and relative-date resolution."
+type AnalyticsQueryBinding {
+    position: Int!
+    parameter: String!
+    type: QueryParameterType!
+    value: JSON
 }

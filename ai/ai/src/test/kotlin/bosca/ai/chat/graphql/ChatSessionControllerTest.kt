@@ -12,7 +12,7 @@ import kotlin.uuid.Uuid
 @OptIn(ExperimentalUuidApi::class)
 class ChatSessionControllerTest {
 
-    private val controller = ChatSessionController(mockk<ChatHistoryService>())
+    private val controller = ChatSessionController(mockk<ChatHistoryService>(), mockk())
 
     @Test
     fun `parentSessionId resolves nested session parent`() {

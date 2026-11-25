@@ -100,7 +100,7 @@ const TOOLS = [
             </div>
             <div class="agent-step call">
               <span class="agent-tag">tool</span>
-              <span class="agent-text"><code>bible_get_verses("John 3:16")</code></span>
+              <span class="agent-text"><code>content_scripture(verses, "John 3:16")</code></span>
             </div>
             <div class="agent-step result">
               <p>For God so loved the world, that he gave his one and only Son…</p>

@@ -115,6 +115,14 @@ class MetadataMutationController(
     @Field
     fun ai() = MetadataAIMutation
 
+    /**
+     * Memory items carry provenance that Kit trusts, written by the memory service. Creating, converting or
+     * re-attributing them through the generic metadata API therefore requires administrator authority.
+     */
+    private fun verifyMemoryContentType(authentication: AuthenticationContext, vararg contentTypes: String?) {
+        if (contentTypes.any { it == bosca.content.metadata.model.MemoryAttributes.CONTENT_TYPE }) groupEvaluator.verifyHasAdminGroup(authentication)
+    }
+
     @Field
     suspend fun add(
         authentication: AuthenticationContext,
@@ -131,6 +139,7 @@ class MetadataMutationController(
             } else {
                 groupEvaluator.verifyHasEditorGroup(authentication)
             }
+            verifyMemoryContentType(authentication, metadata.contentType)
             metadata.parentId?.let {
                 val parentMetadata = service.getById(it) ?: throw NoSuchElementException("Parent metadata not found: $it")
                 permissionEvaluator.verifyAllowed(authentication, parentMetadata, PermissionAction.EDIT)
@@ -422,6 +431,7 @@ class MetadataMutationController(
                 throw SecurityException("locked")
             }
             permissionEvaluator.verifyAllowed(authentication, metadata, PermissionAction.EDIT)
+            verifyMemoryContentType(authentication, metadata.contentType)
             val document = documentService.getDocument(metadata.id, metadata.version)
             val data = dataService.getData(metadata.id, metadata.version)
             val guide = guideService.getGuide(metadata.id, metadata.version)
@@ -905,6 +915,7 @@ class MetadataMutationController(
     ): Metadata {
         val current = service.getById(id) ?: throw NoSuchElementException("Metadata not found: $id")
         permissionEvaluator.verifyAllowed(authentication, current, PermissionAction.EDIT)
+        if (metadata.contentType != current.contentType) verifyMemoryContentType(authentication, current.contentType, metadata.contentType)
         return service.edit(id, metadata)
     }
 
@@ -963,6 +974,7 @@ class MetadataMutationController(
     ): Boolean {
         val current = service.getById(id) ?: throw NoSuchElementException("Metadata not found: $id")
         permissionEvaluator.verifyAllowed(authentication, current, PermissionAction.EDIT)
+        verifyMemoryContentType(authentication, current.contentType)
         service.setSystemAttributes(current, attributes)
         return true
     }
@@ -977,6 +989,7 @@ class MetadataMutationController(
         ready: Boolean?,
     ): Metadata {
         groupEvaluator.verifyHasEditorGroup(authentication)
+        verifyMemoryContentType(authentication, metadata.contentType)
         val newMetadata = transaction {
             val parent = metadata.parentCollectionId?.let {
                 collectionService.getById(it) ?: throw NoSuchElementException("Parent collection not found: $it")
@@ -1114,6 +1127,7 @@ class MetadataMutationController(
     ): Boolean {
         val metadata = service.getById(id) ?: throw NoSuchElementException("Metadata not found: $id")
         permissionEvaluator.verifyAllowed(authentication, metadata, PermissionAction.EDIT)
+        if (contentType != null && contentType != metadata.contentType) verifyMemoryContentType(authentication, metadata.contentType, contentType)
         service.setUploaded(id, contentType ?: metadata.contentType, len.toLong())
         if (ready == true) {
             service.setReady(metadata, authentication.principal()?.asPrincipal() ?: error("missing principal"))
