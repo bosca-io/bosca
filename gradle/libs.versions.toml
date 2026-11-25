@@ -276,6 +276,7 @@ tamboui-widgets = { module = "dev.tamboui:tamboui-widgets", version.ref = "tambo
 testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql", version.ref = "testcontainers" }
 trino = { module = "io.trino:trino-jdbc", version.ref = "trino" }
+trino-parser = { module = "io.trino:trino-parser", version.ref = "trino" }
 webauthn4j-core = { module = "com.webauthn4j:webauthn4j-core", version.ref = "webauthn4j" }
 
 [plugins]
