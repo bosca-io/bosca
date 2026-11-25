@@ -98,7 +98,7 @@ class PipelinesMutationControllerTest {
         shapeService = shapeService,
     )
 
-    private val auth = AuthenticationContext(null, null)
+    private val auth = pipelineAdministrator()
 
     @BeforeTest
     fun setUp() {
@@ -159,6 +159,7 @@ class PipelinesMutationControllerTest {
 
     private fun rejectAdmin() {
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -171,6 +172,31 @@ class PipelinesMutationControllerTest {
         assertFailsWith<IllegalStateException> { controller.save(auth, input()) }
         coVerify(exactly = 0) { service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
     }
+
+    @Test
+    fun `an edit-scoped caller cannot change a pipeline an unattended pipeline reaches`() = runTest {
+        val id = UUID.random()
+        coEvery { groups.hasAdminGroup(auth) } returns false
+        coEvery { groups.throwUnauthorized() } throws IllegalStateException("denied")
+        coEvery { service.get(id) } returns bosca.pipelines.model.Pipeline(id, "child", acceptedInputType = "JSON")
+        coEvery { service.runsUnattended(id) } returns true
+        assertFailsWith<IllegalStateException> { controller.save(auth, input(id = id, description = null, triggered = null, key = null, api = null, public = null, version = null)) }
+        coVerify(exactly = 0) { service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+
+        coEvery { service.runsUnattended(id) } returns false
+        controller.save(auth, input(id = id, description = null, triggered = null, key = null, api = null, public = null, version = null))
+        coVerify(exactly = 1) { service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `an edit-scoped caller can create a pipeline that does not run automatically`() = runTest {
+        coEvery { groups.hasAdminGroup(auth) } returns false
+        controller.save(auth, input(id = null, description = null, triggered = null, key = null, api = null, public = null, version = null))
+        controller.save(auth, input(id = UUID.NIL, description = null, triggered = null, key = null, api = null, public = null, version = null))
+        coVerify(exactly = 2) { service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { service.get(any()) }
+    }
+
 
     @Test
     fun `save coalesces all nullable input fields to their defaults`() = runTest {

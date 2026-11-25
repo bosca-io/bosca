@@ -23,5 +23,6 @@ class KubernetesMigration : Migration {
         "V2__helm_repos.sql",
         "V3__kubernetes_job_executions.sql",
         "V4__helm_repo_credentials.sql",
+        "V5__job_execution_image.sql",
     )
 }

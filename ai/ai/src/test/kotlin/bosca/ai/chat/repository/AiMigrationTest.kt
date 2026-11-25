@@ -69,13 +69,14 @@ class AiMigrationTest {
     }
 
     @Test
-    fun `AiMigration resources has ten entries`() {
-        assertEquals(10, migration.resources.size)
+    fun `AiMigration resources has eleven entries`() {
+        assertEquals(11, migration.resources.size)
+        assertTrue(migration.resources.contains("V11__memory_saves.sql"))
     }
 
     @Test
     fun `AiMigration resources are ordered by version`() {
         val versions = migration.resources.map { it.substringBefore("__") }
-        assertEquals(listOf("V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10"), versions)
+        assertEquals(listOf("V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10", "V11"), versions)
     }
 }

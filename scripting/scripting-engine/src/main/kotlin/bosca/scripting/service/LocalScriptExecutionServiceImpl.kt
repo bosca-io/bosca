@@ -15,6 +15,8 @@ class LocalScriptExecutionServiceImpl(private val engine: Engine) : ScriptExecut
 
     override val isRemoteEnvironment = false
 
+    override suspend fun validate(source: String, compile: Boolean) = validateScriptSource(engine, source, compile)
+
     override suspend fun <T> execute(script: Script, context: ScriptContext, deserializer: DeserializationStrategy<T>?): T? {
         val compiled = engine.compile<T>(script.key, script.version, script.source)
         return compiled.execute(context)

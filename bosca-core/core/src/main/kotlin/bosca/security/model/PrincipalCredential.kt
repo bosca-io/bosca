@@ -174,7 +174,14 @@ data class ApiTokenCredentialAttributes(
     val revokedAt: String? = null,
     /** UUID of the principal who created this token (may differ from the owning principal for admin-created tokens). */
     @SerialName("created_by")
-    val createdBy: String
+    val createdBy: String,
+    /**
+     * Whether this token was issued for one runtime session and is retired with it. Its revocation,
+     * expiry or deletion is routine cleanup, so durable work it started keeps the authority captured
+     * at submission. Only [bosca.security.service.ApiTokenService.createEphemeralToken] can set this.
+     */
+    @SerialName("session_bound")
+    val sessionBound: Boolean = false,
 ) : CredentialAttributes {
 
     @Transient

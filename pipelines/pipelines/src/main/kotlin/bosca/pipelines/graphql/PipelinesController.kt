@@ -7,6 +7,10 @@ import bosca.di.annotation.InternalDI
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
+import bosca.pipelines.model.PipelineGraphLayout
+import bosca.pipelines.model.PipelineGraphValidation
+import kotlinx.serialization.json.JsonElement
+import bosca.security.service.ApiTokenScopes
 import bosca.pipelines.model.BrokenPipeline
 import bosca.pipelines.model.NodeMetrics
 import bosca.pipelines.model.Pipeline
@@ -47,7 +51,7 @@ class PipelinesController(
         offset: Int?,
         limit: Int?,
     ): List<PipelineRunLogWithName> {
-        groups.verifyHasAdminGroup(authentication)
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_VIEW)
         return runService.listRunHistory(
             pipelineId,
             (offset ?: 0).toLong(),
@@ -61,7 +65,7 @@ class PipelinesController(
         offset: Int?,
         limit: Int?,
     ): List<PipelineRunLogWithName> {
-        groups.verifyHasAdminGroup(authentication)
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_VIEW)
         return runService.listAllRunHistory(
             (offset ?: 0).toLong(),
             (limit ?: 50).coerceIn(1, 200),
@@ -69,27 +73,48 @@ class PipelinesController(
     }
 
     @Field
-    suspend fun all(authentication: AuthenticationContext): List<Pipeline> {
-        groups.verifyHasAdminGroup(authentication)
-        return service.getAll()
+    suspend fun all(authentication: AuthenticationContext, offset: Int? = null, limit: Int? = null, search: String? = null): List<Pipeline> {
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_VIEW)
+        require((offset ?: 0) >= 0 && (limit == null || limit in 1..100)) { "Invalid pipeline pagination" }
+        val matching = service.getAll().filter { pipeline ->
+            search.isNullOrBlank() || listOf(pipeline.name, pipeline.key, pipeline.description, pipeline.acceptedInputType)
+                .plus(pipeline.tags).any { it.contains(search, ignoreCase = true) }
+        }
+        return matching.drop(offset ?: 0).let { if (limit == null) it else it.take(limit) }
+    }
+
+    /** Resolves an endpoint key under the same administrator read boundary as [pipeline]. */
+    @Field
+    suspend fun pipelineByKey(authentication: AuthenticationContext, key: String): Pipeline? {
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_VIEW)
+        return service.getByKey(key)
+    }
+
+    /** Validates an unsaved graph through the registered engine serializers and slot contracts. */
+    @Field
+    suspend fun validateGraph(authentication: AuthenticationContext, graph: JsonElement): PipelineGraphValidation {
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_VIEW)
+        val violation = service.validateGraph(graph)
+        return PipelineGraphValidation(violation == null, listOfNotNull(violation),
+            if (violation == null) PipelineGraphLayout.layout(graph) else graph)
     }
 
     @Field
     suspend fun pipeline(authentication: AuthenticationContext, id: UUID): Pipeline? {
-        groups.verifyHasAdminGroup(authentication)
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_VIEW)
         return service.get(id)
     }
 
     @Field
     suspend fun broken(authentication: AuthenticationContext): List<BrokenPipeline> {
-        groups.verifyHasAdminGroup(authentication)
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_VIEW)
         return service.getBroken()
     }
 
     @OptIn(InternalDI::class)
     @Field
     suspend fun nodeTypes(authentication: AuthenticationContext): List<NodeDescriptor> {
-        groups.verifyHasAdminGroup(authentication)
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_VIEW)
         return ProviderRegistry.findAll(PipelineNodeSerializers::class)
             .filter { it.exists }
             .flatMap { it.get().descriptors }
@@ -100,7 +125,7 @@ class PipelinesController(
     /** All registered concrete pipeline value types and their domain interfaces/base types. */
     @Field
     suspend fun types(authentication: AuthenticationContext): List<String> {
-        groups.verifyHasAdminGroup(authentication)
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_VIEW)
         return SerializerCache.cataloguedTypes()
     }
 
@@ -110,7 +135,7 @@ class PipelinesController(
         offset: Int?,
         limit: Int?,
     ): List<PipelineRun> {
-        groups.verifyHasAdminGroup(authentication)
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_VIEW)
         return runService.listActive((offset ?: 0).toLong(), (limit ?: 50).coerceIn(1, 200))
     }
 
@@ -129,7 +154,7 @@ class PipelinesController(
         offset: Int?,
         limit: Int?,
     ): List<PipelineRun> {
-        groups.verifyHasAdminGroup(authentication)
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_VIEW)
         return runService.listDeadLetter((offset ?: 0).toLong(), (limit ?: 50).coerceIn(1, 200))
     }
 
@@ -140,7 +165,7 @@ class PipelinesController(
      */
     @Field
     suspend fun run(authentication: AuthenticationContext, runId: UUID): PipelineRun? {
-        groups.verifyHasAdminGroup(authentication)
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_VIEW)
         return runService.get(runId)
     }
 
@@ -150,7 +175,7 @@ class PipelinesController(
      */
     @Field
     suspend fun nodeMetrics(authentication: AuthenticationContext, pipelineId: UUID): List<NodeMetrics> {
-        groups.verifyHasAdminGroup(authentication)
+        groups.verifyPipelineAdministrator(authentication, ApiTokenScopes.PIPELINES_VIEW)
         return runService.nodeMetrics(pipelineId)
     }
 

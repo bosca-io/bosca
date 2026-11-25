@@ -23,6 +23,7 @@ import kotlinx.serialization.json.put
 import java.sql.PreparedStatement
 import java.sql.Types
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class AnalyticsQueryExecutionParameterBindingTest {
@@ -101,7 +102,17 @@ class AnalyticsQueryExecutionParameterBindingTest {
             AnalyticsQueryExecutionParameterInput("object_null", JsonObject(emptyMap())),
         )
 
-        bind(parameters, values)
+        val bindings = bind(parameters, values)
+        assertEquals(parameters.map { it.parameter }, bindings.map { it.parameter })
+        assertEquals((1..18).toList(), bindings.map { it.position })
+        assertEquals(parameters.map { it.type }, bindings.map { it.type })
+        assertEquals(listOf(
+            JsonPrimitive("one"), JsonPrimitive("two"), JsonNull, JsonPrimitive("default"),
+            JsonPrimitive(1), JsonPrimitive(2), JsonNull, JsonPrimitive(1.5f), JsonPrimitive(2.5f), JsonNull,
+            JsonPrimitive(true), JsonPrimitive(false), JsonNull,
+            JsonPrimitive(java.sql.Time(1_000L).toString()), JsonPrimitive(java.sql.Time(2_000L).toString()), JsonNull,
+            JsonPrimitive("{\"x\":1}"), JsonNull,
+        ), bindings.map { it.value })
 
         verify { statement.setString(1, "one") }
         verify { statement.setString(2, "two") }
@@ -147,7 +158,13 @@ class AnalyticsQueryExecutionParameterBindingTest {
             AnalyticsQueryExecutionParameterInput("datetime_value", json.encodeToJsonElement(AnalyticsQueryParameterDate.serializer(), AnalyticsQueryParameterDate(value = explicit))),
         )
 
-        bind(parameters, values)
+        val executionTime = OffsetDateTime.parse("2026-10-24T23:59:59Z")
+        val bindings = service.bindParameters(connection, statement, parameters, values.associateBy { it.parameter }, executionTime)
+        assertEquals(listOf(
+            JsonPrimitive("2026-10-24"), JsonPrimitive("2026-10-26"), JsonNull, JsonPrimitive("2025-01-02"),
+            JsonPrimitive("2026-10-24 23:59:59.0"), JsonPrimitive("2026-10-22 23:59:59.0"), JsonNull,
+            JsonPrimitive("2025-01-02 03:04:05.0"),
+        ), bindings.map { it.value })
 
         verify { statement.setDate(1, any()) }
         verify { statement.setDate(2, any()) }
@@ -186,10 +203,17 @@ class AnalyticsQueryExecutionParameterBindingTest {
 
         types.forEachIndexed { index, type ->
             val name = "array_$index"
-            bind(
+            val bindings = bind(
                 listOf(parameter(name, QueryParameterType.ARRAY, arrayType = type)),
                 listOf(AnalyticsQueryExecutionParameterInput(name, wrapped(JsonArray(listOf(values[index], JsonNull))))),
             )
+            val expected = when (type) {
+                QueryParameterType.DATE -> JsonPrimitive(java.sql.Date(1_000L).toString())
+                QueryParameterType.TIME -> JsonPrimitive(java.sql.Time(2_000L).toString())
+                QueryParameterType.DATETIME -> JsonPrimitive(java.sql.Timestamp(3_000L).toString())
+                else -> values[index]
+            }
+            assertEquals(JsonArray(listOf(expected, JsonNull)), bindings.single().value)
             verify { statement.setArray(1, any()) }
         }
         coVerify(atLeast = 7) { connection.createArrayOf<Any?>(any(), any()) }
