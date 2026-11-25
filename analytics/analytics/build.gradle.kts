@@ -38,6 +38,7 @@ dependencies {
     implementation(libs.hadoop.mapreduce.client.core)
 
     implementation(libs.trino)
+    implementation(libs.trino.parser)
 
     implementation(platform(libs.aws.bom))
     implementation("software.amazon.awssdk:s3")
@@ -53,9 +54,6 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.testcontainers)
     testImplementation(project(":bosca-core:test-support"))
-    testImplementation(project(":ai:kit"))
-    testImplementation(project(":ai:core-ai"))
-    testImplementation(libs.koog.agents)
 
     "ksp"(project(":bosca-core:core-ksp"))
     "ksp"(project(":services-di:service-ksp"))

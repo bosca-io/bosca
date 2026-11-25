@@ -53,6 +53,11 @@ class ChatHistoryServiceImpl(
         return messages
     }
 
+    override suspend fun getRecentMessages(sessionId: UUID, before: bosca.serialization.OffsetDateTime, limit: Int): List<ChatHistoryMessage> {
+        require(limit in 1..100)
+        return repository.getRecentMessages(sessionId, before, limit)
+    }
+
     override suspend fun setMessages(sessionId: UUID, messages: List<ChatHistoryMessage>) = transaction {
 //        repository.deleteMessages(sessionId)
         messages.forEach { repository.addMessage(it) }
@@ -68,6 +73,13 @@ class ChatHistoryServiceImpl(
     override suspend fun dispatchStatus(sessionId: UUID, status: ChatSessionStatus) {
         repository.updateStatus(sessionId, status)
         pubsub.publish("bosca.ai.chat.v1.sessions.${sessionId}.statuses", ChatSessionStatuses.serializer(), ChatSessionStatuses(status))
+    }
+
+    override suspend fun upsertMessage(message: ChatHistoryMessage): ChatHistoryMessage {
+        val result = requireNotNull(repository.upsertMessage(message)) { "Message belongs to another conversation or author" }
+        repository.touchSession(message.sessionId)
+        pubsub.publish("bosca.ai.chat.v1.sessions.${message.sessionId}.messages", ChatHistoryMessage.serializer(), result)
+        return result
     }
 
     override suspend fun setProcessing(sessionId: UUID, processing: Boolean) {

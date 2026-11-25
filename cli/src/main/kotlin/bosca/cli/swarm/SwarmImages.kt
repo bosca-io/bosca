@@ -48,8 +48,9 @@ internal suspend fun updateSwarmImages(
     keys: Set<String>,
     latest: suspend (String) -> String,
 ): SwarmConfig {
-    val available = boscaImages.filter { it.swarmKey != null }
-    require(keys.all { key -> available.any { it.swarmKey == key } }) { "Unknown Bosca image key; choose ${available.mapNotNull { it.swarmKey }.joinToString()}" }
+    val available = boscaImages.mapNotNull { image -> image.swarmKey?.let { it to image.repository } }.toMap() +
+        mapOf("kit-controller" to "bosca-cli", "kit-codex-runtime" to "kit-codex-runtime", "kit-claude-runtime" to "kit-claude-runtime")
+    require(keys.all { it in available }) { "Unknown Bosca image key; choose ${available.keys.joinToString()}" }
     val updated = config.images.toMutableMap()
     val schemes = config.registrySchemes.toMutableMap()
     val optionalServices = mapOf(
@@ -57,11 +58,13 @@ internal suspend fun updateSwarmImages(
         "atlas-ui" to config.sites.any { it.atlasUiServer.enabled },
         "git" to config.sites.any { it.gitServer.enabled },
         "artifacts" to config.sites.any { it.artifactsServer.enabled },
+        "kit-controller" to config.sites.any { it.kit.enabled },
+        "kit-codex-runtime" to config.sites.any { it.kit.enabled && it.kit.harness == "codex" },
+        "kit-claude-runtime" to config.sites.any { it.kit.enabled && it.kit.harness == "claude" },
     )
-    for (image in available.filter { if (keys.isEmpty()) optionalServices[it.swarmKey] != false else it.swarmKey in keys }) {
-        val key = requireNotNull(image.swarmKey)
+    for ((key, repositoryName) in available.filterKeys { if (keys.isEmpty()) optionalServices[it] != false else it in keys }) {
         val configured = config.images.getValue(key)
-        val repository = registry?.let { "${it.trimEnd('/')}/${image.repository}" } ?: configured.substringBefore('@').let {
+        val repository = registry?.let { "${it.trimEnd('/')}/$repositoryName" } ?: configured.substringBefore('@').let {
             if (it.substringAfterLast('/').contains(':')) it.substringBeforeLast(':') else it
         }
         val uri = java.net.URI(if (repository.contains("://")) repository else "https://$repository")

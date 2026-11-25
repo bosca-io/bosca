@@ -1,0 +1,9 @@
+{
+  "transportVersion": 1,
+  "acpVersion": 1,
+  "archiveFormatVersion": 1,
+  "statePolicy": "codex-home-v1",
+  "adapter": "@agentclientprotocol/codex-acp@2.2.2",
+  "harness": "@openai/codex@0.160.1",
+  "paths": {"workspace": "/workspace", "harness": "/state/harness", "scratch": "/state/scratch"}
+}

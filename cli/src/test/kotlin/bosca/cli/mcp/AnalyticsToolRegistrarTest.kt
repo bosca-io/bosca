@@ -3,6 +3,9 @@ package bosca.cli.mcp
 import bosca.cli.api.AnalyticsApi
 import bosca.cli.api.NetworkClient
 import bosca.graphql.client.GraphQLJson
+import io.modelcontextprotocol.kotlin.sdk.types.EmbeddedResource
+import io.modelcontextprotocol.kotlin.sdk.types.TextContent
+import io.modelcontextprotocol.kotlin.sdk.types.TextResourceContents
 import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 import kotlinx.coroutines.runBlocking
@@ -14,6 +17,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class AnalyticsToolRegistrarTest {
@@ -71,6 +75,13 @@ class AnalyticsToolRegistrarTest {
                         {"day":"Wed","sessions":21}
                       ],
                       "cached": true,
+                      "stale": true,
+                      "evidence": {
+                        "queryId": "11111111-1111-1111-1111-111111111111",
+                        "sql": "SELECT sessions FROM traffic WHERE country = ?",
+                        "parameters": [{"position":1,"parameter":"country","type":"STRING","value":"US"}],
+                        "executedAt": "2026-10-23T12:00:00Z", "durationMs": 17
+                      },
                       "refreshedAt": null
                     }
                   }
@@ -80,8 +91,8 @@ class AnalyticsToolRegistrarTest {
             """.trimIndent(),
         )
         try {
-            val result = AnalyticsToolRegistrar.handleQuery(
-                AnalyticsApi(NetworkClient(fixture.url)),
+            val result = AnalyticsToolRegistrar.result(
+                "queries",
                 buildJsonObject {
                     put("action", "execute")
                     put("key", "weekly-traffic")
@@ -91,12 +102,22 @@ class AnalyticsToolRegistrarTest {
                         put("minimum", 10)
                     })
                 },
-            )
+            ) { AnalyticsToolRegistrar.handleQuery(AnalyticsApi(NetworkClient(fixture.url)), it) }
 
-            val output = GraphQLJson.parseToJsonElement(result).jsonObject
+            val output = GraphQLJson.parseToJsonElement(assertIs<TextContent>(result.content.first()).text).jsonObject
+            val resource = assertIs<TextResourceContents>(assertIs<EmbeddedResource>(result.content.last()).resource)
+            assertEquals("bosca://analytics/queries/by-key/weekly-traffic/results", resource.uri)
+            assertEquals(output, GraphQLJson.parseToJsonElement(resource.text))
+            assertEquals(1, fixture.requests, "Execution cannot require a separate read of the saved query")
             assertEquals(2, output.getValue("returnedRecords").jsonPrimitive.content.toInt())
             assertTrue(output.getValue("truncated").jsonPrimitive.content.toBoolean())
             assertTrue(output.getValue("cached").jsonPrimitive.content.toBoolean())
+
+            assertTrue(output.getValue("stale").jsonPrimitive.content.toBoolean())
+            val evidence = output.getValue("evidence").jsonObject
+            assertEquals("SELECT sessions FROM traffic WHERE country = ?", evidence.getValue("sql").jsonPrimitive.content)
+            assertEquals("US", evidence.getValue("parameters").jsonArray.single().jsonObject.getValue("value").jsonPrimitive.content)
+            assertEquals("17", evidence.getValue("durationMs").jsonPrimitive.content)
 
             val request = GraphQLJson.parseToJsonElement(fixture.requestBody).jsonObject
             assertEquals("ExecuteAnalyticsQueryByKey", request.getValue("operationName").jsonPrimitive.content)
@@ -173,9 +194,11 @@ class AnalyticsToolRegistrarTest {
     private class Fixture(response: String) {
         val server: HttpServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         lateinit var requestBody: String
+        var requests = 0
 
         init {
             server.createContext("/graphql") { exchange ->
+                requests++
                 requestBody = exchange.requestBody.readBytes().decodeToString()
                 val bytes = response.encodeToByteArray()
                 exchange.sendResponseHeaders(200, bytes.size.toLong())

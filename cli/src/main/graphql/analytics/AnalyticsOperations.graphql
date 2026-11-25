@@ -34,6 +34,8 @@ query ExecuteAnalyticsQuery($queryId: UUID!, $parameters: [AnalyticsQueryExecuti
             execute(queryId: $queryId, parameters: $parameters) {
                 records
                 cached
+                stale
+                evidence { ...AnalyticsQueryEvidenceFragment }
                 refreshedAt
             }
         }
@@ -46,6 +48,8 @@ query ExecuteAnalyticsQueryByKey($key: String!, $parameters: [AnalyticsQueryExec
             executeByKey(key: $key, parameters: $parameters) {
                 records
                 cached
+                stale
+                evidence { ...AnalyticsQueryEvidenceFragment }
                 refreshedAt
             }
         }
