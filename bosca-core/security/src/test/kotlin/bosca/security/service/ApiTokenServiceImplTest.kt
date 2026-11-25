@@ -232,6 +232,19 @@ class ApiTokenServiceImplTest {
         coVerify(exactly = 0) { securityService.getPrincipalGroups(principalId) }
     }
 
+    @Test
+    fun `createEphemeralToken marks only requested tokens session-bound`() = runTest {
+        val credentialSlot = slot<PrincipalCredential>()
+        coEvery { credentialsRepository.add(capture(credentialSlot)) } answers { credentialSlot.captured.copy(id = 1L) }
+        val input = ApiTokenInput(name = "Workload", expiresAt = OffsetDateTime.now(ZoneOffset.UTC).plusHours(2).toString())
+
+        service.createEphemeralToken(principalId, input, principalId)
+        assertEquals(false, (credentialSlot.captured.attributes as ApiTokenCredentialAttributes).sessionBound)
+
+        service.createEphemeralToken(principalId, input, principalId, sessionBound = true)
+        assertEquals(true, (credentialSlot.captured.attributes as ApiTokenCredentialAttributes).sessionBound)
+    }
+
     // --- Token Authentication ---
 
     @Test
