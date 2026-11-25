@@ -9,6 +9,11 @@ val publishVersion: String = System.getenv("PUBLISH_VERSION")?.removePrefix("v")
 group = "io.bosca"
 version = publishVersion
 
+normalization.runtimeClasspath {
+    // TestKit writes absolute launch paths here. The plugin classpath itself is a test input.
+    properties("plugin-under-test-metadata.properties") { ignoreProperty("implementation-classpath") }
+}
+
 // Gradle plugin project: a KotlinCompilerPluginSupportPlugin that wires
 // the BML K2 compiler plugin into Kotlin compilation. It only needs the Gradle/Kotlin plugin APIs —
 // it references io.bosca:bml-compiler by coordinates (getPluginArtifact), not as a compile dependency.
@@ -43,11 +48,16 @@ tasks.test {
     // Each TestKit class owns its fixture projects; separate JVMs also isolate in-process DI state.
     maxParallelForks = 2
     testLogging.events("passed", "failed", "skipped")
-    dependsOn(libraryFixtureClasspath)
-    inputs.files(libraryFixtureClasspath).withPropertyName("libraryFixtureClasspath").withNormalizer(ClasspathNormalizer::class.java)
-    systemProperty("bml.libraryFixtureClasspath", libraryFixtureClasspath.asPath)
+    val fixtureClasspath = files(libraryFixtureClasspath)
+    inputs.files(fixtureClasspath).withPropertyName("libraryFixtureClasspath").withNormalizer(ClasspathNormalizer::class.java)
+    doFirst { systemProperty("bml.libraryFixtureClasspath", fixtureClasspath.asPath) }
     inputs.files(fileTree("../bml-runtime/tools"), fileTree("../bml-runtime/src"), file("../bml-runtime/package-lock.json"))
         .withPropertyName("bmlClientToolchain").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(rootProject.fileTree("apps") { include("notifications-web/.npmrc", "profiles-web/.npmrc") })
+        .withPropertyName("clientNpmConfiguration").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.property("testPlatform", "${System.getProperty("os.name")}/${System.getProperty("os.arch")}")
+    inputs.property("nodeVersion", providers.exec { commandLine("node", "--version") }.standardOutput.asText.map { it.trim() })
+    inputs.property("npmVersion", providers.exec { commandLine("npm", "--version") }.standardOutput.asText.map { it.trim() })
 }
 
 val developmentFixtureClasspath = configurations.create("developmentFixtureClasspath") {
@@ -63,10 +73,10 @@ dependencies {
     add(developmentFixtureClasspath.name, libs.logback.classic)
 }
 tasks.test {
-    dependsOn(developmentFixtureClasspath)
-    inputs.files(developmentFixtureClasspath).withPropertyName("developmentFixtureClasspath")
+    val fixtureClasspath = files(developmentFixtureClasspath)
+    inputs.files(fixtureClasspath).withPropertyName("developmentFixtureClasspath")
         .withNormalizer(ClasspathNormalizer::class.java)
-    systemProperty("bml.developmentFixtureClasspath", developmentFixtureClasspath.asPath)
+    doFirst { systemProperty("bml.developmentFixtureClasspath", fixtureClasspath.asPath) }
 }
 
 // Exercise the real GraphQL plugin's independently generated browser output in cache tests.
@@ -99,9 +109,11 @@ dependencies {
 }
 tasks.pluginUnderTestMetadata { pluginClasspath.from(diFixturePlugins) }
 tasks.test {
-    dependsOn(diFixtureProcessors)
-    inputs.files(diFixtureProcessors).withPropertyName("diFixtureProcessors").withNormalizer(ClasspathNormalizer::class.java)
-    systemProperty("bml.diFixtureProcessors", diFixtureProcessors.asPath)
+    val fixtureProcessors = files(diFixtureProcessors)
+    inputs.files(fixtureProcessors).withPropertyName("diFixtureProcessors").withNormalizer(ClasspathNormalizer::class.java)
+    inputs.files(tasks.pluginUnderTestMetadata.map { it.pluginClasspath })
+        .withPropertyName("testKitPluginClasspath").withNormalizer(ClasspathNormalizer::class.java)
+    doFirst { systemProperty("bml.diFixtureProcessors", fixtureProcessors.asPath) }
 }
 
 gradlePlugin {

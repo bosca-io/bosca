@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 
 class BmlBuildCacheTest {
     @Test
-    fun `clean cache restore retains compiler outputs and bundles fresh GraphQL operations`() {
+    fun `relocated cache restore retains compiler outputs and bundles fresh GraphQL operations`() {
         val work = createTempDirectory("bml-build-cache").toFile()
         try {
             val fixture = BmlCompilerFixture(work)
@@ -52,7 +52,7 @@ class BmlBuildCacheTest {
                 parentFile.mkdirs()
                 writeText("type Query { greeting: String!, salutation: String! }")
             }
-            val operation = File(project, "src/main/graphql/Greeting.graphql").apply {
+            File(project, "src/main/graphql/Greeting.graphql").apply {
                 writeText("query Greeting { greeting }")
             }
             val first = runner(project, "bmlBundleClient").build()
@@ -65,29 +65,44 @@ class BmlBuildCacheTest {
             assertTrue(originals.getValue("kotlin").keys.any { it.endsWith(".kt.map") })
             assertFalse(File(generated, "compiler-ts/graphql").exists(), "Compiler output must not own GraphQL output")
 
-            // A cache hit must restore BML outputs without restoring an obsolete GraphQL operation.
+            val relocated = File(work, "relocated-site").apply { mkdirs() }
+            for (name in listOf("settings.gradle", "gradle.properties", "build.gradle", "src")) {
+                check(File(project, name).copyRecursively(File(relocated, name)))
+            }
+            val restoredOutputs = File(relocated, "build/generated/bml")
+
+            // The compiler outputs are portable. GraphQL remains owned by the separate generator.
+            val operation = File(relocated, "src/main/graphql/Greeting.graphql")
             operation.writeText("query Greeting { salutation }")
-            val restored = runner(project, "clean", "bmlBundleClient").build()
+            val restored = runner(relocated, "clean", "bmlBundleClient").build()
             assertEquals(TaskOutcome.FROM_CACHE, restored.task(":compileKotlin")?.outcome, restored.output)
             assertEquals(TaskOutcome.SUCCESS, restored.task(":bmlPrepareClient")?.outcome)
             assertEquals(TaskOutcome.SUCCESS, restored.task(":bmlBundleClient")?.outcome)
-            originals.forEach { (directory, expected) -> assertEquals(expected, snapshot(File(generated, directory)), directory) }
-            val graphql = File(generated, "graphql/Greeting.ts").readText()
+            originals.forEach { (directory, expected) ->
+                assertEquals(expected, snapshot(File(restoredOutputs, directory)), directory)
+            }
+            val graphql = File(restoredOutputs, "graphql/Greeting.ts").readText()
             assertTrue("salutation" in graphql)
-            assertEquals(graphql, File(generated, "ts/graphql/Greeting.ts").readText())
-            assertTrue(File(generated, "js-prod").listFiles().orEmpty().single { it.name.matches(Regex("""index\.page-[A-Z0-9]{8}\.js""")) }.readText().contains("salutation"))
+            assertEquals(graphql, File(restoredOutputs, "ts/graphql/Greeting.ts").readText())
+            assertTrue(File(restoredOutputs, "js-prod").listFiles().orEmpty().single { it.name.matches(Regex("""index\.page-[A-Z0-9]{8}\.js""")) }.readText().contains("salutation"))
 
-            val reused = runner(project, "clean", "bmlBundleClient").build()
+            val reused = runner(relocated, "clean", "bmlBundleClient").build()
             assertTrue("Reusing configuration cache" in reused.output, reused.output)
             assertEquals(TaskOutcome.FROM_CACHE, reused.task(":compileKotlin")?.outcome)
             assertEquals(TaskOutcome.SUCCESS, reused.task(":bmlBundleClient")?.outcome)
+
+            val page = File(relocated, "src/main/bml/home.bml")
+            page.writeText(page.readText().replace("Cache test", "Relocated source edit"))
+            val edited = runner(relocated, "bmlBundleClient").build()
+            assertEquals(TaskOutcome.SUCCESS, edited.task(":compileKotlin")?.outcome, edited.output)
+            assertTrue(snapshot(File(restoredOutputs, "kotlin")).values.any { "Relocated source edit" in it })
         } finally {
             work.deleteRecursively()
         }
     }
 
     private fun runner(project: File, vararg tasks: String) = GradleRunner.create().withProjectDir(project).withPluginClasspath()
-        .withArguments(*tasks, "--build-cache", "--configuration-cache", "--stacktrace", "--max-workers=2")
+        .withArguments(*tasks, "--build-cache", "--configuration-cache", "--no-watch-fs", "--stacktrace", "--max-workers=2")
 
     private fun snapshot(directory: File): Map<String, String> = directory.walkTopDown().filter { it.isFile }
         .associate { it.relativeTo(directory).invariantSeparatorsPath to it.readText() }

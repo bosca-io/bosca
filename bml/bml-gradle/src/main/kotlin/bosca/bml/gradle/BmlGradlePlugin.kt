@@ -5,6 +5,7 @@ import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.JavaExec
 import org.gradle.process.CommandLineArgumentProvider
+import org.jetbrains.kotlin.gradle.plugin.InternalSubpluginOption
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilerPluginSupportPlugin
 import org.jetbrains.kotlin.gradle.plugin.SubpluginArtifact
@@ -70,10 +71,8 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             main.javaClass.getMethod("addCustomSourceFilesExtensions", List::class.java)
                 .invoke(main, listOf("bml"))
 
-            // The K2 plugin reads `.bml` from the source-root PATH (a SubpluginOption string), so Gradle
-            // does NOT otherwise snapshot their CONTENT — meaning a `.bml` edit leaves `compileKotlin`
-            // up-to-date / cache-restorable and the change silently doesn't take effect. Declare the `.bml`
-            // dir as a content-tracked input so editing a `.bml` correctly invalidates the compilation.
+            // The compiler walks the BML root itself. Track its contents relative to that root so
+            // the compiler can receive the local path without tying cache entries to a checkout.
             target.tasks.named("compileKotlin", org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).configure { task ->
                 // BML contributes complete synthetic source files after Kotlin's incremental source
                 // selection. Compile the whole module so BML-only inputs cannot silently disappear.
@@ -84,6 +83,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                     .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
                     .optional()
                 task.inputs.property("bmlPackageName", ext.packageName)
+                task.inputs.property("bmlGenerateKotlinSources", ext.generateKotlinSources)
                 task.inputs.property("bmlLibrary", ext.library.enabled)
                 task.inputs.property("bmlLibraryExports", ext.library.exports)
                 task.inputs.property("bmlLibraryProviderRegistrars", ext.library.providerRegistrars)
@@ -604,6 +604,11 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
     override fun applyToCompilation(kotlinCompilation: KotlinCompilation<*>): Provider<List<SubpluginOption>> {
         val project = kotlinCompilation.target.project
         val ext = project.extensions.findByType(BmlExtension::class.java)
+        // The JVM main task declares the files and outputs behind these options separately.
+        val trackedPaths = kotlinCompilation.name == KotlinCompilation.MAIN_COMPILATION_NAME &&
+            project.plugins.hasPlugin("org.jetbrains.kotlin.jvm")
+        fun pathOption(key: String, path: String): SubpluginOption =
+            if (trackedPaths) InternalSubpluginOption(key, path) else SubpluginOption(key, path)
         // Generated client TypeScript lands here for esbuild to bundle.
         val tsOutputDir = project.layout.buildDirectory.dir("generated/bml/compiler-ts").get().asFile.absolutePath
         // Generated Kotlin (+ `.kt.map`) is dumped here ONLY when opted in via `bml { generateKotlinSources = true }`
@@ -632,15 +637,15 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             buildList {
                 add(SubpluginOption("enabled", "true"))
                 add(SubpluginOption("bmlPackageName", ext?.packageName?.getOrElse("bml.generated") ?: "bml.generated"))
-                add(SubpluginOption("bmlSourceRoot", sourceRoot))
-                add(SubpluginOption("bmlImportsFile", File(sourceRoot, "imports.bml").absolutePath))
+                add(pathOption("bmlSourceRoot", sourceRoot))
+                add(pathOption("bmlImportsFile", File(sourceRoot, "imports.bml").absolutePath))
                 add(org.jetbrains.kotlin.gradle.plugin.FilesSubpluginOption(
                     "bmlLibraryClasspath", libraryDependencies, org.jetbrains.kotlin.gradle.plugin.FilesOptionKind.INTERNAL,
-                    lazy { libraryDependencies.files.sortedBy { it.absolutePath }.joinToString(File.pathSeparator) { it.absolutePath } },
+                    lazy { libraryDependencies.asPath },
                 ))
-                add(SubpluginOption("bmlTsOutputDir", tsOutputDir))
-                add(SubpluginOption("bmlResourcesOutputDir", resourcesOutputDir))
-                add(SubpluginOption("bmlMetricsOutputDir", metricsOutputDir))
+                add(pathOption("bmlTsOutputDir", tsOutputDir))
+                add(pathOption("bmlResourcesOutputDir", resourcesOutputDir))
+                add(pathOption("bmlMetricsOutputDir", metricsOutputDir))
                 if (ext?.library?.enabled?.getOrElse(false) == true) {
                     require(project.group.toString().isNotBlank() && project.group.toString() != "unspecified") {
                         "A BML library requires a Maven group"
@@ -650,12 +655,13 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                     }
                     add(SubpluginOption("bmlLibraryId", "${project.group}:${project.name}"))
                     add(SubpluginOption("bmlLibraryVersion", project.version.toString()))
-                    add(SubpluginOption("bmlLibraryStyles", project.layout.buildDirectory.file("${BmlLibraryAssets.STYLES}/styles.json").get().asFile.absolutePath))
+                    val styles = project.layout.buildDirectory.file("${BmlLibraryAssets.STYLES}/styles.json").get().asFile
+                    add(pathOption("bmlLibraryStyles", styles.absolutePath))
                     ext.library.exports.get().forEach { add(SubpluginOption("bmlLibraryExport", it)) }
                     ext.library.providerRegistrars.get().forEach { add(SubpluginOption("bmlLibraryProviderRegistrar", it)) }
                 }
                 if (ext?.generateKotlinSources?.getOrElse(false) == true) {
-                    add(SubpluginOption("bmlKotlinOutputDir", kotlinOutputDir))
+                    add(pathOption("bmlKotlinOutputDir", kotlinOutputDir))
                 }
             }
         }

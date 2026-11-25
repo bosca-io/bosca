@@ -99,15 +99,31 @@ application {
 
 tasks.named<JavaExec>("run") { outputs.upToDateWhen { false } }
 
+// Fresh builds assign a new BML deployment identity without changing the application under test.
+normalization.runtimeClasspath { ignore("META-INF/bosca/bml/build-id") }
+
 tasks.test {
     maxParallelForks = providers.gradleProperty("atlas.test.forks").getOrElse("1").toInt()
     val serverClasspath = sourceSets.main.get().runtimeClasspath
     val testClasspath = sourceSets.test.get().runtimeClasspath
+    val workspaceRoot = rootProject.projectDir.absolutePath
     doFirst {
         systemProperty("atlasServerClasspath", serverClasspath.asPath)
         systemProperty("atlasTestClasspath", testClasspath.asPath)
+        systemProperty("workspaceRoot", workspaceRoot)
     }
-    systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
+    inputs.files(listOf("git/git-ui", "artifacts/artifacts-ui", "admin-support/system-ui").map { path ->
+        rootProject.fileTree("$path/src/main/graphql") { include("*.graphql") }
+    }).withPropertyName("uiGraphqlOperations").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(rootProject.file("web/packages/auth/src/graphql.ts"))
+        .withPropertyName("browserAuthOperations").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.property("testPlatform", "${System.getProperty("os.name")}/${System.getProperty("os.arch")}")
+    val projectDirectory = layout.projectDirectory
+    listOf("ATLAS_SERVER_TEST_BINARY", "ATLAS_UI_TEST_BINARY").forEach { variable ->
+        inputs.files(providers.environmentVariable(variable).map { executable ->
+            if (executable.isBlank()) emptyList() else listOf(projectDirectory.file(executable))
+        }.orElse(emptyList())).withPropertyName(variable).withPathSensitivity(PathSensitivity.NONE)
+    }
     systemProperty("atlas.postgres.browser", providers.gradleProperty("atlas.postgres.browser").getOrElse("false"))
     systemProperty("atlas.nats.browser", providers.gradleProperty("atlas.nats.browser").getOrElse("false"))
     systemProperty("atlas.meilisearch.browser", providers.gradleProperty("atlas.meilisearch.browser").getOrElse("false"))
@@ -137,6 +153,11 @@ tasks.test {
     systemProperty("atlas.artifacts.browser", providers.gradleProperty("atlas.artifacts.browser").getOrElse("false"))
     inputs.file(rootProject.file("artifacts/artifacts-ui/src/test/browser/artifacts.mjs"))
         .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+    outputs.doNotCacheIf("Uses the locally installed browser") { task ->
+        (task as Test).systemProperties.any { (name, value) ->
+            name.startsWith("atlas.") && name.endsWith(".browser") && value == "true"
+        }
+    }
 }
 
 tasks.register<Test>("nativeHostTest") {
@@ -172,6 +193,9 @@ configurations.all {
 }
 
 tasks.shadowJar {
+    // The packaged host includes the deployment identities from its dependency archives.
+    inputs.files(includedDependencies).withPropertyName("packagedDependencyArchives")
+        .withPathSensitivity(PathSensitivity.NONE)
     isZip64 = true
     filesMatching(listOf("META-INF/services/**", "META-INF/bosca/bml/build-id")) {
         duplicatesStrategy = DuplicatesStrategy.INCLUDE
