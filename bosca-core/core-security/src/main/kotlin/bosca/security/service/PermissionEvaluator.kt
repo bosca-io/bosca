@@ -46,8 +46,16 @@ abstract class PermissionEvaluator<T : PermissibleEntity<ID>, ID> : SecurityEval
     private fun internalActionCheck(authentication: AuthenticationContext?, entity: T, action: PermissionAction): Boolean {
         return action == PermissionAction.VIEW && entity.public && (entity.isPublished || entity.isAdvertised) ||
                 action == PermissionAction.LIST && entity.publicList && (entity.isPublished || entity.isAdvertised) ||
-                action == PermissionAction.EDIT && groupEvaluator.hasEditorGroup(authentication)
+                action == PermissionAction.EDIT && hasImplicitEditAccess(authentication)
     }
+
+    /**
+     * Returns whether the caller may EDIT every entity of this type without an entity grant.
+     * By default the built-in editor roles (editors, managers, administrators, sa) hold that access.
+     * Subclasses whose entities carry elevated authority can restrict it to explicit grants.
+     */
+    protected open fun hasImplicitEditAccess(authentication: AuthenticationContext?): Boolean =
+        groupEvaluator.hasEditorGroup(authentication)
 
     suspend fun isAllowed(
         authentication: AuthenticationContext?,

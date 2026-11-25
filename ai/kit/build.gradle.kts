@@ -63,6 +63,11 @@ dependencies {
     "ksp"(project(":services-di:service-ksp"))
     "ksp"(project(":services-di:di-ksp"))
 
+    testImplementation(project(":bosca-core:storage"))
+    testImplementation(project(":bosca-core:test-support"))
+    testImplementation(libs.ktor.client.cio)
+    testImplementation(libs.ktor.server.cio)
+    testImplementation(libs.ktor.server.websockets)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.mockk)

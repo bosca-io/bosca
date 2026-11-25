@@ -103,6 +103,7 @@ type Content {
 
 "Mutation operations for all content management features"
 type ContentMutation {
+    images: ImagesMutation!
     "Access category mutations"
     category: CategoryMutation!
 
@@ -129,4 +130,54 @@ type ContentMutation {
 
     "Access workflow transition mutations"
     transitions: TransitionsMutation!
+}
+
+"Generate, edit, or attach uploaded images."
+type ImagesMutation {
+    "Create an image. Requires content creation access in the destination."
+    generate(prompt: String!, name: String! = "Generated Image", parentCollectionId: UUID): Metadata!
+    "Edit an uploaded image without changing the source. Requires source content VIEW and destination creation access."
+    edit(sourceId: UUID!, prompt: String!, name: String! = "Edited Image", parentCollectionId: UUID): Metadata!
+    "Attach an uploaded image through a template image attribute. Omit attributeKey to select the sole attribute or return choices without writing."
+    attach(imageMetadataId: UUID!, targetMetadataId: UUID, targetCollectionId: UUID, targetLanguageTag: String, attributeKey: String, crop: ImageCropInput): ImageAttachment!
+}
+
+"An image relationship declared by the target template."
+type TemplateImageAttribute {
+    key: String!
+    name: String!
+    description: String!
+    relationship: String!
+    list: Boolean!
+    targetSize: [Int!]
+    defaultAspectRatio: Float
+}
+
+"Source image crop in pixels."
+input ImageCropInput {
+    top: Float!
+    left: Float!
+    width: Float!
+    height: Float!
+}
+
+type ImageCrop {
+    top: Float!
+    left: Float!
+    width: Float!
+    height: Float!
+}
+
+"Attachment outcome, template choices, and any incomplete post-processing."
+type ImageAttachment {
+    success: Boolean!
+    attached: Boolean!
+    targetLanguageTag: String
+    attribute: TemplateImageAttribute
+    availableAttributes: [TemplateImageAttribute!]!
+    crop: ImageCrop
+    collaborationUpdated: Boolean!
+    optimized: Boolean!
+    warning: String
+    error: String
 }

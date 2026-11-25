@@ -123,6 +123,13 @@ fun buildKubernetesJob(
         .plus(managedEnvironment.map { (name, value) ->
             EnvVarBuilder().withName(name).withValue(value).build()
         })
+    request.secrets?.let { secrets ->
+        worker.env = worker.env.orEmpty().filterNot { it.name in secrets.names } + secrets.names.map { name ->
+            EnvVarBuilder().withName(name).withNewValueFrom()
+                .withNewSecretKeyRef().withName(kubernetesJobName(profile.name, request.idempotencyKey))
+                .withKey(name).endSecretKeyRef().endValueFrom().build()
+        }
+    }
     request.arguments?.let { worker.args = it }
 
     val owner = OwnerReferenceBuilder()

@@ -134,36 +134,40 @@ class McpServerCommand : BoscaCliCommand(name = "mcp-server") {
         // CLI config — so the token never expires mid-session and no background
         // refresh loop is required.
         val network = networkClient(url, token, username, password)
-        val api = WorkOpsApi(network)
-        val contentApi = ContentApi(network)
-        val analyticsApi = AnalyticsApi(network)
-        val kitApi = KitApi(network)
-
-        val server = Server(
-            Implementation("bosca-mcp", "1.0.0"),
-            ServerOptions(
-                capabilities = ServerCapabilities(
-                    tools = ServerCapabilities.Tools(listChanged = false),
-                ),
-            ),
-            MCP_SERVER_INSTRUCTIONS,
-        )
-
-        McpToolRegistrar.registerAll(server, api, contentApi)
-        ContentToolRegistrar.registerAll(server, contentApi)
-        AnalyticsToolRegistrar.registerAll(server, analyticsApi)
-        KitToolRegistrar.registerAll(server, kitApi)
-        val transport = StdioServerTransport(
-            inputStream = System.`in`.asSource().buffered(),
-            outputStream = System.out.asSink().buffered(),
-        )
-
-        val session = server.createSession(transport)
-
-        val closeJob = Job()
-        transport.onClose {
-            closeJob.complete()
-        }
-        closeJob.join()
+        serveMcp(network)
     }
+}
+
+internal suspend fun serveMcp(network: bosca.cli.api.NetworkClient) {
+    val api = WorkOpsApi(network)
+    val contentApi = ContentApi(network)
+    val analyticsApi = AnalyticsApi(network)
+    val kitApi = KitApi(network)
+
+    val server = Server(
+        Implementation("bosca-mcp", "1.0.0"),
+        ServerOptions(
+            capabilities = ServerCapabilities(
+                tools = ServerCapabilities.Tools(listChanged = false),
+            ),
+        ),
+        MCP_SERVER_INSTRUCTIONS,
+    )
+
+    McpToolRegistrar.registerAll(server, api, contentApi)
+    ContentToolRegistrar.registerAll(server, contentApi)
+    AnalyticsToolRegistrar.registerAll(server, analyticsApi)
+    KitToolRegistrar.registerAll(server, kitApi)
+    val transport = StdioServerTransport(
+        inputStream = System.`in`.asSource().buffered(),
+        outputStream = System.out.asSink().buffered(),
+    )
+
+    val session = server.createSession(transport)
+
+    val closeJob = Job()
+    transport.onClose {
+        closeJob.complete()
+    }
+    closeJob.join()
 }
