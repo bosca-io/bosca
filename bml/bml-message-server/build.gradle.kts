@@ -68,7 +68,7 @@ graalvmNative {
     binaries {
         named("main") {
             imageName.set("bml-message-server")
-            buildArgs.add("-O3")
+            buildArgs.add("-O2")
             buildArgs.addAll(providers.gradleProperty("bosca.native.march")
                 .map { listOf("-march=$it") }
                 .orElse(emptyList()))
