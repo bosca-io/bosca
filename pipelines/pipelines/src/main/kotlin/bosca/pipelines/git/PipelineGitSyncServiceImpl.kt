@@ -5,7 +5,9 @@ import bosca.git.model.TreeEntryType
 import bosca.git.service.CommitFileInput
 import bosca.git.service.RepositoryBrowseService
 import bosca.git.service.RepositoryWriteService
+import bosca.pipelines.repository.PipelineRecord
 import bosca.pipelines.repository.PipelineRepository
+import bosca.security.service.SecurityService
 import bosca.pipelines.service.PipelineService
 import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
@@ -23,6 +25,7 @@ class PipelineGitSyncServiceImpl(
     private val repository: PipelineRepository,
     private val writeService: RepositoryWriteService,
     private val browseService: RepositoryBrowseService,
+    private val security: SecurityService,
 ) : PipelineGitSyncService {
 
     private val parser = PipelineRepoFileParser()
@@ -62,7 +65,7 @@ class PipelineGitSyncServiceImpl(
         }
     }
 
-    override suspend fun pullFromGit(repositoryId: UUID, commitSha: String): PipelineSyncResult {
+    override suspend fun pullFromGit(repositoryId: UUID, commitSha: String, pusherPrincipalId: UUID?): PipelineSyncResult {
         val files = readAllFiles(repositoryId, commitSha)
 
         val parsed = mutableListOf<PipelineFile>()
@@ -80,6 +83,15 @@ class PipelineGitSyncServiceImpl(
             pipelineService.validateGraph(file.graph)?.let { errors += PipelineRepoValidationError(file.path, it) }
         }
         if (errors.isNotEmpty()) return PipelineSyncResult.ValidationFailed(errors)
+        if (!isAdministrator(pusherPrincipalId)) {
+            for (file in parsed) {
+                val existing = repository.getByGitRepository(repositoryId, file.path)
+                if (!changesUnattendedRun(file, existing)) continue
+                errors += PipelineRepoValidationError(file.path, UNATTENDED_CHANGE_DENIED)
+                existing?.let { repository.setSyncError(it.id, UNATTENDED_CHANGE_DENIED) }
+            }
+            if (errors.isNotEmpty()) return PipelineSyncResult.ValidationFailed(errors)
+        }
 
         transaction {
             for (file in parsed) {
@@ -89,10 +101,10 @@ class PipelineGitSyncServiceImpl(
         return PipelineSyncResult.Ok(commitSha = commitSha)
     }
 
-    override suspend fun onPushEvent(repositoryId: UUID, beforeSha: String, afterSha: String) {
+    override suspend fun onPushEvent(repositoryId: UUID, beforeSha: String, afterSha: String, pusherPrincipalId: UUID?) {
         val changed = browseService.listChangedPaths(repositoryId, beforeSha, afterSha)
         if (changed.none { PipelineRepoLayout.isPipelineFile(it) }) return
-        when (val result = pullFromGit(repositoryId, afterSha)) {
+        when (val result = pullFromGit(repositoryId, afterSha, pusherPrincipalId)) {
             is PipelineSyncResult.Ok -> Unit
             is PipelineSyncResult.ValidationFailed -> log.warn(
                 "PIPELINE_PROJECT pull at {} for repo {} failed validation: {}",
@@ -123,6 +135,26 @@ class PipelineGitSyncServiceImpl(
         }
         return if (errors.isEmpty()) PipelineSyncResult.Ok(commitSha = lastCommitSha)
         else PipelineSyncResult.Failure(errors.joinToString("\n"))
+    }
+
+    private suspend fun isAdministrator(principalId: UUID?): Boolean =
+        principalId != null && security.getPrincipalGroups(principalId).any { it.name == "administrators" }
+
+    /**
+     * Whether applying [file] changes what runs under the pipelines service account. The whole tree is
+     * applied on every push, so an unattended pipeline whose file matches its row is not a change.
+     */
+    private suspend fun changesUnattendedRun(file: PipelineFile, existing: PipelineRecord?): Boolean {
+        val requested = file.triggered || file.schedule != null
+        if (existing == null) return requested
+        val current = existing.triggered || !existing.schedule.isNullOrBlank()
+        if (!requested && !current && !pipelineService.runsUnattended(existing.id)) return false
+        if (file.triggered != existing.triggered) return true
+        if (file.schedule != existing.schedule?.takeIf { it.isNotBlank() }) return true
+        val stored = pipelineService.get(existing.id) ?: return true
+        val proposed = pipelineService.decodeGraph(file.graph)
+        return pipelineService.graphAsJsonElement(stored) !=
+            pipelineService.graphAsJsonElement(stored.copy(nodes = proposed.nodes, edges = proposed.edges, groups = proposed.groups))
     }
 
     private suspend fun upsert(file: PipelineFile, repositoryId: UUID) {
@@ -172,5 +204,9 @@ class PipelineGitSyncServiceImpl(
             out += entry.path to content
         }
         return out
+    }
+
+    private companion object {
+        const val UNATTENDED_CHANGE_DENIED = "Only an administrator can change a pipeline that runs automatically."
     }
 }

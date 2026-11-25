@@ -6,6 +6,9 @@ import bosca.security.service.GroupEvaluator
 import bosca.security.service.PermissionEvaluator
 import bosca.security.service.SecurityService
 import bosca.serialization.UUID
+import bosca.security.model.PermissionAction
+import bosca.security.service.AuthenticationContext
+import bosca.security.service.ApiTokenScopes
 
 /**
  * Evaluates whether a caller may access or execute a [Pipeline], applying the standard permission
@@ -16,4 +19,9 @@ class PipelinePermissionEvaluator(
     override val service: PipelineService,
     override val securityService: SecurityService,
     override val groupEvaluator: GroupEvaluator,
-) : PermissionEvaluator<Pipeline, UUID>()
+) : PermissionEvaluator<Pipeline, UUID>() {
+    /** Private execution uses the pipeline scope in addition to ordinary group grants. */
+    override fun hasRequiredScope(authentication: AuthenticationContext?, action: PermissionAction): Boolean =
+        if (action == PermissionAction.EXECUTE) groupEvaluator.hasScope(authentication, ApiTokenScopes.PIPELINES_EXECUTE.name)
+        else super.hasRequiredScope(authentication, action)
+}
