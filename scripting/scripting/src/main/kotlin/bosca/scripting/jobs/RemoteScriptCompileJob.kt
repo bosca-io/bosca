@@ -14,12 +14,14 @@ import kotlin.uuid.ExperimentalUuidApi
  * executing it, useful for save-time validation from builds that exclude the
  * scripting engine (e.g. GraalVM native images).
  *
- * The worker fetches the full [bosca.scripting.model.Script] from the database
- * using [scriptId] and attempts compilation. Success or failure is communicated
- * back via the job status notification.
+ * A stored script is selected by [scriptId]. Unsaved validation supplies [source]
+ * and [expiresAt]; its structured result is retained in private object storage for
+ * the requesting server to consume without depending on a live subscription.
  */
 @Serializable
 data class RemoteScriptCompileJob(
     @Contextual
-    val scriptId: UUID
+    val scriptId: UUID? = null,
+    val source: String? = null,
+    val expiresAt: String? = null,
 ) : IJobDefinition

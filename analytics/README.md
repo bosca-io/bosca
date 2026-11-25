@@ -34,6 +34,16 @@ The database-backed query, dashboard, visualization, script-binding, and error-g
 migrate a PostgreSQL template once per class. Every test copies that template into its own
 database with a separate client pool. Tests using NATS retain separate accounts.
 
+## Saved-query execution evidence
+
+Saved-query results carry the prepared SQL, positional JDBC parameter values,
+execution time and duration alongside the rows. Relative dates use one execution
+timestamp. GraphQL and REST omit this evidence unless the caller can VIEW the
+query; EXECUTE continues to grant access to its rows.
+
+Evidence describes a live execution. The result cache stores rows only, so cache
+hits return `evidence: null`.
+
 ## Local Infrastructure
 
 From the workspace root:

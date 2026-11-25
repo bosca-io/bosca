@@ -20,6 +20,8 @@ object Ai
 
 @TypeController
 class AiController : GraphQLController<Ai> {
+    @Field
+    fun memories() = bosca.ai.memory.graphql.Memories
 
     @Field
     fun agents() = Agents
