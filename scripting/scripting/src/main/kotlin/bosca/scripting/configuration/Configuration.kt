@@ -76,7 +76,9 @@ class Configuration {
         pubsub: PubSubService,
         objectStorageService: ObjectStorageService,
         json: Json,
-    ): ScriptExecutionService = RemoteScriptExecutionServiceImpl(pubsub, objectStorageService, json)
+        security: SecurityService,
+        @ProviderName("remote-engine") engine: Engine,
+    ): ScriptExecutionService = RemoteScriptExecutionServiceImpl(pubsub, objectStorageService, json, security, engine)
 
     @Provider(name = "scripting-migrations")
     fun migration(): Migration = ScriptingMigration()

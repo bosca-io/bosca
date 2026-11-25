@@ -30,12 +30,15 @@ private fun stack(
     services: Map<String, Any>,
     volumes: Map<String, Any> = emptyMap(),
     configs: Map<String, Any> = emptyMap(),
+    secrets: Map<String, Any> = emptyMap(),
+    networks: List<String> = emptyList(),
 ) = buildMap {
     put("version", "3.8")
     put("services", services)
-    put("networks", mapOf("bosca" to mapOf("external" to true)))
+    put("networks", (listOf("bosca") + networks).associateWith { mapOf("external" to true) })
     if (volumes.isNotEmpty()) put("volumes", volumes)
     if (configs.isNotEmpty()) put("configs", configs)
+    if (secrets.isNotEmpty()) put("secrets", secrets)
 }
 
 /** Where a service runs; the deployment labels the nodes (see `bootstrapNodes`). */
@@ -338,7 +341,7 @@ internal fun siteEnvironment(config: SwarmConfig, site: SwarmSite): Map<String, 
 
 /** Uses bundled defaults, the site's initialization passwords and explicit redirect policy. */
 private fun siteApplicationConfigs(site: SwarmSite): Map<String, String> {
-    val applications = if (site.oauthRedirects == null) listOf("atlas") else listOf("server", "runner", "atlas")
+    val applications = if (site.oauthRedirects == null && !site.kit.enabled) listOf("atlas") else listOf("server", "runner", "atlas")
     return applications.filter { it != "runner" || site.runnerServer.enabled }.associateWith { application ->
         val yaml = Yaml(DumperOptions().apply { defaultFlowStyle = DumperOptions.FlowStyle.BLOCK })
         val resource = "/swarm/application-$application.yaml"
@@ -353,6 +356,10 @@ private fun siteApplicationConfigs(site: SwarmSite): Map<String, String> {
                 val oauth2 = checkNotNull(config["oauth2"] as? Map<*, *>)
                 put("oauth2", oauth2 + ("redirects" to redirects))
             }
+            if (site.kit.enabled && application in setOf("server", "runner")) put("kit", mapOf(
+                "harness" to swarmJson.encodeToString(bosca.ai.kit.harness.KitHarnessDeployment.serializer(), kitDeployment(site)),
+                "swarm" to mapOf("controller" to mapOf("url" to "http://${site.id}-kit-controller:8083", "token" to "\$BOSCA_SWARM_CONTROLLER_TOKEN")),
+            ))
         }
         yaml.dump(config + overrides)
     }
@@ -438,7 +445,9 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
             if (image in applicationConfigs) add("-config=/config/application.yaml")
         }
         return service(images.getValue(image), deploy(Placement.APPLICATION, limits, rolling = true), buildMap {
-            put("environment", if (jvm) environment + ("JAVA_OPTS" to heapOption) else environment)
+            val kitEnvironment = if (site.kit.enabled && image in setOf("server", "runner"))
+                mapOf("BOSCA_SWARM_CONTROLLER_TOKEN" to site.secrets.kitController) else emptyMap()
+            put("environment", environment + kitEnvironment + if (jvm) mapOf("JAVA_OPTS" to heapOption) else emptyMap())
             put("healthcheck", healthcheck(bashHttpCheck(port, healthPath), startPeriod))
             if (arguments.isNotEmpty()) put("command", arguments)
             if (image in applicationConfigs) {
@@ -446,7 +455,7 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
             }
         })
     }
-    val services = mapOf(
+    val services = (mapOf(
         // Default memory limits follow the production Helm values.
         "server" to bosca("server", env + mapOf("GIT_SYNC_LISTENERS" to "false", "SCHEDULER_ENABLED" to "true"),
             8080, "150s", Limits(site.serverMemory), heapPercent = 65),
@@ -537,19 +546,46 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
         "root-web" to service(site.rootImage, deploy(Placement.APPLICATION, rolling = true), mapOf(
             "environment" to (mapOf("BML_GRAPHQL_ENDPOINT" to "$server/graphql") + site.rootEnv),
         )),
+    ) else emptyMap()) + if (site.kit.enabled) mapOf(
+        "kit-controller" to service(images.getValue("kit-controller"), deploy(Placement.STATEFUL, Limits("512M"), configDigest = configDigest(kitControllerConfiguration(config, site))), mapOf(
+            "user" to "0:0", "command" to listOf("swarm", "runtime-controller", "--config", "/config/kit-runtime.json"),
+            "environment" to mapOf("SECURITY_ENCRYPTION_KEY" to site.secrets.securityEncryption, "BOSCA_SWARM_CONTROLLER_TOKEN" to site.secrets.kitController),
+            "volumes" to listOf("/var/run/docker.sock:/var/run/docker.sock:ro"),
+            "configs" to listOf(mapOf("source" to "kit-runtime", "target" to "/config/kit-runtime.json", "mode" to 292)),
+            "secrets" to (listOf(mapOf("source" to "kit-provider", "target" to "kit-provider")) +
+                if (kitRegistryAuthentication(config, site) != null) listOf(mapOf("source" to "kit-registry", "target" to "kit-registry")) else emptyList()),
+            "healthcheck" to healthcheck(listOf("CMD", "curl", "-fsS", "http://127.0.0.1:8083/healthz"), "30s"),
+        )),
+        // The runtimes' only route beyond Bosca: authenticated HTTPS CONNECT to the site's public hosts and to the
+        // destinations Bosca approves for each session.
+        KIT_EGRESS_SERVICE to service(images.getValue("kit-controller"), deploy(Placement.APPLICATION, Limits("256M"), rolling = true), mapOf(
+            "command" to listOf("harness", "egress", "--port", KIT_EGRESS_PORT.toString(), "--bosca-url", server) +
+                kitEgressAllow(site).flatMap { listOf("--allow", it) },
+            "healthcheck" to healthcheck(bashTcpCheck(KIT_EGRESS_PORT), "30s"),
+        )),
     ) else emptyMap()
     @Suppress("UNCHECKED_CAST")
     val infraServices = infraStack(config)["services"] as Map<String, Any>
     validateServiceUrls(services, infraServices.keys + services.keys.map { "$name-$it" })
     return stack(
         services.mapValues { (serviceName, definition) ->
-            definition + ("networks" to mapOf("bosca" to mapOf("aliases" to listOf("$name-$serviceName"))))
+            val aliases = mapOf("aliases" to listOf("$name-$serviceName"))
+            // The proxy stays off the shared network: it joins only the runtime overlay and its own routable overlay.
+            if (serviceName == KIT_EGRESS_SERVICE) {
+                val proxy = mapOf("aliases" to listOf(KIT_EGRESS_SERVICE))
+                return@mapValues definition + ("networks" to mapOf(kitRuntimeNetwork(site) to proxy, kitEgressNetwork(site) to proxy))
+            }
+            val kit = if (site.kit.enabled && serviceName in KIT_RUNTIME_PEERS) mapOf(kitRuntimeNetwork(site) to aliases) else emptyMap()
+            definition + ("networks" to mapOf("bosca" to aliases) + kit)
         },
+        networks = if (site.kit.enabled) listOf(kitRuntimeNetwork(site), kitEgressNetwork(site)) else emptyList(),
         volumes = mapOf("models" to emptyMap<String, Any>()),
         configs = mapOf(swarmConfig(name, "tf-serving-serve", "$root/config/tf-serving/serve.sh", TF_SERVING_SERVE_SCRIPT)) +
             applicationConfigs.map { (application, content) ->
                 swarmConfig(name, "$application-application", "$root/config/sites/$name/$application.yaml", content)
-            },
+            } + if (site.kit.enabled) mapOf(swarmConfig(name, "kit-runtime", "$root/config/sites/$name/kit-runtime.json", kitControllerConfiguration(config, site))) else emptyMap(),
+        secrets = if (site.kit.enabled) mapOf("kit-provider" to mapOf("name" to kitProviderSecret(site), "file" to "$root/config/sites/$name/kit-provider")) +
+            (kitRegistryAuthentication(config, site)?.let { mapOf("kit-registry" to mapOf("name" to kitRegistrySecret(site, it), "file" to "$root/config/sites/$name/kit-registry")) } ?: emptyMap()) else emptyMap(),
     )
 }
 
@@ -817,6 +853,11 @@ private fun writeBundle(config: SwarmConfig, destination: Path) {
         privateWrite(destination.resolve("stacks/${site.id}.yml"), document(siteStack(config, site)))
         siteApplicationConfigs(site).forEach { (application, content) ->
             privateWrite(destination.resolve("config/sites/${site.id}/$application.yaml"), content)
+        }
+        if (site.kit.enabled) {
+            privateWrite(destination.resolve("config/sites/${site.id}/kit-runtime.json"), kitControllerConfiguration(config, site))
+            privateWrite(destination.resolve("config/sites/${site.id}/kit-provider"), site.secrets.kitProvider)
+            kitRegistryAuthentication(config, site)?.let { privateWrite(destination.resolve("config/sites/${site.id}/kit-registry"), it) }
         }
     }
     privateWrite(destination.resolve("config/Caddyfile"), caddyfile(config))

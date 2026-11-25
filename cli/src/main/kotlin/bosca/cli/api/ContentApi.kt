@@ -6,6 +6,8 @@ package bosca.cli.api
  * point for MCP tools and CLI commands.
  */
 class ContentApi(network: NetworkClient) {
+    val images = ContentImages(network)
     val metadata = ContentMetadata(network)
     val collections = ContentCollections(network)
+    val scripture = ContentScripture(network)
 }

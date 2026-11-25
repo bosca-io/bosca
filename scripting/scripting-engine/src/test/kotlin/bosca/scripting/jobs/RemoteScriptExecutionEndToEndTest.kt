@@ -175,6 +175,7 @@ class RemoteScriptExecutionEndToEndTest {
     private fun createExecutionJob(script: Script, contextType: RemoteScriptContextType = RemoteScriptContextType.DEFAULT): Pair<Job, RemoteScriptExecutionJob> {
         val jobDef = RemoteScriptExecutionJob(
             scriptId = script.id,
+            scriptVersion = script.version, groupIds = null, scopes = null, credentialId = null,
             contextType = contextType
         )
         val job = InternalJobConstructor(
@@ -201,7 +202,7 @@ class RemoteScriptExecutionEndToEndTest {
         coEvery { scriptService.get(script.id) } returns script
 
         val executor = RemoteScriptExecutionJobExecutor(
-            scriptService, scriptExecutionService, securityService, objectStorageService, json, config
+            scriptService, scriptExecutionService, securityService, objectStorageService, json, mockk()
         )
         val (job, _) = createExecutionJob(script)
 
@@ -221,7 +222,7 @@ class RemoteScriptExecutionEndToEndTest {
         coEvery { scriptService.get(script.id) } returns script
 
         val executor = RemoteScriptExecutionJobExecutor(
-            scriptService, scriptExecutionService, securityService, objectStorageService, json, config
+            scriptService, scriptExecutionService, securityService, objectStorageService, json, mockk()
         )
         val (job, _) = createExecutionJob(script)
 
@@ -248,7 +249,7 @@ class RemoteScriptExecutionEndToEndTest {
         coEvery { scriptService.get(script.id) } returns script
 
         val executor = RemoteScriptExecutionJobExecutor(
-            scriptService, scriptExecutionService, securityService, objectStorageService, json, config
+            scriptService, scriptExecutionService, securityService, objectStorageService, json, mockk()
         )
         val (job, _) = createExecutionJob(script)
 
@@ -269,7 +270,7 @@ class RemoteScriptExecutionEndToEndTest {
         coEvery { scriptService.get(script.id) } returns script
 
         val executor = RemoteScriptExecutionJobExecutor(
-            scriptService, scriptExecutionService, securityService, objectStorageService, json, config
+            scriptService, scriptExecutionService, securityService, objectStorageService, json, mockk()
         )
         val (job, _) = createExecutionJob(script)
 
@@ -284,17 +285,17 @@ class RemoteScriptExecutionEndToEndTest {
     }
 
     @Test
-    fun `remote execution of disabled script is skipped`() = runTest {
+    fun `remote execution of disabled script fails`() = runTest {
         val script = testScript("""main { "should not run" }""").copy(enabled = false)
         coEvery { scriptService.get(script.id) } returns script
 
         val executor = RemoteScriptExecutionJobExecutor(
-            scriptService, scriptExecutionService, securityService, objectStorageService, json, config
+            scriptService, scriptExecutionService, securityService, objectStorageService, json, mockk()
         )
         val (job, _) = createExecutionJob(script)
 
-        withContext(mockQueue.asCoroutineContext(job)) {
-            executor.execute()
+        kotlin.test.assertFailsWith<IllegalStateException> {
+            withContext(mockQueue.asCoroutineContext(job)) { executor.execute() }
         }
 
         // Context should not be set for disabled scripts
@@ -312,11 +313,12 @@ class RemoteScriptExecutionEndToEndTest {
         coEvery { scriptService.get(script.id) } returns script
 
         val executor = RemoteScriptExecutionJobExecutor(
-            scriptService, scriptExecutionService, securityService, objectStorageService, json, config
+            scriptService, scriptExecutionService, securityService, objectStorageService, json, mockk()
         )
 
         val jobDef = RemoteScriptExecutionJob(
             scriptId = script.id,
+            scriptVersion = script.version, groupIds = null, scopes = null, credentialId = null,
             contextType = RemoteScriptContextType.TRIGGER,
             eventName = "test-event",
             eventPayload = JsonPrimitive("payload-data")
@@ -342,7 +344,7 @@ class RemoteScriptExecutionEndToEndTest {
         val script = testScript("""main { "compiles fine" }""")
         coEvery { scriptService.get(script.id) } returns script
 
-        val executor = RemoteScriptCompileJobExecutor(scriptService, scriptExecutionService, engine)
+        val executor = RemoteScriptCompileJobExecutor(scriptService, scriptExecutionService, engine, objectStorageService, json)
         val job = createCompileJob(script)
 
         withContext(mockQueue.asCoroutineContext(job)) {
@@ -358,7 +360,7 @@ class RemoteScriptExecutionEndToEndTest {
         val script = testScript("""this is not valid kotlin""")
         coEvery { scriptService.get(script.id) } returns script
 
-        val executor = RemoteScriptCompileJobExecutor(scriptService, scriptExecutionService, engine)
+        val executor = RemoteScriptCompileJobExecutor(scriptService, scriptExecutionService, engine, objectStorageService, json)
         val job = createCompileJob(script)
 
         var failed = false
@@ -378,7 +380,7 @@ class RemoteScriptExecutionEndToEndTest {
         coEvery { scriptService.get(script.id) } returns script
 
         val executor = RemoteScriptExecutionJobExecutor(
-            scriptService, scriptExecutionService, securityService, objectStorageService, json, config
+            scriptService, scriptExecutionService, securityService, objectStorageService, json, mockk()
         )
         val (job, _) = createExecutionJob(script)
 

@@ -338,7 +338,7 @@ open class GenAiExperimentAnalyzer(
         /**
          * Application config key holding the Google service-account JSON
          * credentials. Matches the existing usage in
-         * `bosca.kit.tools.image.GenerateImageTool` and
+         * `bosca.ai.kit.configuration.Configuration.kitImageClient` and
          * `bosca.jobs.GoogleGenAITTSJob`.
          */
         private const val GENAI_CREDENTIALS_CONFIG_KEY = "google.genai.account"

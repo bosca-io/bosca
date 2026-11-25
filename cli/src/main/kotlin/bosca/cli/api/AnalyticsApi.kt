@@ -1,5 +1,10 @@
 package bosca.cli.api
 
+import bosca.graphql.gen.ListAnalyticsCatalogs
+import bosca.graphql.gen.ListAnalyticsSchemas
+import bosca.graphql.gen.ListAnalyticsTables
+import bosca.graphql.gen.DescribeAnalyticsTable
+import bosca.graphql.gen.ExecuteAnalyticsSql
 import bosca.graphql.client.execute
 import bosca.graphql.gen.AddAnalyticsDashboard
 import bosca.graphql.gen.AddAnalyticsDashboardPermission
@@ -31,6 +36,7 @@ import bosca.graphql.gen.GetAnalyticsVisualizationById
 import bosca.graphql.gen.GetAnalyticsVisualizationByKey
 import bosca.graphql.gen.IAnalyticsDashboardFragment
 import bosca.graphql.gen.IAnalyticsDashboardSummaryFragment
+import bosca.graphql.gen.IAnalyticsQueryEvidenceFragment
 import bosca.graphql.gen.IAnalyticsQueryFragment
 import bosca.graphql.gen.IAnalyticsQuerySummaryFragment
 import bosca.graphql.gen.IAnalyticsVisualizationFragment
@@ -50,6 +56,8 @@ data class AnalyticsExecutionResult(
     val records: List<JsonElement>,
     val cached: Boolean,
     val refreshedAt: ZonedDateTime?,
+    val stale: Boolean = false,
+    val evidence: IAnalyticsQueryEvidenceFragment? = null,
 )
 
 /**
@@ -62,6 +70,21 @@ data class AnalyticsExecutionResult(
 class AnalyticsApi(network: NetworkClient) : Api(network) {
 
     private val gql = network.boscaGraphql
+
+    suspend fun listCatalogs(offset: Int, limit: Int) =
+        gql.execute(ListAnalyticsCatalogs, ListAnalyticsCatalogs.Variables(offset, limit)).analytics.warehouse.catalogs
+
+    suspend fun listSchemas(catalog: String, offset: Int, limit: Int) =
+        gql.execute(ListAnalyticsSchemas, ListAnalyticsSchemas.Variables(catalog, offset, limit)).analytics.warehouse.schemas
+
+    suspend fun listTables(catalog: String, schema: String, offset: Int, limit: Int) =
+        gql.execute(ListAnalyticsTables, ListAnalyticsTables.Variables(catalog, schema, offset, limit)).analytics.warehouse.tables
+
+    suspend fun describeTable(catalog: String, schema: String, table: String) =
+        gql.execute(DescribeAnalyticsTable, DescribeAnalyticsTable.Variables(catalog, schema, table)).analytics.warehouse.describe
+
+    suspend fun executeSql(sql: String, limit: Int) =
+        gql.execute(ExecuteAnalyticsSql, ExecuteAnalyticsSql.Variables(sql, limit)).analytics.warehouse.execute
 
     suspend fun listQueries(): List<IAnalyticsQuerySummaryFragment> =
         gql.execute(ListAnalyticsQueries, Unit).analytics.queries.all
@@ -80,7 +103,7 @@ class AnalyticsApi(network: NetworkClient) : Api(network) {
     ): AnalyticsExecutionResult {
         val result = gql.execute(ExecuteAnalyticsQuery, ExecuteAnalyticsQuery.Variables(id, parameters))
             .analytics.queries.execute
-        return AnalyticsExecutionResult(result.records, result.cached, result.refreshedAt)
+        return AnalyticsExecutionResult(result.records, result.cached, result.refreshedAt, result.stale, result.evidence)
     }
 
     suspend fun executeQueryByKey(
@@ -89,7 +112,7 @@ class AnalyticsApi(network: NetworkClient) : Api(network) {
     ): AnalyticsExecutionResult {
         val result = gql.execute(ExecuteAnalyticsQueryByKey, ExecuteAnalyticsQueryByKey.Variables(key, parameters))
             .analytics.queries.executeByKey
-        return AnalyticsExecutionResult(result.records, result.cached, result.refreshedAt)
+        return AnalyticsExecutionResult(result.records, result.cached, result.refreshedAt, result.stale, result.evidence)
     }
 
     suspend fun createQuery(input: AnalyticsQueryInput): IAnalyticsQueryFragment =

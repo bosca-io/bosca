@@ -1,5 +1,5 @@
 {
-  "comment": "Koog calls kotlin.jvm.internal.Reflection.typeOf(Class) on these types (storage keys, node IO types, feature keys). When full kotlin-reflect is active in the native image (it is in bosca-server, for the scripting engine), typeOf eagerly deserializes each class's @Metadata; unregistered classes throw KotlinReflectionInternalError 'Unresolved class'. List derived by scanning all ai.koog jvm jars for Reflection.typeOf call sites. ALSO: the Item/GooglePart hierarchies are registered because koog's OpenAI and Google clients encode request bodies via JsonContentPolymorphicSerializer, whose serialize() resolves the runtime subtype's serializer reflectively (Companion field -> serializer() method). Unregistered subtypes fail in native with kotlinx 'Class X is not registered for polymorphic serialization in the scope of Y' (misleading message; the reflective lookup returned null). These are the only two JsonContentPolymorphicSerializer hierarchies in koog 1.1.1/1.1.1-beta. ALSO: top-level request/response DTOs of every koog provider client (+Companions) are registered because KtorKoogHttpClient.post/sse serializes bodies with setBody(value, TypeInfo(KClass)) and decodes with body(TypeInfo(KClass)) - ktor resolves those serializers via the reflective KClass.serializerOrNull() Companion lookup, and streaming uses reified decodeFromString (runtime typeOf). List = every ai.koog class constant fed to Reflection.getOrCreateKotlinClass/typeOf inside *Client classes across all provider jars.",
+  "comment": "Koog calls kotlin.jvm.internal.Reflection.typeOf(Class) on these types (storage keys, node IO types, feature keys). When full kotlin-reflect is active in the native image (it is in bosca-server, for the scripting engine), typeOf eagerly deserializes each class's @Metadata; unregistered classes throw KotlinReflectionInternalError 'Unresolved class'. List derived by scanning all ai.koog jvm jars for Reflection.typeOf call sites. ALSO: the Item/GooglePart hierarchies are registered because koog's OpenAI and Google clients encode request bodies via JsonContentPolymorphicSerializer, whose serialize() resolves the runtime subtype's serializer reflectively (Companion field -> serializer() method). Unregistered subtypes fail in native with kotlinx 'Class X is not registered for polymorphic serialization in the scope of Y' (misleading message; the reflective lookup returned null). These were the only two JsonContentPolymorphicSerializer hierarchies when this list was derived from koog 1.1.1/1.1.1-beta; re-scan after Koog upgrades. ALSO: top-level request/response DTOs of every koog provider client (+Companions) are registered because KtorKoogHttpClient.post/sse serializes bodies with setBody(value, TypeInfo(KClass)) and decodes with body(TypeInfo(KClass)) - ktor resolves those serializers via the reflective KClass.serializerOrNull() Companion lookup, and streaming uses reified decodeFromString (runtime typeOf). List = every ai.koog class constant fed to Reflection.getOrCreateKotlinClass/typeOf inside *Client classes across all provider jars.",
   "reflection": [
     {
       "type": "ai.koog.agents.core.agent.context.AgentContextData",
@@ -117,12 +117,6 @@
     },
     {
       "type": "ai.koog.agents.snapshot.feature.Persistence",
-      "allDeclaredConstructors": true,
-      "allDeclaredMethods": true,
-      "allDeclaredFields": true
-    },
-    {
-      "type": "ai.koog.agents.planner.llm.SimplePlan",
       "allDeclaredConstructors": true,
       "allDeclaredMethods": true,
       "allDeclaredFields": true
@@ -1496,6 +1490,42 @@
     },
     {
       "glob": "kotlin/reflect/reflect.kotlin_builtins"
+    },
+    {
+      "glob": "db/migrations/V1__kit_initial.sql"
+    },
+    {
+      "glob": "db/migrations/V2__kit_runtime.sql"
+    },
+    {
+      "glob": "db/migrations/V3__kit_cancellation.sql"
+    },
+    {
+      "glob": "db/migrations/V4__kit_policy.sql"
+    },
+    {
+      "glob": "db/migrations/V5__kit_context.sql"
+    },
+    {
+      "glob": "db/migrations/V6__kit_turn_deadline.sql"
+    },
+    {
+      "glob": "db/migrations/V7__kit_observability.sql"
+    },
+    {
+      "glob": "db/migrations/V8__kit_archive_retention.sql"
+    },
+    {
+      "glob": "db/migrations/V9__kit_runtime_instance.sql"
+    },
+    {
+      "glob": "db/migrations/V10__kit_swarm_dispatch.sql"
+    },
+    {
+      "glob": "db/migrations/V11__kit_delegation.sql"
+    },
+    {
+      "glob": "db/migrations/V12__kit_runtime_recovery.sql"
     }
   ]
 }

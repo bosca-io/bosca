@@ -77,6 +77,31 @@ ksp {
     arg("ProviderRegistrarPrefix", "KubernetesController")
 }
 
+tasks.test {
+    exclude("**/KubernetesRuntimeClusterIntegrationTest.class")
+}
+
+tasks.register<Test>("runtimeClusterTest") {
+    group = "verification"
+    description = "Checks Kit runtime resources against an explicitly supplied local Kind cluster"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    include("**/KubernetesRuntimeClusterIntegrationTest.class")
+    for (name in listOf("KIT_KUBERNETES_KUBECONFIG", "KIT_RUNTIME_IMAGE")) {
+        environment(name, providers.environmentVariable(name).orElse("").get())
+    }
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("The Kubernetes cluster and image are external state") { true }
+}
+
+kover {
+    currentProject {
+        instrumentation {
+            disabledForTestTasks.add("runtimeClusterTest")
+        }
+    }
+}
+
 tasks.shadowJar {
     isZip64 = true
     mergeServiceFiles()
