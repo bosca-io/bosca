@@ -218,6 +218,8 @@ type PipelineHistoryRun {
 
 "The live, durable state of an in-flight pipeline run (distinct from the append-only run history above)."
 type PipelineRunState {
+    "Final output, including runs that completed after the initiating request returned."
+    output: JSON
     "Original input captured for the run."
     input: JSON
     id: UUID!
@@ -308,8 +310,12 @@ type BrokenPipeline {
 
 "Pipeline query operations."
 type Pipelines {
-    "All pipelines."
-    all: [Pipeline!]!
+    "Administrator pipeline discovery with optional search and offset pagination."
+    all(offset: Int = 0, limit: Int, search: String): [Pipeline!]!
+    "A pipeline by its endpoint key."
+    pipelineByKey(key: String!): Pipeline
+    "Validate and lay out an unsaved graph without storing or executing it."
+    validateGraph(graph: JSON!): PipelineGraphValidation!
     "A pipeline by id, or null if not found."
     pipeline(id: UUID!): Pipeline
     "Pipelines whose stored graph no longer decodes (renamed/removed node types, corrupt data) — absent from `all` and unopenable, surfaced here so they can be deleted."
@@ -472,7 +478,7 @@ type PipelinesMutation {
     """
     dryRun(id: UUID!, eventType: String, payload: JSON!): PipelineDryRun!
     """
-    Run a pipeline now, inline, FOR REAL — action nodes execute their side effects. The payload
+    Run a pipeline now as a durable job, FOR REAL — action nodes execute their side effects. The payload
     is the pipeline's input (validated against the input schema for JSON-input pipelines, or
     decoded as the accepted event type). Runs under the caller's principal and is recorded in
     run history as a "manual" run.
@@ -552,4 +558,11 @@ type PipelineRunUpdate {
 extend type Subscription {
     "Live run + per-node status changes for a durable run. Admin-gated."
     pipelineRun(runId: UUID!): PipelineRunUpdate!
+}
+
+"An unsaved graph checked by the engine, with deterministic editor coordinates."
+type PipelineGraphValidation {
+    valid: Boolean!
+    errors: [String!]!
+    graph: JSON!
 }

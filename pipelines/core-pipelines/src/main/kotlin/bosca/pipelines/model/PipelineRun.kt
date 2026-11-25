@@ -3,6 +3,8 @@
 package bosca.pipelines.model
 
 import bosca.db.annotation.ColumnName
+import bosca.db.annotation.DbMapper
+import bosca.db.mapper.JsonbMapper
 import bosca.serialization.OffsetDateTime
 import bosca.serialization.UUID
 import kotlinx.serialization.Contextual
@@ -79,8 +81,8 @@ data class PipelineRun(
     /**
      * The principal that originated an **on-demand** run (manual / API), captured at start so the run —
      * driven asynchronously by its own run job, through suspend/resume and backing work — executes under
-     * the caller's security context end to end rather than the service account. Null for a
-     * triggered/scheduled run (those drive under the pipelines service account).
+     * the caller's security context together with [authority]. Null for anonymous callers and
+     * triggered/scheduled runs; [authority] distinguishes them.
      */
     @ColumnName("principal_id")
     @Contextual
@@ -99,4 +101,7 @@ data class PipelineRun(
     @ColumnName("deleted_at")
     @Contextual
     val deletedAt: OffsetDateTime? = null,
+    /** Null in a stored row means authority was not captured; such a run cannot execute. */
+    @property:DbMapper(JsonbMapper::class)
+    val authority: PipelineRunAuthority? = null,
 )

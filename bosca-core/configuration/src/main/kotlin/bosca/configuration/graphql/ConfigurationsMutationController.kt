@@ -21,6 +21,7 @@ class ConfigurationsMutationController(
     private val groupEvaluator: GroupEvaluator
 ) : GraphQLController<ConfigurationsMutation> {
 
+    /** Saves values with EDIT; changing visibility or permissions also requires MANAGE. */
     @Field
     suspend fun setConfiguration(
         authentication: AuthenticationContext,
@@ -31,6 +32,12 @@ class ConfigurationsMutationController(
             groupEvaluator.verifyHasSaGroup(authentication)
         } else {
             permissionEvaluator.verifyAllowed(authentication, current, PermissionAction.EDIT)
+            val requestedPermissions = configuration.permissions?.map { it.action to it.groupId }?.toSet()
+            val permissionsChanged = requestedPermissions != null &&
+                requestedPermissions != service.getPermissions(current).map { it.action to it.groupId }.toSet()
+            if (current.public != configuration.public || permissionsChanged) {
+                permissionEvaluator.verifyAllowed(authentication, current, PermissionAction.MANAGE)
+            }
         }
         return service.setConfiguration(configuration)
     }
@@ -38,7 +45,7 @@ class ConfigurationsMutationController(
     @Field
     suspend fun deleteConfiguration(authentication: AuthenticationContext, key: String): UUID {
         val current = service.getByKey(key) ?: throw NoSuchElementException()
-        permissionEvaluator.verifyAllowed(authentication, current, PermissionAction.DELETE)
+        permissionEvaluator.verifyAllowed(authentication, current, PermissionAction.MANAGE)
         return service.deleteConfiguration(key)
     }
 }

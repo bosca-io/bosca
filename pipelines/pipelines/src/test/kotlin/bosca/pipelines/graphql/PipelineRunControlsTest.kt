@@ -29,7 +29,7 @@ class PipelineRunControlsTest {
         val controller = mutationController(groups, runService)
         val runId = UUID.random()
 
-        assertTrue(controller.cancelRun(mockk<AuthenticationContext>(), runId))
+        assertTrue(controller.cancelRun(pipelineAdministrator(), runId))
         coVerify(exactly = 1) { runService.cancel(runId, "cancelled by operator") }
     }
 
@@ -37,10 +37,11 @@ class PipelineRunControlsTest {
     fun `cancelRun rejects a non-admin and does not cancel`() = runTest {
         val groups = mockk<GroupEvaluator>()
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
         val runService = mockk<PipelineRunService>(relaxed = true)
         val controller = mutationController(groups, runService)
 
-        assertFailsWith<IllegalStateException> { controller.cancelRun(mockk<AuthenticationContext>(), UUID.random()) }
+        assertFailsWith<IllegalStateException> { controller.cancelRun(pipelineAdministrator(), UUID.random()) }
         coVerify(exactly = 0) { runService.cancel(any(), any()) }
     }
 
@@ -51,7 +52,7 @@ class PipelineRunControlsTest {
         coEvery { runService.listActive(0, 50) } returns emptyList()
         val controller = PipelinesController(mockk(relaxed = true), groups, runService, mockk(relaxed = true), mockk(relaxed = true))
 
-        controller.activeRuns(mockk<AuthenticationContext>(), null, null)
+        controller.activeRuns(pipelineAdministrator(), null, null)
         coVerify(exactly = 1) { runService.listActive(0, 50) }
     }
 
@@ -63,7 +64,7 @@ class PipelineRunControlsTest {
         coEvery { runService.get(runId) } returns null
         val controller = PipelinesController(mockk(relaxed = true), groups, runService, mockk(relaxed = true), mockk(relaxed = true))
 
-        controller.run(mockk<AuthenticationContext>(), runId)
+        controller.run(pipelineAdministrator(), runId)
         coVerify(exactly = 1) { runService.get(runId) }
     }
 
@@ -75,7 +76,7 @@ class PipelineRunControlsTest {
         coEvery { runService.nodeMetrics(pipelineId) } returns emptyList()
         val controller = PipelinesController(mockk(relaxed = true), groups, runService, mockk(relaxed = true), mockk(relaxed = true))
 
-        controller.nodeMetrics(mockk<AuthenticationContext>(), pipelineId)
+        controller.nodeMetrics(pipelineAdministrator(), pipelineId)
         coVerify(exactly = 1) { runService.nodeMetrics(pipelineId) }
     }
 
@@ -83,10 +84,11 @@ class PipelineRunControlsTest {
     fun `nodeMetrics rejects a non-admin`() = runTest {
         val groups = mockk<GroupEvaluator>()
         every { groups.verifyHasAdminGroup(any()) } throws IllegalStateException("not an admin")
+        every { groups.verifyHasScope(any(), any()) } throws IllegalStateException("not an admin")
         val runService = mockk<PipelineRunService>()
         val controller = PipelinesController(mockk(relaxed = true), groups, runService, mockk(relaxed = true), mockk(relaxed = true))
 
-        assertFailsWith<IllegalStateException> { controller.nodeMetrics(mockk<AuthenticationContext>(), UUID.random()) }
+        assertFailsWith<IllegalStateException> { controller.nodeMetrics(pipelineAdministrator(), UUID.random()) }
         coVerify(exactly = 0) { runService.nodeMetrics(any()) }
     }
 
