@@ -221,7 +221,7 @@ internal class Http2WebSocketStreamHandler(
     }
 
     /** Accepts the extended CONNECT and switches this stream to WebSocket framing. */
-    fun accept(responseHeaders: HttpHeaders, selectedSubprotocol: String?): ChannelFuture {
+    fun accept(responseHeaders: HttpHeaders, selectedSubprotocol: String?, maximumMessageSize: Int = NettyHttpHandler.MAX_WEBSOCKET_FRAME_SIZE): ChannelFuture {
         val promise = context.newPromise()
         onEventLoop {
             if (state != State.HANDSHAKING) {
@@ -229,7 +229,7 @@ internal class Http2WebSocketStreamHandler(
                 return@onEventLoop
             }
 
-            installWebSocketCodecs()
+            installWebSocketCodecs(maximumMessageSize)
             state = State.OPEN
             // Its own idle handler closes it gracefully; the connection's must not drop it first.
             Http2LongLivedStreams.track(context.channel())
@@ -340,8 +340,8 @@ internal class Http2WebSocketStreamHandler(
         }
     }
 
-    private fun installWebSocketCodecs() {
-        context.pipeline().installHttp2WebSocketCodecs(context.name(), this, idleTimeoutSeconds)
+    private fun installWebSocketCodecs(maximumMessageSize: Int) {
+        context.pipeline().installHttp2WebSocketCodecs(context.name(), this, idleTimeoutSeconds, maximumMessageSize)
     }
 
     private fun replayPendingReads() {

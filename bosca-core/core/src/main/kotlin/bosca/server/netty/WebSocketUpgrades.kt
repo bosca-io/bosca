@@ -91,7 +91,7 @@ internal class WebSocketUpgrades(
         val handshaker = WebSocketServerHandshakerFactory(
             "$scheme://${detachedRequest.headers().get(HttpHeaderNames.HOST)}$path",
             route.protocol,
-            HTTP1_DECODER_CONFIG,
+            HTTP1_DECODER_CONFIG.toBuilder().maxFramePayloadLength(route.maximumMessageSize).build(),
         ).newHandshaker(detachedRequest)
         // Only RFC 6455 (version 13): without a version header Netty picks its pre-standard
         // (Hixie) handshaker, which would accept the obsolete protocol or fail after the call is
@@ -124,7 +124,7 @@ internal class WebSocketUpgrades(
         }
 
         val call = newCall(ctx, request, route)
-        launchSession(ctx, call, route, Http2Upgrade(ctx, transport, selectedSubprotocol))
+        launchSession(ctx, call, route, Http2Upgrade(ctx, transport, selectedSubprotocol, route.maximumMessageSize))
     }
 
     private fun newCall(ctx: ChannelHandlerContext, request: HttpRequest, route: WebSocketRouteEntry) = ServerCall(
@@ -330,7 +330,7 @@ internal class WebSocketUpgrades(
                                     pipeline.addBefore(
                                         ctx.name(),
                                         PipelineHandlerNames.HTTP1_WEBSOCKET_AGGREGATOR,
-                                        WebSocketFrameAggregator(NettyHttpHandler.MAX_WEBSOCKET_FRAME_SIZE),
+                                        WebSocketFrameAggregator(route.maximumMessageSize),
                                     )
                                     // Netty's decoder does not check text encoding; only its protocol
                                     // handler (unused here) installs this. Like the decoder, it only
@@ -371,6 +371,7 @@ internal class WebSocketUpgrades(
         private val ctx: ChannelHandlerContext,
         private val transport: Http2WebSocketStreamHandler,
         private val selectedSubprotocol: String?,
+        private val maximumMessageSize: Int,
     ) : TransportUpgrade {
 
         override suspend fun accept(call: ServerCall, session: WebSocketSession) {
@@ -379,7 +380,7 @@ internal class WebSocketUpgrades(
             call.response.markCommitted()
             val responseHeaders = DefaultHttpHeaders()
             call.response.applyHeadersTo(responseHeaders)
-            transport.accept(responseHeaders, selectedSubprotocol).awaitCompletion()
+            transport.accept(responseHeaders, selectedSubprotocol, maximumMessageSize).awaitCompletion()
         }
 
         override suspend fun rejectFailure(call: ServerCall) {

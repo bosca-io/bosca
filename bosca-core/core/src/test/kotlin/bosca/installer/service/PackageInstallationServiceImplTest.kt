@@ -3,6 +3,7 @@ package bosca.installer.service
 import bosca.di.annotation.InternalDI
 import bosca.di.ObjectProvider
 import bosca.di.ProviderRegistry
+import bosca.di.provides
 import bosca.installer.model.PackageInstallation
 import bosca.installer.model.PackageInstallationHistory
 import bosca.installer.model.PackageInstallationVersion
@@ -322,5 +323,36 @@ class PackageInstallationServiceImplTest {
 
         assertEquals(1, installs)
         coVerify(exactly = 2) { repository.addHistory(any()) }
+    }
+
+    @Test
+    @OptIn(InternalDI::class)
+    fun `targeted install selects the exact package and version and records only the selected installer`() = runTest {
+        val installer = mockk<PackageInstaller>()
+        every { installer.version } returns "2"
+        coEvery { installer.install(any(), any()) } just Runs
+        provides<PackageInstaller>("selected-seed") { installer }
+        val version = PackageInstallationVersion("2", listOf("selected-seed"))
+        val selected = PackageInstallation("selected", "Selected", listOf(
+            PackageInstallationVersion("1", emptyList()), version,
+        ))
+        provides<PackageInstallation>("ignored") { PackageInstallation("ignored", "Ignored", emptyList()) }
+        provides<PackageInstallation>(selected.key) { selected }
+        coEvery { repository.getHistory() } returns emptyList()
+        coEvery { repository.addHistory(any()) } answers { firstArg() }
+        try {
+            assertFalse(service.install("missing", "2", "selected-seed", "2"))
+            assertFalse(service.install("selected", "missing", "selected-seed", "2"))
+            coVerify(exactly = 0) { repository.getHistory() }
+
+            assertTrue(service.install("selected", "2", "selected-seed", "2"))
+            coVerify(exactly = 1) { installer.install(selected, version) }
+            coVerify(exactly = 1) {
+                repository.addHistory(match { it.key == "selected:selected-seed" && it.version == "2" })
+            }
+            coVerify(exactly = 0) { repository.addHistory(match { it.key == "selected" }) }
+        } finally {
+            ProviderRegistry.clear()
+        }
     }
 }

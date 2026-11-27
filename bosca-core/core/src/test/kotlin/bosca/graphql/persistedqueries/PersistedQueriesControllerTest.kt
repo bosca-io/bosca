@@ -40,4 +40,27 @@ class PersistedQueriesControllerTest {
         assertNull(controller.query(authenticationContext, "sha256"))
         coVerify(exactly = 0) { repository.findBySha256(any()) }
     }
+
+    @Test
+    fun `service administrators can resolve missing queries without checking the administrator group`() = runTest {
+        every { authenticationContext.principal() } returns principal
+        every { principal.hasGroup("sa") } returns true
+        coEvery { repository.findBySha256("missing") } returns emptyList()
+
+        assertNull(controller.query(authenticationContext, "missing"))
+
+        coVerify(exactly = 1) { repository.findBySha256("missing") }
+        io.mockk.verify(exactly = 0) { principal.hasGroup("administrators") }
+    }
+
+    @Test
+    fun `authenticated users without an administrative group cannot query the repository`() = runTest {
+        every { authenticationContext.principal() } returns principal
+        every { principal.hasGroup("sa") } returns false
+        every { principal.hasGroup("administrators") } returns false
+
+        assertNull(controller.query(authenticationContext, "sha256"))
+
+        coVerify(exactly = 0) { repository.findBySha256(any()) }
+    }
 }

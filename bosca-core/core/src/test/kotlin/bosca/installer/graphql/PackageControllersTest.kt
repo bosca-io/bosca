@@ -69,6 +69,8 @@ class PackageControllersTest {
         val controller = PackagesController(service)
 
         assertEquals(listOf(installation), controller.all(authentication("sa")))
+        assertEquals(listOf(installation), controller.all(authentication("administrators")))
+        assertEquals(history, controller.history(authentication("sa")))
         assertEquals(history, controller.history(authentication("administrators")))
     }
 

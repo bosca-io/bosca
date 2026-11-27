@@ -2,8 +2,11 @@ package bosca.serialization
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -68,5 +71,23 @@ class SerializerCacheTest {
         assertTrue(CacheTestContract::class.java.name in SerializerCache.cataloguedTypes())
         assertSame(CacheTestContractImplementation::class.java, SerializerCache.classFor("test.cache.ContractImplementation"))
         assertSame(CacheTestContract::class.java, SerializerCache.classFor(CacheTestContract::class.java.name))
+    }
+
+    @Test
+    fun `registering a JSON implementation does not add its platform supertypes to the domain catalog`() {
+        val before = SerializerCache.cataloguedTypes().toSet()
+        SerializerCache.register(JsonObject::class.java, JsonObject.serializer(),
+            Any::class.java, Map::class.java, JsonElement::class.java)
+
+        val added = SerializerCache.cataloguedTypes().toSet() - before
+        assertFalse(Any::class.java.name in added)
+        assertFalse(Map::class.java.name in added)
+        assertFalse(JsonElement::class.java.name in added)
+        assertSame(JsonObject.serializer(), SerializerCache.get(JsonObject::class.java))
+    }
+
+    @Test
+    fun `a loadable class with no serializer still resolves to null by type name`() {
+        assertNull(SerializerCache.get(java.awt.Point::class.java.name))
     }
 }
