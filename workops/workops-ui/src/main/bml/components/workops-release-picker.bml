@@ -1,0 +1,13 @@
+<component tag="workops-release-picker">
+  <prop name="projects" type="List<bosca.design.model.SchemaFormOption>" required />
+  <prop name="versions" type="List<bosca.design.model.SchemaFormOption>" required />
+  <prop name="projectId" type="String" default="" />
+  <prop name="versionId" type="String" default="" />
+  <prop name="projectName" type="String" default="Choose a project" />
+  <prop name="versionsEnabled" type="Boolean" default="false" />
+  <form data-workops-release-picker {...attrs}>
+    <workops-release-picker-fields :projects="projects" :versions="versions" :projectId="projectId" :versionId="versionId" :projectName="projectName" :versionsEnabled="versionsEnabled" />
+    <form-actions align="start"><slot /></form-actions>
+  </form>
+  <style scoped>form { display: grid; gap: 14px; }</style>
+</component>

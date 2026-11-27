@@ -1,0 +1,41 @@
+<component tag="workops-environments">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsEnvironmentsModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsEnvironmentsModel(initial.programId, initial.offset, initial.targetId, initial.programs, initial.rows, initial.types, initial.loaded, initial.editing, initial.creating, initial.draft, initial.deleting, initial.groups, initial.groupsLoaded, initial.groupDraft, initial.resultId, initial.feedback, initial.groupFeedback)</script>
+  <island name="environments" :key='initial.programId.ifBlank { "environments" }'><page-shell class="workops-page" fill>
+    <page-heading title="Environments" subtitle="Program deployment targets and promotion policy."><workops-program-choice :programs="model.programs" :programId="model.programId" action="/workops/releases/environments" /><button-link href="/workops/settings/environment-types" size="md" icon="settings">Environment types</button-link><button id="workops-environment-new" primary icon="plus" :disabled="!model.available" @click='model.open("", ctx)'>New environment</button><icon-button size="md" icon="refresh" label="Refresh environments" @click="model.retry(ctx)" />
+        <if model.resultHref.isNotBlank()><button-link :href="model.resultHref" size="xs" icon="arrow-right" aria-label="Show the saved environment">Saved environment</button-link></if></page-heading>
+    <div class="workops-content" data-workops-environments>
+
+
+      <workops-feedback id="environments-0" :feedback="model.feedback" />
+      <if !model.loaded><p role="status">Environments have not been loaded. Refresh to try again.</p>
+      <else-if model.selectedProgram == null><empty-state title="Choose a program" message="Choose an available program." />
+      <else-if model.pageRows.isNotEmpty()><card :padded="false"><table-scroll label="Program environments"><table><caption>Environments for { model.selectedProgram?.name }</caption><thead><tr><th scope="col">Order</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Promotes from</th><th scope="col">Policy</th><th scope="col">Actions</th></tr></thead><tbody><for row in model.pageRows><tr :id='"workops-environment-" + row.id' :data-workops-environment="row.id"><td>{ row.order }</td><td><strong>{ row.name }</strong><p>{ row.description }</p><code>{ row.key }</code></td><td>{ model.typeName(row.typeId) }</td><td>{ model.sourceNames(row.sources) }</td><td><if row.requiresApproval><badge>Approval required</badge></if><if row.autoPromote><badge>Auto-promote</badge></if></td><td><form-actions align="start"><icon-button icon="edit" :label='"Edit " + row.name' @click="model.open(row.id, ctx)" /><icon-button icon="trash" :label='"Delete " + row.name' @click="model.beginDelete(row.id)" /></form-actions></td></tr></for></tbody></table></table-scroll></card><else><empty-state title="No environments in this program yet." /></if>
+      <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Environment pages" />
+      <dialog :title='if (model.creating) "New environment" else "Edit environment"' triggerLabel="Environment" :showTrigger="false" :forceOpen="model.creating || model.editing != null" :completed="!model.creating && model.editing == null" returnFocus="#workops-environment-new" @dialogdismiss="model.cancel()">
+        <form @submit="model.save(form.name, form.key, form.description, form.typeId, form.autoPromote, form.keyManual, form.groupId, ctx)"><form-body padded>
+          <if model.feedback.failed><alert data-workops-environment-form-error>{ model.feedback.message }</alert><if model.editing != null><help-text>If this environment changed, cancel and refresh before editing it again.</help-text></if></if>
+          <if model.feedback.failed || model.groupFeedback.failed><form-actions align="start"><button icon="refresh" @click="model.reloadDraft(form.name, form.key, form.description, form.typeId, form.autoPromote, form.keyManual, form.groupId, ctx)">Retry loading environment data</button></form-actions></if>
+          <field label="Name"><input name="name" :value="model.draft.name" required /></field>
+          <if model.creating><field label="Key" hint="The stable identifier used by release pipelines. It cannot change after creation."><slug-input name="key" sourceField="name" :value="model.draft.key" :manual="model.draft.manualKey" required /></field><else><p>Key: <code>{ model.editing?.key }</code></p><html:input type="hidden" name="key" :value="model.draft.key" /><html:input type="hidden" name="keyManual" value="true" /></if>
+          <field label="Environment type"><select name="typeId" label="Environment type" required><option value="">Choose a type</option><for choice in model.typeChoices><option :value="choice.value" :selected="choice.value == model.draft.typeId" :disabled="choice.disabled">{ choice.label }</option></for></select></field>
+          <field label="Description"><textarea name="description">{ model.draft.description }</textarea></field>
+          <checkbox name="autoPromote" label="Auto-promote from its sources" :checked="model.draft.autoPromote" />
+          <if model.editing != null>
+            <p>Promotes from: { model.sourceNames(model.editing?.sources.orEmpty()) }</p><p>Requires approval: { if (model.editing?.requiresApproval == true) "Yes" else "No" }</p><help-text>Promotion sources and approval policy are synchronized from the release pipeline.</help-text>
+            <section-heading title="Deployment approval grants" />
+            <help-text>Environment EXECUTE grants are used for deployment approval and execution. Program grants remain inherited.</help-text>
+            <if model.groupFeedback.failed><alert data-workops-environment-group-error>{ model.groupFeedback.message }</alert><p>Group choices are unavailable. Existing visible grants can still be removed.</p></if>
+            <field label="Security group"><select name="groupId" label="Security group" :disabled="!model.groupsLoaded"><option value="">Choose a group</option><for choice in model.groupChoices><option :value="choice.value" :selected="choice.value == model.groupDraft" :disabled="choice.disabled">{ choice.label }</option></for></select></field>
+            <button :disabled="!model.groupsLoaded" @click="model.grant(form.name, form.key, form.description, form.typeId, form.autoPromote, form.keyManual, form.groupId, ctx)">Grant execute</button>
+            <if !model.loaded><p>Retry loading environment data to view the current explicit grants.</p><else-if model.visibleGrants.isNotEmpty()><ul><for grant in model.visibleGrants><li :data-workops-environment-grant='grant.groupId + ":" + grant.action'>{ model.groupName(grant.groupId) } <badge>{ grant.action }</badge><icon-button icon="trash" :label='"Remove " + model.groupName(grant.groupId) + " " + grant.action' @click="model.revoke(grant.groupId, grant.action, form.name, form.key, form.description, form.typeId, form.autoPromote, form.keyManual, form.groupId, ctx)" /></li></for></ul><else><empty-state title="No explicit grants visible" message="No explicit grants are visible. Program grants remain inherited." compact /></if>
+          <else><html:input type="hidden" name="groupId" value="" /></if>
+        </form-body><form-actions bordered><button data-dialog-close @click="model.cancel()">Cancel</button><button type="submit" primary>Save environment</button></form-actions></form>
+      </dialog>
+      <dialog title="Delete environment" triggerLabel="Delete environment" :showTrigger="false" :forceOpen="model.deleting != null" :completed="model.deleting == null" returnFocus="#workops-environment-new" @dialogdismiss="model.cancelDelete()">
+        <form @submit="model.delete(form.confirmed, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><p>Delete { model.deleting?.name }?</p><checkbox name="confirmed" label="Confirm deletion" required /></form-body><form-actions bordered><button data-dialog-close @click="model.cancelDelete()">Cancel</button><button primary type="submit">Delete environment</button></form-actions></form>
+      </dialog>
+    </div>
+  </page-shell></island>
+  <style scoped>li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }</style>
+</component>

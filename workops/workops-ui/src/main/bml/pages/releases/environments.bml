@@ -1,0 +1,4 @@
+<page route="/workops/releases/environments" requireAuth>
+  <script server provides="model">bosca.workops.ui.workOpsEnvironments()</script>
+  <workops-layout title="Environments"><workops-environments :initial="model" /></workops-layout>
+</page>

@@ -1,0 +1,10 @@
+query WorkOpsPipelineApproval($runId: UUID!) {
+  pipelines { run(runId: $runId) {
+    id status error modifiedAt
+    awaitingNodes { nodeId type name runId }
+  } }
+}
+
+mutation WorkOpsResolvePipelineApproval($runId: UUID!, $nodeId: String!, $approved: Boolean!, $note: String) {
+  pipelines { resolveGate(runId: $runId, nodeId: $nodeId, approved: $approved, note: $note) }
+}

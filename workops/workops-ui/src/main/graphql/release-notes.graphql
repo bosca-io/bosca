@@ -1,0 +1,9 @@
+query WorkOpsReleaseVersionNotes($id: UUID!) {
+  workOps { multiRepo { versionReleaseNotes(releaseId: $id) { id versionId sourceLocale generatedAt manuallyEdited variants } } }
+}
+mutation WorkOpsGenerateVersionNotes($id: UUID!) {
+  workOps { multiRepo { autoGenerateVersionReleaseNotes(releaseId: $id) { id versionId } } }
+}
+mutation WorkOpsEditVersionNotes($release: UUID!, $version: UUID!, $variants: JSON!) {
+  workOps { multiRepo { editVersionReleaseNotes(releaseId: $release, versionId: $version, variants: $variants) { id versionId } } }
+}

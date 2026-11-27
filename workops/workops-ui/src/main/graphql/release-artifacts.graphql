@@ -1,0 +1,6 @@
+query WorkOpsReleaseDeclaredArtifacts($id: UUID!) {
+  workOps { crossProject { releaseDeclaredArtifacts(releaseId: $id) { projectId type namespace coordinate environments } } }
+}
+query WorkOpsReleaseVersionArtifacts($id: UUID!) {
+  workOps { multiRepo { artifacts(versionId: $id) { id versionId projectId artifactType coordinates namespace environments status } } }
+}

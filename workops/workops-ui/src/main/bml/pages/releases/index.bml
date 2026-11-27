@@ -1,0 +1,9 @@
+<page route="/workops/releases" requireAuth>
+  <script server provides="directory">bosca.workops.ui.workOpsReleaseList()</script>
+  <script server provides="builder">if (directory.selectedProgram != null) bosca.workops.ui.WorkOpsReleaseBuildModel(directory.programId, directory.selectedProgram?.name.orEmpty()) else null</script>
+  <workops-layout title="Releases"><page-shell class="workops-page" fill><page-heading title="Releases" subtitle="Program releases, project versions and Git CI status."><workops-program-choice :programs="directory.programs" :programId="directory.programId" action="/workops/releases" /><if builder != null><workops-release-build :initial="requireNotNull(builder)" /></if><icon-button icon="refresh" label="Refresh releases" type="submit" form="workops-release-refresh" /></page-heading><div class="workops-content">
+
+
+    <workops-release-list :initial="directory" />
+  </div></page-shell></workops-layout>
+</page>

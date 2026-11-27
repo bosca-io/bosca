@@ -1,0 +1,17 @@
+query WorkOpsReleaseDetail($id: UUID!) {
+  workOps { crossProject { release(id: $id) { ...WorkOpsReleaseFields } } }
+}
+query WorkOpsReleaseComponents($id: UUID!) {
+  workOps { crossProject { versionsForRelease(releaseId: $id) {
+    releaseId projectId versionId deploymentOrder deploymentStatus deployedAt rollbackVersionId
+  } } }
+}
+query WorkOpsReleaseReadiness($id: UUID!) { workOps { crossProject { releaseReadiness(releaseId: $id) } } }
+query WorkOpsReleaseAccess($id: UUID!) { workOps { crossProject { releaseActionAccess(releaseId: $id) { canManage } } } }
+mutation WorkOpsUpdateRelease($id: UUID!, $input: UpdateWorkOpsReleaseInput!, $version: Long!) {
+  workOps { crossProject { updateRelease(id: $id, input: $input, expectedVersion: $version) { ...WorkOpsReleaseFields } } }
+}
+mutation WorkOpsUnbundleReleaseVersion($release: UUID!, $version: UUID!) {
+  workOps { crossProject { unbundleVersion(releaseId: $release, versionId: $version) } }
+}
+mutation WorkOpsDeleteRelease($id: UUID!) { workOps { crossProject { deleteRelease(id: $id) } } }

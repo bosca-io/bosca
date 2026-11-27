@@ -1,0 +1,91 @@
+<component tag="workops-release-ci">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsReleaseCiModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsReleaseCiModel(initial.id, initial.read, initial.launching, initial.confirming, initial.patching, initial.patchValues, initial.comments, initial.rollbackRevisionDraft, initial.rollbackOutcomes, initial.nextHref, initial.draftRevision, initial.revision, initial.feedback)</script>
+  <island name="releaseCi" :key="initial.id"><card :padded="false"><html:section class="release-ci" :id='"workops-release-ci-" + model.id' tabindex="-1" data-workops-release-ci :data-ci-active="model.read.needsPolling" :data-next-href="model.nextHref">
+    <span ref="ciRevision" :data-revision="model.revision" hidden />
+    <section-heading title="Release pipelines" subtitle="Repository plans and native Git CI runs."><button data-bml-coalesce id="workops-release-ci-start" primary icon="play" :disabled="model.read.startReason != null" :title="model.read.startReason" @click="model.openStart()">Start release</button><icon-button size="md" icon="refresh" label="Refresh pipelines" data-bml-coalesce @click="model.refresh(ctx)" /></section-heading>
+    <form-body padded>
+    <p ref="pollError" role="status" aria-live="polite" />
+    <workops-feedback id="release-ci-0" :feedback="model.feedback" :active='!model.hasDialog' data-workops-release-ci-feedback />
+    <if model.read.feedback.failed><alert>{ model.read.feedback.message }</alert></if>
+    <if !model.read.componentsLoaded><alert>Bundled versions are unavailable.</alert></if>
+    <if model.read.componentFeedback.failed><alert>{ model.read.componentFeedback.message }</alert></if>
+    <if !model.read.accessLoaded><alert>Action permissions are unavailable. Refresh pipelines to try again.</alert></if>
+    <if model.read.accessFeedback.failed><alert>{ model.read.accessFeedback.message }</alert></if>
+    <if !model.read.readinessLoaded><alert>Release readiness is unavailable.</alert><else-if model.read.readiness.isNotEmpty()><alert tone="warning"><ul><for message in model.read.readiness><li>{ message }</li></for></ul></alert></if>
+    <if !model.read.plansLoaded><alert data-workops-release-ci-plans-error>Release plans are unavailable. { model.read.plansFeedback.message }</alert>
+    <else-if model.read.plans.isEmpty()><empty-state title="No release plans" message="No release or promotion plans are available. Bundle project versions and attach repositories with release triggers." compact />
+    <else>
+      <for plan in model.read.releasePlans><workops-release-plan :plan="plan" :graph="model.graph(plan)" :phase="model.phase(plan)" :phaseTone="model.tone(model.phase(plan))" /></for>
+      <for environment in model.read.promotionEnvironments><card :title='"Promotion · " + environment'>
+        <form-actions align="start"><button data-bml-coalesce :disabled="model.read.promotionReason(environment) != null" :title="model.read.promotionReason(environment)" @click="model.openPromotion(environment)">Promote</button><button data-bml-coalesce :disabled="model.read.rollbackEnvironmentReason(environment) != null" :title="model.read.rollbackEnvironmentReason(environment)" @click="model.openEnvironmentRollback(environment)">Roll back environment</button></form-actions>
+        <for plan in model.plansForEnvironment(environment)><if plan.promotesFrom.orEmpty().isNotBlank()><p>Promotes from { plan.promotesFrom }</p></if><workops-release-plan :plan="plan" :graph="model.graph(plan)" :phase="model.phase(plan)" :phaseTone="model.tone(model.phase(plan))" /></for>
+      </card></for>
+    </if>
+    <section-heading title="Native runs"><button data-bml-coalesce :disabled="!model.read.canManage || !model.read.componentsLoaded" @click="model.openPatch()">Patch release</button><button data-bml-coalesce :disabled="model.read.rollbackAttemptReason != null" :title="model.read.rollbackAttemptReason" @click="model.openAttemptRollback()">Roll back attempt</button></section-heading>
+    <if !model.read.summariesLoaded><alert>Run history is unavailable. { model.read.runsFeedback.message }</alert>
+    <else-if model.read.summaries.isEmpty()><empty-state title="No Git CI runs" message="No native Git CI runs yet. Start the release when its plan is ready." compact />
+    <else>
+      <form-actions align="start"><for summary in model.read.summaries><button data-bml-coalesce :aria-pressed='if (model.read.chosenRunId == summary.runId) "true" else "false"' :data-workops-release-run="summary.runId" @click="model.selectRun(summary.runId)">{ model.runLabel(summary.runId) } · { summary.status } <time :value="summary.startedAt" relative /></button></for></form-actions>
+      <if model.read.selectedRun == null><alert data-workops-release-ci-run-error>Selected run details are unavailable. { model.read.runErrors[model.read.chosenRunId].orEmpty() }</alert></if>
+      <for run in listOfNotNull(model.read.selectedRun)><card :title='"Run #" + run.number' data-workops-release-native-run>
+        <p class="ci-run-summary"><badge :tone="model.tone(run.status.name)">{ run.status.name }</badge> { run.triggerType.name.lowercase() } · <code>{ model.runRef(run) }</code></p>
+        <form-actions align="start"><button-link :href="model.runHref(run.id)">Logs and details</button-link><if model.active(run.status.name)><button data-bml-coalesce :disabled='model.controlReason("cancelRun", run) != null' :title='model.controlReason("cancelRun", run)' @click='model.openControl("cancelRun", run.id, "")'>Cancel run</button></if></form-actions>
+        <dl class="ci-run-facts"><div><dt>Created</dt><dd><time :value="run.created" /></dd></div><div><dt>Started</dt><dd><if run.started != null><time :value="run.started.orEmpty()" /><else>—</if></dd></div><div><dt>Finished</dt><dd><if run.finished != null><time :value="run.finished.orEmpty()" /><else>—</if></dd></div><div><dt>Duration</dt><dd>{ run.durationSeconds?.let { it.toString() + " seconds" } ?: "—" }</dd></div></dl>
+        <if run.jobs.isEmpty()><empty-state title="This run has no jobs." compact /></if>
+        <for job in run.jobs><article class="ci-job" :data-workops-release-job="job.id">
+          <section-heading :title="job.name"><badge :tone="model.tone(job.status.name)">{ job.status.name }</badge><if (job.attempt > 1)><badge>Attempt { job.attempt }</badge></if><if model.active(job.status.name)><button data-bml-coalesce :disabled='model.controlReason("cancelJob", run, job) != null' :title='model.controlReason("cancelJob", run, job)' @click='model.openControl("cancelJob", run.id, job.id)'>Cancel job</button></if><if model.rerunnable(job.status.name)><button data-bml-coalesce :disabled='model.controlReason("rerunJob", run, job) != null' :title='model.controlReason("rerunJob", run, job)' @click='model.openControl("rerunJob", run.id, job.id)'>Rerun job</button></if></section-heading>
+          <if job.environment != null><p>Environment: { job.environment }</p></if><if model.parkedReason(run, job).isNotBlank()><p role="status">{ model.parkedReason(run, job) }</p></if>
+          <if job.requirementsDeadline != null><p>Requirement deadline: <time :value="job.requirementsDeadline.orEmpty()" /></p></if>
+          <if job.errorMessage.orEmpty().isNotBlank()><alert>{ job.errorMessage }</alert></if>
+          <if job.approvalComment.orEmpty().isNotBlank()><p>Decision: { job.approvalComment }</p></if>
+          <if job.awaitingApproval><form data-bml-coalesce class="ci-approval" @submit="model.decide(job.id, form.comment, true, ctx)">
+            <div :data-bml-preserve='"release-ci-comment-" + job.id + "-" + job.attempt'><field :label='"Decision comment for " + job.name'><input name="comment" :value="model.comments[job.id].orEmpty()" /></field></div>
+            <form-actions align="start"><button data-bml-coalesce :disabled="model.decisionReason(run, job) != null" :title="model.decisionReason(run, job)" @click="model.decide(job.id, form.comment, false, ctx)">Reject</button><button data-bml-coalesce type="submit" primary :disabled="model.decisionReason(run, job) != null" :title="model.decisionReason(run, job)">Approve</button></form-actions>
+          </form></if>
+          <if job.steps.isNotEmpty()><ul class="ci-steps"><for step in job.steps><li><div class="ci-step-heading"><strong>{ step.name }</strong><badge :tone="model.tone(step.status.name)">{ step.status.name }</badge><code>{ step.uses ?: "run" }</code><if step.exitCode != null><span>Exit { step.exitCode }</span></if></div><if step.errorMessage.orEmpty().isNotBlank()><alert>{ step.errorMessage }</alert></if></li></for></ul></if>
+        </article></for>
+      </card></for>
+    </if>
+    <if model.rollbackOutcomes.isNotEmpty()><card title="Rollback targets"><ul><for outcome in model.rollbackOutcomes><li>{ outcome }</li></for></ul></card></if>
+
+    <dialog data-bml-coalesce :title="model.launchTitle" triggerLabel="Release action" :showTrigger="false" :forceOpen="model.launching != null" :completed="model.launching == null"  :returnFocus='"#workops-release-ci-" + model.id' @dialogdismiss="model.cancelLaunch()">
+      <form data-bml-coalesce @submit="model.launch(form.attributes, form.allowDowngrade, ctx)"><form-body padded>
+        <if model.feedback.failed><alert data-workops-release-ci-action-error>{ model.feedback.message }</alert></if>
+        <p>Review the declared inputs before starting these native Git CI runs.</p>
+        <schema-form :id='"release-ci-inputs-" + model.id' :schema="model.launchInputs.schema" :uiSchema="model.launchInputs.uiSchema" :value="model.launchValues" :preserveKey='"release-ci-inputs-" + model.id + "-" + model.draftRevision' />
+        <if model.launchInputs.inputs.isEmpty()><p>These triggers declare no operator inputs.</p></if>
+        <if model.launching?.trigger == "PROMOTION"><checkbox name="allowDowngrade" label="Allow a version downgrade" :checked="model.launching?.allowDowngrade == true" /><p>A downgrade still uses the pipeline's approval and health gates.</p><else><html:input name="allowDowngrade" type="checkbox" hidden /></if>
+      </form-body><form-actions bordered><button data-dialog-close>Cancel</button><button data-bml-coalesce type="submit" primary>{ if (model.launching?.trigger == "PROMOTION") "Start promotion" else "Start release" }</button></form-actions></form>
+    </dialog>
+    <dialog data-bml-coalesce title="Create patch release" triggerLabel="Patch release" :showTrigger="false" :forceOpen="model.patching" :completed="!model.patching"  :returnFocus='"#workops-release-ci-" + model.id' @dialogdismiss="model.cancelPatch()">
+      <form data-bml-coalesce @submit="model.patch(form.attributes, ctx)"><form-body padded><if model.feedback.failed><alert data-workops-release-ci-action-error>{ model.feedback.message }</alert></if><p>Select the affected projects. Their versions are patch-bumped into a new release.</p><schema-form :id='"release-ci-patch-" + model.id' :schema="model.patchSchema" :uiSchema="model.patchUiSchema" :value="model.patchValues" :options='mapOf("projects" to model.patchChoices)' :preserveKey='"release-ci-patch-" + model.id + "-" + model.draftRevision' /></form-body><form-actions bordered><button data-dialog-close>Cancel</button><button data-bml-coalesce primary type="submit">Create patch release</button></form-actions></form>
+    </dialog>
+    <dialog data-bml-coalesce :title="model.controlTitle" triggerLabel="Run action" :showTrigger="false" :forceOpen="model.confirmingControl" :completed="!model.confirmingControl"  :returnFocus='"#workops-release-ci-" + model.id' @dialogdismiss="model.cancelConfirmation()">
+      <form data-bml-coalesce @submit="model.control(form.confirmed, ctx)"><form-body padded><if model.feedback.failed><alert data-workops-release-ci-action-error>{ model.feedback.message }</alert></if><p>{ model.controlTitle } · { model.confirming?.label }?</p><checkbox name="confirmed" label="Confirm run action" required /></form-body><form-actions bordered><button data-dialog-close>Keep current state</button><button data-bml-coalesce primary type="submit">{ model.controlTitle }</button></form-actions></form>
+    </dialog>
+    <dialog data-bml-coalesce title="Roll back release attempt" triggerLabel="Roll back release attempt" :showTrigger="false" :forceOpen='model.confirming?.kind == "rollbackAttempt"' :completed='model.confirming?.kind != "rollbackAttempt"'  :returnFocus='"#workops-release-ci-" + model.id' @dialogdismiss="model.cancelConfirmation()">
+      <form data-bml-coalesce @submit="model.rollbackAttempt(form.confirmed, ctx)"><form-body padded><if model.feedback.failed><alert data-workops-release-ci-action-error>{ model.feedback.message }</alert></if><p>Roll back { model.confirming?.label } by deleting its release tags and artifact publications and resetting deployment statuses. Live runs must be cancelled first. Store uploads are not withdrawn.</p><checkbox name="confirmed" label="Confirm attempt rollback" required /></form-body><form-actions bordered><button data-dialog-close>Cancel</button><button data-bml-coalesce primary type="submit">Roll back attempt</button></form-actions></form>
+    </dialog>
+    <dialog data-bml-coalesce :title='"Roll back " + model.confirming?.environment.orEmpty()' triggerLabel="Roll back environment" :showTrigger="false" :forceOpen='model.confirming?.kind == "rollbackEnvironment"' :completed='model.confirming?.kind != "rollbackEnvironment"'  :returnFocus='"#workops-release-ci-" + model.id' @dialogdismiss="model.cancelConfirmation()">
+      <form data-bml-coalesce @submit="model.rollbackEnvironment(form.confirmed, form.revision, ctx)"><form-body padded><if model.feedback.failed><alert data-workops-release-ci-action-error>{ model.feedback.message }</alert></if><p>Roll back this release's current targets in { model.confirming?.environment }.</p><field label="Target revision" hint="Zero requests the previous revision. Enter a positive whole number to request a revision."><input name="revision" type="number" min="0" step="1" :value="model.rollbackRevisionDraft" required /></field><checkbox name="confirmed" label="Confirm environment rollback" required /></form-body><form-actions bordered><button data-dialog-close>Cancel</button><button data-bml-coalesce primary type="submit">Roll back environment</button></form-actions></form>
+    </dialog>
+    </form-body>
+    <script client scoped>
+      import { workOpsReleaseRefresh } from "@client/helpers/release-refresh";
+      let revision = Number(ctx.ref<HTMLElement>("ciRevision")?.dataset.revision || 0);
+      ctx.onUpdate(() => {
+        const next = Number(ctx.ref<HTMLElement>("ciRevision")?.dataset.revision || 0);
+        const changed = next > revision;
+        revision = next;
+        const owner = ctx.root.matches("[data-workops-release-ci]") ? ctx.root : ctx.root.querySelector("[data-workops-release-ci]");
+        const href = owner?.getAttribute("data-next-href");
+        if (href && href.startsWith("/") && !href.startsWith("//")) { location.assign(href); return; }
+        if (changed) ctx.root.dispatchEvent(new CustomEvent("workopsreleasecichanged", { bubbles: true }));
+      });
+      workOpsReleaseRefresh(ctx, { intervalMs: 3500, pauseForDialog: true,
+        active: () => (ctx.root.matches("[data-workops-release-ci]") ? ctx.root : ctx.root.querySelector("[data-workops-release-ci]"))?.hasAttribute("data-ci-active") === true });
+    </script>
+  </html:section></card></island>
+  <style scoped>.release-ci { min-width: 0; }.release-ci p:empty { display: none; }.ci-run-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }.ci-run-facts { display: flex; flex-wrap: wrap; gap: 20px; }.ci-run-facts dt { color: var(--fg-2); font-size: 12px; }.ci-run-facts dd { margin: 4px 0 0; overflow-wrap: anywhere; }.ci-job { display: grid; gap: 12px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); min-width: 0; }.ci-job p { margin: 0; overflow-wrap: anywhere; }.ci-steps { display: grid; gap: 12px; padding-left: 20px; }.ci-steps li { overflow-wrap: anywhere; }.ci-step-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }.ci-approval { display: grid; gap: 12px; }</style>
+</component>
