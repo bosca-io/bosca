@@ -15,11 +15,9 @@ import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
 
 /**
- * Handles form submission storage, status management, and event dispatch.
- * After persisting a submission the service invokes any registered
- * [FormSubmissionProcessor] whose [FormSubmissionProcessor.type]
- * matches the schema's type, enabling modules like Work Ops to react
- * to submissions without coupling the forms module to them.
+ * Stores ordinary submissions and dispatches their events. WorkOps submissions
+ * delegate to their processor, which returns the created task instead of storing
+ * an ordinary submission. Caller and reporter identities remain distinct.
  */
 @ServiceImplementation
 class FormSubmissionServiceImpl(
@@ -38,7 +36,7 @@ class FormSubmissionServiceImpl(
     override suspend fun getByProfile(profileId: UUID, offset: Long, limit: Int): List<FormSubmission> =
         formSubmissionRepository.getByProfile(profileId, offset, limit)
 
-    override suspend fun submit(profileId: UUID, input: FormSubmissionInput): SubmittedForm {
+    override suspend fun submit(profileId: UUID, principalId: UUID?, input: FormSubmissionInput): SubmittedForm {
         val formSchemaId = input.formSchemaId
             ?: error("formSchemaId must be resolved before submitting")
         val schema = formSchemaService.getById(formSchemaId)
@@ -46,7 +44,7 @@ class FormSubmissionServiceImpl(
 
         when (schema.type) {
             FormSchemaType.WORK_OPS -> {
-                return workSubmissionProcessor.get().process(profileId, input, schema)
+                return workSubmissionProcessor.get().process(profileId, principalId, input, schema)
             }
             else -> {
                 val submission = transaction {

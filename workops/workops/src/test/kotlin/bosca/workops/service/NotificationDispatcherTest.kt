@@ -120,7 +120,7 @@ class NotificationDispatcherTest {
                 fixture.outboxService.enqueueOnce(any(), any(), any(), any(), any(), any(), any())
             }
         } finally {
-            fixture.dispatcher.close()
+            fixture.dispatcher.shutdown()
         }
     }
 

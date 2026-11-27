@@ -1,6 +1,7 @@
 package bosca.workops.service
 
 import bosca.serialization.UUID
+import bosca.di.asProvider
 import bosca.workops.model.OptimisticLockFailedException
 import bosca.workops.model.SprintAlreadyActiveException
 import bosca.workops.model.SprintCloseUnfinishedException
@@ -21,6 +22,9 @@ import bosca.workops.model.notification.NotificationEvent
 import bosca.workops.model.notification.dispatch
 import bosca.workops.model.project.Program
 import bosca.workops.model.project.Project
+import bosca.workops.model.task.Task
+import bosca.workops.model.workflow.Status
+import bosca.workops.model.workflow.StatusCategory
 import bosca.workops.repository.SprintRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -39,6 +43,8 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class SprintServiceTest {
+    private val principalId = UUID.random()
+    private val profileId = UUID.random()
 
     @BeforeTest
     fun setup() {
@@ -96,10 +102,10 @@ class SprintServiceTest {
         val service = service(repository)
 
         val missing = assertFailsWith<WorkOpsNotFoundException> {
-            service.start(StartSprintInput(missingId, 1))
+            service.start(StartSprintInput(missingId, 1), principalId, profileId)
         }
         val optimisticLock = assertFailsWith<OptimisticLockFailedException> {
-            service.start(StartSprintInput(stale.id, 4))
+            service.start(StartSprintInput(stale.id, 4), principalId, profileId)
         }
 
         assertEquals("Sprint", missing.type)
@@ -134,6 +140,7 @@ class SprintServiceTest {
                 endDate = endDate,
                 committedTaskIds = committedTaskIds,
             ),
+            principalId, profileId,
         )
 
         assertEquals(startDate, started.startDate)
@@ -150,10 +157,10 @@ class SprintServiceTest {
         val service = service(repository)
 
         val missing = assertFailsWith<WorkOpsNotFoundException> {
-            service.close(CloseSprintInput(missingId, 1))
+            service.close(CloseSprintInput(missingId, 1), principalId, profileId)
         }
         val optimisticLock = assertFailsWith<OptimisticLockFailedException> {
-            service.close(CloseSprintInput(stale.id, 5, velocityPoints = 13.0))
+            service.close(CloseSprintInput(stale.id, 5, velocityPoints = 13.0), principalId, profileId)
         }
 
         assertEquals("Sprint", missing.type)
@@ -182,12 +189,63 @@ class SprintServiceTest {
 
         assertEquals(listOf(taskId), service.addTask(future.id, taskId)?.committedTaskIds)
         assertEquals(listOf(taskId), service.addTask(active.id, taskId)?.addedDuringSprintTaskIds)
-        assertEquals(closed, service.addTask(closed.id, taskId))
+        assertFailsWith<WorkOpsValidationException> { service.addTask(closed.id, taskId) }
         assertEquals(null, service.addTask(missingId, taskId))
         assertEquals(active, service.removeTask(active.id, taskId))
 
         coVerify(exactly = 0) { repository.addCommittedTask(closed.id, taskId) }
         coVerify(exactly = 0) { repository.addDuringSprintTask(closed.id, taskId) }
+    }
+
+    @Test
+    fun `assignment that races sprint start joins the active sprint snapshot`() = runTest {
+        val repository = mockk<SprintRepository>()
+        val future = sampleSprint()
+        val active = future.copy(state = SprintState.ACTIVE, version = future.version + 1)
+        val taskId = UUID.random()
+        val assigned = active.copy(addedDuringSprintTaskIds = listOf(taskId))
+        coEvery { repository.getById(future.id) } returnsMany listOf(future, active)
+        coEvery { repository.addCommittedTask(future.id, taskId) } returns null
+        coEvery { repository.addDuringSprintTask(active.id, taskId) } returns assigned
+
+        assertEquals(assigned, service(repository).addTask(future.id, taskId))
+        coVerify(exactly = 1) { repository.addCommittedTask(future.id, taskId) }
+        coVerify(exactly = 1) { repository.addDuringSprintTask(active.id, taskId) }
+    }
+
+    @Test
+    fun `assignment observes a concurrent close and cannot reuse historical membership`() = runTest {
+        val repository = mockk<SprintRepository>()
+        val taskId = UUID.random()
+        val active = sampleSprint().copy(state = SprintState.ACTIVE)
+        val closed = active.copy(state = SprintState.CLOSED, committedTaskIds = listOf(taskId))
+        coEvery { repository.getById(active.id) } returnsMany listOf(active, closed)
+        coEvery { repository.addDuringSprintTask(active.id, taskId) } returns null
+
+        assertFailsWith<WorkOpsValidationException> { service(repository).addTask(active.id, taskId) }
+        coVerify(exactly = 1) { repository.addDuringSprintTask(active.id, taskId) }
+    }
+
+    @Test
+    fun `membership is idempotent including a concurrent addition`() = runTest {
+        val repository = mockk<SprintRepository>()
+        val taskId = UUID.random()
+        val future = sampleSprint().copy(committedTaskIds = listOf(taskId))
+        val active = sampleSprint().copy(state = SprintState.ACTIVE, addedDuringSprintTaskIds = listOf(taskId))
+        val racing = sampleSprint().copy(state = SprintState.ACTIVE)
+        val assigned = racing.copy(addedDuringSprintTaskIds = listOf(taskId))
+        coEvery { repository.getById(future.id) } returns future
+        coEvery { repository.getById(active.id) } returns active
+        coEvery { repository.getById(racing.id) } returnsMany listOf(racing, assigned)
+        coEvery { repository.addDuringSprintTask(racing.id, taskId) } returns null
+        val service = service(repository)
+
+        assertEquals(future, service.addTask(future.id, taskId))
+        assertEquals(active, service.addTask(active.id, taskId))
+        assertEquals(assigned, service.addTask(racing.id, taskId))
+        coVerify(exactly = 0) { repository.addCommittedTask(future.id, taskId) }
+        coVerify(exactly = 0) { repository.addDuringSprintTask(active.id, taskId) }
+        coVerify(exactly = 1) { repository.addDuringSprintTask(racing.id, taskId) }
     }
 
     @Test
@@ -203,11 +261,11 @@ class SprintServiceTest {
         val service = service(repository, boardService = boardService)
 
         val conflict = assertFailsWith<SprintAlreadyActiveException> {
-            service.start(StartSprintInput(sprint.id, sprint.version))
+            service.start(StartSprintInput(sprint.id, sprint.version), principalId, profileId)
         }
         assertEquals(sprint.boardId, conflict.boardId)
 
-        val started = service.start(StartSprintInput(sprint.id, sprint.version))
+        val started = service.start(StartSprintInput(sprint.id, sprint.version), principalId, profileId)
         assertEquals(SprintState.ACTIVE, started.state)
         assertTrue(started.startDate != null)
     }
@@ -238,6 +296,7 @@ class SprintServiceTest {
                     sprint.version,
                     destinations = listOf(CloseSprintDestination(firstTask)),
                 ),
+                principalId, profileId,
             )
         }
         assertEquals(setOf(secondTask), unfinished.unfinishedTaskIds.toSet())
@@ -249,6 +308,7 @@ class SprintServiceTest {
                 destinations = listOf(CloseSprintDestination(firstTask), CloseSprintDestination(secondTask)),
                 velocityPoints = 8.0,
             ),
+            principalId, profileId,
         )
         assertEquals(SprintState.CLOSED, closed.state)
         coVerify(exactly = 1) {
@@ -267,6 +327,7 @@ class SprintServiceTest {
         val programId = UUID.random()
         val portfolioId = UUID.random()
         val portfolioProgramId = UUID.random()
+        val portfolioPrograms = (1..101).map { index -> program(portfolioId, if (index == 101) portfolioProgramId else UUID.random()) }
         val programSprint = sampleSprint()
         val portfolioSprint = sampleSprint()
         val explicitSprint = sampleSprint()
@@ -286,9 +347,9 @@ class SprintServiceTest {
         coEvery { boardService.getById(explicitSprint.boardId) } returns explicitBoard
         coEvery { projectService.listByProgram(programId, 0, 100) } returns pagedProjects.take(100)
         coEvery { projectService.listByProgram(programId, 100, 100) } returns pagedProjects.drop(100)
-        coEvery { programService.listByPortfolio(portfolioId, 0, 100) } returns listOf(
-            program(portfolioId, portfolioProgramId),
-        )
+        coEvery { programService.listByPortfolio(portfolioId, 0, 100) } returns portfolioPrograms.take(100)
+        coEvery { programService.listByPortfolio(portfolioId, 100, 100) } returns portfolioPrograms.drop(100)
+        for (program in portfolioPrograms.dropLast(1)) coEvery { projectService.listByProgram(program.id, 0, 100) } returns emptyList()
         coEvery { projectService.listByProgram(portfolioProgramId, 0, 100) } returns listOf(portfolioProject)
         coEvery { boardService.listBoardProjects(explicitBoard.id) } returns listOf(
             BoardProject(explicitBoard.id, explicitProjectId),
@@ -296,12 +357,13 @@ class SprintServiceTest {
         )
         val service = service(repository, boardService, projectService, programService)
 
-        service.start(StartSprintInput(programSprint.id, programSprint.version))
-        service.start(StartSprintInput(portfolioSprint.id, portfolioSprint.version))
-        service.start(StartSprintInput(explicitSprint.id, explicitSprint.version))
+        service.start(StartSprintInput(programSprint.id, programSprint.version), principalId, profileId)
+        service.start(StartSprintInput(portfolioSprint.id, portfolioSprint.version), principalId, profileId)
+        service.start(StartSprintInput(explicitSprint.id, explicitSprint.version), principalId, profileId)
 
         coVerify(exactly = 1) { projectService.listByProgram(programId, 100, 100) }
         coVerify(exactly = 1) { programService.listByPortfolio(portfolioId, 0, 100) }
+        coVerify(exactly = 1) { programService.listByPortfolio(portfolioId, 100, 100) }
         coVerify(exactly = 1) {
             match<NotificationDeliveryRequested> {
                 it.delivery.event == NotificationEvent.SPRINT_STARTED && it.delivery.projectId == explicitProjectId
@@ -312,6 +374,93 @@ class SprintServiceTest {
                 it.delivery.event == NotificationEvent.SPRINT_STARTED && it.delivery.projectId == portfolioProject.id
             }.dispatch()
         }
+    }
+
+    @Test fun `start rejects an unavailable selected task before writing the sprint`() = runTest {
+        val repository = mockk<SprintRepository>()
+        val sprint = sampleSprint(); val missingId = UUID.random(); val tasks = taskServiceMock()
+        coEvery { repository.getById(sprint.id) } returns sprint
+        coEvery { repository.findActive(sprint.boardId) } returns null
+        coEvery { tasks.getByIds(listOf(missingId)) } returns emptyList()
+        val failure = assertFailsWith<WorkOpsNotFoundException> {
+            service(repository, taskService = tasks).start(StartSprintInput(sprint.id, sprint.version, committedTaskIds = listOf(missingId)), principalId, profileId)
+        }
+        assertEquals("Task", failure.type)
+        val deleted = taskServiceMock().getByIds(listOf(missingId)).single().copy(deletedAt = OffsetDateTime.now())
+        coEvery { tasks.getByIds(listOf(missingId)) } returns listOf(deleted)
+        assertFailsWith<WorkOpsNotFoundException> {
+            service(repository, taskService = tasks).start(StartSprintInput(sprint.id, sprint.version, committedTaskIds = listOf(missingId)), principalId, profileId)
+        }
+        coVerify(exactly = 0) { repository.start(any()) }
+        coVerify(exactly = 0) { tasks.update(any(), any(), any(), any()) }
+    }
+
+    @Test fun `invalid close destinations fail before changing the sprint or its tasks`() = runTest {
+        val repository = mockk<SprintRepository>(); val taskId = UUID.random(); val targetId = UUID.random()
+        val sprint = sampleSprint().copy(state = SprintState.ACTIVE, committedTaskIds = listOf(taskId))
+        val tasks = taskServiceMock(); val service = service(repository, taskService = tasks)
+        coEvery { repository.getById(sprint.id) } returns sprint
+        coEvery { repository.getById(targetId) } returns null
+        val missing = assertFailsWith<WorkOpsNotFoundException> {
+            service.close(CloseSprintInput(sprint.id, sprint.version, listOf(CloseSprintDestination(taskId, targetId))), principalId, profileId)
+        }
+        assertEquals("Sprint", missing.type)
+        coEvery { repository.getById(targetId) } returns sampleSprint().copy(id = targetId, state = SprintState.CLOSED)
+        for (destinations in listOf(
+            listOf(CloseSprintDestination(taskId, targetId)), listOf(CloseSprintDestination(taskId, sprint.id)),
+            listOf(CloseSprintDestination(UUID.random())), listOf(CloseSprintDestination(taskId), CloseSprintDestination(taskId)),
+        )) assertFailsWith<WorkOpsValidationException> {
+            service.close(CloseSprintInput(sprint.id, sprint.version, destinations), principalId, profileId)
+        }
+        coVerify(exactly = 0) { repository.close(any(), any(), any()) }
+        coVerify(exactly = 0) { tasks.update(any(), any(), any(), any()) }
+    }
+
+    @Test fun `a stale close never starts task updates`() = runTest {
+        val repository = mockk<SprintRepository>(); val taskId = UUID.random()
+        val sprint = sampleSprint().copy(state = SprintState.ACTIVE, committedTaskIds = listOf(taskId))
+        val tasks = taskServiceMock()
+        coEvery { repository.getById(sprint.id) } returns sprint
+        coEvery { repository.close(sprint.id, null, sprint.version) } returns null
+        assertFailsWith<OptimisticLockFailedException> {
+            service(repository, taskService = tasks).close(CloseSprintInput(sprint.id, sprint.version, listOf(CloseSprintDestination(taskId))), principalId, profileId)
+        }
+        coVerify(exactly = 0) { tasks.update(any(), any(), any(), any()) }
+    }
+
+    @Test fun `starting a sprint preserves previously planned tasks now assigned elsewhere`() = runTest {
+        val repository = mockk<SprintRepository>()
+        val taskId = UUID.random()
+        val sprint = sampleSprint().copy(committedTaskIds = listOf(taskId))
+        val tasks = taskServiceMock()
+        val movedTask = tasks.getByIds(listOf(taskId)).single().copy(sprintId = UUID.random())
+        coEvery { repository.getById(sprint.id) } returns sprint
+        coEvery { repository.findActive(sprint.boardId) } returns null
+        coEvery { repository.start(any()) } coAnswers { firstArg<Sprint>().copy(state = SprintState.ACTIVE) }
+        coEvery { tasks.getByIds(listOf(taskId)) } returns listOf(movedTask)
+
+        service(repository, taskService = tasks).start(StartSprintInput(sprint.id, sprint.version), principalId, profileId)
+
+        coVerify(exactly = 0) { tasks.update(any(), any(), any(), any()) }
+    }
+
+    @Test fun `closing with an unavailable task status fails before any writes`() = runTest {
+        val repository = mockk<SprintRepository>()
+        val taskId = UUID.random()
+        val sprint = sampleSprint().copy(state = SprintState.ACTIVE, committedTaskIds = listOf(taskId))
+        val tasks = taskServiceMock()
+        val statuses = statusServiceMock()
+        coEvery { repository.getById(sprint.id) } returns sprint
+        coEvery { statuses.getByIds(any()) } returns emptyList()
+
+        val failure = assertFailsWith<IllegalArgumentException> {
+            service(repository, taskService = tasks, statusService = statuses).close(
+                CloseSprintInput(sprint.id, sprint.version, listOf(CloseSprintDestination(taskId))), principalId, profileId)
+        }
+
+        assertEquals("Task status is unavailable.", failure.message)
+        coVerify(exactly = 0) { repository.close(any(), any(), any()) }
+        coVerify(exactly = 0) { tasks.update(any(), any(), any(), any()) }
     }
 
     private fun sampleSprint() = Sprint(
@@ -357,10 +506,27 @@ class SprintServiceTest {
         boardService: BoardService = mockk(relaxed = true),
         projectService: ProjectService = mockk(relaxed = true),
         programService: ProgramService = mockk(relaxed = true),
+        taskService: TaskService = taskServiceMock(),
+        statusService: StatusService = statusServiceMock(),
     ) = SprintServiceImpl(
         repository,
         boardService,
         projectService,
         programService,
+        taskService.asProvider(),
+        statusService,
     )
+
+    private fun taskServiceMock(): TaskService = mockk<TaskService>(relaxed = true).also { service ->
+        coEvery { service.getByIds(any()) } coAnswers { firstArg<List<UUID>>().map { id -> Task(
+            id = id, key = "PLAN-1", projectId = UUID.random(), taskTypeId = UUID.random(), statusId = UUID.NIL,
+            priorityId = UUID.random(), summary = "Sprint work", reporterProfileId = profileId,
+            createdByPrincipalId = principalId, modifiedByPrincipalId = principalId,
+        ) } }
+    }
+    private fun statusServiceMock(): StatusService = mockk<StatusService>(relaxed = true).also { service ->
+        coEvery { service.getByIds(any()) } coAnswers { firstArg<List<UUID>>().map { id -> Status(
+            id = id, name = "To do", category = StatusCategory.TODO, colorHex = "#334455",
+        ) } }
+    }
 }

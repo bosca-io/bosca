@@ -32,6 +32,7 @@ class FormSubmissionServiceImplTest {
 
     private val schemaId = UUID.random()
     private val profileId = UUID.random()
+    private val principalId = UUID.random()
 
     private val schema = FormSchema(
         id = schemaId,
@@ -89,7 +90,7 @@ class FormSubmissionServiceImplTest {
             attributes = JsonObject(emptyMap())
         )
         val ex = assertFailsWith<IllegalStateException> {
-            service.submit(profileId, input)
+            service.submit(profileId, principalId, input)
         }
         assertEquals("formSchemaId must be resolved before submitting", ex.message)
     }
@@ -102,7 +103,7 @@ class FormSubmissionServiceImplTest {
             attributes = JsonObject(emptyMap())
         )
         val ex = assertFailsWith<IllegalStateException> {
-            service.submit(profileId, input)
+            service.submit(profileId, principalId, input)
         }
         assertEquals("form schema not found: $schemaId", ex.message)
     }
@@ -118,11 +119,37 @@ class FormSubmissionServiceImplTest {
             formSchemaId = schemaId,
             attributes = attrs
         )
-        service.submit(profileId, input)
+        service.submit(profileId, principalId, input)
         coVerify { formSubmissionRepository.add(schemaId, profileId, attrs) }
     }
 
     // --- Event dispatch ---
+
+    @Test
+    fun `workops delegates the authenticated caller separately from the reporter`() = runTest {
+        verifyWorkOpsDelegation(principalId)
+    }
+
+    @Test
+    fun `workops delegates anonymous intake without inventing a principal`() = runTest {
+        verifyWorkOpsDelegation(null)
+    }
+
+    private suspend fun verifyWorkOpsDelegation(caller: UUID?) {
+        val workOpsSchema = schema.copy(type = FormSchemaType.WORK_OPS)
+        val processor = mockk<FormSubmissionProcessor>()
+        val input = FormSubmissionInput(formSchemaId = schemaId, attributes = buildJsonObject { put("summary", "Task") })
+        val result = SubmittedForm(UUID.random(), FormSchemaType.WORK_OPS)
+        coEvery { formSchemaService.getById(schemaId) } returns workOpsSchema
+        coEvery { workSubmissionProcessor.get() } returns processor
+        coEvery { processor.process(profileId, caller, input, workOpsSchema) } returns result
+
+        assertEquals(result, service.submit(profileId, caller, input))
+
+        coVerify(exactly = 1) { processor.process(profileId, caller, input, workOpsSchema) }
+        coVerify(exactly = 0) { formSubmissionRepository.add(any(), any(), any()) }
+        coVerify(exactly = 0) { any<FormSubmissionCreated>().dispatch() }
+    }
 
     @Test
     fun `submit dispatches FormSubmissionCreated event`() = runTest {
@@ -132,7 +159,7 @@ class FormSubmissionServiceImplTest {
             formSchemaId = schemaId,
             attributes = buildJsonObject { put("name", "Alice") }
         )
-        service.submit(profileId, input)
+        service.submit(profileId, principalId, input)
         coVerify { any<FormSubmissionCreated>().dispatch() }
     }
 

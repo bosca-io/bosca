@@ -5,8 +5,6 @@ import bosca.serialization.OffsetDateTime
 import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
 import bosca.workops.model.OptimisticLockFailedException
-import bosca.workops.model.SprintAlreadyActiveException
-import bosca.workops.model.SprintCloseUnfinishedException
 import bosca.workops.model.VersionInUseException
 import bosca.workops.model.WorkOpsNotFoundException
 import bosca.workops.model.WorkOpsValidationException
@@ -24,147 +22,14 @@ import bosca.workops.model.label.Label
 import bosca.workops.model.label.LabelScope
 import bosca.workops.model.milestone.CreateMilestoneInput
 import bosca.workops.model.milestone.Milestone
-import bosca.workops.model.notification.NotificationDelivery
-import bosca.workops.model.notification.NotificationDeliveryRequested
-import bosca.workops.model.notification.NotificationEvent
-import bosca.workops.model.notification.dispatch
-import bosca.workops.model.sprint.CloseSprintInput
-import bosca.workops.model.sprint.CreateSprintInput
-import bosca.workops.model.sprint.Sprint
-import bosca.workops.model.sprint.SprintState
-import bosca.workops.model.sprint.StartSprintInput
 import bosca.workops.model.version.CreateVersionInput
 import bosca.workops.model.version.Version
 import bosca.workops.repository.BoardRepository
 import bosca.workops.repository.ComponentRepository
 import bosca.workops.repository.LabelRepository
 import bosca.workops.repository.MilestoneRepository
-import bosca.workops.repository.SprintRepository
 import bosca.workops.repository.StatusRepository
 import bosca.workops.repository.VersionRepository
-
-/*
- * Phase 5 services for the agile / release surface (R8 + R9). One
- * file per surface area would have meant six tiny files; collected
- * here for review density. Each service stays small — Phase 7's
- * permission scheme integration grows them when admin CRUD lands.
- */
-
-// ----- Sprint -----
-
-@ServiceImplementation
-class SprintServiceImpl(
-    private val repository: SprintRepository,
-    private val boardService: BoardService,
-    private val projectService: ProjectService,
-    private val programService: ProgramService,
-) : SprintService {
-
-    override suspend fun listByBoard(boardId: UUID, offset: Long, limit: Int): List<Sprint> =
-        repository.listByBoard(boardId, offset.coerceAtLeast(0), limit.coerceIn(1, 100))
-
-    override suspend fun getById(id: UUID): Sprint? = repository.getById(id)
-
-    override suspend fun getByIds(ids: List<UUID>): List<Sprint> =
-        if (ids.isEmpty()) emptyList() else repository.getByIds(ids)
-
-    override suspend fun create(input: CreateSprintInput): Sprint = transaction {
-        if (input.name.isBlank()) throw WorkOpsValidationException("name", "required")
-        repository.add(input.boardId, input.name, input.goal)
-    }
-
-    override suspend fun start(input: StartSprintInput): Sprint = transaction {
-        val sprint = repository.getById(input.sprintId)
-            ?: throw WorkOpsNotFoundException("Sprint", input.sprintId.toString())
-        // R8: at most one ACTIVE sprint per board.
-        repository.findActive(sprint.boardId)?.let {
-            if (it.id != sprint.id) throw SprintAlreadyActiveException(sprint.boardId)
-        }
-        val staged = sprint.copy(
-            startDate = input.startDate ?: OffsetDateTime.now(),
-            endDate = input.endDate,
-            committedTaskIds = input.committedTaskIds,
-            version = input.expectedVersion,
-        )
-        val started = repository.start(staged) ?: throw OptimisticLockFailedException("Sprint", input.sprintId)
-        dispatchSprintNotification(started.boardId, NotificationEvent.SPRINT_STARTED)
-        started
-    }
-
-    override suspend fun close(input: CloseSprintInput): Sprint = transaction {
-        val sprint = repository.getById(input.sprintId)
-            ?: throw WorkOpsNotFoundException("Sprint", input.sprintId.toString())
-        // R8: closing a sprint with unfinished tasks requires a
-        // destination for each. Phase 7 / Phase 8 will introduce the
-        // per-task resolution check that splits "unfinished" from
-        // "finished"; for Phase 5 we trust the caller's destination
-        // list matches the snapshot.
-        val knownIds = (sprint.committedTaskIds + sprint.addedDuringSprintTaskIds).toSet()
-        val provided = input.destinations.map { it.taskId }.toSet()
-        val missing = knownIds - provided
-        if (missing.isNotEmpty()) {
-            throw SprintCloseUnfinishedException(sprint.id, missing.toList())
-        }
-        val closed = repository.close(input.sprintId, input.velocityPoints, input.expectedVersion)
-            ?: throw OptimisticLockFailedException("Sprint", input.sprintId)
-        dispatchSprintNotification(closed.boardId, NotificationEvent.SPRINT_CLOSED)
-        closed
-    }
-
-    override suspend fun addTask(sprintId: UUID, taskId: UUID): Sprint? {
-        val sprint = repository.getById(sprintId) ?: return null
-        return when (sprint.state) {
-            SprintState.FUTURE -> repository.addCommittedTask(sprint.id, taskId)
-            SprintState.ACTIVE -> repository.addDuringSprintTask(sprint.id, taskId)
-            SprintState.CLOSED -> sprint
-        }
-    }
-
-    override suspend fun removeTask(sprintId: UUID, taskId: UUID): Sprint? =
-        repository.removeTask(sprintId, taskId)
-
-    private suspend fun dispatchSprintNotification(boardId: UUID, event: NotificationEvent) {
-        val board = boardService.getById(boardId) ?: return
-        val boardProjectId = board.projectId
-        val boardProgramId = board.programId
-        val boardPortfolioId = board.portfolioId
-        val projectIds = when {
-            boardProjectId != null -> listOf(boardProjectId)
-            boardProgramId != null -> projectsInProgram(boardProgramId).map { it.id }
-            boardPortfolioId != null -> programsInPortfolio(boardPortfolioId)
-                .flatMap { projectsInProgram(it.id) }
-                .map { it.id }
-            else -> boardService.listBoardProjects(board.id).map { it.projectId }
-        }
-        projectIds.distinct().forEach { projectId ->
-            NotificationDeliveryRequested(
-                NotificationDelivery(event = event, projectId = projectId),
-            ).dispatch()
-        }
-    }
-
-    private suspend fun projectsInProgram(programId: UUID): List<bosca.workops.model.project.Project> = buildList {
-        var offset = 0L
-        do {
-            val page = projectService.listByProgram(programId, offset, PAGE_SIZE)
-            addAll(page)
-            offset += page.size
-        } while (page.size == PAGE_SIZE)
-    }
-
-    private suspend fun programsInPortfolio(portfolioId: UUID): List<bosca.workops.model.project.Program> = buildList {
-        var offset = 0L
-        do {
-            val page = programService.listByPortfolio(portfolioId, offset, PAGE_SIZE)
-            addAll(page)
-            offset += page.size
-        } while (page.size == PAGE_SIZE)
-    }
-
-    companion object {
-        private const val PAGE_SIZE = 100
-    }
-}
 
 // ----- Board -----
 

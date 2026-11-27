@@ -60,6 +60,15 @@ class BqlControllerTest {
         return ImpersonatedAuthenticationContext(principal, groups)
     }
 
+    @Test
+    fun `specification validation uses its own field catalog without executing either search`() = runTest {
+        val errors = listOf(BqlError("Unknown specification field", 0, 8))
+        coEvery { specQueryService.validate("assignee = currentUser()") } returns errors
+        assertEquals(errors, queryController().validateSpecBql(authenticated(), "assignee = currentUser()").errors)
+        coVerify(exactly = 0) { taskQueryService.validate(any()) }
+        coVerify(exactly = 0) { specQueryService.search(any(), any(), any(), any()) }
+    }
+
     // --- searchSpecs ---
 
     @Test

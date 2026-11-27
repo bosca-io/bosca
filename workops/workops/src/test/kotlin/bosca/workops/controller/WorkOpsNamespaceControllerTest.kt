@@ -41,6 +41,7 @@ class WorkOpsNamespaceControllerTest {
     fun `mutation namespace exposes every workops surface`() {
         val controller = WorkOpsMutationController()
 
+        assertSame(WorkOpsWorkflowsMutation, controller.workflows())
         assertSame(WorkOpsPortfoliosMutation, controller.portfolios())
         assertSame(WorkOpsProgramsMutation, controller.programs())
         assertSame(WorkOpsProjectsMutation, controller.projects())

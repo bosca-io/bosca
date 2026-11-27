@@ -1,5 +1,6 @@
 package bosca.workops.service
 
+import bosca.cache.withRequestCache
 import bosca.db.ConnectionPool
 import bosca.db.asCoroutineContext
 import bosca.git.model.EnvironmentDefinition
@@ -14,6 +15,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -177,7 +180,7 @@ class PipelineEnvironmentSyncListener(
                         val mgr = connectionPool.connection()
                         try {
                             withContext(mgr.asCoroutineContext()) {
-                                sync.apply(msg.message)
+                                withRequestCache { sync.apply(msg.message) }
                             }
                         } finally {
                             withContext(NonCancellable) { mgr.release() }
@@ -195,6 +198,10 @@ class PipelineEnvironmentSyncListener(
                 }
             }
         }
+    }
+
+    internal suspend fun close() {
+        scope.coroutineContext.job.cancelAndJoin()
     }
 
     companion object {

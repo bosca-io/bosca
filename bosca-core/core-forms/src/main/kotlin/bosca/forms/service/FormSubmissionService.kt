@@ -41,14 +41,15 @@ interface FormSubmissionService : Service {
     suspend fun getByProfile(profileId: UUID, offset: Long, limit: Int): List<FormSubmission>
 
     /**
-     * Creates a new form submission linked to the specified profile.
-     * Stores the submission and dispatches the FormSubmissionCreated event.
+     * Processes form values for the specified profile. Ordinary submissions are stored
+     * and dispatch FormSubmissionCreated; purpose-specific schemas delegate to their processor.
      *
      * @param profileId the profile to associate with this submission
+     * @param principalId the authenticated caller, or null for anonymous intake; distinct from the profile
      * @param input the submission data including form schema ID and attributes
-     * @return the created form submission
+     * @return the created record and schema type
      */
-    suspend fun submit(profileId: UUID, input: FormSubmissionInput): SubmittedForm
+    suspend fun submit(profileId: UUID, principalId: UUID?, input: FormSubmissionInput): SubmittedForm
 
     /**
      * Updates the processing status of a form submission.

@@ -26,6 +26,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -595,6 +597,10 @@ class NotificationDispatcher(
 
     internal fun close() {
         scope.cancel()
+    }
+
+    override suspend fun shutdown() {
+        scope.coroutineContext.job.cancelAndJoin()
     }
 
     private data class ExternalDeliveryPlan(

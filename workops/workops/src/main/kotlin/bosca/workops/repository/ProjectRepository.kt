@@ -38,10 +38,12 @@ interface ProjectRepository {
         """
         insert into workops.project
             (program_id, key, name, description, owner_profile_id,
-             default_task_type_scheme_id, default_workflow_scheme_id, default_field_configuration_scheme_id)
+             default_task_type_scheme_id, default_workflow_scheme_id, default_field_configuration_scheme_id,
+             task_creation_form_schema_key)
         values
             (:programId, :key, :name, :description, :ownerProfileId,
-             :defaultTaskTypeSchemeId, :defaultWorkflowSchemeId, :defaultFieldConfigurationSchemeId)
+             :defaultTaskTypeSchemeId, :defaultWorkflowSchemeId, :defaultFieldConfigurationSchemeId,
+             :taskCreationFormSchemaKey)
         returning *
         """
     )

@@ -84,6 +84,8 @@ type WorkOpsSavedFilters {
     without running SQL. Empty errors list = the query is safe to run.
     """
     validateBql(source: String!): WorkOpsBqlValidationResult!
+    "Validate BQL against the specification field catalog without executing a search."
+    validateSpecBql(source: String!): WorkOpsBqlValidationResult!
 
     """
     Search tasks by BQL. Phase 6 executes the structural part directly

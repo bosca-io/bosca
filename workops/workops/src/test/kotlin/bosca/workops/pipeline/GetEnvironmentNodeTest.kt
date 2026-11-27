@@ -138,6 +138,16 @@ class GetEnvironmentNodeTest {
         assertTrue("environment type" in (e.message ?: ""), e.message)
     }
 
+    @Test
+    fun `an absent optional exact-name environment skips the downstream channel`() = runTest {
+        coEvery { environments.getByProgramAndName(programId, "prod-us") } returns null
+
+        val out = GetEnvironmentNode(id = "env", environmentName = "prod-us", optional = true)
+            .run(context, releaseInput())
+
+        assertEquals(null, out.result)
+    }
+
     // ── Fallback chain ───────────────────────────────────────────────────────
 
     private val developmentTypeId = UUID.random()

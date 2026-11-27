@@ -22,7 +22,12 @@ import bosca.content.metadata.model.MetadataInput
 import bosca.content.metadata.service.DocumentService
 import bosca.content.metadata.service.MetadataService
 import bosca.documents.Content
+import bosca.documents.Document
+import bosca.documents.HeadingAttributes
+import bosca.documents.HeadingNode
 import bosca.documents.MarkdownConverter
+import bosca.documents.ParagraphNode
+import bosca.documents.TextNode
 import bosca.workops.model.task.CreateTaskInput
 import bosca.workops.repository.PriorityRepository
 import bosca.workops.repository.ProjectRepository
@@ -148,6 +153,7 @@ class RequirementServiceImpl(
             val reporterProfileId = actingProfileId ?: resolveReporterProfileId(input.parentType, input.parentId)
             val task = createLinkedTask(
                 metadataId = metadataId,
+                metadataVersion = metadata.version,
                 projectId = projectId,
                 requirementKey = key,
                 priorityId = priorityId,
@@ -361,7 +367,10 @@ class RequirementServiceImpl(
                 languageTag = "en",
                 document = DocumentInput(
                     title = name,
-                    content = Content(),
+                    content = Content(Document(content = listOf(
+                        HeadingNode(HeadingAttributes(level = 1), content = listOf(TextNode(text = name))),
+                        ParagraphNode(),
+                    ))),
                     templateMetadataId = REQUIREMENT_TEMPLATE_ID,
                     templateMetadataVersion = REQUIREMENT_TEMPLATE_VERSION,
                 ),
@@ -371,6 +380,7 @@ class RequirementServiceImpl(
 
     private suspend fun createLinkedTask(
         metadataId: UUID,
+        metadataVersion: Int,
         projectId: UUID,
         requirementKey: String,
         priorityId: UUID,
@@ -380,7 +390,7 @@ class RequirementServiceImpl(
         reporterProfileId: UUID,
     ): bosca.workops.model.task.Task {
         val doc = try {
-            documentService.getDocument(metadataId, 1)
+            documentService.getDocument(metadataId, metadataVersion)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (_: Exception) {
