@@ -1,0 +1,74 @@
+<component tag="workops-automation">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsAutomationModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsAutomationModel(initial.scope, initial.scopeId, initial.offset, initial.targetId, initial.rows, initial.loaded, initial.editing, initial.draft, initial.draftRevision, initial.profileName, initial.deleting, initial.resultId, initial.resultScope, initial.resultScopeId, initial.historyTarget, initial.historyOffset, initial.historyRows, initial.historyLoaded, initial.historyHasNext, initial.feedback, initial.profileFeedback, initial.historyFeedback, initial.scopeChoices)</script>
+  <island name="automation" :key='initial.scope + ":" + initial.scopeId'><page-shell class="workops-page" fill>
+    <page-heading title="Automation" subtitle="Rules that run when task events fire"><form method="get" action="/workops/settings/automation" class="scope-filter"><select name="scope" label="Scope"><for choice in model.scopes><option :value="choice" :selected="choice == model.scope">{ model.label(choice) }</option></for></select>
+        <if model.scope != "GLOBAL"><select name="scopeId" :label="model.label(model.scope)" required searchable><option value="">Choose a { model.scope.lowercase() }</option><for entity in model.scopeChoices.entities><option :value="entity.id" :selected="entity.id == model.scopeId">{ entity.key } — { entity.name }</option></for><if model.scopeId.isNotBlank() && model.scopeChoices.entities.none { it.id == model.scopeId }><option :value="model.scopeId" selected>Selected { model.scope.lowercase() } unavailable</option></if></select><else><html:input type="hidden" name="scopeId" value="" /></if>
+        <noscript><button type="submit">Choose scope</button></noscript></form><button data-bml-coalesce id="workops-rule-new" icon="plus" primary :disabled="!model.loaded" @click='model.open("", ctx)'>New rule</button><icon-button icon="refresh" label="Refresh rules" data-bml-coalesce @click="model.refresh(ctx)" /><if model.resultHref.isNotBlank()><button-link :href="model.resultHref" size="xs" icon="arrow-right">Show the saved rule</button-link></if></page-heading>
+    <div class="workops-content" data-workops-automation>
+
+      <if model.scope != "GLOBAL" && model.scopeChoices.choiceFeedback.failed><alert>{ model.scopeChoices.choiceFeedback.message }</alert></if>
+      <if model.scope in model.scopes && model.scope != "GLOBAL" && model.scopeId.isBlank()><empty-state :title='"Choose a " + model.scope.lowercase()' message="Select an entity to view its automation rules." compact /><else>
+      <workops-feedback id="automation-0" :feedback="model.feedback" />
+
+      <if !model.loaded><p role="status">Rules have not been loaded. Choose an available scope or refresh to try again.</p><else-if model.pageRows.isEmpty()><empty-state title="No automation rules in this scope yet." /><else>
+        <card :padded="false"><table-scroll label="Automation rules"><table><caption>Automation rules</caption><thead><tr><th scope="col">Enabled</th><th scope="col">Name</th><th scope="col">Trigger</th><th scope="col">Scope</th><th scope="col">Description</th><th scope="col">Actions</th></tr></thead><tbody>
+          <for row in model.pageRows><tr :id='"workops-rule-" + row.id' :data-workops-automation-rule="row.id"><td><button data-bml-coalesce :aria-label='(if (row.enabled) "Disable " else "Enable ") + row.name' @click="model.toggle(row.id, !row.enabled, row.version, ctx)">{ if (row.enabled) "Enabled" else "Disabled" }</button></td><td>{ row.name }</td><td><badge>{ row.triggerType.ifBlank { "Unknown" } }</badge></td><td>{ model.label(row.scope) }</td><td>{ row.description }</td><td><form-actions align="start"><icon-button icon="edit" data-bml-coalesce :label='"Edit " + row.name' @click="model.open(row.id, ctx)" /><icon-button icon="clock" data-bml-coalesce :label='"Run history for " + row.name' @click="model.openHistory(row.id, ctx)" /><icon-button icon="trash" data-bml-coalesce :label='"Delete " + row.name' @click="model.beginDelete(row.id)" /></form-actions></td></tr></for>
+        </tbody></table></table-scroll></card>
+      </if>
+      <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Automation rule pages" />
+      </if>
+      <dialog data-bml-coalesce :title='if (model.draft.id.isBlank()) "New automation rule" else "Edit automation rule"' triggerLabel="Rule editor" :showTrigger="false" :forceOpen="model.editing" :completed="!model.editing" size="lg" returnFocus="#workops-rule-new" @dialogdismiss="model.cancel()">
+        <form data-bml-coalesce class="modal-form" data-workops-automation-form @submit="model.save(form.name, form.description, form.enabled, form.scope, form.scopeId, form.trigger, form.conditions, form.actions, form.failureMode, form.fires, form.retention, form.runAsId, ctx)"><form-body padded class="modal-fields">
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert><help-text>If this rule changed, cancel and reopen to start a new edit.</help-text></if>
+          <if model.feedback.failed><form-actions align="start"><button icon="refresh" data-bml-coalesce @click="model.reloadDraft(form.name, form.description, form.enabled, form.scope, form.scopeId, form.trigger, form.conditions, form.actions, form.failureMode, form.fires, form.retention, form.runAsId, ctx)">Retry loading rules</button></form-actions></if>
+          <field label="Name"><input name="name" :value="model.draft.name" required /></field>
+          <field label="Description"><input multiline name="description" :value="model.draft.description" :rows="2" /></field>
+          <if model.draft.id.isBlank()><div class="rule-grid"><field label="Scope"><select name="scope" label="Scope"><for choice in model.scopes><option :value="choice" :selected="choice == model.draft.scope">{ model.label(choice) }</option></for></select></field><field label="Scope ID" hint="Leave blank for global rules."><input name="scopeId" :value="model.draft.scopeId" /></field></div><else><p>Scope: { model.label(model.draft.scope) }. Existing rule scope is read-only.</p><input type="hidden" name="scope" :value="model.draft.scope" /><input type="hidden" name="scopeId" :value="model.draft.scopeId" /></if>
+          <div class="rule-grid"><field label="On action failure"><select name="failureMode" label="On action failure"><for mode in model.failureModes><option :value="mode" :selected="mode == model.draft.failureMode">{ model.label(mode) }</option></for></select></field>
+            <field label="Run as profile"><div data-workops-profile-picker><select name="runAsId" label="Run as profile" searchable async :minQuery="2" required><option value="">Choose a profile</option><if model.draft.runAsId.isNotBlank()><option :value="model.draft.runAsId" data-persistent selected>{ model.profileName.ifBlank { "Profile unavailable" } }</option></if></select></div></field>
+          </div>
+          <if model.profileFeedback.failed><alert>{ model.profileFeedback.message }</alert><p>The stored run-as profile is retained. Search to choose another profile.</p></if>
+          <div class="rule-grid"><field label="Max fires per task per hour"><input type="number" name="fires" min="1" step="1" :value="model.draft.fires" required /></field><field label="Log retention (days)"><input type="number" name="retention" min="1" step="1" :value="model.draft.retention" required /></field></div>
+          <field label="Trigger"><select name="triggerType" label="Trigger" @change="model.chooseTrigger(form.triggerType, form.name, form.description, form.enabled, form.scope, form.scopeId, form.trigger, form.conditions, form.actions, form.failureMode, form.fires, form.retention, form.runAsId, ctx)"><option value="">Choose a trigger</option><for choice in model.triggerChoices><option :value="choice.value" :selected="choice.value == model.draft.triggerType">{ choice.label }</option></for></select></field>
+          <section-heading title="Trigger filters" /><json-editor name="trigger" label="Trigger filters JSON" :text="model.draft.trigger" mode="text" :mainMenuBar="false" :navigationBar="false" :preserveKey='"workops-rule-trigger-" + model.draftRevision' />
+          <section-heading title="Conditions" /><json-editor name="conditions" label="Conditions JSON array" :text="model.draft.conditions" mode="text" :mainMenuBar="false" :navigationBar="false" :preserveKey='"workops-rule-conditions-" + model.draftRevision' />
+          <section-heading title="Actions" /><json-editor name="actions" label="Actions JSON array" :text="model.draft.actions" mode="text" :mainMenuBar="false" :navigationBar="false" :preserveKey='"workops-rule-actions-" + model.draftRevision' />
+          <checkbox name="enabled" label="Enabled" :checked="model.draft.enabled" />
+        </form-body><form-actions bordered class="modal-footer"><button data-dialog-close @click="model.cancel()">Cancel</button><button primary type="submit">Save rule</button></form-actions></form>
+      </dialog>
+      <dialog data-bml-coalesce title="Delete automation rule" triggerLabel="Delete rule" :showTrigger="false" :forceOpen="model.deleting != null" :completed="model.deleting == null" returnFocus="#workops-rule-new" @dialogdismiss="model.cancelDelete()">
+        <form data-bml-coalesce @submit="model.delete(form.confirmed, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><p>Delete { model.deleting?.name } and its execution history?</p><checkbox name="confirmed" label="Confirm deletion" required /></form-body><form-actions bordered><button data-dialog-close @click="model.cancelDelete()">Cancel</button><button primary type="submit">Delete rule</button></form-actions></form>
+      </dialog>
+      <dialog data-bml-coalesce title="Run history" triggerLabel="Run history" :showTrigger="false" :forceOpen="model.historyTarget != null" :completed="model.historyTarget == null" size="lg" returnFocus="#workops-rule-new" @dialogdismiss="model.closeHistory()">
+        <div class="modal-form"><div class="modal-fields history-fields"><p>{ model.historyTarget?.name }</p><if model.historyFeedback.failed><alert>{ model.historyFeedback.message }</alert></if><icon-button icon="refresh" label="Refresh history" data-bml-coalesce @click="model.retryHistory(ctx)" />
+          <if !model.historyLoaded><p role="status">Execution history is unavailable. Refresh to try again.</p><else-if model.historyRows.isEmpty()><empty-state title="No executions recorded yet." compact /><else><table-scroll label="Rule execution history"><table><caption>Rule execution history</caption><thead><tr><th scope="col">Outcome</th><th scope="col">Detail</th><th scope="col">Started</th><th scope="col">Finished</th><th scope="col">Duration</th></tr></thead><tbody><for row in model.historyRows><tr :data-workops-automation-log="row.id"><td><badge :tone="row.tone">{ model.label(row.outcome) }</badge></td><td><if row.error.isNotBlank()>{ row.error }<else-if row.taskHref.isNotBlank()><a :href="row.taskHref">View task</a><else>—</if></td><td><time :value="row.started" /></td><td><if row.finished.isNotBlank()><time :value="row.finished" /><else>—</if></td><td>{ row.duration?.let { it.toString() + " ms" } ?: "—" }</td></tr></for></tbody></table></table-scroll></if>
+          <div class="rule-actions"><if (model.historyOffset > 0)><button data-bml-coalesce @click="model.historyPage(false, ctx)">Previous executions</button></if><span>Page { model.historyOffset / 50 + 1 }</span><if model.historyLoaded && model.historyHasNext><button data-bml-coalesce @click="model.historyPage(true, ctx)">Next executions</button></if></div>
+        </div><form-actions bordered class="modal-footer"><button data-dialog-close @click="model.closeHistory()">Close</button></form-actions></div>
+      </dialog>
+    </div>
+  </page-shell>
+    <script client scoped>
+      import { WorkOpsProfileSearch } from "./WorkOpsProfileSearch";
+      import { workOpsProfileChoices } from "@client/helpers/profile-choices";
+      workOpsProfileChoices(ctx, (query, offset) => WorkOpsProfileSearch.search(query, offset));
+      ctx.on(ctx.root, "change", event => {
+        const field = event.target;
+        if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement)) return;
+        const form = field.form;
+        if (!form?.classList.contains("scope-filter")) return;
+        const scope = form.elements.namedItem("scope"), scopeId = form.elements.namedItem("scopeId");
+        if (!(scope instanceof HTMLSelectElement) || !(scopeId instanceof HTMLInputElement || scopeId instanceof HTMLSelectElement)) return;
+        if (field === scope) { scopeId.value = ""; scopeId.required = false; }
+        form.requestSubmit();
+      });
+    </script>
+  </island>
+  <style scoped>
+    .scope-filter, .rule-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
+    .scope-filter { min-width: 0; }
+    .rule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .history-fields { padding: 20px; }.history-fields p { overflow-wrap: anywhere; }
+    @media(max-width: 600px) { .rule-grid { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+</component>

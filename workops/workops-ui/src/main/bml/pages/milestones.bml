@@ -1,0 +1,4 @@
+<page route="/workops/milestones" requireAuth>
+  <script server provides="model">bosca.workops.ui.workOpsMilestones()</script>
+  <workops-layout title="Milestones"><workops-milestones :initial="model" /></workops-layout>
+</page>

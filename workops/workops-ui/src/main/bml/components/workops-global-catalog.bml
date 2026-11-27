@@ -1,0 +1,45 @@
+<component tag="workops-global-catalog">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsGlobalCatalogModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsGlobalCatalogModel(initial.kind, initial.offset, initial.targetId, initial.rows, initial.loaded, initial.editing, initial.draft, initial.deleting, initial.resultId, initial.feedback)</script>
+  <island name="globalCatalog" :key="initial.kind"><page-shell class="workops-page" fill>
+    <page-heading :title="model.title" subtitle="Global reference data used by Work Ops."><button data-bml-coalesce id="workops-catalog-new" primary icon="plus" :disabled="!model.loaded" @click='model.open("")'>New { model.entityLabel }</button><icon-button icon="refresh" label="Refresh catalog" data-bml-coalesce @click="model.retry(ctx)" /><if model.resultHref.isNotBlank()><button-link :href="model.resultHref" size="xs" icon="arrow-right">Show the saved { model.entityLabel }</button-link></if></page-heading>
+    <div class="workops-content" :data-workops-global-catalog="model.kind">
+      <if model.kind == "labels"><help-text>Global labels are available across projects. Project labels are managed on each project's Labels tab.</help-text></if>
+      <workops-feedback id="global-catalog-0" :feedback="model.feedback" />
+
+      <if !model.loaded><p role="status">The catalog has not been loaded. Refresh to try again.</p><else-if model.pageRows.isEmpty()><empty-state :title='"No " + model.title.lowercase() + " configured."' /><else>
+        <card :padded="false"><table-scroll :label="model.title"><table><caption>{ model.title }</caption><thead><tr><if model.hasOrder><th scope="col">Order</th></if><th scope="col">Name</th><if model.hasIcon><th scope="col">Icon</th></if><if model.categories.isNotEmpty() || model.kind == "labels"><th scope="col">{ if (model.kind == "task-types") "Hierarchy" else if (model.kind == "labels") "Scope" else "Category" }</th></if><if model.kind == "link-types"><th scope="col">Outward label</th><th scope="col">Inward label</th></if><if model.hasDescription><th scope="col">Description</th></if><th scope="col">Actions</th></tr></thead><tbody>
+          <for row in model.pageRows><tr :id='"workops-catalog-" + row.id' :data-workops-catalog-row="row.id"><if model.hasOrder><td>{ row.order }</td></if><td><div class="catalog-name"><span>{ row.name }</span><if row.color.isNotBlank()><badge :color="row.color" aria-hidden="true">●</badge></if></div></td><if model.hasIcon><td>{ if (model.kind == "priorities") model.icons.firstOrNull { it.value == row.icon }?.label ?: row.icon else row.icon }</td></if><if model.categories.isNotEmpty() || model.kind == "labels"><td><badge>{ model.label(row.category) }</badge></td></if><if model.kind == "link-types"><td>{ row.outward }</td><td>{ row.inward }</td></if><if model.hasDescription><td>{ row.description }</td></if><td><form-actions align="start"><icon-button icon="edit" data-bml-coalesce :label='"Edit " + row.name' @click="model.open(row.id)" /><icon-button icon="trash" data-bml-coalesce :label='"Delete " + row.name' @click="model.beginDelete(row.id)" /></form-actions></td></tr></for>
+        </tbody></table></table-scroll></card>
+      </if>
+      <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" :label='model.title + " pages"' />
+      <dialog data-bml-coalesce :title='(if (model.draft.id.isBlank()) "New " else "Edit ") + model.entityLabel' triggerLabel="Catalog editor" :showTrigger="false" :forceOpen="model.editing" :completed="!model.editing" returnFocus="#workops-catalog-new" @dialogdismiss="model.cancel()">
+        <form data-bml-coalesce class="modal-form" data-workops-catalog-form @submit="model.save(form.name, form.description, form.color, form.icon, form.category, form.order, form.inward, form.outward, ctx)"><form-body padded class="modal-fields">
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert><p>Reload the catalog to check current data. Cancel and reopen to start a new edit.</p></if>
+          <if model.feedback.failed><form-actions align="start"><button icon="refresh" data-bml-coalesce @click="model.reloadDraft(form.name, form.description, form.color, form.icon, form.category, form.order, form.inward, form.outward, ctx)">Retry loading catalog</button></form-actions></if>
+          <field label="Name" :hint='if (model.kind == "labels") "Use kebab-case, such as needs-triage." else ""'><input name="name" :value="model.draft.name" required /></field>
+          <if model.categories.isNotEmpty()><field :label='if (model.kind == "task-types") "Hierarchy level" else "Category"'><select :label='if (model.kind == "task-types") "Hierarchy level" else "Category"' name="category" required><for choice in model.categories><option :value="choice.value" :selected="choice.value == model.draft.category">{ choice.label }</option></for></select></field></if>
+          <if model.hasColor><color-input label="Color" name="color" :value="model.draft.color" :presets="model.presets" maxlength="7" :required='model.kind != "labels"' /></if>
+          <if model.hasIcon><if model.kind == "priorities"><field label="Icon"><select label="Icon" name="icon" required><for choice in model.icons><option :value="choice.value" :selected="choice.value == model.draft.icon">{ choice.label }</option></for></select></field><else><field label="Icon key"><input name="icon" :value="model.draft.icon" required /></field></if></if>
+          <if model.hasOrder><field label="Display order"><input name="order" type="number" min="0" max="99" step="1" :value="model.draft.order" required /></field></if>
+          <if model.hasDescription><field label="Description"><input multiline name="description" :value="model.draft.description" :rows="2" /></field></if>
+          <if model.kind == "link-types"><field label="Outward label"><input name="outward" :value="model.draft.outward" required /></field><field label="Inward label"><input name="inward" :value="model.draft.inward" required /></field><div class="link-preview"><p>Task A <strong data-workops-link-outward>{ model.draft.outward.ifBlank { "…" } }</strong> Task B</p><p>Task B <strong data-workops-link-inward>{ model.draft.inward.ifBlank { "…" } }</strong> Task A</p></div></if>
+        </form-body><form-actions bordered class="modal-footer"><button data-dialog-close @click="model.cancel()">Cancel</button><button primary type="submit">Save { model.entityLabel }</button></form-actions></form>
+      </dialog>
+      <dialog data-bml-coalesce :title='"Delete " + model.entityLabel' triggerLabel="Delete catalog entry" :showTrigger="false" :forceOpen="model.deleting != null" :completed="model.deleting == null" returnFocus="#workops-catalog-new" @dialogdismiss="model.cancelDelete()">
+        <form data-bml-coalesce @submit="model.delete(form.confirmed, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><p>Delete { model.deleting?.name }?</p><checkbox name="confirmed" label="Confirm deletion" required /></form-body><form-actions bordered><button data-dialog-close @click="model.cancelDelete()">Cancel</button><button primary type="submit">Delete { model.entityLabel }</button></form-actions></form>
+      </dialog>
+    </div>
+  </page-shell>
+    <script client scoped>
+      const preview = () => {
+        for (const form of ctx.root.querySelectorAll<HTMLFormElement>("[data-workops-catalog-form]")) for (const direction of ["inward", "outward"]) {
+          const input = form.elements.namedItem(direction), output = form.querySelector<HTMLElement>(`[data-workops-link-${direction}]`);
+          if (input instanceof HTMLInputElement && output) output.textContent = input.value || "…";
+        }
+      };
+      ctx.on(ctx.root, "input", preview); ctx.onUpdate(preview); preview();
+    </script>
+  </island>
+  <style scoped>.catalog-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }.link-preview { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-sm); }.link-preview p { margin: 0; overflow-wrap: anywhere; }</style>
+</component>

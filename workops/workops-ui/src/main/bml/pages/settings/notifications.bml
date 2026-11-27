@@ -1,0 +1,4 @@
+<page route="/workops/settings/notifications" requireAuth>
+  <script server provides="model">bosca.workops.ui.workOpsNotifications()</script>
+  <workops-layout title="Notifications"><workops-notifications :initial="model" /></workops-layout>
+</page>

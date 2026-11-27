@@ -1,0 +1,22 @@
+fragment WorkOpsAutomationRuleFields on WorkOpsAutomationRule {
+  id name description enabled scope scopeId trigger conditions actions failureMode
+  maxFiresPerTaskPerHour executionLogRetentionDays runAsProfileId version
+}
+
+query WorkOpsAutomationRules($scope: String!, $scopeId: UUID) {
+  workOps { automation { rules(scope: $scope, scopeId: $scopeId) { ...WorkOpsAutomationRuleFields } } }
+}
+
+query WorkOpsAutomationHistory($id: UUID!, $offset: Long!) {
+  workOps { automation { executionLogs(ruleId: $id, offset: $offset, limit: 51) {
+    id outcome startedAt finishedAt durationMs errorMessage taskId
+  } } }
+}
+
+mutation WorkOpsAutomationCreate($input: WorkOpsAutomationRuleInput!) { workOps { automation { create(input: $input) { id } } } }
+
+mutation WorkOpsAutomationUpdate($id: UUID!, $input: WorkOpsAutomationRuleInput!, $version: Long!) { workOps { automation { update(id: $id, input: $input, expectedVersion: $version) { id } } } }
+
+mutation WorkOpsAutomationSetEnabled($id: UUID!, $enabled: Boolean!, $version: Long!) { workOps { automation { setEnabled(id: $id, enabled: $enabled, expectedVersion: $version) { id } } } }
+
+mutation WorkOpsAutomationDelete($id: UUID!) { workOps { automation { delete(id: $id) } } }
