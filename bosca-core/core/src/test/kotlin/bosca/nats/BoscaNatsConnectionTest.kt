@@ -32,6 +32,70 @@ import kotlin.test.assertSame
 class BoscaNatsConnectionTest {
 
     @Test
+    fun `failed combined subscription removes its already created JetStream consumer`() = runTest {
+        val raw = mockk<Connection>()
+        val dispatcher = mockk<Dispatcher>()
+        val jetStream = mockk<JetStream>()
+        val subscription = mockk<JetStreamSubscription>()
+        val options = mockk<PushSubscribeOptions>()
+        every { raw.createDispatcher() } returns dispatcher
+        every { raw.jetStream() } returns jetStream
+        every { jetStream.subscribe("durable", dispatcher, any<MessageHandler>(), false, options) } returns subscription
+        every { dispatcher.subscribe("live", any<MessageHandler>()) } throws java.io.IOException("subscription denied")
+        every { dispatcher.unsubscribe(subscription) } returns dispatcher
+        every { raw.closeDispatcher(dispatcher) } just runs
+        val connection = BoscaNatsConnection(raw)
+        try {
+            val error = assertFailsWith<java.io.IOException> {
+                connection.subscribeJetStreamAndCore("durable", options, "live").first()
+            }
+            assertEquals("subscription denied", error.message)
+            verify(exactly = 1) { dispatcher.unsubscribe(subscription) }
+        } finally {
+            connection.close()
+        }
+        verify(exactly = 1) { raw.closeDispatcher(dispatcher) }
+        verify(exactly = 0) { raw.close() }
+    }
+
+    @Test
+    fun `a terminally failed physical connection rejects new logical handles without creating a dispatcher`() = runTest {
+        val raw = mockk<Connection>()
+        val physical = BoscaNatsPhysicalConnection(raw)
+        physical.fail(java.io.IOException("connection closed"))
+
+        assertFailsWith<IllegalStateException> { BoscaNatsConnection(physical) }
+        physical.close()
+        physical.close()
+
+        verify(exactly = 0) { raw.createDispatcher() }
+        verify(exactly = 0) { raw.close() }
+    }
+
+    @Test
+    fun `a late broker callback after logical close cannot reopen or acknowledge the completed flow`() = runTest {
+        val raw = mockk<Connection>()
+        val dispatcher = mockk<Dispatcher>()
+        val subscription = mockk<Subscription>()
+        val handler = slot<MessageHandler>()
+        every { raw.createDispatcher() } returns dispatcher
+        every { dispatcher.subscribe("subject", capture(handler)) } returns subscription
+        every { dispatcher.unsubscribe(subscription) } returns dispatcher
+        every { raw.closeDispatcher(dispatcher) } just runs
+        val connection = BoscaNatsConnection(raw)
+        val received = async { connection.subscribe("subject").toList() }
+        while (!handler.isCaptured) yield()
+        connection.close()
+        assertEquals(emptyList(), received.await())
+
+        val late = mockk<Message>()
+        handler.captured.onMessage(late)
+        verify(exactly = 0) { late.ack() }
+        verify(exactly = 1) { dispatcher.unsubscribe(subscription) }
+        verify(exactly = 1) { raw.closeDispatcher(dispatcher) }
+    }
+
+    @Test
     fun `publish uses physical connection while close retains physical ownership`() = runTest {
         val physicalConnection = mockk<Connection>()
         every { physicalConnection.publish("subject", any<ByteArray>()) } just runs

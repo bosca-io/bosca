@@ -21,6 +21,7 @@ import io.netty.util.AttributeKey
 import io.netty.util.DefaultAttributeMap
 import io.netty.channel.embedded.EmbeddedChannel
 import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame
+import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame
 import io.netty.util.concurrent.GenericFutureListener
 import io.netty.util.concurrent.ImmediateEventExecutor
@@ -30,6 +31,7 @@ import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertContentEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -99,6 +101,45 @@ class WebSocketSessionTest {
         session.send("hello")
 
         verify { channel.writeAndFlush(match { it is TextWebSocketFrame }, any()) }
+    }
+
+    @Test
+    fun `binary sends preserve bytes independently of later caller mutation`() = runTest {
+        val channel = EmbeddedChannel()
+        try {
+            val session = WebSocketSession(createCall(), channel, Dispatchers.Default)
+            val bytes = byteArrayOf(0, 1, 127, -128, -1)
+            session.sendBinary(bytes)
+            bytes.fill(0)
+            val frame = channel.readOutbound<BinaryWebSocketFrame>()
+            try {
+                val received = ByteArray(frame.content().readableBytes())
+                frame.content().readBytes(received)
+                assertContentEquals(byteArrayOf(0, 1, 127, -128, -1), received)
+            } finally { frame.release() }
+        } finally { channel.finishAndReleaseAll() }
+    }
+
+    @Test
+    fun `binary sends reject inactive and closing sessions and propagate write failures`() = runTest {
+        val inactive = createChannel(active = false)
+        assertFailsWith<IOException> { WebSocketSession(createCall(), inactive, Dispatchers.Default).sendBinary(byteArrayOf(1)) }
+        verify(exactly = 0) { inactive.writeAndFlush(any(), any()) }
+
+        val closing = createChannel()
+        val session = WebSocketSession(createCall(), closing, Dispatchers.Default)
+        session.closeWriteFuture.set(DefaultChannelPromise(closing, ImmediateEventExecutor.INSTANCE).setSuccess())
+        assertEquals("WebSocket is closing", assertFailsWith<IOException> { session.sendBinary(byteArrayOf(1)) }.message)
+        verify(exactly = 0) { closing.writeAndFlush(any(), any()) }
+
+        val failing = createChannel()
+        every { failing.writeAndFlush(any(), any()) } answers {
+            firstArg<BinaryWebSocketFrame>().release()
+            secondArg<ChannelPromise>().setFailure(IOException("binary connection reset"))
+        }
+        assertEquals("binary connection reset", assertFailsWith<IOException> {
+            WebSocketSession(createCall(), failing, Dispatchers.Default).sendBinary(byteArrayOf(1))
+        }.message)
     }
 
     @Test

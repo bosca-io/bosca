@@ -23,6 +23,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class RouterTest {
 
@@ -431,6 +432,29 @@ class RouterTest {
         }
         val result = router.resolveWebSocket("/api/ws")
         assertNotNull(result)
+    }
+
+    @Test
+    fun `WebSocket message capacity follows nested routes with authentication and path parameters`() {
+        val router = Router()
+        router.webSocket("/ordinary") {}
+        router.route("/organizations/{organization}") {
+            authenticate("session") {
+                route("/documents") {
+                    webSocket("/{id}", maximumMessageSize = 8 * 1024 * 1024, protocol = "documents") {}
+                }
+            }
+        }
+        val route = assertNotNull(router.resolveWebSocket("/organizations/acme/documents/first"))
+        assertEquals(8 * 1024 * 1024, route.maximumMessageSize)
+        assertEquals("documents", route.protocol)
+        assertEquals(listOf("session"), route.authConfig?.providers)
+        assertEquals(mapOf("organization" to "acme", "id" to "first"), route.pathParameters)
+        assertEquals(1024 * 1024, assertNotNull(router.resolveWebSocket("/ordinary")).maximumMessageSize)
+        assertEquals(1024 * 1024, WebSocketRouteEntry("/direct", null, {}).maximumMessageSize)
+        for (invalid in listOf(0, -1)) assertFailsWith<IllegalArgumentException> {
+            router.webSocket("/invalid", maximumMessageSize = invalid) {}
+        }
     }
 
     // --- SSE ---

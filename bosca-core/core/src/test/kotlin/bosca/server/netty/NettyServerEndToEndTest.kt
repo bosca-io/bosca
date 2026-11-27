@@ -90,7 +90,7 @@ import kotlin.test.assertTrue
  */
 class NettyServerEndToEndTest {
 
-    private val testPort = 19876
+    private var testPort = 0
 
     private fun createApplication(yaml: String? = null): BoscaApplication = if (yaml == null) {
         val config = mockk<ApplicationConfig>(relaxed = true)
@@ -101,19 +101,22 @@ class NettyServerEndToEndTest {
     }
 
     private fun startServer(app: BoscaApplication): NettyServerEngine {
-        val engine = NettyServerEngine(app, testPort)
+        val engine = NettyServerEngine(app, 0)
+        val startupFailure = AtomicReference<Throwable?>()
         val thread = Thread { engine.start() }
         thread.isDaemon = true
+        thread.uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { _, failure -> startupFailure.set(failure) }
         thread.start()
-        // Wait for port to be available
+        // Readiness belongs to this engine; another listener cannot satisfy it.
         for (i in 0 until 50) {
-            try {
-                Socket("localhost", testPort).use { }
+            startupFailure.get()?.let { throw AssertionError("Server failed to start", it) }
+            engine.boundPort?.let {
+                testPort = it
                 return engine
-            } catch (_: Exception) {
-                Thread.sleep(100)
             }
+            Thread.sleep(100)
         }
+        engine.stopWithoutHalting()
         throw RuntimeException("Server didn't start in time")
     }
 
@@ -577,43 +580,46 @@ class NettyServerEndToEndTest {
     }
 
     @Test
-    fun `event-loop WebSocket session records going away when the client drops the connection`() {
-        val app = createApplication(
-            """
-            bosca:
-              server:
-                worker-threads: 1
-                codec-threads: 1
-                drain-timeout-ms: 0
-                shutdown-timeout-ms: 5000
-                http2-enabled: false
-            """.trimIndent()
-        )
-        val session = CompletableFuture<WebSocketSession>()
-        app.routing {
-            webSocket("/drop") {
-                session.complete(this)
-                for (frame in incoming) {
-                    // Wait for the client to go away.
+    fun `WebSocket session records going away after client disconnect in both request dispatchers`() {
+        for (mode in listOf("event-loop", "pool")) {
+            val app = createApplication(
+                """
+                bosca:
+                  server:
+                    worker-threads: 1
+                    codec-threads: 1
+                    request-dispatcher: $mode
+                    drain-timeout-ms: 0
+                    shutdown-timeout-ms: 5000
+                    http2-enabled: false
+                """.trimIndent()
+            )
+            val session = CompletableFuture<WebSocketSession>()
+            app.routing {
+                webSocket("/drop") {
+                    session.complete(this)
+                    for (frame in incoming) {
+                        // Wait for the client to go away.
+                    }
                 }
             }
-        }
 
-        val engine = startServer(app)
-        try {
-            Socket("localhost", testPort).use { socket ->
-                socket.soTimeout = 5000
-                socket.getOutputStream().run {
-                    write(webSocketUpgradeRequest("/drop").encodeToByteArray())
-                    flush()
+            val engine = startServer(app)
+            try {
+                Socket("localhost", testPort).use { socket ->
+                    socket.soTimeout = 5000
+                    socket.getOutputStream().run {
+                        write(webSocketUpgradeRequest("/drop").encodeToByteArray())
+                        flush()
+                    }
+                    assertTrue(readHttpHeaders(socket.getInputStream()).startsWith("HTTP/1.1 101"))
+                    session.get(5, TimeUnit.SECONDS)
                 }
-                assertTrue(readHttpHeaders(socket.getInputStream()).startsWith("HTTP/1.1 101"))
-                session.get(5, TimeUnit.SECONDS)
+                val reason = runBlocking { withTimeout(5000) { session.get().closeReason.await() } }
+                assertEquals(CloseReason.Codes.GOING_AWAY, reason?.code, "A dropped connection is not a normal close: $reason")
+            } finally {
+                engine.stopWithoutHalting()
             }
-            val reason = runBlocking { withTimeout(5000) { session.get().closeReason.await() } }
-            assertEquals(CloseReason.Codes.GOING_AWAY, reason?.code, "A dropped connection is not a normal close: $reason")
-        } finally {
-            engine.stopWithoutHalting()
         }
     }
 
@@ -2347,6 +2353,104 @@ class NettyServerEndToEndTest {
             engine.stopWithoutHalting()
         }
     }
+
+    @Test
+    fun `HTTP1 routes apply message capacity to whole and fragmented large messages`() {
+        val received = java.util.concurrent.LinkedBlockingQueue<String>()
+        val engine = startServer(messageCapacityApplication(received))
+        try {
+            for ((path, length, fragmented) in messageCapacityCases()) {
+                Socket("localhost", testPort).use { socket ->
+                    socket.soTimeout = 5000
+                    socket.getOutputStream().run { write(webSocketUpgradeRequest(path).encodeToByteArray()); flush() }
+                    val input = socket.getInputStream()
+                    assertTrue(readHttpHeaders(input).startsWith("HTTP/1.1 101"))
+                    writeWebSocketFrames(socket, *messageCapacityFrames(length, fragmented))
+                    val accepted = path == "/large" && length < 2 * 1024 * 1024
+                    assertEquals(if (accepted) 1000 else 1009, readServerWebSocketCloseCode(input), "$path length=$length fragmented=$fragmented")
+                    if (accepted) assertEquals("x".repeat(length), received.poll(3, TimeUnit.SECONDS))
+                    else assertTrue(received.isEmpty(), "An oversized message reached its application handler")
+                }
+            }
+        } finally { engine.stopWithoutHalting() }
+    }
+
+    @Test
+    fun `HTTP2 routes apply message capacity to whole and fragmented large messages`() {
+        val received = java.util.concurrent.LinkedBlockingQueue<String>()
+        val engine = startServer(messageCapacityApplication(received))
+        val clients = MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory())
+        var connection: Channel? = null
+        try {
+            connection = connectHttp2(clients)
+            for ((path, length, fragmented) in messageCapacityCases()) {
+                val accepted = CompletableFuture<Pair<String, String?>>()
+                val closeCode = CompletableFuture<Int>()
+                val ended = CompletableFuture<Unit>()
+                val stream = Http2StreamChannelBootstrap(connection)
+                    .handler(http2WebSocketClientHandler(accepted, CompletableFuture(), closeCode, ended))
+                    .open().sync().getNow()
+                try {
+                    val headers = DefaultHttp2Headers().method(HttpMethod.CONNECT.asciiName()).scheme("http")
+                        .authority("localhost").path(path)
+                        .set(Http2Headers.PseudoHeaderName.PROTOCOL.value(), "websocket")
+                        .set(HttpHeaderNames.SEC_WEBSOCKET_VERSION, "13")
+                    stream.writeAndFlush(DefaultHttp2HeadersFrame(headers, false)).sync()
+                    assertEquals("200", accepted.get(3, TimeUnit.SECONDS).first)
+                    for (frame in messageCapacityFrames(length, fragmented)) {
+                        stream.writeAndFlush(DefaultHttp2DataFrame(encodeClientFrame(frame), false)).sync()
+                    }
+                    val allowed = path == "/large" && length < 2 * 1024 * 1024
+                    assertEquals(if (allowed) 1000 else 1009, closeCode.get(5, TimeUnit.SECONDS), "$path length=$length fragmented=$fragmented")
+                    ended.get(3, TimeUnit.SECONDS)
+                    if (allowed) assertEquals("x".repeat(length), received.poll(3, TimeUnit.SECONDS))
+                    else assertTrue(received.isEmpty(), "An oversized message reached its application handler")
+                    assertTrue(connection.isActive, "Message capacity enforcement closed the HTTP/2 parent connection")
+                } finally { stream.close().sync() }
+            }
+        } finally {
+            connection?.close()?.sync()
+            clients.shutdownGracefully().sync()
+            engine.stopWithoutHalting()
+        }
+    }
+
+    private fun messageCapacityApplication(received: java.util.concurrent.LinkedBlockingQueue<String>): BoscaApplication {
+        val app = createApplication("""
+            bosca:
+              server:
+                worker-threads: 1
+                codec-threads: 1
+                max-request-size: 1048576
+                idle-timeout-seconds: 30
+                drain-timeout-ms: 0
+                shutdown-timeout-ms: 5000
+                compression-enabled: false
+                http2-enabled: true
+        """.trimIndent())
+        val receive: suspend WebSocketSession.() -> Unit = {
+            for (frame in incoming) {
+                frameConsumed()
+                if (frame is WebSocketFrame.Text) { received.add(frame.text); break }
+                if (frame is WebSocketFrame.Close) break
+            }
+        }
+        app.router.webSocket("/ordinary", handler = receive)
+        app.router.webSocket("/large", maximumMessageSize = 2 * 1024 * 1024, handler = receive)
+        return app
+    }
+
+    private fun messageCapacityCases() = listOf(
+        Triple("/ordinary", 1024 * 1024 + 16, false),
+        Triple("/large", 1024 * 1024 + 16, false),
+        Triple("/large", 1536 * 1024, true),
+        Triple("/large", 2304 * 1024, true),
+    )
+
+    private fun messageCapacityFrames(length: Int, fragmented: Boolean): Array<io.netty.handler.codec.http.websocketx.WebSocketFrame> =
+        if (fragmented) arrayOf(TextWebSocketFrame(false, 0, "x".repeat(length / 2)),
+            ContinuationWebSocketFrame(true, 0, Unpooled.wrappedBuffer("x".repeat(length - length / 2).encodeToByteArray())))
+        else arrayOf(TextWebSocketFrame("x".repeat(length)))
 
     @Test
     fun `HTTP1 keep-alive stops admitting requests when shutdown begins`() {

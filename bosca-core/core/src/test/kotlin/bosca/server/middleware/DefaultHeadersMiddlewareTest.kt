@@ -18,11 +18,12 @@ import io.netty.handler.codec.http.HttpHeaderNames
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DefaultHeadersMiddlewareTest {
 
-    private fun createCall(): Pair<ServerCall, ChannelHandlerContext> {
+    private fun createCall(development: Boolean = false): Pair<ServerCall, ChannelHandlerContext> {
         val ctx = mockk<ChannelHandlerContext>(relaxed = true)
         val channel = mockk<Channel>(relaxed = true)
         every { ctx.channel() } returns channel
@@ -31,8 +32,7 @@ class DefaultHeadersMiddlewareTest {
 
         val request = mockk<ServerRequest>(relaxed = true)
         val response = ServerResponse(ctx)
-        val config = mockk<ApplicationConfig>(relaxed = true)
-        every { config.propertyOrNull(any()) } returns null
+        val config = ApplicationConfig.load("bosca: { server: { development: $development } }".byteInputStream())
         val app = BoscaApplication(config)
         return ServerCall(request, response, Parameters.Empty, app) to ctx
     }
@@ -87,5 +87,30 @@ class DefaultHeadersMiddlewareTest {
         assertEquals("Bosca", sent.headers().get("Server"))
         assertEquals("abc-123", sent.headers().get("X-Request-Id"))
         assertEquals("no-store", sent.headers().get("Cache-Control"))
+    }
+
+    @Test
+    fun `opted in HSTS and MIME protection apply in production while configured headers remain available in development`() = runTest {
+        for (development in listOf(false, true)) {
+            val (call, ctx) = createCall(development)
+            val captured = slot<Any>()
+            every { ctx.writeAndFlush(capture(captured)) } returns mockk(relaxed = true)
+            DefaultHeadersMiddleware(mapOf("X-Application" to "atlas"), enableHsts = true, hstsMaxAge = 120)
+                .beforeCall(call)
+            call.response.commit()
+            val sent = captured.captured as DefaultFullHttpResponse
+            try {
+                assertEquals("atlas", sent.headers()["X-Application"])
+                if (development) {
+                    assertNull(sent.headers()["X-Content-Type-Options"])
+                    assertNull(sent.headers()["Strict-Transport-Security"])
+                } else {
+                    assertEquals("nosniff", sent.headers()["X-Content-Type-Options"])
+                    assertEquals("max-age=120; includeSubDomains", sent.headers()["Strict-Transport-Security"])
+                }
+            } finally {
+                sent.release()
+            }
+        }
     }
 }

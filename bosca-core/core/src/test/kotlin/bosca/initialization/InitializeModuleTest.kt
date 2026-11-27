@@ -95,10 +95,10 @@ class InitializeModuleTest {
         return responses.map { it as DefaultFullHttpResponse }
     }
 
-    private fun installDatabase(graphQLReady: Boolean, queryFailure: Throwable? = null): ConnectionPool {
+    private fun installDatabase(graphQLReady: Boolean, queryFailure: Throwable? = null, queryResult: Int = 1): ConnectionPool {
         val resultSet = mockk<ResultSet>(relaxed = true)
         every { resultSet.next() } returns true
-        every { resultSet.getInt(1) } returns 1
+        every { resultSet.getInt(1) } returns queryResult
         val statement = mockk<PreparedStatement>(relaxed = true)
         if (queryFailure == null) {
             every { statement.executeQuery() } returns resultSet
@@ -164,6 +164,23 @@ class InitializeModuleTest {
 
         response = execute("/api/v1/health").single()
         assertEquals(503, response.status().code())
+    }
+
+    @Test
+    fun `ready and health probes reject an unexpected database probe value and release the connection`() = runTest {
+        application.install(InitializeModule(enableConnectionPool = false))
+        val pool = installDatabase(graphQLReady = true, queryResult = 0)
+
+        for (path in listOf("/api/v1/ready", "/api/v1/health")) {
+            val response = execute(path).single()
+            try {
+                assertEquals(503, response.status().code())
+                assertTrue(response.content().toString(Charsets.UTF_8).contains("primary connection pool unavailable"))
+            } finally {
+                response.release()
+            }
+        }
+        coVerify(exactly = 2) { pool.releaseConnection(any()) }
     }
 
     @Test

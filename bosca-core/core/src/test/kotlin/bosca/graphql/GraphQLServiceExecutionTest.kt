@@ -30,6 +30,7 @@ import io.mockk.mockk
 import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.trace.Tracer
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -43,6 +44,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 private object ExecutionSchemaRoot : SchemaRoot {
@@ -69,6 +71,32 @@ class GraphQLServiceExecutionTest {
     private lateinit var application: BoscaApplication
     private lateinit var pool: ConnectionPool
     private lateinit var repository: PersistedQueryRepository
+
+    @Test
+    fun `a resolver failure uses the caller application's error capture rather than the fallback application`() = runTest {
+        val captured = CompletableDeferred<ServerCall?>()
+        val fallbackCapture = mockk<ErrorCapture>(relaxed = true)
+        provides<ErrorCapture>(overrideExisting = true) { fallbackCapture }
+        val requestApplication = mockk<BoscaApplication>()
+        every { requestApplication.developmentMode } returns false
+        every { requestApplication.errorCapture } returns ErrorCapture { _, observedCall, _ -> captured.complete(observedCall) }
+        val request = call(requestApplication)
+        val service = object : GraphQLService(ExecutionSchemaRoot, false) {
+            override val dispatchersRegistrar = object : DispatchersRegistrar {
+                override suspend fun dispatchers() = emptyMap<String, Dispatcher>()
+            }
+
+            override suspend fun initialize(builder: RuntimeWiringBuilder) {
+                builder.type("Query") { field("echo") { throw IllegalArgumentException("resolver failed") } }
+            }
+        }
+
+        val result = service.post(request, GraphQLRequest(query = "{ echo }")).asJsonElement().jsonObject
+
+        assertContains(result.getValue("errors").toString(), "resolver failed")
+        assertSame(request, captured.await())
+        coVerify(exactly = 0) { fallbackCapture.capture(any(), any(), any()) }
+    }
 
     @BeforeTest
     fun setUp() = runTest {

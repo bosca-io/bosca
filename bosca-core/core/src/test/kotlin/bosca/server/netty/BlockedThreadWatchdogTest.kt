@@ -1,11 +1,16 @@
 package bosca.server.netty
 
 import bosca.server.config.ApplicationConfig
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
 import io.netty.channel.DefaultEventLoop
 import io.netty.util.concurrent.DefaultThreadFactory
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -16,6 +21,45 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class BlockedThreadWatchdogTest {
+
+    @Test
+    fun `repeated lifecycle calls schedule once and retain ownership of an injected scheduler`() {
+        val scheduler = mockk<ScheduledExecutorService>()
+        val task = mockk<ScheduledFuture<*>>()
+        every { scheduler.scheduleWithFixedDelay(any<Runnable>(), any(), any(), TimeUnit.MILLISECONDS) } returns task
+        every { task.cancel(false) } returns true
+        val monitor = BlockedThreadWatchdog(100, emptyList())
+
+        monitor.stop()
+        monitor.start(scheduler)
+        monitor.start(scheduler)
+        monitor.stop()
+        monitor.stop()
+
+        verify(exactly = 1) { scheduler.scheduleWithFixedDelay(any<Runnable>(), 50, 50, TimeUnit.MILLISECONDS) }
+        verify(exactly = 1) { task.cancel(false) }
+        verify(exactly = 0) { scheduler.shutdownNow() }
+    }
+
+    @Test
+    fun `the watchdog stops its own daemon scheduler`() {
+        val heartbeat = CountDownLatch(1)
+        val thread = AtomicReference<Thread>()
+        val monitor = BlockedThreadWatchdog(10, listOf(WatchedExecutor("immediate", submit = {
+            thread.set(Thread.currentThread())
+            it.run()
+            heartbeat.countDown()
+        }, threads = { emptyList() })))
+        try {
+            monitor.start()
+            assertTrue(heartbeat.await(5, TimeUnit.SECONDS))
+            assertTrue(checkNotNull(thread.get()).isDaemon)
+        } finally {
+            monitor.stop()
+        }
+        checkNotNull(thread.get()).join(2_000)
+        assertFalse(checkNotNull(thread.get()).isAlive)
+    }
 
     private val loop = DefaultEventLoop(DefaultThreadFactory("watched-loop", true))
     private val reports = CopyOnWriteArrayList<String>()
