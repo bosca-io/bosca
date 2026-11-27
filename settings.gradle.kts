@@ -193,6 +193,7 @@ includeComponent("workops", listOf(
     "core-workops",
     "workops",
     "workops-jobs",
+    "workops-ui",
     "store-pipelines",
 ))
 

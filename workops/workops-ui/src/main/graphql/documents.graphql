@@ -1,0 +1,18 @@
+query WorkOpsDocumentMetadata($id: UUID!) {
+  profiles { current { id name } }
+  content {
+    editable: checkMetadataActions(actions: [EDIT], ids: [$id])
+    metadata(id: $id) {
+      id version name
+      document { title content template { id version documentTemplate { schema containers { id name description type filters } } } }
+    }
+  }
+}
+
+mutation WorkOpsCreateTaskDocument($id: UUID!, $expectedVersion: Long!) {
+  workOps { tasks { createDocument(id: $id, expectedVersion: $expectedVersion) { id metadataId version } } }
+}
+
+mutation WorkOpsSaveDocument($id: UUID!, $version: Int!, $document: DocumentInput!) {
+  content { metadata { setMetadataDocument(id: $id, version: $version, document: $document) } }
+}

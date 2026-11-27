@@ -1,0 +1,76 @@
+query WorkOpsTaskIdByKey($key: String!) {
+  workOps { tasks { taskByKey(key: $key) { id } } }
+}
+
+query WorkOpsTaskDetail($id: UUID!, $activityOffset: Long!) {
+  profiles { current { id name } }
+  workOps {
+    tasks {
+      task(id: $id) {
+        id key summary descriptionMarkdown descriptionHtml metadataId version createdAt modifiedAt
+        project { id key name }
+        affectedProjects { id key name }
+        status { name category }
+        taskType { name }
+        priority { id name colorHex }
+        resolution { name }
+        assigneeProfileId assignee { id name }
+        reporterProfileId
+        dueDate startDate sprintId originalEstimateSeconds remainingEstimateSeconds timeSpentSeconds
+        parentTask { id key summary } epicTask { id key summary }
+        requirement { id }
+        transitions { id name toState { status { category } } }
+        comments(offset: $activityOffset, limit: 26) { id content profileId profile { id name } created modified likes }
+        links { id sourceTask { id key summary } targetTask { id key summary } linkType { id name outwardLabel inwardLabel } }
+        history(offset: $activityOffset, limit: 26) { id changes { fieldKey fromValue toValue } changedByProfileId changedAt }
+      }
+      priorities { id name }
+      resolutions { id name }
+    }
+    notifications { watchers(taskId: $id) { profileId } }
+    worklogs { forTask(taskId: $id, offset: $activityOffset, limit: 26) { id profileId timeSpentShort startedAt comment } }
+    links { linkTypes { id name outwardLabel } }
+    projects { all { id key name } }
+  }
+}
+
+query WorkOpsTaskBoards($projectId: UUID!) {
+  workOps { boards { byProject(projectId: $projectId) { id } } }
+}
+query WorkOpsTaskSprints($boardId: UUID!) {
+  workOps { sprints { byBoard(boardId: $boardId) { id name state } } }
+}
+query WorkOpsTaskSprint($id: UUID!) {
+  workOps { sprints { sprint(id: $id) { id name state } } }
+}
+query WorkOpsTaskProfile($id: UUID!) {
+  profiles { profile(id: $id) { id name } }
+}
+query WorkOpsProfileChoices($query: String!, $offset: Int!) {
+  search { search(query: {query: $query, filter: ["_type = \"profile\""], storageSystemName: "Admin Search Index", limit: 21, offset: $offset}) {
+    documents { profile { id name slug } }
+  } }
+}
+query WorkOpsMentionEntities($query: String!) {
+  search { search(query: {query: $query, storageSystemName: "Admin Search Index", limit: 20, offset: 0}) {
+    documents { metadata { id name } collection { id name } profile { id name slug } }
+  } }
+}
+mutation WorkOpsUpdateTask($id: UUID!, $input: UpdateWorkOpsTaskInput!) {
+  workOps { tasks { update(id: $id, input: $input) { id } } }
+}
+mutation WorkOpsTransitionTask($id: UUID!, $transitionId: UUID!, $expectedVersion: Long!, $resolutionId: UUID) {
+  workOps { tasks { transition(id: $id, transitionId: $transitionId, expectedVersion: $expectedVersion, resolutionId: $resolutionId) { id } } }
+}
+mutation WorkOpsWatchTask($id: UUID!) { workOps { notifications { watch(taskId: $id) } } }
+mutation WorkOpsUnwatchTask($id: UUID!) { workOps { notifications { unwatch(taskId: $id) } } }
+mutation WorkOpsCommentOnTask($id: UUID!, $input: WorkOpsTaskCommentInput!) {
+  workOps { taskComments { add(taskId: $id, input: $input) { id } } }
+}
+mutation WorkOpsLogTaskWork($id: UUID!, $input: WorkOpsWorkLogInput!) {
+  workOps { worklogs { logWork(taskId: $id, input: $input) { id } } }
+}
+mutation WorkOpsDeleteTaskWork($id: UUID!) { workOps { worklogs { deleteWorklog(id: $id) } } }
+mutation WorkOpsLinkTask($input: WorkOpsTaskLinkInput!) { workOps { links { link(input: $input) { id } } } }
+mutation WorkOpsAddTaskProject($id: UUID!, $projectId: UUID!) { workOps { tasks { addAffectedProject(id: $id, projectId: $projectId) } } }
+mutation WorkOpsRemoveTaskProject($id: UUID!, $projectId: UUID!) { workOps { tasks { removeAffectedProject(id: $id, projectId: $projectId) } } }
