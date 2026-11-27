@@ -1,0 +1,142 @@
+<component tag="workops-task-detail">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsTaskDetailModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsTaskDetailModel(initial.id, initial.tab, initial.activityOffset, initial.data, initial.editing, initial.draft, initial.sprints, initial.sprintName, initial.profileNames, initial.pendingTransition, initial.commentDraft, initial.commentRevision, initial.loggingWork, initial.workTime, initial.workStarted, initial.workComment, initial.estimateAdjustment, initial.linking, initial.linkTarget, initial.linkType, initial.feedback, initial.document, initial.requirementsOffset)</script>
+  <island name="taskDetail" :key="initial.id">
+    <page-shell class="workops-page" fill>
+      <page-heading :title="model.title" :subtitle='model.task?.let { it.taskType.name + " in " + it.project.name }.orEmpty()' :crumb="model.task?.key.orEmpty()" :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false), bosca.design.model.NavigationItem("Tasks", "/workops/tasks", false))' />
+      <div class="workops-content" data-workops-task-detail>
+        <workops-feedback id="task-detail-0" :feedback="model.feedback" />
+        <if model.feedback.failed><button @click="model.retry(ctx)" icon="refresh">Reload task</button></if>
+        <for task in listOfNotNull(model.task)>
+          <div class="workops-task-actions" id="workops-task-actions" tabindex="-1">
+            <badge :tone="model.statusTone">{ task.status.name }</badge>
+            <if task.resolution != null><badge>{ task.resolution?.name.orEmpty() }</badge></if>
+            <for transition in task.transitions><button @click="model.beginTransition(transition.id, ctx)">{ transition.name }</button></for>
+            <button id="workops-task-edit" :data-bml-preserve='"task-edit-trigger-" + task.id' icon="edit" @click="model.edit(ctx)">Edit task</button>
+            <button @click="model.toggleWatch(ctx)" :aria-pressed="model.watching.toString()">{ if (model.watching) "Unwatch" else "Watch" } ({ model.watcherCount })</button>
+            <button id="workops-task-log" @click="model.beginWork()">Log work</button>
+          </div>
+          <div class="workops-task-detail-grid">
+            <div class="workops-task-main">
+              <card title="Description">
+                <if !task.descriptionHtml.isNullOrBlank()><html-content :html="task.descriptionHtml.orEmpty()" /><else-if !task.descriptionMarkdown.isNullOrBlank()><source-view :content="task.descriptionMarkdown.orEmpty()" language="markdown" label="Task description" wrapped compact :preserveKey='"task-description-" + task.id + "-" + task.version' /><else><p>No description.</p></if>
+              </card>
+              <card title="Document">
+                <if task.metadataId != null>
+                  <for document in listOfNotNull(model.document)><workops-document :initial="document" /></for>
+                <else>
+                  <form-actions><button @click="model.createDocument(ctx)" icon="plus">Add document</button></form-actions>
+                </if>
+              </card>
+                <if task.requirement == null><workops-requirements :parentId="task.id" :parentHref="model.requirementsHref" /></if>
+              <card title="Linked tasks">
+                <div class="workops-task-relations">
+                  <for parent in listOfNotNull(task.parentTask)><p>Parent: <a :href='"/workops/tasks/" + parent.id'>{ parent.key } · { bosca.workops.ui.workOpsContentLabel(parent.summary, parent.id, "Task") }</a></p></for>
+                  <for epic in listOfNotNull(task.epicTask)><p>Epic: <a :href='"/workops/tasks/" + epic.id'>{ epic.key } · { bosca.workops.ui.workOpsContentLabel(epic.summary, epic.id, "Task") }</a></p></for>
+                  <for requirement in listOfNotNull(task.requirement)><p><a :href='"/workops/requirements/" + requirement.id'>Linked requirement</a></p></for>
+                  <for link in task.links>
+                    <if link.sourceTask?.id == task.id>
+                      <for target in listOfNotNull(link.targetTask)><p>{ link.linkType.outwardLabel }: <a :href='"/workops/tasks/" + target.id'>{ target.key } · { bosca.workops.ui.workOpsContentLabel(target.summary, target.id, "Task") }</a></p></for>
+                    <else>
+                      <for source in listOfNotNull(link.sourceTask)><p>{ link.linkType.inwardLabel }: <a :href='"/workops/tasks/" + source.id'>{ source.key } · { bosca.workops.ui.workOpsContentLabel(source.summary, source.id, "Task") }</a></p></for>
+                    </if>
+                  </for>
+                  <form-actions><button id="workops-task-link" icon="link" @click="model.beginLink()">Link task</button></form-actions>
+                </div>
+              </card>
+              <card>
+                <tabs label="Task activity" :items="model.activityTabs" />
+                <if model.tab == "comments">
+                  <div class="workops-task-activity">
+                    <for comment in task.comments.take(25)>
+                      <article class="workops-task-entry"><div class="workops-task-entry-header"><profile :name='comment.profile?.name ?: "Profile unavailable"' /><time :value="comment.created" /></div><p class="workops-comment-content">{ comment.content }</p></article>
+                    </for>
+                    <if task.comments.isEmpty()><empty-state title="No comments yet." compact /></if>
+                    <form @submit="model.comment(form.content, ctx)">
+                      <comment-editor :id='"task-comment-" + task.id + "-" + model.commentRevision' name="content" label="Add a task comment" :value="model.commentDraft" submitLabel="comment" mentions><button type="submit" primary>Add comment</button></comment-editor>
+                    </form>
+                  </div>
+                <else-if model.tab == "history">
+                  <div class="workops-task-activity">
+                    <for entry in task.history.take(25)>
+                      <article class="workops-task-entry"><div class="workops-task-entry-header"><profile :name="model.profileName(entry.changedByProfileId)" /><time :value="entry.changedAt" /></div>
+                        <for change in entry.changes><p><strong>{ change.fieldKey }</strong>: { model.historyValue(change.fieldKey, change.fromValue) } → { model.historyValue(change.fieldKey, change.toValue) }</p></for>
+                      </article>
+                    </for>
+                    <if task.history.isEmpty()><empty-state title="No changes recorded." compact /></if>
+                  </div>
+                <else>
+                  <div class="workops-task-activity">
+                    <for entry in model.data?.workOps?.worklogs?.forTask.orEmpty().take(25)>
+                      <article class="workops-task-entry"><div class="workops-task-entry-header"><profile :name="model.profileName(entry.profileId)" /><strong>{ entry.timeSpentShort }</strong><time :value="entry.startedAt" /></div>
+                        <if !entry.comment.isNullOrBlank()><p class="workops-comment-content">{ entry.comment.orEmpty() }</p></if>
+                        <confirm-dialog title="Delete work log" description="Remove this entry and update the task's recorded time?" triggerLabel="Delete work log">
+                          <form @submit="model.deleteWork(entry.id, form.confirmed, ctx)"><form-body padded><checkbox name="confirmed" label="Delete this work log" required /></form-body><form-actions bordered><button data-dialog-close>Cancel</button><button type="submit" class="danger">Delete work log</button></form-actions></form>
+                        </confirm-dialog>
+                      </article>
+                    </for>
+                    <if model.data?.workOps?.worklogs?.forTask.orEmpty().isEmpty()><empty-state title="No work logged." compact /></if>
+                  </div>
+                </if>
+                <pagination :page="model.activityOffset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Task activity pages" />
+              </card>
+            </div>
+            <div class="workops-task-sidebar">
+              <card title="Details"><dl class="workops-task-facts">
+                <dt>Project</dt><dd><a :href='"/workops/projects/" + task.project.id'>{ task.project.name }</a></dd>
+                <dt>Priority</dt><dd><badge :color="task.priority.colorHex">{ task.priority.name }</badge></dd>
+                <dt>Assignee</dt><dd><profile :name="model.assigneeLabel" /></dd>
+                <dt>Reporter</dt><dd><profile :name="model.profileName(task.reporterProfileId)" /></dd>
+                <dt>Sprint</dt><dd><if !task.sprintId.isNullOrBlank()><a :href='"/workops/sprints/" + task.sprintId'>{ model.sprintName.ifBlank { "Sprint unavailable" } }</a><else>Backlog</if></dd>
+                <dt>Due date</dt><dd><if !task.dueDate.isNullOrBlank()><time :value="task.dueDate.orEmpty()" :data-overdue="model.dueDateOverdue()" format="MMM d, yyyy" /><else>None</if></dd>
+                <if !task.startDate.isNullOrBlank()><dt>Start date</dt><dd><time :value="task.startDate.orEmpty()" format="MMM d, yyyy" /></dd></if>
+                <dt>Estimate</dt><dd>{ model.duration(task.originalEstimateSeconds) }</dd>
+                <dt>Remaining</dt><dd>{ model.duration(task.remainingEstimateSeconds) }</dd>
+                <dt>Time spent</dt><dd>{ model.duration(task.timeSpentSeconds) }</dd>
+                <dt>Created</dt><dd><time :value="task.createdAt" /></dd>
+                <dt>Modified</dt><dd><time :value="task.modifiedAt" /></dd>
+              </dl></card>
+              <card title="Affected projects"><div class="workops-task-relations">
+                <for project in task.affectedProjects><div class="workops-task-entry-header"><a :href='"/workops/projects/" + project.id'>{ project.name }</a><icon-button icon="close" :label='"Remove " + project.name + " from affected projects"' @click="model.removeProject(project.id, ctx)" /></div></for>
+                <if model.availableProjects.isNotEmpty()><form @submit="model.addProject(form.projectId, ctx)"><form-body><field label="Add affected project"><select name="projectId" label="Affected project" required searchable><option value="">Choose a project</option><for project in model.availableProjects><option :value="project.id">{ project.key } · { project.name }</option></for></select></field><form-actions><button type="submit" icon="plus">Add project</button></form-actions></form-body></form></if>
+              </div></card>
+            </div>
+          </div>
+          <dialog title="Edit task" triggerLabel="Edit task" :showTrigger="false" :forceOpen="model.editing" :completed="!model.editing" returnFocus="#workops-task-edit" @dialogdismiss="model.cancelEdit()">
+            <form class="modal-form" @submit="model.save(form.summary, form.description, form.priorityId, form.assigneeId, form.sprintId, form.dueDate, form.originalEstimate, form.remainingEstimate, ctx)">
+              <form-body padded class="modal-fields">
+                <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+                <field label="Summary"><input name="summary" :value="model.draft.summary" required /></field>
+                <field label="Description"><code-editor name="description" language="markdown" label="Task description Markdown" :value="model.draft.description" :preserveKey='"task-edit-description-" + task.id + "-" + model.draft.expectedVersion' /></field>
+                <field label="Priority"><select name="priorityId" label="Priority" required><for priority in model.data?.workOps?.tasks?.priorities.orEmpty()><option :value="priority.id" :selected="priority.id == model.draft.priorityId">{ priority.name }</option></for></select></field>
+                <field label="Assignee"><div data-workops-profile-picker><select name="assigneeId" label="Assignee" searchable async :minQuery="2"><option value="" data-persistent :selected="model.draft.assigneeId.isBlank()">Unassigned</option><if model.draft.assigneeId.isNotBlank()><option :value="model.draft.assigneeId" data-persistent selected>{ model.profileName(model.draft.assigneeId) }</option></if></select></div></field>
+                <field label="Sprint"><select name="sprintId" label="Sprint" searchable><option value="" :selected="model.draft.sprintId.isBlank()">Backlog</option><for sprint in model.sprints><option :value="sprint.id" :selected="sprint.id == model.draft.sprintId">{ sprint.name }</option></for></select></field>
+                <field label="Due date"><input name="dueDate" type="date" :value="model.draft.dueDate" /></field>
+                <field label="Original estimate" hint="Duration, such as 1d 2h or 45m. Leave empty to clear."><input name="originalEstimate" :value="model.draft.originalEstimate" /></field>
+                <field label="Remaining estimate" hint="Duration, such as 1d 2h or 45m. Leave empty to clear."><input name="remainingEstimate" :value="model.draft.remainingEstimate" /></field>
+              </form-body>
+              <form-actions bordered class="modal-footer"><button data-dialog-close @click="model.cancelEdit()">Cancel</button><button type="submit" primary>Save task</button></form-actions>
+            </form>
+          </dialog>
+          <dialog title="Resolve task" triggerLabel="Resolve task" :showTrigger="false" :forceOpen="model.pendingTransition.isNotBlank()" :completed="model.pendingTransition.isBlank()" returnFocus="#workops-task-actions" @dialogdismiss="model.cancelTransition()">
+            <form @submit="model.completeTransition(form.resolutionId, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><field label="Resolution"><select name="resolutionId" label="Resolution" required><option value="">Choose a resolution</option><for resolution in model.data?.workOps?.tasks?.resolutions.orEmpty()><option :value="resolution.id">{ resolution.name }</option></for></select></field></form-body><form-actions bordered><button data-dialog-close @click="model.cancelTransition()">Cancel</button><button type="submit" primary>Resolve task</button></form-actions></form>
+          </dialog>
+          <dialog title="Log work" triggerLabel="Log work" :showTrigger="false" :forceOpen="model.loggingWork" :completed="!model.loggingWork" returnFocus="#workops-task-log" @dialogdismiss="model.cancelWork()">
+            <form @submit="model.logWork(form.time, form.started, form.comment, form.adjustment, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><field label="Time spent" hint="Duration, such as 1h 30m."><input name="time" :value="model.workTime" required /></field><field label="Started (UTC)"><input name="started" type="datetime-local" :value="model.workStarted" required /></field><field label="Comment"><input multiline name="comment" :value="model.workComment" /></field><field label="Remaining estimate adjustment" hint="Used when the project policy requests a new estimate or an amount to reduce. Enter a duration such as 30m."><input name="adjustment" :value="model.estimateAdjustment" /></field></form-body><form-actions bordered><button data-dialog-close @click="model.cancelWork()">Cancel</button><button type="submit" primary>Log work</button></form-actions></form>
+          </dialog>
+          <dialog title="Link task" triggerLabel="Link task" :showTrigger="false" :forceOpen="model.linking" :completed="!model.linking" returnFocus="#workops-task-link" @dialogdismiss="model.cancelLink()">
+            <form @submit="model.link(form.target, form.typeId, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><field label="Task key"><input name="target" :value="model.linkTarget" required placeholder="PROJECT-123" /></field><field label="Link type"><select name="typeId" label="Link type" required><for type in model.data?.workOps?.links?.linkTypes.orEmpty()><option :value="type.id" :selected="type.id == model.linkType">{ type.outwardLabel }</option></for></select></field></form-body><form-actions bordered><button data-dialog-close @click="model.cancelLink()">Cancel</button><button type="submit" primary>Link task</button></form-actions></form>
+          </dialog>
+        </for>
+      </div>
+    </page-shell>
+    <script client scoped>
+      import { WorkOpsProfileSearch } from "./WorkOpsProfileSearch";
+      import { WorkOpsMentionSearch } from "./WorkOpsMentionSearch";
+      import { workOpsProfileChoices } from "@client/helpers/profile-choices";
+      import { workOpsMentions } from "@client/helpers/mentions";
+      workOpsProfileChoices(ctx, (query, offset) => WorkOpsProfileSearch.search(query, offset));
+      workOpsMentions(ctx, WorkOpsMentionSearch);
+    </script>
+  </island>
+</component>

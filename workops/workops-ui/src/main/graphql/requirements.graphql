@@ -1,0 +1,56 @@
+query WorkOpsRequirementIdByKey($key: String!) {
+  workOps { requirements { requirementByKey(key: $key) { id } } }
+}
+query WorkOpsRequirementDetail($id: UUID!, $offset: Long!) {
+  profiles { current { id name } }
+  workOps {
+    requirements { requirement(id: $id) {
+      id metadataId parentType parentId version createdAt modifiedAt
+      status { name category } priority { id name colorHex }
+      assigneeProfileId assignee { id name }
+      task { id summary version status { name category } transitions { id name toState { status { category } } } }
+      history(offset: $offset, limit: 26) { id changedAt changedByProfileId changes { fieldKey fromValue toValue } }
+    } }
+    requirementComments { forRequirement(requirementId: $id, offset: $offset, limit: 26) { id content profileId profile { id name } created } }
+    tasks { priorities { id name } resolutions { id name } }
+    statuses { all { id name } }
+  }
+}
+query WorkOpsRequirementsForTask($taskId: UUID!, $offset: Long!) {
+  workOps { requirements { byTask(taskId: $taskId, offset: $offset, limit: 26) {
+    id metadataId version sortOrder
+    status { name category } priority { name colorHex }
+    assigneeProfileId assignee { name }
+  } } }
+}
+query WorkOpsRequirementsForSpec($specId: UUID!, $offset: Long!) {
+  workOps { requirements { bySpec(specId: $specId, offset: $offset, limit: 26) {
+    id metadataId version sortOrder
+    status { name category } priority { name colorHex }
+    assigneeProfileId assignee { name }
+  } } }
+}
+query WorkOpsRequirementName($id: UUID!) {
+  content { metadata(id: $id) { name } }
+}
+query WorkOpsRequirementParentTask($id: UUID!) {
+  workOps { tasks { task(id: $id) { summary } } }
+}
+query WorkOpsRequirementParentSpec($id: UUID!) {
+  workOps { specs { spec(id: $id) { metadata { name } } } }
+}
+mutation WorkOpsCreateRequirement($input: CreateWorkOpsRequirementInput!) {
+  workOps { requirements { create(input: $input) { id } } }
+}
+mutation WorkOpsUpdateRequirement($id: UUID!, $input: UpdateWorkOpsRequirementInput!) {
+  workOps { requirements { update(id: $id, input: $input) { id } } }
+}
+mutation WorkOpsDeleteRequirement($id: UUID!, $expectedVersion: Long!) {
+  workOps { requirements { softDelete(id: $id, expectedVersion: $expectedVersion) { id } } }
+}
+mutation WorkOpsRenameRequirement($id: UUID!, $input: MetadataInput!) {
+  content { metadata { edit(id: $id, metadata: $input) { id } } }
+}
+mutation WorkOpsCommentOnRequirement($id: UUID!, $input: WorkOpsRequirementCommentInput!) {
+  workOps { requirementComments { add(requirementId: $id, input: $input) { id } } }
+}

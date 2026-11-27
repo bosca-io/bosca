@@ -1,0 +1,23 @@
+query WorkOpsImageChoices($query: String!, $offset: Int!) {
+  search { search(query: { query: $query, filter: ["_type = \"metadata\"", "contentType STARTS WITH \"image/\""], storageSystemName: "Admin Search Index", offset: $offset, limit: 26 }) {
+    documents { metadata { id name uploaded content { type urls { download { url } } } } }
+  } }
+}
+
+query WorkOpsImage($id: UUID!) {
+  content { metadata(id: $id) { id name uploaded content { type length urls { download { url } } } } }
+}
+
+mutation WorkOpsPrepareImage($name: String!, $type: String!, $length: Long!) {
+  content { metadata { add(metadata: { name: $name, contentType: $type, contentLength: $length, languageTag: "und" }, setReady: false) {
+    id content { urls { upload { url headers { name value } } } }
+  } } }
+}
+
+query WorkOpsRetryImage($id: UUID!) {
+  content { metadata(id: $id) { id content { urls { upload { url headers { name value } } } } } }
+}
+
+mutation WorkOpsCompleteImage($id: UUID!) {
+  content { metadata { setMetadataReady(id: $id) } }
+}

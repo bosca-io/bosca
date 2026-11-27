@@ -1,0 +1,51 @@
+<page route="/workops/references/{type}/{id}" requireAuth>
+  <script server provides="model">bosca.workops.ui.workOpsReference()</script>
+  <workops-layout :title="model.title">
+    <page-shell class="workops-page">
+      <page-heading :title="model.title" :subtitle="model.kindLabel" :icon="model.icon"
+                    :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false))'>
+        <button-link :href="model.returnTo" icon="arrow-left">Back to Work Ops</button-link>
+      </page-heading>
+      <div class="workops-content" data-workops-reference :data-reference-type="model.kind">
+        <if model.feedback.failed>
+          <alert>{ model.feedback.message }</alert>
+          <button-link :href="model.retryHref" icon="refresh">Reload reference</button-link>
+        <else-if !model.available>
+          <empty-state title="Reference unavailable" message="This item is unavailable or you do not have access to it." icon="link" />
+        <else>
+          <for metadata in listOfNotNull(model.metadata)>
+            <card :title="model.kindLabel">
+              <for body in listOfNotNull(model.body)>
+                <document-editor :id='"reference-" + metadata.id' label="Referenced document" :value="body" :containers="model.containers" contentExpression="block*" readOnly referenceControls media />
+              </for>
+              <if metadata.document != null && model.body == null><empty-state title="This document is empty." compact /></if>
+              <if metadata.document == null || model.contentLength != null>
+                <p><badge>{ model.contentType }</badge><if model.contentLength != null> · { model.contentLength } bytes</if></p>
+              </if>
+              <if model.imageHref.isNotBlank()><img class="reference-image" :src="model.imageHref" :alt="model.title" /></if>
+              <if model.downloadHref.isNotBlank()><button-link :href="model.downloadHref" :download="model.title">Download</button-link></if>
+            </card>
+          </for>
+          <for collection in listOfNotNull(model.collection)>
+            <card title="Collection">
+              <if !collection.description.isNullOrBlank()><p>{ collection.description.orEmpty() }</p></if>
+              <if model.items.isEmpty()><empty-state message="This collection has no visible items." compact />
+              <else>
+                <table-scroll><table><caption>Collection items</caption><thead><tr><th scope="col">Name</th><th scope="col">Kind</th></tr></thead>
+                  <tbody><for item in model.items><tr><td><a :href="item.href">{ item.label }</a></td><td>{ item.kindLabel }</td></tr></for></tbody>
+                </table></table-scroll>
+              </if>
+              <pagination :page="model.page" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Collection pages" />
+            </card>
+          </for>
+          <for profile in listOfNotNull(model.profile)>
+            <card title="Profile"><profile :name="model.title" :subtitle="model.profileSubtitle" /><p><badge>{ model.visibilityLabel }</badge></p></card>
+          </for>
+        </if>
+      </div>
+    </page-shell>
+  </workops-layout>
+  <style scoped>
+    .reference-image { display: block; max-inline-size: 100%; max-block-size: 70vh; object-fit: contain; margin-block: 12px; }
+  </style>
+</page>
