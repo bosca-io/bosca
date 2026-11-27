@@ -1,0 +1,9 @@
+<page route="/schema-forms">
+  <catalog-document title="Schema forms" description="Existing Forms schemas rendered with shared controls." current="/schema-forms">
+    <p class="page-intro">The application supplies JSON Schema, UI Schema, choices and submission. The library renders the layout, keeps typed values and validates the draft.</p>
+    <div class="catalog-grid">
+      <div class="catalog-palette-dark"><card title="Dark palette"><schema-form-example id="dark" /></card></div>
+      <div class="catalog-palette-light"><card title="Light palette"><schema-form-example id="light" /></card></div>
+    </div>
+  </catalog-document>
+</page>

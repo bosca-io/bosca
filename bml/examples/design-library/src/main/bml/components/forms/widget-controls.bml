@@ -11,7 +11,7 @@
         <dashboard-grid :id='"grid-" + widgets.id' :label='"Dashboard " + widgets.id' :value="widgets.layout"
                         :preserveKey='"grid-" + widgets.id'>
           <dashboard-item itemId="chart" label="Visits">
-            <chart :id='"chart-" + widgets.id' :label='"Visits " + widgets.id' :config="widgets.chart" />
+            <chart :id='"chart-" + widgets.id' :label='"Visits " + widgets.id' :config="widgets.chart" :maps='mapOf("world" to bosca.design.model.ChartMaps.world)' />
           </dashboard-item>
           <dashboard-item itemId="notes" label="Notes">
             <field label="Dashboard note"><input name="note" value="Unsent note" /></field>

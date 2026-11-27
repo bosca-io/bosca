@@ -132,6 +132,8 @@
       <path d="M12 8 7.26 5.15" />
       <path d="m12 8 4.74-2.85" />
       <path d="M12 13.5V8" />
+    <else-if name == "kanban">
+      <path d="M6 5v14M12 5v6M18 5v10" />
     <else-if name == "check">
       <circle cx="12" cy="12" r="10" />
       <path d="m9 12 2 2 4-4" />

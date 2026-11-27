@@ -34,6 +34,20 @@ class CatalogApplicationTest {
     private val classpath = System.getProperty("catalog.classpath")
 
     @Test
+    fun `boards retain projected content through pointer keyboard and rejected moves`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "catalog", 120, System.getProperty("catalog.boardsBrowser"))
+        }
+    }
+
+    @Test
+    fun `board references and move dialogs pass accessibility checks`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--board-accessibility", 120)
+        }
+    }
+
+    @Test
     fun `calendar engines support editing recurrence and touch input`() {
         withServer(false) { base, _ ->
             runBrowser(base, false, "engines", 120, System.getProperty("catalog.calendarEngines"))
@@ -191,9 +205,23 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `schema forms retain nested layout focus typed drafts and rejected submissions`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--schema-forms", 60)
+        }
+    }
+
+    @Test
     fun `shell and profile examples use independent local actions`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--shell", 60)
+        }
+    }
+
+    @Test
+    fun `prepared HTML content has native markup overflow and image fallback in both palettes`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--html-content", 60)
         }
     }
 
@@ -231,7 +259,7 @@ class CatalogApplicationTest {
             assertTrue(jar.getInputStream(manifest).readBytes().isNotEmpty())
         }
         for (development in listOf(false, true)) withServer(development) { base, client ->
-            for (path in listOf("/", "/foundation", "/themes", "/selection", "/source", "/source/languages", "/workspaces", "/documents", "/flows", "/charts", "/dashboards", "/components/visualization", "/json", "/comments", "/overlays", "/choices", "/views", "/trees", "/navigation", "/feedback", "/surfaces", "/components", "/components/controls",
+            for (path in listOf("/", "/foundation", "/themes", "/selection", "/source", "/source/languages", "/workspaces", "/documents", "/flows", "/charts", "/dashboards", "/boards", "/components/visualization", "/json", "/comments", "/overlays", "/choices", "/views", "/trees", "/navigation", "/feedback", "/surfaces", "/components", "/components/controls",
                 "/components/layout", "/components/feedback", "/components/overlays", "/components/content", "/components/aliases")) {
                 val response = request(client, base, path)
                 assertEquals(200, response.statusCode(), path + response.body())

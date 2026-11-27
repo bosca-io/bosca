@@ -17,6 +17,7 @@
   <prop name="minQuery" type="Int" default="0" />
   <prop name="debounce" type="Int" default="250" />
   <prop name="preserveKey" type="String" default="" />
+  <prop name="submitOnChange" type="Boolean" default="false" />
   <div
     :class='"select-widget size-" + size'
     :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)"
@@ -30,6 +31,7 @@
     :data-inline-search="inlineSearch && multiple && searchable"
     :data-allow-custom="allowCustom"
     :data-loading="loading"
+    :data-submit-on-change="submitOnChange"
     :data-placeholder="placeholder"
     :data-max-tags="maxTags"
     :data-min-query="minQuery"

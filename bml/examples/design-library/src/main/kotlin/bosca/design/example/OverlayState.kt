@@ -24,6 +24,17 @@ class OverlayState(val id: String) {
         private set
     var mounted: Boolean = true
         private set
+    var actionOpen: Boolean = false
+        private set
+    var dismissals: Int = 0
+        private set
+
+    fun openAction() { actionOpen = true }
+    suspend fun dismissAction() {
+        delay(200)
+        actionOpen = false
+        dismissals++
+    }
 
     suspend fun save(name: String) {
         require(name.isNotBlank()) { "A name is required" }

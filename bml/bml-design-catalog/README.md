@@ -88,9 +88,10 @@ and Gateway routing without a cluster rollout. Native heap flags can be passed t
 | `/json` | Independent dark/light JSON drafts, retained engine state, pending/rejected saves, native reset, controlled options, a compact configuration field, and tree/text/table/empty/invalid/readonly/disabled variants |
 | `/flows` | Independent VueFlow graphs, named-port connections, native forms, retained viewports, read-only, rejection and reset |
 | `/dashboards` | Movable/resizable widgets, locked layouts, keyboard handles, native forms and responsive stacking |
+| `/boards` | Application-owned cards, keyboard destination dialogs, pointer/touch movement, rejected saves and retained local notes in two palettes |
 | `/calendars` | Studio month, week and day views, navigation, event selection and local move actions in two palettes |
 | `/charts` | ECharts built-in types, CSS colors, responsive canvases, data tables and local selection toasts |
-| `/components/visualization` | Dashboard, flow and chart API references and authoring |
+| `/components/visualization` | Board, dashboard, flow and chart API references and authoring |
 | `/documents` | Independent TipTap documents, rich text formatting, native JSON form values, rejected saves, reset and readonly/disabled states |
 | `/source/languages` | Kotlin, TypeScript, JavaScript and BML syntax examples |
 | `/source` | Independent dark/light source viewers, requested lines, language/wrap changes, preserved state, content replacement and compact/bare/empty layouts |
@@ -102,7 +103,7 @@ and Gateway routing without a cluster rollout. Native heap flags can be passed t
 | `/views` | Search queries, native category values and caller-owned tab panels, retained drafts, rejected searches, changing tab lists and long/empty/readonly/disabled variants |
 | `/choices` | Local required/custom choices, multiple native values, tag limits, loading/disabled controls and controlled defaults in two palettes |
 | `/selection` | Server-filtered, offset-paged picker in independent dark/light roots, with failed-search retry, loading/disabled controls, native reset and toast saves |
-| `/components` | Linked index of all 51 exports and normal unprefixed authoring |
+| `/components` | Linked index of all public exports and normal unprefixed authoring |
 | `/components/controls` | Buttons, inputs, choices, search, segments, accessible local tabs, native selects and the paged picker's authoring source |
 | `/components/layout` | Surfaces, headings, native disclosure, application header and route tabs |
 | `/components/feedback` | Alerts, badges, empty/loading states, icons, mark, tooltips, copy controls, repeatable notifications and timestamps |
@@ -527,8 +528,9 @@ not the branded Safari application or physical iOS devices.
 ### Geographic data maps
 
 Select `map` on `/charts` for a world choropleth with illustrative values in both palettes.
-Natural Earth boundaries are bundled in `src/main/resources/maps/world.geojson` with source and
-public-domain notes beside them. The application passes named GeoJSON through `chart.maps`;
+Natural Earth boundaries come from the Design Library's `ChartMaps.world`, with source and
+public-domain notes in [the shared resources](../bml-design/src/main/resources/maps/README.md).
+The application passes named GeoJSON through `chart.maps`;
 no external map service or runtime download is used. Pan, wheel zoom, keyboard controls, reset,
 region clicks and table actions all use the shared chart component. Registered maps use
 content-based names so two charts can supply different geometry under the same application alias.

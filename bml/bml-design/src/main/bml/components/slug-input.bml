@@ -1,0 +1,15 @@
+<component tag="slug-input">
+  <prop name="name" type="String" required />
+  <prop name="sourceField" type="String" required />
+  <prop name="value" type="String" default="" />
+  <prop name="manual" type="Boolean" default="false" />
+  <prop name="manualName" type="String" default="" />
+  <div data-bml-design-slug-input :data-source-field="sourceField" :data-manual="manual">
+    <input :name="name" :value="value" {...attrs} />
+    <html:input type="hidden" :name='manualName.ifBlank { name + "Manual" }' :value='if (manual) "true" else "false"' data-slug-manual />
+  </div>
+  <script client scoped>
+    import { slugInput } from "@client/helpers/slug-input";
+    slugInput(ctx);
+  </script>
+</component>

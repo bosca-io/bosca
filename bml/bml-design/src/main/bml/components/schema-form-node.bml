@@ -1,0 +1,28 @@
+<component tag="schema-form-node">
+  <prop name="node" type="bosca.design.model.SchemaFormNode" required />
+  <prop name="prefix" type="String" required />
+  <prop name="readOnly" type="Boolean" default="false" />
+  <div class="schema-leaf" :data-kind="node.type" :data-node-key="node.key">
+    <if node.type == "field"><schema-form-field :node="node" :prefix="prefix" :readOnly="readOnly" />
+    <else-if node.type == "display">
+      <if node.control == "alert"><alert :tone="node.variant">{ node.displayText }</alert>
+      <else-if node.control == "divider"><hr />
+      <else-if node.control == "heading"><h3 :aria-level="node.level">{ node.displayText }</h3>
+      <else-if node.control == "help-text"><help-text>{ node.displayText }</help-text>
+      <else-if node.control == "spacer"><div class="spacer" />
+      <else><p role="alert" data-schema-unsupported>Unknown display control: { node.control }</p>
+      </if>
+
+    <else-if node.type == "tabs">
+      <view-tabs :label='node.label.ifBlank { "Form sections" }' :tabs="node.tabs" :selected="node.firstTab" :data-schema-tabs="node.key" />
+
+    <else><p role="alert" data-schema-unsupported>Unknown layout: { node.type }</p>
+    </if>
+  </div>
+  <style scoped>
+    .schema-node { min-width: 0; }
+    h3 { margin: 0 0 12px; font-size: 14px; }
+    hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; } .spacer { min-height: 16px; }
+    [hidden] { display: none; }
+  </style>
+</component>

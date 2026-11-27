@@ -8,7 +8,7 @@ import { reviewContrastFindings } from './contrast-review.mjs';
 export async function checkAccessibility({navigate,evaluate,until:poll,call,artifacts,mode,widths=[1440,390],appearances=['dark','light'],paths,reportName=paths?'editor-accessibility':'accessibility'}) {
   const until=expression=>poll(`Boolean(${expression})`);
   const axe=await readFile(new URL('../../../node_modules/axe-core/axe.min.js',import.meta.url),'utf8');
-  const routes=paths??['/','/foundation','/themes','/selection','/choices','/views','/trees','/navigation','/feedback','/surfaces','/source','/source/languages','/documents','/flows','/charts','/dashboards','/components/visualization','/json','/comments','/overlays','/components','/components/controls','/components/layout','/components/feedback','/components/overlays','/components/content','/components/aliases'];
+  const routes=paths??['/','/foundation','/themes','/selection','/choices','/views','/trees','/navigation','/feedback','/surfaces','/source','/source/languages','/documents','/flows','/charts','/dashboards','/boards','/components/visualization','/json','/comments','/overlays','/components','/components/controls','/components/layout','/components/feedback','/components/overlays','/components/content','/components/aliases'];
   const reports=[];
   const scan=async(path,width,appearance,state)=>{
     console.log(`Catalog ${mode} ${reportName}: ${path} ${width}px ${appearance}, ${state}`);
@@ -34,7 +34,7 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
       if(path==='/flows'||path==='/components/visualization')await until(`document.querySelector('[data-flow-ready]')`);
       if(path==='/charts'||path==='/components/visualization')await until(`document.querySelector('[data-chart-ready]')`);
       if(path==='/dashboards'||path==='/components/visualization')await until(`document.querySelector('[data-grid-ready]')`);
-      if(path==='/documents')await until(`document.querySelectorAll('[data-document-ready]').length===4`);
+      if(path==='/documents')await until(`document.querySelectorAll('[data-document-ready]:not([data-document-reference-example])').length===8`);
       if(path==='/selection'||path==='/choices')await until(`document.querySelector('select.enhanced')`);
       if(appearance==='light')await evaluate(`if(!document.querySelector('[data-catalog-light]').checked)document.querySelector('[data-catalog-light]').click()`);
       await evaluate(axe);
@@ -98,6 +98,21 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
         await evaluate('window.releaseAuditLoad()');
         await until(`document.querySelector('[data-surface-table=dark]')`);
         await scan(path,width,appearance,'loaded table');
+      }
+      if(path==='/boards')for(const id of ['dark','light']) {
+        const root=`document.querySelector('[data-example-board=${id}]')`;
+        const card=`${root}.querySelector('[data-board-card=proposal]')`;
+        await until(`${card}.querySelector('[data-bml-ref=moveHandle]')&&!${card}.querySelector('[data-bml-ref=moveHandle]').hidden`);
+        await evaluate(`${card}.querySelector('[data-bml-ref=moveHandle]').click()`);
+        await until(`${card}.querySelector('dialog').matches(':modal')`);
+        await scan(path,width,appearance,`board move dialog ${id}`);
+        const choice=`${card}.querySelector('[data-bml-design-select]')`;
+        await evaluate(`${choice}.querySelector('[data-bml-ref=trigger]').click()`);
+        await until(`${choice}.querySelector('[data-bml-ref=popup]').matches(':popover-open')`);
+        await scan(path,width,appearance,`board destination choices ${id}`);
+        for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:'Escape',windowsVirtualKeyCode:27});
+        for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:'Escape',windowsVirtualKeyCode:27});
+        await until(`!${card}.querySelector('dialog').open`);
       }
     }
   }

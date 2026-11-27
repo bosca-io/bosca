@@ -3,7 +3,7 @@
   <prop name="hidden" type="Boolean" default="false" />
   <prop name="tone" type="String" default="error" />
   <prop name="compact" type="Boolean" default="false" />
-  <p
+  <div
     class="alert"
     role="alert"
     :data-tone="tone"
@@ -13,10 +13,14 @@
     {...attrs}
   >
     <slot />
-  </p>
+  </div>
   <style scoped>
     .alert {
+      margin: 0;
       color: var(--error-fg, var(--err));
+    }
+    .alert[data-tone="warning"] {
+      color: var(--warn);
     }
     .alert[data-tone="success"] {
       color: var(--ok);

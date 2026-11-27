@@ -83,6 +83,8 @@ tasks.withType<Test>().configureEach {
         ":bml:bml-design:sourcesJar", ":bml:bml-design:generatePomFileForMavenPublication")
     inputs.dir(layout.projectDirectory.dir("src/test/browser"))
         .withPropertyName("browserChecks").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(rootProject.file("bml/bml-design/src/test/browser/board.mjs")).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(rootProject.file("bml/bml-design/src/test/browser/html-content.mjs")).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir(layout.projectDirectory.dir("src/test/types"))
         .withPropertyName("typeChecks").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file(layout.projectDirectory.file("tsconfig.json"))
@@ -105,6 +107,7 @@ tasks.withType<Test>().configureEach {
         "design.fixture.java" to javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath,
         "design.fixture.node" to bml.nodeExecutable.get(),
         "design.fixture.browser" to layout.projectDirectory.file("src/test/browser/controls.mjs").asFile.absolutePath,
+        "design.fixture.boardsBrowser" to rootProject.file("bml/bml-design/src/test/browser/board.mjs").absolutePath,
         "design.fixture.typechecker" to rootProject.layout.projectDirectory.file("bml/bml-runtime/node_modules/typescript/bin/tsc").asFile.absolutePath,
         "design.fixture.tsconfig" to layout.projectDirectory.file("tsconfig.json").asFile.absolutePath,
         "design.fixture.plugin" to publishedFixturePlugin.asPath,

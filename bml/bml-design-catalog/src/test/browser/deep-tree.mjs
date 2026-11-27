@@ -111,7 +111,7 @@ export async function checkDeepTrees({navigate,evaluate,until,call,artifacts,mod
       await until(`document.readyState==='complete'&&document.querySelectorAll('[data-json-ready]').length===3&&
         document.querySelector('[data-document-ready]')&&document.querySelector('[data-source-ready]')&&
         [...document.querySelectorAll('[data-bml-source-view]')].every(source=>source.hasAttribute('data-source-ready'))&&
-        document.querySelectorAll('[data-bml-code-editor]').length===3&&
+        document.querySelectorAll('[data-bml-code-editor]').length===4&&
         [...document.querySelectorAll('[data-bml-code-editor]')].every(editor=>editor.hasAttribute('data-code-ready'))`);
       report.cases.push({width,destination:await evaluate(`({path:location.pathname,hash:location.hash,ready:document.readyState,
         jsonEditors:document.querySelectorAll('[data-json-ready]').length,

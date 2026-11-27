@@ -48,7 +48,7 @@
                   <span class="readme-icon"><icon name="book-open" :size="14" /></span>
                   { page.readmeEntry?.name.orEmpty() }
                 </a>
-                <git-markdown :html="page.readmeHtml" />
+                <html-content :html="page.readmeHtml" padded />
               </html:section>
             </if>
             <if page.description.isNotBlank() && page.path.isBlank()>
