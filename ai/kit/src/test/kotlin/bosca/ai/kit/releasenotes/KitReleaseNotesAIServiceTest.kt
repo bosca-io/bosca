@@ -7,6 +7,7 @@ import ai.koog.prompt.llm.OpenAILLMProvider
 import bosca.ai.kit.agents.KitModels
 import bosca.ai.kit.agents.koogJson
 import bosca.ai.kit.configuration.KitJson
+import bosca.di.asProvider
 import bosca.workops.model.release.LocalizedReleaseNotes
 import bosca.workops.model.release.ReleaseNotesCommit
 import bosca.workops.model.release.ReleaseNotesGenerationInput
@@ -31,7 +32,7 @@ class KitReleaseNotesAIServiceTest {
             mockLLMAnswer(response) onRequestContains "Improve startup"
         }
         val kitJson = KitJson(koogJson(Json { ignoreUnknownKeys = true; isLenient = true }))
-        val service = KitReleaseNotesAIService(executor, KitModels(model), kitJson)
+        val service = KitReleaseNotesAIService(executor.asProvider(), KitModels(model), kitJson)
 
         val result = service.generate(
             ReleaseNotesGenerationInput(

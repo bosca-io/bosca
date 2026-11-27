@@ -75,10 +75,9 @@ class ProfilesController(
     }
 
     @Field
-    suspend fun profile(authentication: AuthenticationContext, id: UUID): Profile {
+    suspend fun profile(authentication: AuthenticationContext, id: UUID): Profile? {
         val profile = profilesService.getById(id)
-        permissionEvaluator.verifyAllowed(authentication, profile, PermissionAction.VIEW)
-        return profile
+        return profile.takeIf { permissionEvaluator.isAllowed(authentication, it, PermissionAction.VIEW) }
     }
 
     @Field
