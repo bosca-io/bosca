@@ -1,4 +1,5 @@
 <page route="/components/content">
+  <script server provides="preparedHtml">"""<h3>Prepared content</h3><p>A <strong>stored description</strong> with <em>formatting</em> &amp; a <a href="#ref-html-content">local link</a>.</p><blockquote>Shared content presentation.</blockquote><table><caption>Stored values</caption><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody><tr><td>Title</td><td>Example</td></tr></tbody></table><pre tabindex="0" role="region" aria-label="Prepared code"><code>Prepared code &lt;sample&gt; &amp; retained whitespace</code></pre><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='60'%3E%3Crect width='1200' height='60' fill='%238899aa'/%3E%3C/svg%3E" alt="Wide illustration"><img src="data:image/png;base64,AA==" alt="Unavailable illustration">"""</script>
   <catalog-document title="Content and editors" description="Tables, keyboard trees, comments and structured content." current="/components">
     <nav class="reference-jumps" aria-label="On this page">
       <a href="#ref-table-scroll">table-scroll</a>
@@ -8,8 +9,18 @@
       <a href="#ref-json-editor">json-editor</a>
       <a href="#ref-code-editor">code-editor</a>
       <a href="#ref-source-view">source-view</a>
+      <a href="#ref-html-content">html-content</a>
       <a href="#ref-document-editor">document-editor</a>
     </nav>
+    <reference-entry name="html-content"
+      :api='"html: String (required)\npadded: Boolean = false"'
+      :contract='"Renders HTML prepared by the owning application/API. Markdown parsing, sanitization and URL resolution remain with that owner. Native attributes/classes/ref target the article. Shared typography, image bounds, table/code overflow and unavailable-image presentation belong to the library."'
+      :keyboard='"Content stays selectable and links retain native keyboard behavior. This is a read-only surface."'
+      :css='"Inherits palette and typography. padded adds responsive content spacing. Tables and preformatted content scroll within the surface."'
+      :snippet='"<html-content :html=\"article.html\" />"'>
+
+      <html-content :html="preparedHtml" data-html-content-example />
+    </reference-entry>
     <reference-entry name="table-scroll"
       :api='"label: String = \"Scrollable table\""'
       :contract='"Focusable, labelled region with forwarded attributes/classes and default table children. Horizontal overflow stays inside the region; keyboard focus uses the accent color."'
@@ -53,12 +64,13 @@
       <div class="example-stack"><json-example id="reference" /><json-editor name="readonly-settings" label="Readonly settings" :value="bosca.design.catalog.CatalogSamples.enabled" readOnly /><json-editor name="disabled-settings" label="Unavailable settings" disabled /><a class="catalog-link" href="/json">Working JSON variants and state examples</a></div>
     </reference-entry>
     <reference-entry name="code-editor"
-      :api='"name: String (required)\nvalue: String = \"\"\nlanguage: String = \"\"\npath: String = \"\"\nline: Int = 0\nwrapped: Boolean = true\nbare: Boolean = false\nfill: Boolean = false\nlabel: String = \"Code editor\"\nreadOnly: Boolean = false\ndisabled: Boolean = false\npreserveKey: String = \"\"\nexitFocus: String = \"\""'
+      :api='"name: String (required)\nvalue: String = \"\"\nlanguage: String = \"\"\npath: String = \"\"\nline: Int = 0\nwrapped: Boolean = true\nbare: Boolean = false\nfill: Boolean = false\ncompact: Boolean = false\nlabel: String = \"Code editor\"\nreadOnly: Boolean = false\ndisabled: Boolean = false\npreserveKey: String = \"\"\nexitFocus: String = \"\""'
       contract="CodeMirror code field with a native textarea form value. The tag owns initialization, language loading, undo/redo, pending state, reset and cleanup. Use json-editor for structured JSON values."
       keyboard="Standard CodeMirror editing and search shortcuts. Escape then Tab leaves the editor. Read-only text remains selectable; disabled fields are excluded from form data."
-      css="Inherits source-view colors and --code-height (default 300px); fill uses the available workspace height. Local adapters may update data-path, data-line and data-wrapped on the root without remounting. Additional attributes and classes target the root."
+      css="Inherits source-view colors and --code-height (default 300px); fill uses the available workspace height; compact provides a content-sized query field without gutters or active-line decoration. Local adapters may update data-path, data-line and data-wrapped on the root without remounting. Additional attributes and classes target the root."
       :snippet='"<code-editor name=\"expression\" language=\"javascript\" label=\"Mapping expression\" value=\"profile.name\" />"'>
       <code-example />
+      <code-editor name="compactQuery" label="Compact query" language="sql" value="ORDER BY modified DESC" compact />
       <code-editor name="readonlyExpression" label="Read-only expression" value="profile.name" readOnly />
       <code-editor name="disabledExpression" label="Disabled expression" value="profile.name" disabled />
     </reference-entry>

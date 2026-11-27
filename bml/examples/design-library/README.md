@@ -12,12 +12,30 @@ Run from the workspace root:
 ```
 
 Open `http://localhost:9092/`; `/aliases` compares aliased and unprefixed imports, and `/foundation`
-exercises checkboxes, switches, feedback states and table scrolling. For incremental
+exercises checkboxes, switches, automatic/manual slug fields, feedback states and table scrolling. For incremental
 development and browser reload:
 
 ```sh
 ./gradlew :bml:examples:design-library:bmlDev
 ```
+
+`/schema-forms` consumes the shared Forms renderer with application-owned schemas and actions.
+Its focused browser check covers typed values, validation focus, independent palettes and row
+geometry at 1920, 1024, 768 and 390 pixels in development and production modes.
+
+`/html-content` consumes prepared HTML through the exported read-only content surface in two
+independent palettes, including formatting, links, tables, code and unavailable images.
+
+`/widgets` also loads Content-native containers, references, mentions and code blocks. It verifies
+title normalization, retained attributes and native JSON submission before exercising local edits.
+
+`/boards` consumes the public board, column and card controls with its own content and save action.
+Its focused development/production browser checks cover keyboard, mouse and touch moves, rejection
+and retry, retained notes/focus/scroll, independent palettes and readonly/disabled/unmount states.
+
+The widget consumer also loads `ChartMaps.world` from the compiled Design Library, replaces native
+chart options through the observed `data-config` attribute, exercises geographic zoom and live point
+replacement, then restores its bar chart on the retained renderer.
 
 Application CSS and the full HTML document are owned here. The library supplies packaged defaults
 and component styles through the normal BML asset pipeline. The server uses the compiler-generated
@@ -85,6 +103,11 @@ responsive header/navigation, panels/sections and native disclosures. Its projec
 update application state. Consuming CSS changes the mark colors and panel radius. Browser checks
 cover desktop/phone geometry, active-navigation visibility, disclosure keyboard operation and
 the preserved Bosca SVG paths. Native sections remain available through `<html:section>`.
+
+The exported color input has an independent typed form on the same page. It retains empty, custom
+and alpha values through server submissions, offers keyboard-accessible presets, and keeps native
+readonly/disabled/reset behavior. The consumer checks both palettes at four widths in development
+and production; its state and submit/reset actions remain application-owned.
 
 The foundation table is retained inside its state island, with a bounded height and enough rows to
 exercise both scroll axes. A real save keeps its DOM, keyboard focus and scroll positions. Long

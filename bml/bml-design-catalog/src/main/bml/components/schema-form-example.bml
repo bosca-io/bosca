@@ -1,0 +1,17 @@
+<component tag="schema-form-example">
+  <prop name="id" type="String" required />
+  <script server provides="schemaExample" scope="server-session">bosca.design.catalog.CatalogSchemaForm(id)</script>
+  <island name="schemaExample" :key="id">
+    <div class="catalog-stack">
+      <form @submit="schemaExample.save(form.attributes)">
+        <schema-form :id='"schema-form-" + schemaExample.id' :schema="schemaExample.schema" :uiSchema="schemaExample.uiSchema" :value="schemaExample.draft" :options="schemaExample.options" :preserveKey='"schema-form-" + schemaExample.id' />
+        <form-actions><button type="submit" primary>Save form</button></form-actions>
+      </form>
+      <if schemaExample.message.isNotBlank()><alert :tone='if (schemaExample.failed) "error" else "success"'>{ schemaExample.message }</alert></if>
+    </div>
+    <script client scoped>
+      import { catalogFormChoices } from "@client/helpers/catalog-form-choices";
+      catalogFormChoices(ctx);
+    </script>
+  </island>
+</component>

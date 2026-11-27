@@ -12,7 +12,7 @@
       />
     </header>
     <div ref="previewSurface" class="markdown-preview workspace-scroll" :hidden="showSource" role="tabpanel" aria-label="Preview" tabindex="0">
-      <git-markdown :html="page.markdownHtml" />
+      <html-content :html="page.markdownHtml" padded />
     </div>
     <div
       ref="sourceSurface"

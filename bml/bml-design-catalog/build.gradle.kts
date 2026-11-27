@@ -90,6 +90,8 @@ tasks.withType<Test>().configureEach {
     dependsOn(tasks.jar, catalogRuntime)
     inputs.dir(layout.projectDirectory.dir("src/test/browser"))
         .withPropertyName("browserChecks").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(rootProject.file("bml/bml-design/src/test/browser/board.mjs")).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(rootProject.file("bml/bml-design/src/test/browser/html-content.mjs")).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file(layout.projectDirectory.file("package-lock.json"))
         .withPropertyName("accessibilityDependency").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files(tasks.jar.flatMap { it.archiveFile }, catalogRuntime)
@@ -104,6 +106,7 @@ tasks.withType<Test>().configureEach {
         "catalog.java" to javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath,
         "catalog.node" to bml.nodeExecutable.get(),
         "catalog.browser" to layout.projectDirectory.file("src/test/browser/catalog.mjs").asFile.absolutePath,
+        "catalog.boardsBrowser" to rootProject.file("bml/bml-design/src/test/browser/board.mjs").absolutePath,
         "catalog.calendarEngines" to layout.projectDirectory.file("src/test/browser/calendar-engines.mjs").asFile.absolutePath,
         "catalog.firefoxBrowser" to layout.projectDirectory.file("src/test/browser/firefox-tree.mjs").asFile.absolutePath,
     )

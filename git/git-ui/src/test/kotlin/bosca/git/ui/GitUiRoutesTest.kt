@@ -418,10 +418,9 @@ class GitUiRoutesTest {
         assertTrue("type=\"submit\"" in submit, html)
         assertFalse(Regex("\\bdisabled(?:[ >])").containsMatchIn(submit), submit)
         assertTrue("auth-primary" in submit, submit)
-        assertTrue(
-            Regex("<p[^>]*data-bml-ref=\"error\"[^>]*\\bhidden[ >]").containsMatchIn(html),
-            html,
-        )
+        val error = Regex("<[^>]*data-bml-ref=\"error\"[^>]*>").find(html)?.value.orEmpty()
+        assertTrue("role=\"alert\"" in error, html)
+        assertTrue(Regex("\\bhidden(?:[ >])").containsMatchIn(error), error)
     }
 
     @Test

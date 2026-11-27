@@ -4,6 +4,7 @@ import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { launchTestBrowser, waitForTestCondition } from '../../../../../gradle/bml-test-browser.mjs';
 import { checkReferences } from './references.mjs';
+import { checkHtmlContent } from '../../../../bml-design/src/test/browser/html-content.mjs';
 import { checkPresentation } from './presentation.mjs';
 import { checkPickers } from './picker.mjs';
 import { checkSources } from './source.mjs';
@@ -41,6 +42,7 @@ import { checkCodeEditor } from './code-editor.mjs';
 import { checkCalendarWorkflow } from './calendar-workflow.mjs';
 import { checkCalendars } from './calendars.mjs';
 import { checkFileDrops } from './file-drop.mjs';
+import { checkSchemaForms } from './schema-forms.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -152,8 +154,12 @@ try {
       assert.ok(report.probes.paused.frames.some(frame=>frame.url==='bml-driver-busy-probe.js'));
     } else assert.equal(report.probes.renderer.result.value.ready,'complete');
     console.log(`Driver ${busy?'busy renderer':'pending promise'} evidence verified: ${path}`);
+  } else if(process.argv[4]==='--html-content') {
+    await checkHtmlContent({call,evaluate,until,base,artifacts,mode});
   } else if(process.argv[4]==='--code-editor') {
     await checkCodeEditor({navigate,evaluate,until,call});
+  } else if(process.argv[4]==='--schema-forms') {
+    await checkSchemaForms({navigate,evaluate,until,call});
   } else if(process.argv[4]==='--file-drop') {
     await checkFileDrops({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--resources') {
@@ -170,6 +176,8 @@ try {
     await checkCalendarWorkflow({navigate,evaluate,until,call,key,artifacts,mode});
   } else if(process.argv[4]==='--calendars') {
     await checkCalendars({navigate,evaluate,until,call,key,artifacts,mode});
+  } else if(process.argv[4]==='--board-accessibility') {
+    await checkAccessibility({navigate,evaluate,until,call,artifacts,mode,paths:['/boards','/components/visualization'],reportName:'board-accessibility'});
   } else if(process.argv[4]==='--dashboards') {
     await checkDashboards({navigate,evaluate,until,call,key,artifacts,mode});
   } else if(process.argv[4]==='--dashboard-accessibility') {

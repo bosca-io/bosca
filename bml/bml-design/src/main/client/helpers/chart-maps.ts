@@ -48,3 +48,26 @@ export function mapNavigation(option: Record<string, unknown>) {
   });
   return targets;
 }
+
+/** Retains user pan/zoom on data updates while changed geometry, identity or declared views reset normally. */
+export function retainChartMapView(next: Record<string, unknown>, previous: Record<string, unknown> | undefined, rendered: Record<string, unknown>): Record<string, unknown> {
+  if (!previous) return next;
+  const retain = (kind: "series" | "geo") => {
+    const before = objects(previous[kind]), current = objects(rendered[kind]);
+    const items = objects(next[kind]).map((item, index) => {
+      if (typeof item.map !== "string" || kind === "series" && item.type !== "map") return item;
+      const old = before[index], view = current[index];
+      if (!old || !view || old.map !== item.map || old.id !== item.id || old.type !== item.type) return item;
+      const result = { ...item };
+      for (const key of ["center", "zoom"] as const) {
+        const value = view[key];
+        const valid = key === "zoom" ? typeof value === "number" && Number.isFinite(value)
+          : Array.isArray(value) && value.length === 2 && value.every(entry => typeof entry === "number" && Number.isFinite(entry));
+        if (valid && JSON.stringify(old[key]) === JSON.stringify(item[key])) result[key] = value;
+      }
+      return result;
+    });
+    return Array.isArray(next[kind]) ? items : items[0];
+  };
+  return { ...next, ...(next.series !== undefined ? { series: retain("series") } : {}), ...(next.geo !== undefined ? { geo: retain("geo") } : {}) };
+}

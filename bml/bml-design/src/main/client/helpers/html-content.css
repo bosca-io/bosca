@@ -1,0 +1,10 @@
+/* Prepared HTML descendants have no compiler scope markers. Keep their rules under the public surface. */
+article[data-bml-html-content] > :first-child { margin-top: 0; }
+article[data-bml-html-content] > :last-child { margin-bottom: 0; }
+article[data-bml-html-content] img { max-width: 100%; height: auto; }
+article[data-bml-html-content] pre { overflow: auto; padding: 12px; background: var(--control-bg, var(--bg-2)); }
+article[data-bml-html-content] table { border-collapse: collapse; display: block; overflow: auto; color: inherit; }
+article[data-bml-html-content] th, article[data-bml-html-content] td { padding: 8px; border: 1px solid var(--line); color: inherit; }
+article[data-bml-html-content] caption { color: inherit; }
+article[data-bml-html-content] blockquote { border-left: 3px solid var(--line); padding-left: 16px; margin-left: 0; }
+article[data-bml-html-content] .image-error { color: var(--error-fg, var(--err)); display: block; padding: 12px 0; }

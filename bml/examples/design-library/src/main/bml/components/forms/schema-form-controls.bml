@@ -1,0 +1,17 @@
+<component tag="schema-form-controls">
+  <prop name="id" type="String" required />
+  <script server provides="schemaConsumer" scope="server-session">bosca.design.example.SchemaFormState(id)</script>
+  <island name="schemaConsumer" :key="id">
+    <div>
+      <form @submit="schemaConsumer.save(form.attributes)">
+        <schema-form :id='"consumer-form-" + schemaConsumer.id' :schema="schemaConsumer.schema" :uiSchema="schemaConsumer.uiSchema" :value="schemaConsumer.draft" :preserveKey='"consumer-form-" + schemaConsumer.id' />
+        <form-actions><button primary type="submit">Save preferences</button></form-actions>
+      </form>
+      <p role="status" :data-saved="schemaConsumer.id">{ schemaConsumer.saved }</p>
+    </div>
+    <script client scoped>
+      import { exampleFormChoices } from "@client/example-form-choices";
+      exampleFormChoices(ctx);
+    </script>
+  </island>
+</component>

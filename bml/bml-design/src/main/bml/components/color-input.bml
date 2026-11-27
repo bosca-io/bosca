@@ -1,0 +1,24 @@
+<component tag="color-input">
+  <prop name="name" type="String" required />
+  <prop name="label" type="String" required />
+  <prop name="value" type="String" default="" />
+  <prop name="presets" type="List<String>" default="emptyList()" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <prop name="readOnly" type="Boolean" default="false" />
+  <div data-bml-color-input :data-disabled="disabled">
+    <field :label="label"><div class="color-value"><span class="color-preview" aria-hidden="true"><span data-color-current /></span><input :name="name" :value="value" :disabled="disabled" :readonly="readOnly" mono data-color-field {...attrs} /></div></field>
+    <if presets.isNotEmpty()><div class="color-presets" role="group" :aria-label='label + " presets"'><for preset in presets><button type="button" size="sm" :data-color-preset="preset" :disabled="disabled || readOnly" :aria-pressed="(preset == value).toString()"><span class="color-preview" aria-hidden="true"><span :data-color-value="preset" /></span>{ preset }</button></for></div></if>
+  </div>
+  <style scoped>
+    .color-value { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .color-preview { position: relative; display: inline-block; width: 24px; height: 24px; flex: none; border: 1px solid var(--control-border, var(--line-2)); border-radius: var(--r-sm); background: repeating-conic-gradient(var(--bg-3) 0% 25%, var(--bg-1) 0% 50%) 0 / 10px 10px; overflow: hidden; }
+    .color-preview > span { position: absolute; inset: 0; }
+    .color-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .color-presets .color-preview { width: 14px; height: 14px; }
+    [data-disabled] { opacity: 0.5; }
+  </style>
+  <script client scoped>
+    import { colorInput } from "@client/helpers/color-input";
+    colorInput(ctx);
+  </script>
+</component>

@@ -84,8 +84,9 @@ internal class GitUiAssetAudit(
                 "$path must include at most one CodeMirror state implementation")
             if (engines.isNotEmpty()) {
                 val budget = 380_000
-                assertTrue((modules + styles).sumOf { gzipSize(asset(it)) } < budget,
-                    "$path exceeds its measured editor asset budget of $budget gzip bytes")
+                val measured = (modules + styles).sumOf { gzipSize(asset(it)) }
+                assertTrue(measured < budget,
+                    "$path uses $measured gzip bytes, exceeding its measured editor asset budget of $budget gzip bytes")
             }
 
             val fonts = styles.flatMap { style ->

@@ -1,7 +1,7 @@
 import type { ClientContext, IslandUpdate } from "@bosca/bml";
 import { init, type EChartsType, type EChartsOption } from "echarts";
 import "./chart.css";
-import { bindChartMaps, mapNavigation } from "./chart-maps";
+import { bindChartMaps, mapNavigation, retainChartMapView } from "./chart-maps";
 
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const objects = (value: unknown): Record<string, unknown>[] => Array.isArray(value) ? value.filter(record) : record(value) ? [value] : [];
@@ -31,6 +31,7 @@ export function mountChart(ctx: ClientContext) {
   let chart: EChartsType | undefined, previous = "", previousMaps = "", palette = "", disposed = false, queued = false;
   let points: Point[] = [], colorContext: CanvasRenderingContext2D | null | undefined;
   let navigation: ReturnType<typeof mapNavigation> = [];
+  let previousMapOptions: Record<string, unknown> | undefined;
   const motion = matchMedia("(prefers-reduced-motion: reduce)"), appearance = matchMedia("(prefers-color-scheme: dark)");
   // Normalize modern CSS colors to sRGB for ECharts' color parser and canvas gradients.
   const resolveColor = (value: string): string => {
@@ -68,7 +69,7 @@ export function mountChart(ctx: ClientContext) {
     if (ctx.root.hasAttribute("data-loading") || ctx.root.dataset.error || surface.hidden) return;
     ctx.root.dispatchEvent(new CustomEvent("chartselect", { bubbles: true, detail }));
   };
-  const destroy = () => { chart?.dispose(); chart = undefined; };
+  const destroy = () => { chart?.dispose(); chart = undefined; previousMapOptions = undefined; };
   const resizeChart = () => {
     // ECharts redraws map paths on resize, replacing targets of active pointer gestures.
     if (chart && (chart.getWidth() !== surface.clientWidth || chart.getHeight() !== surface.clientHeight)) chart.resize();
@@ -126,6 +127,7 @@ export function mountChart(ctx: ClientContext) {
       };
       surface.hidden = false; state.hidden = true;
       const created = !chart;
+      const mapView = navigation.length ? chart?.getOption() as Record<string, unknown> | undefined : undefined;
       if (!chart) {
         chart = init(surface, theme, { renderer: "canvas" });
         chart.on("click", event => {
@@ -134,11 +136,13 @@ export function mountChart(ctx: ClientContext) {
               select({ datasetIndex: event.seriesIndex, index: event.dataIndex, label: point?.label ?? event.name ?? null, value: point ? point.value : typeof event.value === "number" && !Number.isFinite(event.value) ? null : event.value }); }
         });
       } else if (nextPalette !== palette) chart.setTheme(theme);
-      const resolved = colorsIn(mapped) as EChartsOption;
+      const retained = mapView ? retainChartMapView(mapped, previousMapOptions, mapView) : mapped;
+      const resolved = colorsIn(retained) as EChartsOption;
       // Native tooltip markup stays in the canvas; application strings remain text.
       resolved.tooltip = objects(resolved.tooltip).map(item => ({ ...item, renderMode: "richText" }));
       resolved.animation = motion.matches ? false : resolved.animation ?? false;
       chart.setOption(resolved, { notMerge: created || raw !== previous || rawMaps !== previousMaps });
+      previousMapOptions = mapped;
       chart.resize(); previous = raw; previousMaps = rawMaps; palette = nextPalette;
       ctx.root.setAttribute("data-chart-ready", "");
       ctx.root.querySelectorAll<HTMLElement>("[data-chart-actions]").forEach(element => { element.hidden = false; });
@@ -161,7 +165,7 @@ export function mountChart(ctx: ClientContext) {
         ...(zoom !== undefined ? { zoom, originX: chart.getWidth() / 2, originY: chart.getHeight() / 2 } : { dx, dy }) });
     }
   };
-  const reset = () => { if (!chart || surface.hidden) return; previous = ""; sync(); };
+  const reset = () => { if (!chart || surface.hidden) return; previous = ""; previousMapOptions = undefined; sync(); };
   for (const [ref, action] of [["mapZoomIn", () => roam(1.25)], ["mapZoomOut", () => roam(0.8)], ["mapReset", reset]] as const) {
     const button = ctx.ref<HTMLButtonElement>(ref); if (button) ctx.on<MouseEvent>(button, "click", action);
   }

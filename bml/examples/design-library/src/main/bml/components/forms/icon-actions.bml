@@ -11,6 +11,7 @@
           <icon-button icon="plus" :label="actions.label" @click="actions.increment" ref="increment"
                        :aria-describedby='actions.id + "-hint"' :data-icon-action="actions.id" class="ghost" />
           <icon-button icon="plus" label="Small action" size="xs" @click="actions.increment" :data-xs-action="actions.id" />
+          <icon-button icon="plus" label="Medium action" size="md" @click="actions.increment" :data-md-action="actions.id" />
           <icon-button icon="plus" label="Unavailable action" disabled @click="actions.increment" :data-disabled-action="actions.id" />
           <icon-link icon="external" label="Read details" href="#link-target" rel="help" :data-icon-link="actions.id" />
         </div>

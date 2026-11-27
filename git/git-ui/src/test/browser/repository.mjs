@@ -570,9 +570,9 @@ await writeFile(
 await call("Page.navigate", {
   url: base + "/repositories/repo?file=README.md",
 });
-await until('document.querySelector(".markdown img")?.complete');
+await until('document.querySelector("[data-bml-html-content] img")?.complete');
 assert.ok(
-  await ev('document.querySelector(".markdown img").naturalWidth>0'),
+  await ev('document.querySelector("[data-bml-html-content] img").naturalWidth>0'),
   "Markdown image failed to load",
 );
 await writeFile(
@@ -583,7 +583,7 @@ await writeFile(
   ),
 );
 await ev(
-  'document.querySelector(".markdown img").src="/owner/repo/raw/abc/missing.png"',
+  'document.querySelector("[data-bml-html-content] img").src="/owner/repo/raw/abc/missing.png"',
 );
 await until('document.body.innerText.includes("Image unavailable: Logo")');
 assert.ok(await ev('document.body.innerText.includes("Hello")'));
@@ -735,7 +735,7 @@ await ev(
   'document.querySelector("form.code-widget button[type=submit]").click()',
 );
 await until(
-  'location.search.includes("file=README.md") && document.querySelector(".markdown")?.textContent.includes("README created without a profile email.")',
+  'location.search.includes("file=README.md") && document.querySelector("[data-bml-html-content]")?.textContent.includes("README created without a profile email.")',
 );
 assert.doesNotMatch(
   await ev("document.body.innerText"),

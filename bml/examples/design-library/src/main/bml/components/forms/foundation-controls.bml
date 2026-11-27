@@ -16,10 +16,28 @@
       <alert tone="success" compact :hidden="controls.submissions == 0" :data-feedback="controls.id">
         Saved { controls.submitted } ({ controls.submissions })
       </alert>
+      <alert tone="warning" compact :data-block-alert="controls.id">
+        <p>Review these records.</p>
+        <ul><li>A required link is missing.</li><li>Choose a replacement.</li></ul>
+      </alert>
+      <alert hidden :data-hidden-alert="controls.id">Unavailable record</alert>
+      <form @submit="controls.saveSlug(form.title, form.slug, form.slugManual)" :data-slug-form="controls.id">
+        <form-body><field label="Title"><input name="title" :value="controls.slugTitle" /></field>
+        <field label="Key"><slug-input name="slug" sourceField="title" :value="controls.slug" :manual="controls.slugManual" /></field></form-body>
+        <form-actions><button type="submit">Save key</button><button @click="controls.resetSlug()">Reset key</button></form-actions>
+        <p><output :data-slug-result="controls.id" :data-slug-saves="controls.slugSaves" :data-slug-resets="controls.slugResets">Saved key: { controls.slug.ifBlank { "—" } }</output></p>
+      </form>
       <div class="actions">
         <badge tone="success" :data-badge="controls.id">Enabled</badge>
         <badge tone="purple" :data-purple-badge="controls.id">Preview</badge>
       </div>
+      <form @submit="controls.saveColor(form.color)" :data-color-form="controls.id">
+        <color-input name="color" label="Accent color" :value="controls.color" :presets='listOf("#91a6f6", "#4ade80", "#ff5d6c")' maxlength="9" />
+        <color-input name="readonlyColor" label="Read-only color" value="red" :presets='listOf("#4ade80")' readOnly />
+        <color-input name="disabledColor" label="Disabled color" value="blue" :presets='listOf("#4ade80")' disabled />
+        <form-actions><button type="submit">Save color</button><button @click="controls.resetColor()">Clear color</button><button type="reset">Reset color field</button></form-actions>
+        <p><output :data-color-result="controls.id" :data-color-saves="controls.colorSaves" :data-color-resets="controls.colorResets">Saved color: { controls.color.ifBlank { "Empty" } }</output></p>
+      </form>
       <loading-state label="Loading records" compact :data-status="controls.id" class="fixture-status" />
       <empty-state title="No records" message="Create a record to get started">
         <button size="sm">Create record</button>
