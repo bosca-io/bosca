@@ -1,0 +1,15 @@
+query WorkOpsTaskCreateChoices {
+  workOps {
+    projects { all { id key name taskCreationFormSchemaKey } }
+    tasks { taskTypes { id name } priorities { id name displayOrder colorHex } resolutions { id name } }
+    statuses { all { id name category } }
+  }
+}
+
+query WorkOpsTaskCreateForm($key: String!) {
+  formSchemas { byKey(key: $key) { id key name type schema uiSchema version } }
+}
+
+mutation WorkOpsSubmitTaskForm($key: String!, $attributes: JSON!) {
+  forms { submit(input: { formSchemaKey: $key, attributes: $attributes }) { id type } }
+}

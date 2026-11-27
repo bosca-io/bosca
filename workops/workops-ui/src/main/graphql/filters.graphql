@@ -1,0 +1,17 @@
+query WorkOpsSavedFiltersPage($offset: Long!) {
+  workOps { savedFilters { mine(offset: $offset, limit: 51) { id name description bqlSource modifiedAt version } } }
+}
+query WorkOpsSavedFilterPreview($source: String!) {
+  workOps { savedFilters { searchTasks(source: $source, offset: 0, limit: 10) {
+    rows { id key summary status { name category } }
+  } } }
+}
+mutation WorkOpsCreateSavedFilter($input: WorkOpsSavedFilterInput!) {
+  workOps { savedFilters { create(input: $input) { id } } }
+}
+mutation WorkOpsUpdateSavedFilter($id: UUID!, $input: WorkOpsSavedFilterInput!, $expectedVersion: Long!) {
+  workOps { savedFilters { update(id: $id, input: $input, expectedVersion: $expectedVersion) { id } } }
+}
+mutation WorkOpsDeleteSavedFilter($id: UUID!) {
+  workOps { savedFilters { delete(id: $id) } }
+}

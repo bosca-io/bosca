@@ -1,0 +1,34 @@
+<component tag="workops-task-create">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsTaskCreateModel" required />
+  <prop name="id" type="String" default="tasks" />
+  <script server provides="taskCreate">bosca.workops.ui.WorkOpsTaskCreateModel(initial.open, initial.projectId, initial.draft, initial.definition, initial.options, initial.error, initial.createdId, initial.reloadRevision, initial.feedback)</script>
+  <island name="taskCreate" :key="id">
+    <div :data-workops-create-project="taskCreate.projectId">
+      <button id="workops-new-task-trigger" primary icon="plus" @click="taskCreate.begin(ctx)">New task</button>
+      <dialog title="New task" triggerLabel="New task" returnFocus="#workops-new-task-trigger" :showTrigger="false" :forceOpen="taskCreate.open" :completed="!taskCreate.open" @dialogdismiss="taskCreate.cancel()">
+        <if taskCreate.definition != null>
+          <for definition in listOfNotNull(taskCreate.definition)>
+          <form class="modal-form" @submit="taskCreate.submit(form.attributes, ctx)">
+            <form-body padded class="modal-fields">
+              <if taskCreate.error.isNotBlank()><alert>{ taskCreate.error }</alert></if>
+              <div ref="formRetry" :hidden="taskCreate.error.isBlank()"><form-actions align="start"><button @click="taskCreate.reload(form.attributes, ctx)" icon="refresh">Retry loading task form</button></form-actions></div>
+              <schema-form id="workops-new-task" :schema="definition.schema" :uiSchema="definition.uiSchema" :value="taskCreate.draft" :options="taskCreate.options" :controlAliases="taskCreate.controlAliases" :preserveKey="taskCreate.preserveKey" :data-workops-form-key="definition.key" :data-workops-form-version="definition.version" :data-workops-static-choices="definition.staticChoiceKeys" />
+            </form-body>
+              <form-actions bordered class="modal-footer"><button data-dialog-close @click="taskCreate.cancel()">Cancel</button><button type="submit" primary>Create task</button></form-actions>
+          </form>
+          </for>
+        <else>
+          <form-body padded><alert>{ taskCreate.error }</alert><button @click="taskCreate.retry(ctx)" icon="refresh">Retry</button></form-body>
+        </if>
+      </dialog>
+      <alert hidden ref="transportError" />
+      <workops-feedback id="task-created" :feedback="taskCreate.feedback" />
+      <if taskCreate.createdId.isNotBlank()><button-link href="/workops/tasks">Refresh tasks</button-link></if>
+    </div>
+    <script client scoped>
+      import { workOpsTaskCreation } from "@client/helpers/task-create";
+      import { WorkOpsFormChoices } from "./WorkOpsFormChoices";
+      workOpsTaskCreation(ctx, WorkOpsFormChoices, (project, attributes) => ctx.dispatch(taskCreate.changeProject(project, attributes, ctx)));
+    </script>
+  </island>
+</component>
