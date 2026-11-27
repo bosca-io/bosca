@@ -1,14 +1,20 @@
 <component tag="document-example">
   <prop name="id" type="String" required />
   <prop name="title" type="String" required />
-  <script server provides="document" scope="server-session">bosca.design.catalog.CatalogDocument(id)</script>
+  <prop name="studio" type="Boolean" default="false" />
+  <prop name="references" type="Boolean" default="false" />
+  <prop name="media" type="Boolean" default="false" />
+  <script server provides="document" scope="server-session">bosca.design.catalog.CatalogDocument(id, studio, references, media = media)</script>
   <card :title="title">
     <island name="document" :key="id">
       <div class="catalog-stack" :data-catalog-document="document.id">
         <if document.visible>
           <form class="example-form" @submit="document.save(form.document)" :data-document-form="document.id">
             <document-editor :id='"document-" + document.id' label="Example document" name="document"
-                             :value="document.value" :readOnly="document.readOnly" :disabled="document.disabled"
+                             :value="document.value" :readOnly="document.readOnly" :disabled="document.disabled" mentions
+                             :contentExpression='if (document.studio) "heading block+" else "block+"' :singleTitle="document.studio"
+                             :containers='if (document.referenceExample) bosca.design.catalog.CatalogSamples.referenceContainers else if (document.studio) bosca.design.catalog.CatalogSamples.documentContainers else emptyList()' showSaveStatus
+                             :referenceControls="document.referenceExample" :data-document-reference-example="document.referenceExample" :media="document.media"
                              :error="document.error" required hint="Use the formatting toolbar or standard editing shortcuts."
                              :preserveKey='"document-" + document.id + "-" + document.revision' />
             <div class="example-actions">
@@ -16,6 +22,7 @@
               <button type="reset" size="sm" :disabled="document.disabled || document.readOnly">Reset draft</button>
             </div>
           </form>
+          <if document.studio><if document.saved.isNotBlank()><pre class="reference-api" data-stored-document-saved>{ document.saved }</pre></if></if>
         </if>
         <details data-example-states>
           <disclosure-heading>Example states</disclosure-heading>
@@ -37,6 +44,12 @@
   </card>
   <script client scoped>
     import { retainDisclosure } from "@client/catalog-disclosure";
+    import { catalogMentions } from "@client/catalog-mentions";
+    import { catalogReferences } from "@client/catalog-references";
+    import { catalogImages } from "@client/catalog-images";
     retainDisclosure(ctx);
+    catalogMentions(ctx);
+    catalogReferences(ctx);
+    catalogImages(ctx);
   </script>
 </component>

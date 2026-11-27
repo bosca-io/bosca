@@ -1,0 +1,58 @@
+<component tag="image-picker">
+  <prop name="id" type="String" required />
+  <prop name="label" type="String" default="Choose image" />
+  <prop name="showTrigger" type="Boolean" default="true" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <div class="image-picker" data-bml-image-picker :data-disabled="disabled" :data-picker-id="id" {...attrs}>
+    <dialog :title="label" :triggerLabel="label" triggerIcon="image" :showTrigger="showTrigger" :triggerDisabled="disabled" size="lg" data-image-dialog>
+      <div class="image-picker-body">
+        <field label="Content library">
+          <select ref="imageChoice" label="Existing image" placeholder="Search images…" searchable async data-image-choice />
+        </field>
+        <section aria-label="Upload image" class="image-picker-upload">
+          <file-drop ref="imageDrop" label="Choose an image to upload" accept="image/*" />
+          <p ref="imageFile" class="image-picker-file" hidden />
+          <div class="image-picker-upload-actions">
+            <button ref="imageUpload" icon="upload" disabled>Upload image</button>
+            <button ref="imageCancelUpload" hidden>Cancel upload</button>
+          </div>
+          <div ref="imageUploadProgress" hidden><progress-bar label="Image upload progress" /></div>
+        </section>
+        <details ref="imageUrlDetails"><summary>Use an image URL</summary>
+          <div class="image-picker-url">
+            <field label="Image URL"><input ref="imageUrl" inputmode="url" placeholder="https://example.com/image.png" /></field>
+            <button ref="imageUseUrl">Use URL</button>
+          </div>
+        </details>
+        <div ref="imagePreview" class="image-picker-preview" hidden>
+          <img ref="imageImage" alt="" />
+          <p ref="imageCaption" />
+        </div>
+        <field label="Image description"><input ref="imageAlt" /></field>
+        <field label="Image title"><input ref="imageTitle" /></field>
+        <p ref="imageStatus" class="image-picker-status" role="status" aria-live="polite" hidden />
+      </div>
+      <form-actions bordered>
+        <button ref="imageCancel">Cancel</button>
+        <button ref="imageApply" primary disabled>Insert image</button>
+      </form-actions>
+    </dialog>
+  </div>
+  <style scoped>
+    .image-picker-body { display: flex; flex-direction: column; gap: 16px; padding: 18px; min-width: 0; }
+    .image-picker-upload { display: flex; flex-direction: column; gap: 10px; }
+    .image-picker-upload-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .image-picker-url { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; padding-block-start: 10px; }
+    .image-picker-url > :first-child { flex: 1 1 200px; }
+    .image-picker-preview { display: grid; justify-items: start; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg-2); }
+    .image-picker-preview img { display: block; max-inline-size: 100%; max-block-size: 220px; object-fit: contain; }
+    .image-picker-file, .image-picker-status, .image-picker-preview p { margin: 0; overflow-wrap: anywhere; color: var(--fg-2); font: 12px/1.6 var(--font-sans); }
+    .image-picker-status[data-error] { color: var(--err); }
+    [hidden] { display: none; }
+    summary { cursor: pointer; color: var(--fg-2); font: 12px/1.6 var(--font-sans); }
+  </style>
+  <script client scoped>
+    import { mountImagePicker } from "@client/helpers/image-picker";
+    mountImagePicker(ctx);
+  </script>
+</component>

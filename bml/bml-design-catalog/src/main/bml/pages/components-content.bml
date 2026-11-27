@@ -11,6 +11,7 @@
       <a href="#ref-source-view">source-view</a>
       <a href="#ref-html-content">html-content</a>
       <a href="#ref-document-editor">document-editor</a>
+      <a href="#ref-image-picker">image-picker</a>
     </nav>
     <reference-entry name="html-content"
       :api='"html: String (required)\npadded: Boolean = false"'
@@ -48,7 +49,7 @@
       <tree label="Example rows" local embedded><tree-item path="examples" label="Examples" directory expanded /><tree-item path="examples/sample.bml" label="sample.bml" href="#ref-comment-editor" :depth="1" /></tree>
     </reference-entry>
     <reference-entry name="comment-editor"
-      :api='"id: String (required)\nlabel: String (required)\nvalue: String = \"\"\nerror: String = \"\"\nsubmitDisabled: Boolean = false\nhint: String = \"\"\nsubmitLabel: String = \"comment\"\nplaceholder: String = \"Write a comment…\"\ndescribedBy: String = \"\"\nname: String = \"body\""'
+      :api='"id: String (required)\nlabel: String (required)\nvalue: String = \"\"\nerror: String = \"\"\nsubmitDisabled: Boolean = false\nhint: String = \"\"\nsubmitLabel: String = \"comment\"\nplaceholder: String = \"Write a comment…\"\ndescribedBy: String = \"\"\nname: String = \"body\"\nmentions: Boolean = false"'
       :contract='"Native required textarea receives additional attributes/classes, its ID and preservation key. Default children supply action controls. The caller owns its surrounding form, submission and error outcomes."'
       :keyboard='"Native required textarea. Ctrl+Enter or Command+Enter submits its surrounding form when allowed. Error drafts stay editable; the caller owns validation and projected buttons. Hint/error IDs are linked to the textarea."'
       :css='"Palette and typography inherit from the consuming application. Component hooks: --accent, --bg-1, --control-border, --fg-0, --fg-2, --fg-3, --font-sans, --line, --r-md. Forward an application class only through the documented native target; generated scope markers are private."'
@@ -83,13 +84,22 @@
       <div class="example-stack"><source-view content='val title = "Design library"' path="example.kt" label="Example Kotlin source" compact><badge tone="info">Kotlin</badge></source-view><a class="catalog-link" href="/source">Working source variants and state examples</a></div>
     </reference-entry>
     <reference-entry name="document-editor"
-      :api='"id: String (required)\nlabel: String (required)\nname: String = \"document\"\nvalue: kotlinx.serialization.json.JsonObject = bosca.design.model.emptyDocument()\ndocument: bosca.content.metadata.model.Document? = null\nreadOnly: Boolean = false\ndisabled: Boolean = false\nrequired: Boolean = false\nerror: String = \"\"\nhint: String = \"\"\nplaceholder: String = \"Start writing…\"\npreserveKey: String = \"\""'
-      :contract='"TipTap rich text editor with a native ProseMirror JSON form value. Additional attributes/classes target the root. The document prop accepts a content metadata Document and reads only content.document; a supplied record takes precedence over the open JSON value prop. Empty content opens an editable paragraph. The application owns forms, actions, validation and persistence. documentchange bubbles with the document JSON. Image controls accept a URL; no file is uploaded. Unsupported nodes or attributes retain the original value and report an error."'
+      :api='"id: String (required)\nlabel: String (required)\nname: String = \"document\"\nvalue: kotlinx.serialization.json.JsonObject = bosca.design.model.emptyDocument()\ndocument: bosca.content.metadata.model.Document? = null\nreadOnly: Boolean = false\ndisabled: Boolean = false\nrequired: Boolean = false\nerror: String = \"\"\nhint: String = \"\"\nplaceholder: String = \"Start writing…\"\npreserveKey: String = \"\"\ncontentExpression: String = \"block+\"\nsingleTitle: Boolean = false\nmentions: Boolean = false\ncontainers: List<bosca.design.model.DocumentContainerOption> = emptyList()\nshowSaveStatus: Boolean = false\nreferenceControls: Boolean = false\nmedia: Boolean = false\ncollaborationRoom: String = \"\"\ncollaborationUrl: String = \"/collaboration\"\ncollaboratorName: String = \"Editor\"\ncollaboratorColor: String = \"#6366f1\"\nsavedRevision: String = \"\""'
+      :contract='"TipTap rich text editor with a native ProseMirror JSON form value. Additional attributes/classes target the root. The document prop accepts a content metadata Document and reads only content.document; a supplied record takes precedence over the open JSON value prop. Empty content opens an editable paragraph. The application owns forms, actions, validation and persistence. documentchange bubbles with the document JSON and first H1 title. Stored containers, references, mentions, image metadata and node classes remain in the body. contentExpression selects a template schema; singleTitle demotes later H1 headings before readiness. Change the preservation key when changing the schema. Stored mention activation emits documentmentionactivate with id and entityType; the application owns lookup and destinations. Enable media and supply an imagerequest adapter for shared library search and upload controls. The application owns storage and authorization. Unsupported nodes or attributes retain the original value and report an error."'
       :keyboard='"Standard TipTap editing shortcuts and native undo/redo. Tab enters the formatting toolbar, Left/Right or Home/End move between buttons; Tab enters the document. Escape closes link/image inputs. Read-only content stays selectable; disabled content is excluded from form data. Native reset restores the supplied document."'
       :css='"Inherits the application palette and font. Hooks: --document-bg, --document-fg, --document-height, --document-max-height, --document-selection, --control-border and shared focus/spacing tokens."'
       :snippet='"<document-editor id=\"article\" label=\"Article body\" name=\"document\" :document=\"article.document\" :error=\"article.error\" preserveKey=\"article-draft\" required />"'>
       <document-example id="reference" title="Rich text document" />
       <a class="catalog-link" href="/documents">Working document states and palettes</a>
+    </reference-entry>
+    <reference-entry name="image-picker"
+      :api='"id: String (required)\nlabel: String = \"Choose image\"\nshowTrigger: Boolean = true\ndisabled: Boolean = false"'
+      :contract='"Image selection composed from the shared dialog, select, file drop and progress controls. Handle imagerequest with authorized search, resolve and upload data; call respondWith synchronously with a value or promise. Requests carry an abort signal. Upload reports progress and returns an image choice. imageselect supplies id, src, alt and title. Applications own storage, authorization and retry identity. The media document editor uses this same picker."'
+      :keyboard='"Native modal focus, Escape to cancel and shared select search/paging. Description and title fields retain their draft while peer document changes arrive."'
+      :css='"Inherits application palette, fonts and shared dialog/control spacing."'
+      :snippet='"<image-picker id=\"illustration\" label=\"Choose illustration\" />"'>
+      <document-example id="reference-images" title="Library image selection" media />
+      <a class="catalog-link" href="/documents">Library selection and local upload examples</a>
     </reference-entry>
   </catalog-document>
 </page>
