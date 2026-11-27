@@ -1,0 +1,15 @@
+fragment WorkOpsBoardDirectoryFields on WorkOpsBoard {
+  id name type projectId programId portfolioId projects { id }
+}
+query WorkOpsBoardProjects {
+  workOps { projects { all { id key name archivedAt } } }
+}
+query WorkOpsBoardsForProject($project: UUID!) {
+  workOps { boards {
+    byProject(projectId: $project) { ...WorkOpsBoardDirectoryFields }
+    byProjects(projectIds: [$project]) { ...WorkOpsBoardDirectoryFields }
+  } }
+}
+mutation WorkOpsCreateBoard($input: CreateWorkOpsBoardInput!) {
+  workOps { boards { create(input: $input) { id } } }
+}

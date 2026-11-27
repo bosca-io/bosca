@@ -1,0 +1,4 @@
+<page route="/workops/portfolios" requireAuth>
+  <script server provides="model">bosca.workops.ui.workOpsPlanning("portfolio")</script>
+  <workops-layout title="Portfolios"><workops-planning :initial="model" /></workops-layout>
+</page>

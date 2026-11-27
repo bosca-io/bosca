@@ -1,0 +1,56 @@
+<component tag="workops-board-view">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsBoardViewModel" required />
+  <prop name="instance" type="String" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsBoardViewModel(initial.id, initial.data, initial.cards, initial.sprints, initial.sprintId, initial.truncated, initial.pendingMove, initial.resolutionId, initial.moveSequence, initial.moveResult, initial.feedback, instance, initial.adding, initial.summaryDraft, initial.projectDraft, initial.createdId, initial.cardsLoaded)</script>
+  <island name="workopsBoard" :key="instance">
+    <div class="workops-content" data-workops-board-view :data-workops-board-instance="model.instance" :data-workops-move-sequence="model.moveSequence" :data-workops-move-result="model.moveResult">
+      <div class="workops-task-actions"><icon-button icon="refresh" label="Refresh board" @click="model.retry(ctx)" /><if model.projects.isNotEmpty()><button-link :href="model.tasksHref">View all board tasks</button-link></if><if model.canQuickAdd><button :id='"workops-quick-add-" + model.instance' icon="plus" @click="model.beginQuickAdd()">Quick add task</button></if><if model.createdHref.isNotBlank()><button-link :href="model.createdHref" size="xs" icon="arrow-right">Open the created task</button-link></if></div>
+      <workops-feedback id="board-view-0" :feedback="model.feedback" />
+
+      <if model.board != null && model.projects.isNotEmpty()>
+        <form @submit.coalesce="model.filterSprint(form.sprintId, ctx)"><field label="Sprint"><select submitOnChange name="sprintId" label="Sprint">
+          <option value="all" :selected='model.sprintId == "all"'>All tasks</option>
+          <for sprint in model.sprints.filter { it.state != "CLOSED" || it.id == model.sprintId }><option :value="sprint.id" :selected="model.sprintId == sprint.id">{ sprint.name } ({ sprint.state.lowercase() })</option></for>
+        </select></field><form-actions align="start"><noscript><button type="submit">Apply sprint</button></noscript></form-actions></form>
+        <if model.selectedSprint != null><p><strong>{ model.selectedSprint?.name }</strong><if model.selectedSprint?.endDate != null> · Ends <time :value="model.selectedSprint?.endDate.orEmpty()" /></if></p></if>
+        <if model.truncated><alert>Showing up to 200 authorized tasks. Counts and WIP warnings cover these loaded tasks. Use View all board tasks to browse the complete result.</alert></if>
+        <if !model.cardsLoaded><p role="status">Tasks have not been loaded. Refresh the board to try again.</p>
+        <else-if model.columns.isNotEmpty()>
+          <board :id='"workops-board-" + model.instance' :label="model.title">
+            <for column in model.columns><board-column :columnId="column.id" :label="column.name" :summary="model.countLabel(column)" :scrollKey='model.instance + "-" + column.id'>
+              <if model.exceedsLimit(column)><badge tone="warning">WIP limit exceeded</badge></if>
+              <for card in model.cardsFor(column)><board-card :cardId="card.id" :label="card.label" :targets="model.targets(card)" :movable="model.targets(card).isNotEmpty()" :preserveKey='"workops-board-card-" + model.instance + "-" + card.bodyKey' :data-workops-board-card="card.id" :data-workops-card-version="card.version" :data-workops-closing-columns='model.targets(card).filter { model.isClosing(card, it.id) }.joinToString(" ") { it.id }'>
+                <div class="workops-task-actions"><code>{ card.key }</code><badge>{ card.priority }</badge></div>
+                <p><a :href="card.href">{ card.label }</a></p><profile :name="card.assigneeLabel" />
+              </board-card></for>
+              <if model.cardsFor(column).isEmpty()><empty-state title="No tasks." compact /></if>
+            </board-column></for>
+          </board>
+        <else><empty-state title="No columns configured" message="Configure this board's columns and status mappings."><button-link :href='"/workops/boards/" + bosca.workops.ui.workOpsEncode(model.id) + "?tab=columns"'>Configure columns</button-link></empty-state></if>
+        <if model.cardsLoaded && model.unmapped.isNotEmpty()><details><disclosure-heading>Tasks without a mapped column</disclosure-heading><ul><for card in model.unmapped><li><a :href="card.href">{ card.label }</a> · { card.statusName }</li></for></ul></details></if>
+      </if>
+      <dialog title="Quick add task" triggerLabel="Quick add task" :showTrigger="false" :forceOpen="model.adding" :completed="!model.adding" :returnFocus='"#workops-quick-add-" + model.instance' @dialogdismiss="model.cancelQuickAdd()">
+        <form @submit="model.quickAdd(form.summary, form.projectId, ctx)"><form-body padded>
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+          <p>The task starts at its workflow's initial state.<if model.selectedSprint != null> It will be added to { model.selectedSprint?.name }.</if></p>
+          <field label="Task summary"><input name="summary" :value="model.summaryDraft" required maxlength="255" /></field>
+          <field label="Project"><select name="projectId" label="Project" required><option value="">Choose a project</option><for project in model.creationProjects><option :value="project.id" :selected="project.id == model.projectDraft">{ project.key } · { project.name }</option></for></select></field>
+        </form-body><form-actions bordered><button data-dialog-close @click="model.cancelQuickAdd()">Cancel</button><button type="submit" primary>Create task</button></form-actions></form>
+      </dialog>
+      <dialog title="Resolve task" triggerLabel="Resolve task" :showTrigger="false" :forceOpen="model.pendingMove != null" :completed="model.pendingMove == null" @dialogdismiss="model.cancelMove()">
+        <form @submit="model.completeMove(form.resolutionId, ctx)"><form-body padded>
+          <p>Choose a resolution for { model.pendingMove?.label }.</p>
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert><p>Cancel and refresh the board to inspect a newer task version before retrying.</p></if>
+          <field label="Resolution"><select name="resolutionId" label="Resolution" required><option value="">Choose a resolution</option><for resolution in model.resolutions><option :value="resolution.id" :selected="resolution.id == model.resolutionId">{ resolution.name }</option></for></select></field>
+        </form-body><form-actions bordered><button data-dialog-close @click="model.cancelMove()">Cancel</button><button type="submit" primary>Resolve task</button></form-actions></form>
+      </dialog>
+    </div>
+    <script client scoped>
+      import { workOpsBoardMoves } from "@client/helpers/board-moves";
+      workOpsBoardMoves(ctx, {
+        move: (id, column, version) => ctx.dispatch(model.move(id, column, version, ctx)),
+        prepare: (id, column, version) => ctx.dispatch(model.prepareMove(id, column, version)),
+      });
+    </script>
+  </island>
+</component>

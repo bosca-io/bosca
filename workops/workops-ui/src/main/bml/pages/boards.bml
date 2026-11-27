@@ -1,0 +1,8 @@
+<page route="/workops/boards" requireAuth>
+  <script server provides="model">bosca.workops.ui.workOpsBoardDirectory()</script>
+  <script server provides="boardView">bosca.workops.ui.workOpsSelectedBoard(model.selectedBoard?.id.orEmpty())</script>
+  <workops-layout title="Boards"><page-shell class="workops-page" fill>
+    <workops-board-directory :initial="model" />
+    <if boardView != null><workops-board-view :initial="requireNotNull(boardView)" instance="directory" /></if>
+  </page-shell></workops-layout>
+</page>

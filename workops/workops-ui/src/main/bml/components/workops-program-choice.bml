@@ -1,0 +1,13 @@
+<component tag="workops-program-choice">
+  <prop name="programs" type="List<bosca.workops.ui.WorkOpsPlanningRow>" required />
+  <prop name="programId" type="String" required />
+  <prop name="action" type="String" required />
+  <form method="get" :action="action" class="program-choice">
+    <select submitOnChange name="programId" label="Program">
+      <option value="">Choose a program</option>
+      <for program in programs><option :value="program.id" :selected="program.id == programId">{ program.key } — { program.name }</option></for>
+    </select>
+    <noscript><button type="submit">Choose program</button></noscript>
+  </form>
+  <style scoped>.program-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }</style>
+</component>

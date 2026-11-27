@@ -1,0 +1,71 @@
+import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
+
+/** Exercise the shared controls with actual sprint drafts and retained offset pages. */
+export async function inspectSprintLayouts({ page, context, base, project, board, hub, boardPath, gql, createTask, createSprint, readSprint, choose, dialog, reports }) {
+  const planned = await createSprint(board, 'Layout planned iteration');
+  const commitment = await createTask(project, 'Layout prior commitment', planned.id);
+  const candidates = [];
+  for (let index = 0; index < 27; index++) candidates.push(await createTask(project, `Sprint layout candidate ${index}`));
+  const layoutBoard = (await gql('mutation($id:UUID!){workOps{boards{create(input:{projectId:$id,name:"Completion layouts",type:SCRUM}){id}}}}', { id: project })).workOps.boards.create.id;
+  const active = await createSprint(layoutBoard, 'Layout active iteration');
+  const carry = await createTask(project, 'Layout carryover'), backlog = await createTask(project, 'Layout backlog');
+  await gql('mutation($id:UUID!,$version:Long!,$tasks:[UUID!]!){workOps{sprints{start(input:{sprintId:$id,expectedVersion:$version,committedTaskIds:$tasks}){id}}}}', { id: active.id, version: active.version, tasks: [carry.id, backlog.id] });
+  const future = await createSprint(layoutBoard, 'Layout following iteration');
+  for (const appearance of ['dark', 'light']) for (const width of [1920, 1024, 768, 390]) {
+    await context.addCookies([{ name: 'git_ui_appearance', value: appearance, url: base }]); await page.setViewportSize({ width, height: 1000 });
+    await page.goto(base + hub);
+    await page.locator(`[data-workops-sprint="${planned.id}"]`).getByRole('button', { name: 'Start Layout planned iteration', exact: true }).click();
+    const starting = dialog('Start sprint'); await starting.waitFor();
+    await starting.locator('input[name=startDate]').fill('2026-12-01'); await starting.locator('input[name=endDate]').fill('2026-12-15');
+    await starting.locator('input[name=query]').fill('Sprint layout candidate');
+    await starting.getByRole('button', { name: 'Search available tasks', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('dialog[open] input[name=query]')?.getAttribute('value') === 'Sprint layout candidate');
+    await starting.getByRole('button', { name: 'Next available tasks', exact: true }).click(); await starting.getByText('Page 2', { exact: true }).waitFor();
+    assert.equal(await starting.locator('input[name=startDate]').inputValue(), '2026-12-01');
+    assert.deepEqual(await starting.locator('select[name=taskIds]').evaluate(select => [...select.selectedOptions].map(option => option.value)), [commitment.id]);
+    assert.equal(await starting.locator('select[name=taskIds] option').count(), 3);
+    await starting.getByRole('button', { name: 'Previous available tasks', exact: true }).click(); await starting.getByText('Page 1', { exact: true }).waitFor();
+    await starting.getByRole('button', { name: 'Start sprint', exact: true }).scrollIntoViewIfNeeded();
+    let geometry = await starting.evaluate(node => ({ left: node.getBoundingClientRect().left, right: node.getBoundingClientRect().right, width: innerWidth, scroll: document.documentElement.scrollWidth }));
+    assert.ok(geometry.left >= 0 && geometry.right <= geometry.width + 1 && geometry.scroll <= geometry.width + 1, JSON.stringify(geometry));
+    await page.screenshot({ path: resolve(reports, `start-${appearance}-${width}.png`), fullPage: true });
+    await starting.getByRole('button', { name: 'Cancel', exact: true }).click(); await starting.waitFor({ state: 'hidden' });
+    assert.equal((await readSprint(planned.id)).state, 'FUTURE');
+    await page.goto(`${base}/workops/sprints/${active.id}?tab=progress`); await page.getByText('0% of visible tasks complete', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Complete sprint', exact: true }).click(); const closing = dialog('Complete sprint'); await closing.waitFor();
+    await choose(closing, `${carry.key} · ${carry.summary}`, future.name); await closing.locator('input[name=velocity]').fill('21.5');
+    assert.equal(await closing.getByRole('button', { name: /Retry loading|Reload/ }).count(), 0);
+    assert.equal(await closing.locator('input[name=velocity]').inputValue(), '21.5');
+    assert.equal(await closing.locator('select').first().inputValue(), future.id);
+    await closing.getByRole('button', { name: 'Complete sprint', exact: true }).scrollIntoViewIfNeeded();
+    geometry = await closing.evaluate(node => ({ left: node.getBoundingClientRect().left, right: node.getBoundingClientRect().right, width: innerWidth, scroll: document.documentElement.scrollWidth }));
+    assert.ok(geometry.left >= 0 && geometry.right <= geometry.width + 1 && geometry.scroll <= geometry.width + 1, JSON.stringify(geometry));
+    await page.screenshot({ path: resolve(reports, `close-${appearance}-${width}.png`), fullPage: true });
+    await closing.getByRole('button', { name: 'Cancel', exact: true }).click(); await closing.waitFor({ state: 'hidden' });
+    assert.equal((await readSprint(active.id)).state, 'ACTIVE');
+    await page.goto(`${base}/workops/sprints/${active.id}`); await page.locator(`[data-workops-sprint-task="${carry.id}"]`).waitFor();
+    const doc = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
+    assert.ok(doc.scroll <= doc.width + 1, JSON.stringify(doc)); await page.screenshot({ path: resolve(reports, `tasks-${appearance}-${width}.png`), fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  for (let index = 0; index < 26; index++) await createSprint(board, `Paged planned iteration ${index}`);
+  await page.goto(base + boardPath); await page.locator('[data-workops-sprint]').first().waitFor();
+  assert.equal(await page.locator('[data-workops-sprint]').count(), 25);
+  await page.getByRole('navigation', { name: 'Sprint pages', exact: true }).getByRole('link', { name: 'Next', exact: true }).click();
+  await page.waitForURL(url => url.searchParams.get('offset') === '25' && url.searchParams.get('tab') === 'sprints');
+  assert.equal(await page.locator('[data-workops-sprint]').count(), 2);
+  await page.getByRole('link', { name: 'Closed', exact: true }).click();
+  assert.equal(await page.locator('[data-workops-sprint]').count(), 2);
+  await page.getByRole('link', { name: 'All', exact: true }).click();
+  assert.equal(await page.locator('[data-workops-sprint]').count(), 25);
+  const inspected = await readSprint(planned.id);
+  await gql('mutation($id:UUID!,$version:Long!,$tasks:[UUID!]!){workOps{sprints{start(input:{sprintId:$id,expectedVersion:$version,committedTaskIds:$tasks}){id}}}}', { id: planned.id, version: inspected.version, tasks: [commitment.id, ...candidates.map(task => task.id)] });
+  await page.goto(`${base}/workops/sprints/${planned.id}`);
+  assert.equal(await page.locator('[data-workops-sprint-task]').count(), 25);
+  await page.getByRole('navigation', { name: 'Sprint task pages', exact: true }).getByRole('link', { name: 'Next', exact: true }).click();
+  await page.waitForURL(url => url.searchParams.get('memberOffset') === '25' && url.searchParams.get('tab') === 'tasks');
+  assert.equal(await page.locator('[data-workops-sprint-task]').count(), 3);
+  await page.getByRole('navigation', { name: 'Sprint task pages', exact: true }).getByRole('link', { name: 'Previous', exact: true }).click();
+  assert.equal(await page.locator('[data-workops-sprint-task]').count(), 25);
+}
