@@ -9,8 +9,6 @@ import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
 import bosca.security.service.AuthenticationContext
 import bosca.security.service.GroupEvaluator
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 
 /**
  * Marker type for the `Analytics.errors` GraphQL field — the entry point
@@ -43,30 +41,21 @@ class AnalyticsErrorsController(
         AnalyticsErrorsAuthorization.verifyCanRead(groupEvaluator, authentication)
         val effectiveOffset = (offset ?: 0L).coerceAtLeast(0L)
         val effectiveLimit = (limit ?: DEFAULT_PAGE_SIZE).coerceIn(1, MAX_PAGE_SIZE)
-        // Fetch edges and total in parallel; they share the same filter
-        // predicate and don't need a transaction around them (the list
-        // view tolerates a tiny skew between count and page contents).
-        return coroutineScope {
-            val edgesAsync = async {
-                errorGroupService.list(
-                    appId = filter?.appId,
-                    status = filter?.status,
-                    fatal = filter?.fatal,
-                    search = filter?.search,
-                    offset = effectiveOffset,
-                    limit = effectiveLimit,
-                )
-            }
-            val totalAsync = async {
-                errorGroupService.count(
-                    appId = filter?.appId,
-                    status = filter?.status,
-                    fatal = filter?.fatal,
-                    search = filter?.search,
-                )
-            }
-            ErrorGroupConnection(edges = edgesAsync.await(), total = totalAsync.await())
-        }
+        val edges = errorGroupService.list(
+            appId = filter?.appId,
+            status = filter?.status,
+            fatal = filter?.fatal,
+            search = filter?.search,
+            offset = effectiveOffset,
+            limit = effectiveLimit,
+        )
+        val total = errorGroupService.count(
+            appId = filter?.appId,
+            status = filter?.status,
+            fatal = filter?.fatal,
+            search = filter?.search,
+        )
+        return ErrorGroupConnection(edges = edges, total = total)
     }
 
     @Field

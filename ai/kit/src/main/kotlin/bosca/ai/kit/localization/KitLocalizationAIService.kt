@@ -18,6 +18,7 @@ import bosca.ai.kit.agents.KitSerializer
 import bosca.ai.kit.agents.KitSubAgent
 import bosca.ai.kit.agents.strategy.kitStructuredConfig
 import bosca.ai.kit.configuration.KitJson
+import bosca.di.ObjectProvider
 import bosca.localization.model.LocalizationAITranslationRequest
 import bosca.localization.model.LocalizationAITranslationResult
 import bosca.localization.service.LocalizationAIService
@@ -29,13 +30,13 @@ import kotlinx.serialization.encodeToString
 /** Kit implementation of localization's generic, read-only AI translation seam. */
 @ServiceImplementation
 class KitLocalizationAIService(
-    private val promptExecutor: PromptExecutor,
+    private val promptExecutor: ObjectProvider<PromptExecutor>,
     private val models: KitModels,
     private val json: KitJson,
 ) : LocalizationAIService {
 
     override suspend fun translate(request: LocalizationAITranslationRequest): List<LocalizationAITranslationResult> =
-        LocalizationTranslationAgent(promptExecutor, models.write, json)
+        LocalizationTranslationAgent(promptExecutor.get(), models.write, json)
             .run(request, UUID.random().toString())
             .translations
             .map { LocalizationAITranslationResult(UUID.parse(it.stringId), it.languageTag, it.text) }
