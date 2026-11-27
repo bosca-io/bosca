@@ -1,0 +1,12 @@
+<component tag="workops-release-list">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsReleaseListModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsReleaseListModel(initial.programId, initial.offset, initial.programs, initial.rows, initial.loaded, initial.feedback)</script>
+  <island name="releaseList" :key='initial.programId.ifBlank { "releases" }'><div data-workops-releases>
+    <form id="workops-release-refresh" hidden @submit="model.retry(ctx)" />
+    <workops-feedback id="release-list-0" :feedback="model.feedback" />
+    <if !model.loaded><p role="status">Releases have not been loaded. Refresh to try again.</p>
+    <else-if model.selectedProgram == null><empty-state title="Choose a program" message="Choose an available program." />
+    <else-if model.pageRows.isNotEmpty()><card :padded="false"><table-scroll label="Program releases"><table><caption>Releases for { model.selectedProgram?.name }</caption><thead><tr><th scope="col">Release</th><th scope="col">Status</th><th scope="col">Planned</th><th scope="col">Released</th></tr></thead><tbody><for row in model.pageRows><tr :data-workops-release="row.id"><td><a :href="row.href">{ row.name }</a><p>{ row.description }</p></td><td><badge :tone="row.statusTone">{ row.statusLabel }</badge><if row.statusError.isNotBlank()><p role="alert">{ row.statusError }</p><button :aria-label='"Retry status for " + row.name' @click="model.retryStatus(row.id, ctx)">Retry status</button></if></td><td><if row.planned.isNotBlank()><time :value="row.planned" format="MMM d, yyyy" /><else>—</if></td><td><if row.released.isNotBlank()><time :value="row.released" format="MMM d, yyyy" /><else>—</if></td></tr></for></tbody></table></table-scroll></card><else><empty-state title="This program has no releases yet. Build a release to begin." /></if>
+    <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Release pages" :summary='"Page " + (model.offset / 25 + 1) + " · " + model.rows.size + (if (model.rows.size == 1) " release" else " releases")' />
+  </div></island>
+</component>

@@ -1,0 +1,10 @@
+query WorkOpsReleaseEnvironments($program: UUID!) {
+  workOps { multiRepo { environments(programId: $program) { ...WorkOpsEnvironmentFields targetType } } }
+}
+query WorkOpsReleaseEnvironmentFacts($environment: UUID!, $release: UUID!) {
+  workOps { multiRepo {
+    environmentState(environmentId: $environment) { id projectId versionId targetKind status deployedAt }
+    environmentDrift(environmentId: $environment, releaseId: $release) { projectId deployedVersionId expectedVersionId driftType }
+    environmentCompatibleProjects(environmentId: $environment, releaseId: $release)
+  } }
+}

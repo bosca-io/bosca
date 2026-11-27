@@ -1,0 +1,20 @@
+<component tag="workops-release-picker-fields">
+  <prop name="projects" type="List<bosca.design.model.SchemaFormOption>" required />
+  <prop name="versions" type="List<bosca.design.model.SchemaFormOption>" required />
+  <prop name="projectId" type="String" default="" />
+  <prop name="versionId" type="String" default="" />
+  <prop name="projectName" type="String" default="Choose a project" />
+  <prop name="versionsEnabled" type="Boolean" default="false" />
+  <prop name="required" type="Boolean" default="true" />
+  <div class="release-picker-fields">
+    <field label="Project"><select name="projectId" label="Project" searchable :required="required"><option value="">Choose a project</option><for choice in projects><option :value="choice.value" :selected="choice.value == projectId" :disabled="choice.disabled">{ choice.label }</option></for></select></field>
+    <field label="Version" :hint='"Versions for: " + projectName'><select name="versionId" label="Version" searchable :required="required" :disabled="!versionsEnabled"><option value="">Choose a version</option><for choice in versions><option :value="choice.value" :selected="choice.value == versionId" :disabled="choice.disabled">{ choice.label }</option></for></select></field>
+  </div>
+  <script client scoped>
+    ctx.on(ctx.root, "change", event => {
+      if (event.target instanceof HTMLSelectElement && event.target.name === "projectId")
+        ctx.root.dispatchEvent(new Event("projectchange", { bubbles: true }));
+    });
+  </script>
+  <style scoped>.release-picker-fields { display: grid; gap: 14px; }</style>
+</component>

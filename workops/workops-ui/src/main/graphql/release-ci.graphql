@@ -1,0 +1,35 @@
+query WorkOpsReleasePlans($id: UUID!) {
+  workOps { crossProject { releasePlans(releaseId: $id) {
+    pipelineId pipelineName repositoryId repositorySlug triggerType environment promotesFrom
+    inputs { name type defaultValue description options required }
+    jobs { key environment approvalRequired needs requirements depth steps { name action } }
+  } } }
+}
+query WorkOpsReleaseExecutionAccess($id: UUID!) {
+  workOps { crossProject { releaseActionAccess(releaseId: $id) {
+    canManage repositories { repositoryId canEdit canExecute } environments { key canExecute }
+  } } }
+}
+query WorkOpsReleaseRunSummaries($id: UUID!) {
+  workOps { crossProject { releaseRuns(releaseId: $id) { runId status startedAt finishedAt durationMs } } }
+}
+query WorkOpsReleaseNativeRun($id: UUID!) {
+  git { pipelineRun(id: $id) {
+    id pipelineId repositoryId ref triggerType status number parameters created started finished durationSeconds
+    jobs {
+      id name status dependsOn requirements pipelineRequirements requirementsDeadline awaitingRequirements
+      environment approvalRequired approvedAt approvalComment awaitingApproval errorMessage attempt started finished
+      steps { id name ordinal status uses exitCode errorMessage started finished }
+    }
+  } }
+}
+mutation WorkOpsLaunchRelease($id: UUID!, $inputs: JSON) { workOps { crossProject { launchRelease(releaseId: $id, inputs: $inputs) } } }
+mutation WorkOpsPromoteRelease($id: UUID!, $input: PromoteWorkOpsReleaseInput!) { workOps { crossProject { promoteRelease(releaseId: $id, input: $input) } } }
+mutation WorkOpsPatchRelease($id: UUID!, $input: StartWorkOpsPatchReleaseInput!) { workOps { crossProject { startPatchRelease(releaseId: $id, input: $input) { ...WorkOpsReleaseFields } } } }
+mutation WorkOpsRollbackReleaseAttempt($id: UUID!) { workOps { crossProject { rollbackReleaseArtifacts(releaseId: $id) } } }
+mutation WorkOpsRollbackReleaseEnvironment($id: UUID!, $environment: String!, $revision: Int!) { workOps { crossProject { rollbackReleaseEnvironment(releaseId: $id, environmentKey: $environment, toRevision: $revision) } } }
+mutation WorkOpsCancelReleaseRun($id: UUID!) { git { cancelPipelineRun(id: $id) { id status } } }
+mutation WorkOpsCancelReleaseJob($id: UUID!) { git { cancelPipelineJob(jobId: $id) { id status } } }
+mutation WorkOpsRerunReleaseJob($id: UUID!) { git { rerunPipelineJob(jobId: $id) { id status } } }
+mutation WorkOpsApproveReleaseJob($id: UUID!, $comment: String) { git { approvePipelineJob(jobId: $id, comment: $comment) { id status } } }
+mutation WorkOpsRejectReleaseJob($id: UUID!, $comment: String) { git { rejectPipelineJob(jobId: $id, comment: $comment) { id status } } }
