@@ -1,0 +1,17 @@
+<component tag="workops-workflow-graph">
+  <prop name="workflow" type="bosca.workops.ui.WorkOpsWorkflowRecord" required />
+  <html:section class="workflow-graph" data-workops-workflow-graph>
+    <if workflow.states.isEmpty()><empty-state title="No states configured." compact /><else>
+      <card :padded="false"><table-scroll label="Workflow states"><table><caption>Workflow states</caption><thead><tr><th scope="col">State</th><th scope="col">Category</th><th scope="col">Initial</th></tr></thead><tbody>
+        <for state in workflow.orderedStates><tr :data-workops-workflow-state="state.id"><td><div class="state-name"><span>{ state.name }</span><badge :color="state.color" aria-hidden="true">●</badge></div></td><td><badge>{ state.category.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase) }</badge></td><td><if state.id == workflow.initialId><badge>Initial</badge><else>—</if></td></tr></for>
+      </tbody></table></table-scroll></card>
+    </if>
+    <if workflow.transitions.isEmpty()><empty-state title="No transitions configured." compact /><else>
+      <card :padded="false"><table-scroll label="Workflow transitions"><table><caption>Workflow transitions</caption><thead><tr><th scope="col">Transition</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Description</th></tr></thead><tbody>
+        <for transition in workflow.transitions><tr :data-workops-workflow-transition="transition.id"><td>{ transition.name }</td><td>{ workflow.sourceNames(transition) }</td><td>{ workflow.stateName(transition.to) }</td><td>{ transition.description }</td></tr></for>
+      </tbody></table></table-scroll></card>
+    </if>
+    <help-text>States and transitions are read-only here.</help-text>
+  </html:section>
+  <style scoped>.workflow-graph { display: grid; gap: 12px; min-width: 0; }.state-name { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }</style>
+</component>

@@ -1,0 +1,4 @@
+<page route="/workops/settings/workflows" requireAuth>
+  <script server provides="model">bosca.workops.ui.workOpsWorkflows()</script>
+  <workops-layout title="Workflows"><workops-workflows :initial="model" /></workops-layout>
+</page>

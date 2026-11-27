@@ -1,0 +1,8 @@
+query WorkOpsSlaCatalog {
+  workOps { sla {
+    slaPolicies { id name description goals { id name targetMinutes atRiskAtPercent startConditions stopConditions pauseConditions displayOrder } }
+    workingCalendars { id name description timeZone weeklyHours holidays }
+  } }
+}
+mutation WorkOpsSlaCreatePolicy($name: String!, $description: String) { workOps { sla { createSlaPolicy(name: $name, description: $description) { id } } } }
+mutation WorkOpsSlaCreateCalendar($input: WorkOpsWorkingCalendarInput!) { workOps { sla { createWorkingCalendar(input: $input) { id } } } }

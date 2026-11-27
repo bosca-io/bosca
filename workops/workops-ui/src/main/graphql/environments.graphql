@@ -1,0 +1,31 @@
+fragment WorkOpsEnvironmentTypeFields on WorkOpsEnvironmentType { id name description displayOrder version }
+fragment WorkOpsEnvironmentFields on WorkOpsEnvironment {
+  id key name description displayOrder requiresApproval autoPromote typeId promotionSourceIds version
+  permissions { groupId action }
+}
+query WorkOpsEnvironmentTypes { workOps { multiRepo { environmentTypes { ...WorkOpsEnvironmentTypeFields } } } }
+query WorkOpsEnvironmentPrograms { workOps { programs { all { id key name } } } }
+query WorkOpsProgramEnvironments($program: UUID!) {
+  workOps { multiRepo { environments(programId: $program) { ...WorkOpsEnvironmentFields } environmentTypes { ...WorkOpsEnvironmentTypeFields } } }
+}
+query WorkOpsEnvironmentGroups($offset: Long!) { security { groups { all(offset: $offset, limit: 100) { id name } } } }
+mutation WorkOpsCreateEnvironmentType($name: String!, $description: String, $order: Int) {
+  workOps { multiRepo { createEnvironmentType(name: $name, description: $description, displayOrder: $order) { ...WorkOpsEnvironmentTypeFields } } }
+}
+mutation WorkOpsUpdateEnvironmentType($id: UUID!, $name: String!, $description: String, $order: Int, $version: Long!) {
+  workOps { multiRepo { updateEnvironmentType(id: $id, name: $name, description: $description, displayOrder: $order, expectedVersion: $version) { ...WorkOpsEnvironmentTypeFields } } }
+}
+mutation WorkOpsDeleteEnvironmentType($id: UUID!) { workOps { multiRepo { deleteEnvironmentType(id: $id) } } }
+mutation WorkOpsCreateEnvironment($input: CreateWorkOpsEnvironmentInput!) {
+  workOps { multiRepo { createEnvironment(input: $input) { ...WorkOpsEnvironmentFields } } }
+}
+mutation WorkOpsUpdateEnvironment($id: UUID!, $input: UpdateWorkOpsEnvironmentInput!, $version: Long!) {
+  workOps { multiRepo { updateEnvironment(id: $id, input: $input, expectedVersion: $version) { ...WorkOpsEnvironmentFields } } }
+}
+mutation WorkOpsDeleteEnvironment($id: UUID!) { workOps { multiRepo { deleteEnvironment(id: $id) } } }
+mutation WorkOpsGrantEnvironment($id: UUID!, $group: UUID!) {
+  workOps { multiRepo { addEnvironmentPermission(id: $id, groupId: $group, action: EXECUTE) } }
+}
+mutation WorkOpsRevokeEnvironment($id: UUID!, $group: UUID!, $action: PermissionAction!) {
+  workOps { multiRepo { removeEnvironmentPermission(id: $id, groupId: $group, action: $action) } }
+}

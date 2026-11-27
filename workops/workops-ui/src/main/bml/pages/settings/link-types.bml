@@ -1,0 +1,4 @@
+<page route="/workops/settings/link-types" requireAuth>
+  <script server provides="model">bosca.workops.ui.workOpsGlobalCatalog("link-types")</script>
+  <workops-layout title="Work Ops settings"><workops-global-catalog :initial="model" /></workops-layout>
+</page>

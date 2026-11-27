@@ -1,0 +1,39 @@
+<component tag="workops-permissions">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsPermissionsModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsPermissionsModel(initial.kind, initial.entityId, initial.offset, initial.targetId, initial.entities, initial.choicesLoaded, initial.groups, initial.groupsLoaded, initial.rows, initial.loaded, initial.editing, initial.groupDraft, initial.actionDraft, initial.deleting, initial.resultId, initial.feedback, initial.choiceFeedback, initial.groupFeedback)</script>
+  <island name="permissions" :key='initial.kind + "-" + initial.entityId'><page-shell class="workops-page" fill>
+    <page-heading title="Permissions" subtitle="Manage group grants for portfolios, programs and projects."><form class="permission-selector" method="get" action="/workops/settings/permissions"><html:input type="hidden" name="kind" :value="model.kind" /><select submitOnChange :label="model.entityLabel" name="entityId" required><option value="">Choose a { model.kind }</option><if model.choicesLoaded><for entity in model.entities><option :value="entity.id" :selected="entity.id == model.entityId">{ entity.key } — { entity.name }</option></for></if></select><noscript><button type="submit">Choose { model.kind }</button></noscript></form><button data-bml-coalesce id="workops-permission-new" primary icon="plus" :disabled="model.selected == null || !model.loaded || !model.groupsLoaded" @click="model.open()">Add permission</button><icon-button data-bml-coalesce icon="refresh" label="Refresh permissions" @click="model.refresh(ctx)" /></page-heading>
+    <div class="workops-content" data-workops-permissions>
+      <tabs label="Permission scopes" :items="model.tabs" />
+      <if model.choiceFeedback.failed><alert>{ model.choiceFeedback.message }</alert></if>
+
+      <if !model.choicesLoaded><p role="status">Entity choices are unavailable. Refresh to try again.</p><else-if model.selected == null><empty-state :title='"Choose an available " + model.kind + " to view its direct grants."' compact /></if>
+      <if model.groupFeedback.failed><alert>{ model.groupFeedback.message }</alert></if>
+      <if !model.groupsLoaded><p role="status">Group choices are unavailable. Refresh to try again. Existing grants load separately.</p><else-if model.groups.isEmpty()><empty-state title="No groups are available." compact /></if>
+      <if model.selected != null>
+        <section-heading :title='"Direct grants for " + model.selected?.name'><if model.resultHref.isNotBlank()><button-link :href="model.resultHref" size="xs" icon="arrow-right">Show the added permission</button-link></if></section-heading>
+        <help-text>These rows show direct grants. <if model.kind == "project">Program and portfolio grants can also provide access.<else-if model.kind == "program">Portfolio grants can also provide access.</if> Administrator groups also provide access.</help-text>
+        <workops-feedback id="permissions-0" :feedback="model.feedback" />
+
+        <if !model.loaded><p role="status">Direct grants are unavailable. Refresh to try again.</p><else-if model.pageRows.isEmpty()><empty-state title="No direct grants visible" message="No direct grants are visible on this page. Manage access is required to view grants." compact /><else>
+          <card :padded="false"><table-scroll label="Direct permissions"><table><caption>Direct group grants</caption><thead><tr><th scope="col">Group</th><th scope="col">Action</th><th scope="col">Actions</th></tr></thead><tbody>
+            <for row in model.pageRows><tr :id='"workops-grant-" + row.key' :data-workops-permission="row.key"><td>{ row.groupName.ifBlank { "Group unavailable" } }</td><td><badge>{ row.action }</badge></td><td><icon-button icon="trash" data-bml-coalesce :label='"Remove " + row.action + " from " + row.groupName' @click="model.beginDelete(row.key)" /></td></tr></for>
+          </tbody></table></table-scroll></card>
+        </if>
+        <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Direct permission pages" />
+      </if>
+      <dialog data-bml-coalesce title="Add permission" triggerLabel="Add permission" :showTrigger="false" :forceOpen="model.editing" :completed="!model.editing" returnFocus="#workops-permission-new" @dialogdismiss="model.cancel()">
+        <form data-bml-coalesce class="modal-form" @submit="model.save(form.groupId, form.action, ctx)"><form-body padded class="modal-fields">
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert></if><if model.groupFeedback.failed><alert>{ model.groupFeedback.message }</alert><p>Group choices are unavailable. The selected draft is retained.</p></if>
+          <if model.feedback.failed || model.groupFeedback.failed><form-actions align="start"><button icon="refresh" data-bml-coalesce @click="model.reloadDraft(form.groupId, form.action, ctx)">Retry loading groups</button></form-actions></if>
+          <field label="Group" hint="Choose a system group."><select label="Group" name="groupId" searchable required><option value="">Choose a group</option><for group in model.groupChoices><option :value="group.value" :selected="group.value == model.groupDraft">{ group.label }</option></for></select></field>
+          <field label="Action"><select label="Action" name="action" required><for action in model.actions><option :value="action.value" :selected="action.value == model.actionDraft">{ action.label }</option></for></select></field>
+        </form-body><form-actions bordered class="modal-footer"><button data-dialog-close @click="model.cancel()">Cancel</button><button primary type="submit">Add permission</button></form-actions></form>
+      </dialog>
+      <dialog data-bml-coalesce title="Remove permission" triggerLabel="Remove permission" :showTrigger="false" :forceOpen="model.deleting != null" :completed="model.deleting == null" returnFocus="#workops-permission-new" @dialogdismiss="model.cancelDelete()">
+        <form data-bml-coalesce @submit="model.delete(form.confirmed, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><p>Remove { model.deleting?.action } from { model.deleting?.groupName } on this { model.kind }?</p><checkbox name="confirmed" label="Confirm removal" required /></form-body><form-actions bordered><button data-dialog-close @click="model.cancelDelete()">Cancel</button><button primary type="submit">Remove permission</button></form-actions></form>
+      </dialog>
+    </div>
+  </page-shell></island>
+  <style scoped>.permission-selector { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }</style>
+</component>

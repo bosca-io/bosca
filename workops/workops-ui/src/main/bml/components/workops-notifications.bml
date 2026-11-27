@@ -1,0 +1,34 @@
+<component tag="workops-notifications">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsNotificationsModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsNotificationsModel(initial.tab, initial.schemeId, initial.offset, initial.schemes, initial.loaded, initial.preferences, initial.feedback)</script>
+  <island name="notificationSettings" :key="initial.tab"><page-shell class="workops-page" fill>
+    <page-heading title="Notifications" subtitle="Notification schemes and delivery preferences.">
+      <if model.tab == "preferences"><button primary type="submit" form="workops-notification-preference-save" :disabled="!model.preferences.preferencesLoaded">Save preferences</button><icon-button icon="refresh" label="Refresh preferences" data-bml-coalesce @click="model.retryPreferences(ctx)" />
+      <else><form class="scheme-selector" method="get" action="/workops/settings/notifications"><html:input type="hidden" name="tab" value="schemes" /><select submitOnChange name="schemeId" label="Scheme" required><option value="">Choose a scheme</option><for scheme in model.schemes><option :value="scheme.id" :selected="scheme.id == model.schemeId">{ scheme.name }</option></for></select><noscript><button type="submit">Choose scheme</button></noscript></form><icon-button icon="refresh" label="Refresh schemes" data-bml-coalesce @click="model.retry(ctx)" /></if>
+    </page-heading>
+    <div class="workops-content" data-workops-notification-settings>
+      <tabs label="Notification settings" :items="model.tabs" />
+      <if model.tab == "preferences">
+        <workops-feedback id="notifications-0" :feedback="model.preferences.feedback" />
+        <if !model.preferences.preferencesLoaded><p role="status">Preferences are unavailable. Refresh to try again.</p><else>
+          <card><form id="workops-notification-preference-save" data-bml-coalesce @submit="model.savePreferences(form.attributes, ctx)"><form-body><workops-notification-fields :value="model.preferences.preferenceValue" /></form-body></form></card>
+        </if>
+      <else>
+        <workops-feedback id="notifications-1" :feedback="model.feedback" />
+        <if !model.loaded><p role="status">Notification schemes are unavailable. Refresh to try again.</p><else-if model.schemes.isEmpty()><empty-state title="No notification schemes configured." /><else>
+
+          <if model.selected == null><empty-state title="The selected scheme is unavailable. Choose another scheme." /><else>
+            <section-heading :title="model.selected?.name.orEmpty()" :subtitle="model.selected?.description.orEmpty()" /><help-text>Scheme recipients are read-only here. Preferences control your delivery channels.</help-text>
+            <if model.selected?.available != true><alert>Recipient data is unavailable for this scheme.</alert><else>
+              <card :padded="false"><table-scroll label="Notification recipients"><table><caption>Recipients by event</caption><thead><tr><th scope="col">Event</th><th scope="col">Recipients</th></tr></thead><tbody>
+                <for event in model.pageEvents><tr :data-workops-notification-event="event.key"><td>{ event.label }</td><td><if !event.available>Recipients unavailable<else-if event.recipients.isEmpty()>None configured<else><div class="recipient-list"><for recipient in event.recipients><badge>{ recipient }</badge></for></div></if></td></tr></for>
+              </tbody></table></table-scroll></card>
+              <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Notification event pages" />
+            </if>
+          </if>
+        </if>
+      </if>
+    </div>
+  </page-shell></island>
+  <style scoped>.scheme-selector { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }.recipient-list { display: flex; flex-wrap: wrap; gap: 6px; }</style>
+</component>

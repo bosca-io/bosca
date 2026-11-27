@@ -1,0 +1,4 @@
+<page route="/workops/settings/permissions" requireAuth>
+  <script server provides="model">bosca.workops.ui.workOpsPermissions()</script>
+  <workops-layout title="Permissions"><workops-permissions :initial="model" /></workops-layout>
+</page>
