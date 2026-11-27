@@ -13,6 +13,17 @@ import bosca.security.graphql.Security
 
 @TypeController
 class QueryController : GraphQLController<Query> {
+    @Field fun analytics() = bosca.analytics.graphql.Analytics
+
+    @Field fun workOps() = bosca.workops.controller.WorkOps
+
+    @Field fun formSchemas() = bosca.forms.graphql.FormSchemas
+    @Field fun scripts() = bosca.scripting.graphql.Scripts
+
+    @Field fun calendars() = bosca.calendar.graphql.Calendars
+
+    @Field fun languages() = bosca.languages.graphql.Languages
+
     @Field fun content() = bosca.content.graphql.Content
 
     @Field fun collaboration() = bosca.collaboration.graphql.Collaboration

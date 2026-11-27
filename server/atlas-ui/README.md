@@ -3,7 +3,7 @@
 Shared BML authentication and landing routes for Bosca Atlas. The module owns `/`, `/login`,
 `/auth/signup`, `/auth/forgot`, `/auth/reset-password`, `/auth/verify`, and `/auth/link/confirm`,
 using the neutral `bml-auth-ui` library for forms and SDK flows and the design library's
-`profile-menu` tag for identity, appearance and sign-out. The authenticated root route is the post-login home launcher, with Git, artifacts and System entry points.
+`profile-menu` tag for identity, appearance and sign-out. The authenticated root route is the post-login home launcher, with WorkOps, Git, artifacts and System entry points.
 The subsystem header opens Studio-style categorized navigation with search, recent items, and keyboard selection.
 The design library owns the shared switcher and launcher components; `AtlasSubsystems` in this module
 defines Atlas's systems, routes, descriptions, icons, and colors. Home, Git, and artifacts use those

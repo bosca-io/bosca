@@ -30,6 +30,22 @@ import kotlinx.serialization.json.Json
 
 @Providers
 class Configuration {
+    /** Selects the existing Analytics stream backend using the platform's configuration convention. */
+    @Provider(singleton = true)
+    suspend fun liveSessions(
+        application: BoscaApplication,
+        natsConnectionPool: ObjectProvider<NatsConnectionPool>,
+        redisConnectionPool: ObjectProvider<RedisConnectionPool>,
+        json: Json,
+    ): bosca.analytics.livesessions.LiveSessionsService {
+        val type = application.environment.config.propertyOrNull("liveSessions.type")?.getString()
+            ?: application.environment.config.propertyOrNull("pubsub.type")?.getString()
+        return when (type) {
+            "nats" -> bosca.analytics.livesessions.nats.NatsLiveSessions(natsConnectionPool.get(), json)
+            else -> bosca.analytics.livesessions.redis.RedisLiveSessions(redisConnectionPool.get(), json)
+        }
+    }
+
     @Provider(name = "search-index")
     fun searchIndexInstaller(
         storageSystemService: StorageSystemService,
@@ -92,6 +108,9 @@ class Configuration {
 
     @Provider(singleton = true)
     fun jobEnqueueEventChannel(): JobEnqueueEventChannel = DefaultJobEnqueueEventChannel()
+
+    @Provider(singleton = true, name = "workops")
+    fun workOpsJobQueue(factory: JobQueueFactory): JobQueue = factory.create("workops")
 
 
     /** Selects the site's pub/sub backend for Git events shared with the server and runner. */

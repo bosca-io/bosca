@@ -6,6 +6,8 @@ import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.server.netty.NettyServerEngine
 import kotlinx.coroutines.runBlocking
+import bosca.di.provide
+import bosca.pubsub.PubSubService
 
 internal fun startAtlasServer(args: Array<String>, configure: BoscaApplication.() -> Unit = {}) {
     val configPath = args.firstOrNull { it.startsWith("-config=") }?.substringAfter('=')
@@ -39,7 +41,7 @@ internal fun startAtlasServer(args: Array<String>, configure: BoscaApplication.(
         val prefix = config.propertyOrNull("atlas.ui.auth-cookie-prefix")
             ?.getString()?.takeIf(String::isNotBlank)
         try {
-            uiApplication.installAtlasUiServer("http://127.0.0.1:$boundApiPort/graphql", prefix)
+            uiApplication.installAtlasUiServer("http://127.0.0.1:$boundApiPort/graphql", prefix, runBlocking { provide<PubSubService>() })
             uiApplication.freezeMiddleware()
             NettyServerEngine(uiApplication, uiPort)
         } catch (failure: Throwable) {

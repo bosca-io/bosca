@@ -5,7 +5,6 @@ import bosca.test.resources.SharedNatsContainer
 import bosca.test.resources.SharedPostgreSQLContainer
 import bosca.test.resources.SharedValkeyContainer
 import java.io.File
-import java.net.ServerSocket
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -22,16 +21,24 @@ internal class AtlasProcessFixture(
     private val databaseJdbcUrl: String? = null,
     private val databaseUsername: String? = null,
     private val databaseSecret: String? = null,
+    private val imageRenditions: Boolean = true,
 ) : AutoCloseable {
     private val postgres = SharedPostgreSQLContainer().withDatabaseName("atlas_git")
     private val nats = SharedNatsContainer()
     private val redis = SharedValkeyContainer()
     private val search = SharedMeilisearchContainer()
     fun searchIndex(name: String): String = search.indexUid(name)
+    /** Publishes through the production Analytics service inside this fixture's isolated account. */
+    fun publishLiveSession(appId: String, session: bosca.analytics.model.LiveSession) = kotlinx.coroutines.runBlocking {
+        bosca.analytics.livesessions.nats.NatsLiveSessions(nats.newConnectionPool(2), Json)
+            .publish(appId, session)
+    }
     val directory = kotlin.io.path.createTempDirectory("atlas-git-").toFile()
     private val processes = mutableListOf<Process>()
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
     private val workspace = File(requireNotNull(System.getProperty("workspaceRoot")))
+    // Let the agent finish its shutdown hook before the engine halts an instrumented JVM.
+    private val drainTimeoutMillis = if (System.getProperty("atlas.workops.coverage.agent").isNullOrBlank()) 0 else 5_000
 
     private val jdbcUrl get() = databaseJdbcUrl ?: postgres.jdbcUrl
     private val username get() = databaseUsername ?: postgres.username
@@ -46,30 +53,35 @@ internal class AtlasProcessFixture(
     }
 
     fun start(name: String, flags: Map<String, String> = emptyMap(), mainClass: String = "bosca.atlas.server.ApplicationKt", excludedPackages: Set<String> = emptySet()): Pair<String, String> {
+        val platform = mainClass == "bosca.server.ApplicationKt"
         val apiPort = freePort()
         var uiPort = freePort()
         while (apiPort == uiPort) uiPort = freePort()
         val api = "http://localhost:$apiPort"
         val ui = "http://localhost:$uiPort"
-        val template = File(workspace, "server/atlas-server/src/main/resources/atlas-server.yaml").readText()
+        val template = File(workspace, if (platform) "server/bosca-server/src/main/resources/application.yaml"
+            else "server/atlas-server/src/main/resources/atlas-server.yaml").readText()
             .lineSequence().filterNot { line -> excludedPackages.any { line == "  - \"$it\"" } }.joinToString("\n")
+            .let { if (imageRenditions) it else it.replace(Regex("(?m)^      sizes:\\n(?:        .*\\n)*"), "      sizes: []\n") }
+            .let { if (platform) it.replace(Regex("(?m)^runners:\\n  enabled:\\n(?:    - .*\\n)*"), "runners:\n  enabled: []\n") else it }
         val storageType = "    type: \"\$STORAGE_TYPE:s3\""
         require(storageType in template)
         val config = File(directory, "$name.yaml")
         val passkeyOrigins = "    - \"\${WEBAUTHN_EXTRA_ORIGIN:}\""
-        // Requests have completed before fixture teardown; no deployment drain window is needed.
-        config.writeText(template.replace("\n  server:\n", "\n  server:\n    drain-timeout-ms: 0\n")
-            .replace("\n    server:\n", "\n    server:\n      drain-timeout-ms: 0\n")
+        config.writeText(template.replace("\n  server:\n", "\n  server:\n    drain-timeout-ms: $drainTimeoutMillis\n")
+            .replace("\n    server:\n", "\n    server:\n      drain-timeout-ms: $drainTimeoutMillis\n")
             .replace(passkeyOrigins, "    - \"$ui\"\n    - \"${flags["WEBAUTHN_EXTRA_ORIGIN"].orEmpty()}\"").replace(storageType,
             "    type: fs\n    basePath: ${JsonPrimitive(File(directory, "storage").absolutePath)}")
             .replace("cookie-prefixes: []", "cookie-prefixes:\n    - prefix: _atlas_test\n      domains: [localhost]") +
-            "\ninitialization:\n  password:\n    admin: atlas-admin-password\n    sa: atlas-sa-password\n")
+            if (platform) "" else "\ninitialization:\n  password:\n    admin: atlas-admin-password\n    sa: atlas-sa-password\n")
         val log = File(directory, "$name.log")
-        val process = ProcessBuilder(command("ATLAS_SERVER_TEST_BINARY", mainClass, config))
-            .directory(directory).apply {
+        val process = processBuilder(if (platform) "BOSCA_SERVER_TEST_BINARY" else "ATLAS_SERVER_TEST_BINARY", mainClass, config)
+            .apply {
             environment().putAll(mapOf(
                 "ATLAS_HTTP_PORT" to apiPort.toString(), "ATLAS_UI_HTTP_PORT" to uiPort.toString(),
                 "ATLAS_DEVELOPMENT" to "true", "BML_AUTH_COOKIE_PREFIX" to "_atlas_test",
+                "BOSCA_SERVER_PORT" to apiPort.toString(), "BOSCA_DEVELOPMENT" to "true",
+                "INIT_ADMIN_PASSWORD" to "atlas-admin-password", "INIT_SA_PASSWORD" to "atlas-sa-password",
                 "DATABASE_URL" to jdbcUrl, "DATABASE_USER" to username,
                 "DATABASE_PASSWORD" to password, "NATS_HOST" to nats.url.removePrefix("nats://"),
                 "NATS_USERNAME" to nats.username, "NATS_PASSWORD" to nats.password, "NATS_TOKEN" to "",
@@ -77,7 +89,8 @@ internal class AtlasProcessFixture(
                 "REDIS_PORT" to redis.firstMappedPort.toString(), "REDIS_DATABASE" to redis.database.toString(),
                 "REDIS_NAMESPACE" to redis.namespace,
                 "MEILISEARCH_URL" to search.url, "MEILISEARCH_API_KEY" to search.apiKey,
-                "MEILISEARCH_INDEX_PREFIX" to search.namespace, "APP_URL" to ui, "GIT_URL" to api,
+                "MEILISEARCH_INDEX_PREFIX" to "${search.namespace}_", "APP_URL" to ui, "GIT_URL" to api,
+                "STORAGE_URL_PREFIX" to api, "STORAGE_URL_UPLOAD_PREFIX" to api,
                 "GIT_UI_URL" to ui, "APP_ALLOWED_ORIGIN" to ui, "OAUTH2_ALLOWED_REDIRECT" to ui,
                 "SECURITY_AUTO_VERIFY" to "true", "GRAPHQL_INTROSPECTION_ENABLED" to "true",
                 "WELCOME_EMAIL_URL" to "", "ATLAS_RUNNER_CONCURRENCY" to "2",
@@ -120,7 +133,15 @@ internal class AtlasProcessFixture(
         val builder = HttpRequest.newBuilder(URI.create(origin + path)).timeout(Duration.ofSeconds(15))
         token?.let { builder.header("Authorization", "Bearer $it") }
         if (body != null) builder.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body))
-        return http.send(builder.build(), HttpResponse.BodyHandlers.ofString())
+        return atlasFixtureResponse(http, builder.build())
+    }
+
+    /** Independent HTTP requests let production Content transactions race on the same document. */
+    fun binaryRequest(origin: String, path: String, method: String, body: ByteArray, token: String): java.util.concurrent.CompletableFuture<HttpResponse<ByteArray>> {
+        val request = HttpRequest.newBuilder(URI.create(origin + path)).timeout(Duration.ofSeconds(30))
+            .header("Authorization", "Bearer $token").header("Content-Type", "application/octet-stream")
+            .method(method, HttpRequest.BodyPublishers.ofByteArray(body)).build()
+        return http.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray())
     }
 
     /** Seeds source content in the disposable database for read-only indexing-preview checks. */
@@ -133,7 +154,7 @@ internal class AtlasProcessFixture(
         }
     }
 
-    fun searchIndexUid(name: String): String = search.namespace + name
+    fun searchIndexUid(name: String): String = search.indexUid(name)
 
     fun awaitAdminProfileSearchFilter(origin: String, token: String) {
         val indexUid = searchIndexUid("administration")
@@ -179,20 +200,24 @@ internal class AtlasProcessFixture(
 
     fun startUi(api: String, origin: String, artifactsEndpoint: String? = null, publicArtifactsOrigin: String = ""): String {
         val port = URI.create(origin).port
-        val config = File(directory, "ui.yaml")
+        val config = File(directory, "ui-$port.yaml")
         config.writeText("""
             bosca:
               server:
                 port: $port
-                drain-timeout-ms: 0
+                drain-timeout-ms: $drainTimeoutMillis
             bml:
               graphqlEndpoint: "$api/graphql"
               artifactsEndpoint: "${artifactsEndpoint.orEmpty()}"
               authCookiePrefix: "_atlas_test"
+            nats:
+              url: "${nats.url}"
+              username: "${nats.username}"
+              password: "${nats.password}"
         """.trimIndent())
-        val log = File(directory, "ui.log")
-        val process = ProcessBuilder(command("ATLAS_UI_TEST_BINARY", "bosca.atlas.ui.server.ApplicationKt", config))
-            .directory(directory).apply {
+        val log = File(directory, "ui-$port.log")
+        val process = processBuilder("ATLAS_UI_TEST_BINARY", "bosca.atlas.ui.server.ApplicationKt", config)
+            .apply {
             environment().putAll(mapOf("ATLAS_ARTIFACTS_URL" to publicArtifactsOrigin, "BML_ARTIFACTS_ENDPOINT" to ""))
         }.redirectErrorStream(true).redirectOutput(log).start()
         processes += process
@@ -230,22 +255,31 @@ internal class AtlasProcessFixture(
     fun logs(): String = directory.listFiles().orEmpty().filter { it.extension == "log" }
         .joinToString("\n") { "${it.name}:\n${it.readText().takeLast(8_000)}" }
 
-    private fun command(binaryVariable: String, mainClass: String, config: File): List<String> {
+    private fun processBuilder(binaryVariable: String, mainClass: String, config: File): ProcessBuilder {
         val binary = System.getenv(binaryVariable)?.takeIf(String::isNotBlank)?.let(::File)
+        var workingDirectory = directory
         val launcher = if (binary == null) {
             listOf(File(System.getProperty("java.home"), "bin/java").absolutePath,
-                "--enable-native-access=ALL-UNNAMED", "-cp",
-                requireNotNull(System.getProperty(if (mainClass in setOf("bosca.atlas.server.AtlasBibleFixtureKt", "bosca.atlas.server.AtlasHubSpotFixtureKt")) "atlasTestClasspath" else "atlasServerClasspath")), mainClass)
+                "--enable-native-access=ALL-UNNAMED") + atlasWorkOpsCoverageArguments(directory, config.nameWithoutExtension) + listOf("-cp",
+                requireNotNull(System.getProperty(if (mainClass in setOf("bosca.server.ApplicationKt", "bosca.atlas.server.AtlasBibleFixtureKt", "bosca.atlas.server.AtlasHubSpotFixtureKt", "bosca.atlas.server.AtlasWorkOpsFormsFixtureKt", "bosca.atlas.server.AtlasReleaseNotesFixtureKt")) "atlasTestClasspath" else "atlasServerClasspath")), mainClass)
         } else {
+            require(System.getProperty("atlas.workops.coverage.agent").isNullOrBlank()) { "JVM coverage cannot instrument a native fixture executable." }
             require(binary.isFile && binary.canExecute()) { "Invalid native fixture executable: $binary" }
-            val copied = File(directory, binary.name)
+            workingDirectory = File(directory, "${binary.name}-runtime").apply { check(mkdirs() || isDirectory) }
+            val copied = File(workingDirectory, binary.name)
             if (!copied.exists()) {
                 binary.copyTo(copied)
                 check(copied.setExecutable(true)) { "Cannot run native fixture executable: $copied" }
             }
+            binary.parentFile.listFiles().orEmpty().filter {
+                it.isFile && (it.extension in setOf("so", "dylib", "dll", "jnilib") || ".so." in it.name)
+            }.forEach {
+                val target = File(workingDirectory, it.name)
+                if (!target.exists()) it.copyTo(target)
+            }
             listOf(copied.absolutePath)
         }
-        return launcher + "-config=${config.absolutePath}"
+        return ProcessBuilder(launcher + "-config=${config.absolutePath}").directory(workingDirectory)
     }
 
     override fun close() {
@@ -269,8 +303,9 @@ internal class AtlasProcessFixture(
             }
         }
         assertTrue(failed.isEmpty(), failed.joinToString() + "\n" + logs())
+        atlasValidateWorkOpsCoverage(directory)
         directory.deleteRecursively()
     }
 
-    private fun freePort() = ServerSocket(0).use { it.localPort }
+    private fun freePort() = atlasFixturePort()
 }

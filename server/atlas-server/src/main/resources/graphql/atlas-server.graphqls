@@ -8,11 +8,13 @@ type Query {
   security: Security!
   profiles: Profiles!
   search: Search!
+  languages: Languages!
 }
 
 type Mutation {
   security: SecurityMutation!
   profiles: ProfilesMutation!
+  forms: FormsMutation!
 }
 
 # Git and Pipelines contribute the subscription fields through their domain schemas.

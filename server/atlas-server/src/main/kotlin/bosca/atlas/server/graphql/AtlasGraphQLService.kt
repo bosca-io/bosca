@@ -8,6 +8,7 @@ import bosca.graphql.SchemaRegistry
 import bosca.graphql.dispatcher.Dispatcher
 import bosca.graphql.dispatcher.DispatchersRegistrar
 import bosca.graphql.dispatcher.DispatchersRegistry
+import bosca.graphql.DispatcherRuntimeType
 import bosca.graphql.dispatcher.GitCiDispatchersRegistrar
 import bosca.graphql.dispatcher.GitDispatchersRegistrar
 import bosca.graphql.dispatcher.AtlasDispatchersRegistrar
@@ -19,7 +20,7 @@ import bosca.pipelines.configuration.PipelinesSchemaRegistrar
 import bosca.scheduler.configuration.SchedulerSchemaRegistrar
 import bosca.security.configuration.SecuritySchemaRegistrar
 
-/** Atlas composes Git, CI, registry administration, and their supporting API namespaces. */
+/** Atlas composes Git, CI, registry administration, WorkOps and their supporting API namespaces. */
 class AtlasGraphQLService(introspectionEnabled: Boolean) :
     GraphQLService(AtlasSchema, introspectionEnabled) {
     override val dispatchersRegistrar =
@@ -29,11 +30,21 @@ class AtlasGraphQLService(introspectionEnabled: Boolean) :
 
     override suspend fun initialize(builder: RuntimeWiringBuilder) {
         SchemaRegistry.initialize(*atlasSchemaRegistrars())
+        builder.type(DispatcherRuntimeType("CollectionItem"))
+            .type(DispatcherRuntimeType("ContentItem"))
+            .type(DispatcherRuntimeType("ContentRelationship"))
         DispatchersRegistry.register(
             builder,
             SecurityDispatchersRegistrar(),
             bosca.graphql.dispatcher.BackupDispatchersRegistrar(),
             IdentityDispatchersRegistrar(),
+            bosca.graphql.dispatcher.ContentDispatchersRegistrar(),
+            bosca.graphql.dispatcher.CommentsDispatchersRegistrar(),
+            bosca.graphql.dispatcher.CalendarDispatchersRegistrar(),
+            bosca.graphql.dispatcher.LanguagesDispatchersRegistrar(),
+            bosca.graphql.dispatcher.FormsDispatchersRegistrar(),
+            bosca.graphql.dispatcher.ScriptingDispatchersRegistrar(),
+            bosca.graphql.dispatcher.WorkOpsDispatchersRegistrar(),
             bosca.graphql.dispatcher.ConfigurationDispatchersRegistrar(),
             PipelinesDispatchersRegistrar(),
             SchedulerDispatchersRegistrar(),
@@ -51,6 +62,13 @@ class AtlasGraphQLService(introspectionEnabled: Boolean) :
 internal fun atlasSchemaRegistrars() =
     arrayOf(
         AtlasSchemaRegistrar(),
+        bosca.configuration.ContentSchemaRegistrar(),
+        bosca.comments.configuration.CommentsSchemaRegistrar(),
+        bosca.calendar.configuration.CalendarSchemaRegistrar(),
+        bosca.languages.configuration.LanguagesSchemaRegistrar(),
+        bosca.forms.configuration.FormsSchemaRegistrar(),
+        bosca.scripting.configuration.ScriptingSchemaRegistrar(),
+        bosca.workops.configuration.WorkOpsSchemaRegistrar(),
         bosca.postgres.admin.graphql.PostgresAdminSchemaRegistrar(),
         bosca.nats.admin.graphql.NatsAdminSchemaRegistrar(),
         bosca.meilisearch.admin.graphql.MeilisearchAdminSchemaRegistrar(),
