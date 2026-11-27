@@ -1,0 +1,14 @@
+fragment WorkOpsReleaseStoreStateFields on WorkOpsReleaseStoreState {
+  projectId versionId environmentId environmentKey store applicationId appVersion buildNumber track rolloutPercentage
+  releaseState reviewState betaReviewState buildProcessingState phasedReleaseState testFlightGroups
+  testFlightCrashFeedback { id comment email deviceModel osVersion createdAt }
+}
+fragment WorkOpsReleaseStoreObservationFields on WorkOpsReleaseStoreObservation {
+  store applicationId appVersion telemetryType observedAt payload
+}
+query WorkOpsReleaseStoreTelemetry($release: UUID!) {
+  workOps { multiRepo { releaseStoreTelemetry(releaseId: $release) {
+    states { ...WorkOpsReleaseStoreStateFields }
+    observations { ...WorkOpsReleaseStoreObservationFields }
+  } } }
+}

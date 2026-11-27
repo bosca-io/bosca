@@ -1,0 +1,37 @@
+<component tag="workops-release-health-view">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsReleaseHealthModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsReleaseHealthModel(initial.id, initial.readContext, initial.sources, initial.applications, initial.services)</script>
+  <island name="releaseHealth" :key="initial.id"><card :padded="false"><html:section class="release-health" data-workops-release-health :data-read-context="model.readContext">
+    <section-heading title="Application and service health" subtitle="Session, error-group and HTTP metrics from the release's visible project links."><icon-button size="md" icon="refresh" label="Refresh health" data-bml-coalesce @click='model.refreshContext("", ctx)' /></section-heading>
+    <form-body padded>
+    <p ref="pollError" role="status" aria-live="polite" />
+    <if !model.sources.loaded><alert>Telemetry sources are unavailable. Previously loaded metrics may be stale. { model.sources.feedback.message }</alert></if>
+    <if model.sources.loaded && model.sources.unavailableProjects != 0><p>Sources for { model.sources.unavailableProjects } project(s) are unavailable.</p></if>
+    <if model.sources.loaded && model.applications.isEmpty() && model.services.isEmpty()><empty-state title="No analytics sources" message="No visible analytics applications or services are linked to this release's projects. Configure them on each project's Analytics tab." compact /></if>
+    <div class="release-health-cards">
+      <for app in model.applications><card :title="app.identifier" :data-workops-release-application="app.identifier">
+        <p class="health-source">{ app.projects.joinToString(" · ") } <badge :tone="app.tone">Application</badge></p>
+        <if app.sessionFeedback.failed><alert>Session metrics unavailable: { app.sessionFeedback.message }</alert></if><if app.errorFeedback.failed><alert>Error groups unavailable: { app.errorFeedback.message }</alert></if>
+        <dl class="health-facts"><div><dt>Recent active sessions</dt><dd>{ app.sessions?.value?.toString() ?: "Unavailable" } <if !app.sessionsLoaded && app.sessions != null><badge tone="warning">Stale</badge></if></dd></div><div><dt>Open error groups</dt><dd>{ app.openGroups?.toString() ?: "Unavailable" } <if !app.errorsLoaded && app.openGroups != null><badge tone="warning">Stale</badge></if></dd></div><div><dt>Fatal error groups</dt><dd>{ app.fatalGroups?.toString() ?: "Unavailable" }</dd></div></dl>
+        <p class="health-caption">Sessions use the peak of the current and previous 15-minute intervals.</p>
+        <if app.sessionsChecked.isNotBlank()><p class="health-caption">Sessions checked <time :value="app.sessionsChecked" relative /></p></if><if app.errorsChecked.isNotBlank()><p class="health-caption">Error groups checked <time :value="app.errorsChecked" relative /></p></if><if app.latestError.isNotBlank()><p class="health-caption">Latest open error <time :value="app.latestError" /></p></if>
+        <div class="health-chart"><chart :id='"release-app-health-" + bosca.workops.ui.workOpsEncode(model.id) + "-" + bosca.workops.ui.workOpsEncode(app.identifier)' :label='"Session history for " + app.identifier' :config="app.chart" :error='if (app.sessions == null) app.sessionFeedback.message else ""' :preserveKey='"release-app-health-" + model.id + "-" + app.identifier' /></div>
+      </card></for>
+      <for service in model.services><card :title="service.identifier" :data-workops-release-service="service.identifier">
+        <p class="health-source">{ service.projects.joinToString(" · ") } <badge :tone="service.tone">HTTP service</badge></p>
+        <if service.feedback.failed><alert>HTTP metrics unavailable: { service.feedback.message }</alert></if>
+        <dl class="health-facts"><div><dt>HTTP error rate</dt><dd>{ service.errorRateLabel } <if !service.loaded && service.total != null><badge tone="warning">Stale</badge></if></dd></div><div><dt>2xx responses</dt><dd>{ service.success?.value?.toString() ?: "Unavailable" }</dd></div><div><dt>4xx responses</dt><dd>{ service.client?.value?.toString() ?: "Unavailable" }</dd></div><div><dt>5xx responses</dt><dd>{ service.server?.value?.toString() ?: "Unavailable" }</dd></div></dl>
+        <p class="health-caption">Last hour · one-minute intervals · errors include 4xx and 5xx responses.</p><if service.loaded && service.total == 0L><empty-state title="No responses were reported in this window." compact /></if>
+        <if service.checked.isNotBlank()><p class="health-caption">HTTP metrics checked <time :value="service.checked" relative /></p></if>
+        <div class="health-chart"><chart :id='"release-service-health-" + bosca.workops.ui.workOpsEncode(model.id) + "-" + bosca.workops.ui.workOpsEncode(service.identifier)' :label='"HTTP error-rate history for " + service.identifier' :config="service.chart" :error='if (service.total == null) service.feedback.message else ""' :preserveKey='"release-service-health-" + model.id + "-" + service.identifier' /></div>
+      </card></for>
+    </div>
+    </form-body>
+    <script client scoped>
+      import { workOpsReleaseRefresh } from "@client/helpers/release-refresh";
+      const owner = ctx.root.matches("[data-workops-release-health]") ? ctx.root : ctx.root.querySelector<HTMLElement>("[data-workops-release-health]");
+      workOpsReleaseRefresh(ctx, { initialRevision: owner?.getAttribute("data-read-context") ?? undefined, contextual: true });
+    </script>
+  </html:section></card></island>
+  <style scoped>.release-health { min-width: 0; }.release-health p:empty { display: none; }.release-health-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; min-width: 0; }.health-facts { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }.health-facts dt, .health-caption { color: var(--fg-2); font-size: 12px; }.health-source { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }.health-facts dd { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font-variant-numeric: tabular-nums; }.health-chart { --chart-height: 180px; min-width: 0; }p { overflow-wrap: anywhere; }</style>
+</component>

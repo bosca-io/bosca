@@ -1,0 +1,14 @@
+<component tag="workops-release-live">
+  <prop name="id" type="String" required />
+  <prop name="revision" type="String" required />
+  <div class="release-live-loader">
+    <island name="releaseLiveDeferred" render="deferred" :releaseId="id" :readRevision="revision">
+      <prop name="releaseId" type="String" required />
+      <prop name="readRevision" type="String" required />
+      <fallback><card><div><p class="live-loading" role="status">Loading live session sources…</p><div class="live-load-error"><p role="alert">Live session sources could not be loaded.</p><button data-bml-deferred-retry>Retry live sources</button></div></div></card></fallback>
+      <script server provides="initial">bosca.workops.ui.workOpsReleaseLive(releaseId, readRevision)</script>
+      <workops-release-live-view :initial="initial" />
+    </island>
+  </div>
+  <style scoped>.live-load-error { display: none; }.release-live-loader [data-bml-deferred-state="error"] .live-load-error { display: block; }.release-live-loader [data-bml-deferred-state="error"] .live-loading { display: none; }</style>
+</component>

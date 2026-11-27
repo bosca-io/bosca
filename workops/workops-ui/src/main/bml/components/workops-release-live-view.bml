@@ -1,0 +1,27 @@
+<component tag="workops-release-live-view">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsReleaseLiveModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsReleaseLiveModel(initial.id, initial.readContext, initial.sources, initial.thisReleaseOnly, initial.expanded, initial.streamRevision)</script>
+  <island name="releaseLive" :key="initial.id"><card :padded="false"><html:section class="release-live" :id='"workops-release-live-" + model.id' tabindex="-1" data-workops-release-live :data-live-loaded="model.sources.loaded" :data-live-sources="model.streamsJson" :data-live-options="model.chart.option.toString()" :data-subscription="model.subscription" :data-stream-revision="model.streamRevision" :data-read-context="model.readContext">
+    <section-heading title="Live sessions" subtitle="Recent session locations from the release's linked applications."><icon-button size="md" icon="refresh" label="Refresh live sources" data-bml-coalesce @click='model.refreshContext("", ctx)' /><button data-bml-coalesce icon="maximize" :disabled="model.streams.isEmpty()" @click="model.openMap()">Expand map</button></section-heading>
+    <form-body padded>
+    <p ref="pollError" role="status" aria-live="polite" />
+    <if !model.sources.loaded><alert>Application sources are unavailable. { model.sources.feedback.message }</alert></if>
+    <if model.sources.loaded && model.sources.unavailableProjects != 0><p>Sources for { model.sources.unavailableProjects } project(s) are unavailable.</p></if>
+    <if model.sources.loaded && model.sources.applications.isEmpty()><empty-state title="No live session sources" message="No visible analytics applications are linked to this release's projects. Configure them on each project's Analytics tab." compact /></if>
+    <if model.sources.applications.isNotEmpty()><switch data-bml-coalesce label="This release only" :checked="model.thisReleaseOnly" :disabled="!model.sources.loaded" @change="model.toggleScope(ctx)" /><p>{ if (model.thisReleaseOnly) "This release" else "All versions" }</p></if>
+    <if model.unavailableVersions != 0><alert tone="warning">Release version names are unavailable for { model.unavailableVersions } application link(s). Their streams are paused in this-release scope.</alert></if>
+    <if model.sources.loaded && model.streams.isNotEmpty()><workops-release-live-map :model="model" /></if>
+    <dialog data-bml-coalesce title="Live sessions" triggerLabel="Expand live sessions" :showTrigger="false" size="lg" :forceOpen="model.expanded" :completed="!model.expanded" :returnFocus='"#workops-release-live-" + model.id' @dialogdismiss="model.closeMap()">
+      <div class="live-map-dialog-body"><form-body padded><if model.expanded><if model.sources.applications.isNotEmpty()><switch data-bml-coalesce label="This release only" :checked="model.thisReleaseOnly" :disabled="!model.sources.loaded" @change="model.toggleScope(ctx)" /><p>{ if (model.thisReleaseOnly) "This release" else "All versions" }</p></if><if model.sources.loaded && model.streams.isNotEmpty()><workops-release-live-map :model="model" expanded /><else><p>Live session sources are unavailable.</p></if><button data-bml-coalesce @click='model.refreshContext("", ctx)'>Refresh live sources</button></if></form-body></div><form-actions bordered><button data-dialog-close>Close map</button></form-actions>
+    </dialog>
+    </form-body>
+    <script client scoped>
+      import { workOpsReleaseLive } from "@client/helpers/release-live";
+      import { workOpsReleaseRefresh } from "@client/helpers/release-refresh";
+      workOpsReleaseLive(ctx);
+      const owner = ctx.root.matches("[data-workops-release-live]") ? ctx.root : ctx.root.querySelector<HTMLElement>("[data-workops-release-live]");
+      workOpsReleaseRefresh(ctx, { initialRevision: owner?.getAttribute("data-read-context") ?? undefined, contextual: true });
+    </script>
+  </html:section></card></island>
+  <style scoped>.release-live { min-width: 0; }.release-live p:empty { display: none; }.live-map-dialog-body { flex: 1; min-height: 0; overflow: auto; }p { overflow-wrap: anywhere; }</style>
+</component>
