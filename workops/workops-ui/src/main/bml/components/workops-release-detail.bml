@@ -1,0 +1,47 @@
+<component tag="workops-release-detail">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsReleaseDetailModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsReleaseDetailModel(initial.id, initial.release, initial.programName, initial.components, initial.componentsLoaded, initial.readiness, initial.readinessLoaded, initial.canManage, initial.accessLoaded, initial.feedback, initial.componentFeedback, initial.labelFeedback, initial.readinessFeedback, initial.accessFeedback, initial.ci, initial.artifacts, initial.notes, initial.revision, initial.ciContextRevision, initial.environments)</script>
+  <island name="releaseOverview" :key="initial.id"><page-shell class="workops-page" fill data-workops-release-overview data-bml-coalesce @workopsreleasechanged="model.retry(ctx)">
+    <page-heading :title="model.title" :subtitle="model.programName" :badge="model.lifecycle" :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false), bosca.design.model.NavigationItem("Releases", model.listHref, false))'>
+      <button-link :href="model.listHref" size="md">All releases</button-link>
+      <div :data-bml-preserve='"workops-release-editor-" + model.id'><workops-release-edit :initial="bosca.workops.ui.WorkOpsReleaseEditModel(model.id, model.release, model.canManage)" /></div>
+      <icon-button size="md" icon="refresh" label="Refresh release overview" data-bml-coalesce @click="model.retry(ctx)" />
+    </page-heading>
+    <div class="workops-content" data-workops-release-content>
+    <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+    <if model.release != null>
+      <if !model.canManage><help-text>Manage permission on the release program is required to change this release.</help-text></if>
+      <card data-workops-release-summary><div class="release-summary"><if model.release?.description.orEmpty().isNotBlank()><p class="release-description">{ model.release?.description }</p></if>
+      <dl class="release-facts"><div><dt>Planned</dt><dd><if model.release?.planned.orEmpty().isNotBlank()><time :value="model.release?.planned.orEmpty()" format="MMM d, yyyy" /><else>No date set</if></dd></div><div><dt>Released</dt><dd><if model.release?.released.orEmpty().isNotBlank()><time :value="model.release?.released.orEmpty()" /><else>Not released</if></dd></div><div><dt>Project versions</dt><dd>{ if (model.componentsLoaded) model.components.size.toString() else "Unavailable" }</dd></div><div><dt>Deployed</dt><dd>{ if (model.componentsLoaded) model.deployedCount.toString() else "Unavailable" }</dd></div><div><dt>Pending</dt><dd>{ if (model.componentsLoaded) model.pendingCount.toString() else "Unavailable" }</dd></div></dl></div></card>
+      <if model.release?.statusError.orEmpty().isNotBlank()><alert>Run status unavailable: { model.release?.statusError }</alert></if>
+      <if model.readinessFeedback.failed><alert>Readiness unavailable: { model.readinessFeedback.message }</alert><else-if model.readinessLoaded && model.readiness.isNotEmpty()><card data-workops-release-readiness><alert tone="warning" compact><strong>Resolve these dependencies before starting the release.</strong><ul class="release-readiness-list"><for item in model.readiness><li>{ item }</li></for></ul></alert></card></if>
+      <if model.accessFeedback.failed><alert>Action permissions unavailable: { model.accessFeedback.message }</alert></if>
+      <if model.componentFeedback.failed><alert>{ model.componentFeedback.message }</alert></if><if model.labelFeedback.failed><alert>Project/version labels unavailable: { model.labelFeedback.message }</alert></if>
+      <if model.componentsLoaded><card :padded="false"><table-scroll label="Release project versions"><table><caption>Project versions in deployment order</caption><thead><tr><th scope="col">Order</th><th scope="col">Project</th><th scope="col">Version</th><th scope="col">Deployment status</th><th scope="col">Deployed</th></tr></thead><tbody><for row in model.components><tr :data-workops-release-component="row.versionId"><td>{ row.order?.toString() ?: "—" }</td><td><if row.href.isNotBlank()><a :href="row.href">{ row.projectLabel }</a><else>{ row.projectLabel }</if></td><td>{ row.versionLabel }</td><td><badge :tone="row.tone">{ row.status }</badge></td><td><if row.deployed.isNotBlank()><time :value="row.deployed" relative /><else>—</if></td></tr></for></tbody></table><if model.components.isEmpty()><empty-state title="No project versions are bundled yet. Add them with Edit release." compact /></if></table-scroll></card><else><p role="status">Bundled versions are unavailable. Refresh the release overview to try again.</p></if>
+      <div class="release-workspace" data-workops-release-workspace>
+        <div class="release-primary" data-workops-release-primary>
+          <for ci in listOfNotNull(model.ci)><div data-bml-coalesce :data-bml-preserve='"workops-release-ci-" + model.id' :data-workops-release-context="model.ciContextRevision" @workopsreleasecichanged="model.ciChanged(ctx)"><workops-release-ci :initial="ci" /></div></for>
+          <for environments in listOfNotNull(model.environments)><div :data-bml-preserve='"workops-release-environments-" + model.id' :data-workops-release-context="model.revision"><workops-release-environments :initial="environments" /></div></for>
+        </div>
+        <aside class="release-secondary" aria-label="Release artifacts and telemetry" data-workops-release-secondary>
+          <for artifacts in listOfNotNull(model.artifacts)><div :data-bml-preserve='"workops-release-artifacts-" + model.id' :data-workops-release-context="model.revision"><workops-release-artifacts :initial="artifacts" /></div></for>
+          <for notes in listOfNotNull(model.notes)><div :data-bml-preserve='"workops-release-notes-" + model.id' :data-workops-release-context="model.revision"><workops-release-notes :initial="notes" /></div></for>
+          <div :data-bml-preserve='"workops-release-health-" + model.id' :data-workops-release-context="model.revision"><workops-release-health :id="model.id" :revision="model.revision.toString()" /></div>
+          <div :data-bml-preserve='"workops-release-store-health-" + model.id' :data-workops-release-context="model.revision"><workops-release-store-health :id="model.id" :revision="model.revision.toString()" /></div>
+          <div :data-bml-preserve='"workops-release-live-" + model.id' :data-workops-release-context="model.revision"><workops-release-live :id="model.id" :revision="model.revision.toString()" /></div>
+        </aside>
+      </div>
+    <else><empty-state title="Release unavailable" message="This release is not available to you." /></if>
+  </div></page-shell></island>
+  <style scoped>
+    .release-summary { display: grid; gap: 16px; min-width: 0; }
+    .release-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 16px; margin: 0; }
+    .release-facts dt { color: var(--fg-2); font-size: 12px; }
+    .release-facts dd { margin: 4px 0 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+    .release-description { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .release-readiness-list { margin: 8px 0 0; padding-inline-start: 20px; }
+    .release-workspace { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); gap: 20px; align-items: start; min-width: 0; }
+    .release-primary, .release-secondary { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+    @media (max-width: 1200px) { .release-workspace { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+</component>
