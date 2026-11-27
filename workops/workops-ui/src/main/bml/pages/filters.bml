@@ -1,0 +1,4 @@
+<page route="/workops/filters" requireAuth>
+  <script server provides="page">bosca.workops.ui.workOpsFilters()</script>
+  <workops-layout title="Saved filters"><workops-filters :initial="page" /></workops-layout>
+</page>

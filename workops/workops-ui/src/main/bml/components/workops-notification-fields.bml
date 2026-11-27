@@ -1,0 +1,4 @@
+<component tag="workops-notification-fields">
+  <prop name="value" type="kotlinx.serialization.json.JsonObject" required />
+  <schema-form id="workops-notification-preferences" :schema="bosca.workops.ui.workOpsNotificationSchema" :uiSchema="bosca.workops.ui.workOpsNotificationUiSchema" :value="value" preserveKey="workops-notification-preferences" />
+</component>

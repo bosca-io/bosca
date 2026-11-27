@@ -1,0 +1,31 @@
+<component tag="workops-task-list">
+  <prop name="model" type="bosca.workops.ui.WorkOpsTaskSearchModel" required />
+          <card :padded="false">
+            <if model.rows.isEmpty()><empty-state title="No tasks found" message="Try changing the query or choosing another saved filter." icon="search" /></if>
+            <if model.rows.isNotEmpty()>
+              <table-scroll label="WorkOps tasks" class="workops-task-table">
+                <table>
+                  <thead><tr><th>Key</th><th>Summary</th><th>Status</th><th>Priority</th><th>Type</th><th>Assignee</th><th>Due</th></tr></thead>
+                  <tbody>
+                    <for task in model.rows>
+                      <tr data-workops-task-row>
+                        <td><a :href="task.href" class="workops-task-key" data-workops-task-link>{ task.key }</a></td>
+                        <td><a :href="task.href">{ task.summary }</a></td>
+                        <td><badge :tone="task.statusTone">{ task.status }</badge></td>
+                        <td><badge :color="task.priorityColor">{ task.priority }</badge></td>
+                        <td>{ task.taskType }</td>
+                        <td><if task.assignee.isNotBlank()><profile :name="task.assignee" /><else>{ task.assigneeLabel }</if></td>
+                        <td><if task.dueDate.isNotBlank()><time :value="task.dueDate" format="MMM d, yyyy" /><else>—</if></td>
+                      </tr>
+                    </for>
+                  </tbody>
+                </table>
+              </table-scroll>
+            </if>
+            <pagination :page="model.page" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Task pages" alwaysVisible />
+          </card>
+  <script client scoped>
+    import { workOpsSearchRows } from "@client/helpers/search-rows";
+    workOpsSearchRows(ctx);
+  </script>
+</component>
