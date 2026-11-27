@@ -7,3 +7,18 @@ bml:
   graphqlEndpoint: "${BML_GRAPHQL_ENDPOINT:http://localhost:8094/graphql}"
   artifactsEndpoint: "${BML_ARTIFACTS_ENDPOINT:}"
   authCookiePrefix: "${BML_AUTH_COOKIE_PREFIX:}"
+
+nats:
+  url: "${NATS_URL:}"
+  token: "${NATS_TOKEN:}"
+  username: "${NATS_USERNAME:}"
+  password: "${NATS_PASSWORD:}"
+
+pubsub:
+  type: "${PUBSUB_TYPE:nats}"
+
+redis:
+  host: "${REDIS_HOST:}"
+  port: ${REDIS_PORT:6380}
+  database: ${REDIS_DATABASE:0}
+  namespace: "${REDIS_NAMESPACE:}"

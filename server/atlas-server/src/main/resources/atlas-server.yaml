@@ -32,6 +32,14 @@ pubsub:
 distributedLock:
   type: "$DISTRIBUTED_LOCK_TYPE:redis"
 
+mailer:
+  type: "$MAILER_TYPE:sendgrid"
+  from:
+    name: "$MAILER_FROM_NAME:Bosca"
+    email: "$MAILER_FROM_EMAIL:noreply@example.com"
+  unsubscribeUrl: "$MAILER_UNSUBSCRIBE_URL:"
+  preferencesUrl: "$MAILER_PREFERENCES_URL:"
+
 redis:
   host: "$REDIS_HOST:localhost"
   port: ${REDIS_PORT:6380}
@@ -114,6 +122,38 @@ meilisearch:
   indexPrefix: "$MEILISEARCH_INDEX_PREFIX:"
 
 content:
+  images:
+    resizer:
+      url: "$IMAGE_RESIZER_URL:http://localhost:8003"
+      sizes:
+        - name: thumbnail
+          ratio: 25
+          size:
+            height: 270
+            width: 480
+        - name: small
+          ratio: 50
+          size:
+            height: 540
+            width: 960
+        - name: medium
+          ratio: 75
+          size:
+            height: 810
+            width: 1440
+        - name: large
+          ratio: 100
+          size:
+            height: 1080
+            width: 1920
+        - name: thumbnail-original
+          ratio: 25
+        - name: small-original
+          ratio: 50
+        - name: medium-original
+          ratio: 75
+        - name: large-original
+          ratio: 100
   storage:
     type: "$STORAGE_TYPE:s3"
     bucket: "$STORAGE_BUCKET:storage"
@@ -143,7 +183,7 @@ atlas:
   runner:
     enabled: "${ATLAS_RUNNER_ENABLED:true}"
     concurrency: "${ATLAS_RUNNER_CONCURRENCY:16}"
-    queues: "${ATLAS_RUNNER_QUEUES:git,pipelines,common,index,backup,profile}"
+    queues: "${ATLAS_RUNNER_QUEUES:git,pipelines,common,index,backup,profile,workops,content,messages}"
     listeners: "${ATLAS_RUNNER_LISTENERS_ENABLED:true}"
 
 scheduler:

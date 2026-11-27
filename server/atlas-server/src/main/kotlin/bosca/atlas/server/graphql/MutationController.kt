@@ -26,6 +26,17 @@ class MutationController(
     private val groupEvaluator: GroupEvaluator,
     private val graphQlService: ObjectProvider<GraphQLService>,
 ) : GraphQLController<Mutation> {
+    @Field fun workOps() = bosca.workops.controller.WorkOpsMutationsRoot
+
+    @Field fun forms() = bosca.forms.graphql.FormsMutation
+    @Field fun scripts() = bosca.scripting.graphql.ScriptsMutation
+
+    @Field fun formSchemasMutation() = bosca.forms.graphql.FormSchemasMutation
+
+    @Field fun calendars() = bosca.calendar.graphql.CalendarsMutation
+
+    @Field fun languages() = bosca.languages.graphql.LanguagesMutation
+
     @Field fun content() = bosca.content.graphql.ContentMutation
 
     @Field fun collaboration() = bosca.collaboration.graphql.CollaborationMutation
