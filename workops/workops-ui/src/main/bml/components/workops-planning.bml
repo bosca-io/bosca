@@ -1,0 +1,71 @@
+<component tag="workops-planning">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsPlanningModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsPlanningModel(initial.kind, initial.tab, initial.offset, initial.rows, initial.hasNext, initial.parents, initial.editing, initial.draft, initial.archiveTarget, initial.moveTarget, initial.moveProgramId, initial.initialParentId, initial.feedback)</script>
+  <island name="planning" :key="initial.kind">
+    <page-shell class="workops-page" fill data-workops-planning :data-planning-kind="model.kind">
+      <page-heading :title="model.title" :subtitle="model.subtitle" :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false))'><button id="workops-planning-new" primary icon="plus" @click="model.open(ctx)">New { model.entityLabel }</button></page-heading>
+      <div class="workops-content">
+        <tabs :items="model.tabs" :label='model.title + " archive views"' />
+        <workops-feedback id="planning-0" :feedback="model.feedback" />
+        <if model.feedback.failed><button icon="refresh" @click="model.retry(ctx)">Reload { model.title.lowercase() }</button></if>
+        <if model.rows.isNotEmpty()>
+          <card :padded="false"><table-scroll :label="model.title"><table><caption>{ model.title }</caption><thead><tr><th scope="col">Key</th><th scope="col">Name</th><if model.kind != "portfolio"><th scope="col">{ model.parentLabel }</th></if><th scope="col">Owner</th><if model.kind == "portfolio"><th scope="col">Visible programs</th></if><th scope="col">Modified</th><th scope="col">Actions</th></tr></thead><tbody>
+            <for row in model.rows><tr :id='"workops-planning-" + row.id'>
+              <td><code>{ row.key }</code></td><td><if model.kind == "project"><a :href='"/workops/projects/" + row.id'>{ row.name }</a><else><strong>{ row.name }</strong></if><if row.archived><badge>Archived</badge></if><if row.description.isNotBlank()><p>{ row.description }</p></if></td>
+              <if model.kind != "portfolio"><td>{ row.parentName }</td></if>
+              <td><profile :name="row.ownerLabel" /></td><if model.kind == "portfolio"><td>{ row.programCount }</td></if><td><time :value="row.modified" /></td>
+              <td><form-actions align="start">
+                <icon-button icon="edit" :id='"workops-planning-edit-" + row.id' :label='"Edit " + row.name' @click="model.edit(row.id)" />
+                <if model.kind == "program"><button-link :href='"/workops/releases?programId=" + row.id'>Releases</button-link><button-link :href='"/workops/releases/environments?programId=" + row.id'>Environments</button-link></if>
+                <if model.kind == "project" && !row.archived><icon-button icon="arrow-right" :label='"Move " + row.name' @click="model.beginMove(row.id, ctx)" /></if>
+                <icon-button :icon='if (row.archived) "undo" else "archive"' :label='(if (row.archived) "Unarchive " else "Archive ") + row.name' @click="model.beginArchive(row.id)" />
+              </form-actions></td>
+            </tr></for>
+          </tbody></table></table-scroll></card>
+        <else><if !model.feedback.failed><empty-state :title='"No " + model.title.lowercase() + " visible on this page."' /></if></if>
+        <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" :label='model.title + " pages"' />
+      </div>
+      <dialog :title='(if (model.draft.id.isBlank()) "New " else "Edit ") + model.entityLabel' triggerLabel="Edit planning item" :showTrigger="false" :forceOpen="model.editing" :completed="!model.editing" :returnFocus="model.editReturn" @dialogdismiss="model.cancelEdit()">
+        <form @submit="model.save(form.key, form.name, form.description, form.ownerId, form.parentId, ctx)"><form-body padded>
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+          <if model.feedback.failed><form-actions align="start"><button icon="refresh" @click="model.refreshChoices(form.key, form.name, form.description, form.ownerId, form.parentId, ctx)">Retry loading planning choices</button></form-actions></if>
+          <field label="Key" hint="2–10 uppercase letters, digits or underscores; start with a letter."><input name="key" :value="model.draft.key" :readonly="model.draft.id.isNotBlank()" required /></field>
+          <field label="Name"><input name="name" :value="model.draft.name" required /></field>
+          <field label="Description"><textarea name="description">{ model.draft.description }</textarea></field>
+          <field label="Owner"><div data-workops-profile-picker><select name="ownerId" label="Owner" required searchable async :minQuery="2">
+            <option value="">Choose an owner</option><if model.draft.ownerId.isNotBlank()><option :value="model.draft.ownerId" data-persistent selected>{ model.draft.ownerLabel }</option></if>
+          </select></div></field>
+          <if model.kind != "portfolio"><field :label="model.parentLabel">
+            <if model.draft.id.isBlank()><select name="parentId" :label="model.parentLabel" required searchable>
+              <option value="">Choose a { model.parentLabel.lowercase() }</option>
+              <if model.draft.parentId.isNotBlank() && model.parentChoices.none { it.id == model.draft.parentId }><option :value="model.draft.parentId" selected>Selected parent unavailable</option></if>
+              <for parent in model.parentChoices><option :value="parent.id" :selected="parent.id == model.draft.parentId">{ parent.key } · { parent.name }</option></for>
+            </select><else><p>{ model.draft.parentName }</p><html:input type="hidden" name="parentId" :value="model.draft.parentId" /></if>
+          </field><else><html:input type="hidden" name="parentId" value="" /></if>
+        </form-body><form-actions bordered>
+          <button data-dialog-close @click="model.cancelEdit()">Cancel</button><button type="submit" primary>Save { model.entityLabel }</button>
+        </form-actions></form>
+      </dialog>
+      <dialog :title="model.archiveTitle" triggerLabel="Archive planning item" :showTrigger="false" :forceOpen="model.archiveTarget != null" :completed="model.archiveTarget == null" returnFocus="#workops-planning-new" @dialogdismiss="model.cancelArchive()">
+        <form @submit="model.archive(form.confirmed, ctx)"><form-body padded>
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert><p>Cancel and reload the list to check the latest state before trying again.</p></if>
+          <p>{ model.archiveTitle } { model.archiveTarget?.name }?</p>
+          <if model.archiveTarget?.archived != true><p>The { model.entityLabel } will be hidden from the Active view. It can be unarchived later.</p></if>
+          <checkbox name="confirmed" label="Confirm this change" required />
+        </form-body><form-actions bordered><button data-dialog-close @click="model.cancelArchive()">Cancel</button><button type="submit" primary>{ model.archiveTitle }</button></form-actions></form>
+      </dialog>
+      <dialog title="Move project" triggerLabel="Move project" :showTrigger="false" :forceOpen="model.moveTarget != null" :completed="model.moveTarget == null" returnFocus="#workops-planning-new" @dialogdismiss="model.cancelMove()">
+        <form @submit="model.move(form.programId, ctx)"><form-body padded>
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+          <p>Move { model.moveTarget?.name } from { model.moveTarget?.parentName } to another program. Tasks, boards and project permissions stay with the project.</p>
+          <field label="Destination program"><select name="programId" label="Destination program" required searchable><option value="">Choose a program</option><for program in model.moveChoices><option :value="program.id" :selected="program.id == model.moveProgramId">{ program.key } · { program.name }</option></for></select></field>
+        </form-body><form-actions bordered><button data-dialog-close @click="model.cancelMove()">Cancel</button><button type="submit" primary>Move project</button></form-actions></form>
+      </dialog>
+    </page-shell>
+    <script client scoped>
+      import { WorkOpsProfileSearch } from "./WorkOpsProfileSearch";
+      import { workOpsProfileChoices } from "@client/helpers/profile-choices";
+      workOpsProfileChoices(ctx, (query, offset) => WorkOpsProfileSearch.search(query, offset));
+    </script>
+  </island>
+</component>

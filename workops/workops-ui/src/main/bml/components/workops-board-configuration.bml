@@ -1,0 +1,64 @@
+<component tag="workops-board-configuration">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsBoardConfigurationModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsBoardConfigurationModel(initial.id, initial.tab, initial.data, initial.statusData, initial.settings, initial.columnDraft, initial.deleteTarget, initial.columnsLoaded, initial.feedback)</script>
+  <island name="boardConfiguration" :key='initial.id + "-" + initial.tab'>
+    <div :class='"workops-board-configuration " + (if (model.tab in setOf("board", "sprints")) "board" else "editing")' data-workops-board-configuration :data-board-tab="model.tab">
+      <page-heading :title="model.title" :subtitle="model.subtitle" :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false), bosca.design.model.NavigationItem("Boards", "/workops/boards", false))' />
+      <div class="workops-content">
+        <tabs :items="model.tabs" label="Board views" />
+        <workops-feedback id="board-configuration-0" :feedback="model.feedback" />
+        <if model.feedback.failed><button icon="refresh" @click="model.retry(ctx)">Reload board configuration</button></if>
+        <if model.board == null><empty-state title="Board unavailable" message="This board is not available to you." />
+        <else-if model.tab == "columns">
+          <if !model.columnsLoaded><p role="status">Columns have not been loaded. Reload to inspect the current order.</p>
+          <else>
+            <form-actions align="start"><button id="workops-column-new" primary icon="plus" @click="model.addColumn()">Add column</button></form-actions>
+            <if model.columns.isNotEmpty()><card :padded="false"><table-scroll label="Board columns"><table class="workops-columns-table"><caption>Board columns</caption><thead><tr><th scope="col">Order</th><th scope="col">Name</th><th scope="col">Statuses</th><th scope="col">WIP limit</th><th scope="col">Actions</th></tr></thead><tbody>
+              <for column in model.columns><tr :data-workops-column="column.id"><td>{ column.order }</td><td>{ column.name }</td><td><for status in column.statusIds><badge>{ model.statusName(status) }</badge></for></td><td>{ column.wipLimit?.toString() ?: "No limit" }</td><td><form-actions align="start">
+                <button :aria-label='"Move " + column.name + " earlier"' :disabled="model.columns.firstOrNull()?.id == column.id" @click="model.moveColumn(column.id, -1, ctx)">Earlier</button>
+                <button :aria-label='"Move " + column.name + " later"' :disabled="model.columns.lastOrNull()?.id == column.id" @click="model.moveColumn(column.id, 1, ctx)">Later</button>
+                <icon-button icon="edit" :id='"workops-column-edit-" + column.id' :label='"Edit " + column.name' @click="model.editColumn(column.id)" />
+                <icon-button icon="trash" :label='"Delete " + column.name' @click="model.beginDelete(column.id)" />
+              </form-actions></td></tr></for>
+            </tbody></table></table-scroll></card><else><empty-state title="No columns yet. Add a column and map workflow statuses." compact /></if>
+          </if>
+        <else-if model.tab == "settings" && model.settings != null>
+          <card><form @submit="model.saveSettings(form.name, form.type, form.swimlane, form.projectIds, ctx)"><form-body>
+            <field label="Name"><input name="name" :value="model.settings?.name.orEmpty()" required /></field>
+            <field label="Type"><select name="type" label="Type"><option value="KANBAN" :selected='model.settings?.type == "KANBAN"'>Kanban</option><option value="SCRUM" :selected='model.settings?.type == "SCRUM"'>Scrum</option></select></field>
+            <field label="Swimlane strategy"><select name="swimlane" label="Swimlane strategy"><for value in model.swimlanes><option :value="value" :selected="value == model.settings?.swimlane">{ value.lowercase().replaceFirstChar(Char::uppercase) }</option></for></select></field>
+            <if model.settings?.multiProject == true>
+              <field label="Projects" hint="Choose at least two projects."><select name="projectIds" label="Projects" multiple searchable><for project in model.memberChoices><option :value="project.id" :selected="project.id in model.settings?.projectIds.orEmpty()">{ project.key } · { project.name }{ if (project.archivedAt != null) " (archived)" else "" }</option></for></select></field>
+              <if model.hiddenMembers.isNotEmpty()><p>Some existing project membership is unavailable. It will be retained when you save.</p></if>
+            <else><p>This board's parent scope was set when it was created.</p><html:input type="hidden" name="projectIds" value="[]" /></if>
+          </form-body><form-actions bordered>
+            <button @click="model.resetSettings()">Reset draft to loaded board</button><button type="submit" primary>Save board settings</button>
+          </form-actions></form></card>
+        </if>
+      </div>
+      <dialog :title='if (model.columnDraft?.id.isNullOrBlank()) "Add column" else "Edit column"' triggerLabel="Edit column" :showTrigger="false" :forceOpen="model.columnDraft != null" :completed="model.columnDraft == null" returnFocus="#workops-column-new" @dialogdismiss="model.cancelColumn()">
+        <form @submit="model.saveColumn(form.name, form.statusIds, form.limit, ctx)"><form-body padded>
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+          <field label="Name"><input name="name" :value="model.columnDraft?.name.orEmpty()" required /></field>
+          <field label="Statuses"><select name="statusIds" label="Statuses" multiple searchable required>
+            <for status in model.columnStatusChoices><option :value="status.id" :selected="status.id in model.columnDraft?.statusIds.orEmpty()">{ status.name }</option></for>
+            <for id in model.columnDraft?.statusIds.orEmpty().filter { id -> model.statuses.none { it.id == id } }><option :value="id" selected>Status unavailable</option></for>
+          </select></field>
+          <field label="WIP limit" hint="Leave empty or enter zero for no limit."><input type="number" name="limit" :value="model.columnDraft?.limit.orEmpty()" min="0" step="1" /></field>
+        </form-body><form-actions bordered><button data-dialog-close @click="model.cancelColumn()">Cancel</button><button type="submit" primary>Save column</button></form-actions></form>
+      </dialog>
+      <dialog title="Delete column" triggerLabel="Delete column" :showTrigger="false" :forceOpen="model.deleteTarget != null" :completed="model.deleteTarget == null" returnFocus="#workops-column-new" @dialogdismiss="model.cancelDelete()">
+        <form @submit="model.deleteColumn(form.confirmed, ctx)"><form-body padded>
+          <if model.feedback.failed><alert>{ model.feedback.message }</alert></if>
+          <p>Delete { model.deleteTarget?.name }? Its tasks keep their workflow statuses.</p><checkbox name="confirmed" label="Delete this column" required />
+        </form-body><form-actions bordered><button data-dialog-close @click="model.cancelDelete()">Cancel</button><button type="submit" primary>Delete column</button></form-actions></form>
+      </dialog>
+    </div>
+  </island>
+  <style scoped>
+    .workops-board-configuration { min-width: 0; }
+    .workops-board-configuration.board { flex: 0 0 auto; }
+    .workops-board-configuration.editing { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .workops-columns-table { width: 100%; min-width: 640px; }
+  </style>
+</component>

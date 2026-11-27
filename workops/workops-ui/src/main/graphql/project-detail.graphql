@@ -1,0 +1,81 @@
+fragment WorkOpsProjectFields on WorkOpsProject {
+  id key name description ownerProfileId owner { name } program { id } archivedAt createdAt modifiedAt version
+}
+query WorkOpsProjectDetailInfo($id: UUID!) {
+  workOps { projects { project(id: $id) { ...WorkOpsProjectFields } } programs { all { id key name archivedAt } } }
+}
+query WorkOpsProjectRecentTasks($source: String!) {
+  workOps { savedFilters { searchTasks(source: $source, offset: 0, limit: 8) { rows {
+    ...WorkOpsSprintTaskFields modifiedAt
+  } } } }
+}
+fragment WorkOpsVersionFields on WorkOpsVersion {
+  id name description released archived startDate releaseDate sequenceNumber version
+}
+fragment WorkOpsComponentFields on WorkOpsComponent { id name description assigneeMode leadProfileId defaultAssigneeProfileId version }
+fragment WorkOpsLabelFields on WorkOpsLabel { id name colorHex version }
+query WorkOpsProjectCatalogs($id: UUID!) {
+  workOps {
+    versions { byProject(projectId: $id) { ...WorkOpsVersionFields } }
+    components { byProject(projectId: $id) { ...WorkOpsComponentFields } }
+    labels { byProject(projectId: $id) { ...WorkOpsLabelFields } }
+  }
+}
+mutation WorkOpsCreateProjectVersion($input: CreateWorkOpsVersionInput!) {
+  workOps { versions { create(input: $input) { ...WorkOpsVersionFields } } }
+}
+mutation WorkOpsReleaseProjectVersion($id: UUID!, $version: Long!) {
+  workOps { versions { release(id: $id, expectedVersion: $version) { ...WorkOpsVersionFields } } }
+}
+mutation WorkOpsCreateProjectComponent($input: CreateWorkOpsComponentInput!) {
+  workOps { components { create(input: $input) { ...WorkOpsComponentFields } } }
+}
+mutation WorkOpsDeleteProjectComponent($id: UUID!) { workOps { components { delete(id: $id) } } }
+mutation WorkOpsCreateProjectLabel($input: CreateWorkOpsLabelInput!) {
+  workOps { labels { create(input: $input) { ...WorkOpsLabelFields } } }
+}
+mutation WorkOpsDeleteProjectLabel($id: UUID!) { workOps { labels { delete(id: $id) } } }
+fragment WorkOpsDependencyFields on WorkOpsDependencyDeclaration {
+  id consumerProjectId providerProjectId providerVersionConstraint dependencyType status version
+}
+query WorkOpsProjectDependencies($id: UUID!) {
+  workOps {
+    projects { all { id key name archivedAt } }
+    multiRepo { dependencies(projectId: $id) { ...WorkOpsDependencyFields } consumers(projectId: $id) { ...WorkOpsDependencyFields } }
+  }
+}
+mutation WorkOpsDeclareProjectDependency($input: CreateWorkOpsDependencyDeclarationInput!) {
+  workOps { multiRepo { declareDependency(input: $input) { ...WorkOpsDependencyFields } } }
+}
+mutation WorkOpsRemoveProjectDependency($id: UUID!) { workOps { multiRepo { removeDependency(id: $id) } } }
+query WorkOpsProjectRepositories($id: UUID!) {
+  workOps { projects { project(id: $id) { id repositories { id repositoryId } } } }
+  git { repositories(includeArchived: true) { id name slug archived } }
+  profiles { current { id name isPrimary attributes { typeId attributes } } }
+}
+mutation WorkOpsAttachProjectRepository($project: UUID!, $repository: UUID!) {
+  workOps { projects { addProjectRepository(projectId: $project, repositoryId: $repository) { id repositoryId } } }
+}
+mutation WorkOpsRemoveProjectRepository($project: UUID!, $id: UUID!) {
+  workOps { projects { removeProjectRepository(projectId: $project, id: $id) } }
+}
+mutation WorkOpsCreateProjectDeployConfig($project: UUID!, $repository: UUID!, $name: String!, $email: String!) {
+  workOps { multiRepo { createProjectDeployConfig(projectId: $project, repositoryId: $repository, authorName: $name, authorEmail: $email) {
+    repositoryId path branch commitSha content
+  } } }
+}
+query WorkOpsProjectTelemetry($id: UUID!) {
+  workOps { projects { project(id: $id) { id analyticsApplications { id applicationId } analyticsServices { id service } } } }
+}
+mutation WorkOpsAddProjectApplication($project: UUID!, $value: String!) {
+  workOps { projects { addAnalyticsApplication(projectId: $project, applicationId: $value) { id applicationId } } }
+}
+mutation WorkOpsRemoveProjectApplication($project: UUID!, $id: UUID!) {
+  workOps { projects { removeAnalyticsApplication(projectId: $project, id: $id) } }
+}
+mutation WorkOpsAddProjectService($project: UUID!, $value: String!) {
+  workOps { projects { addAnalyticsService(projectId: $project, service: $value) { id service } } }
+}
+mutation WorkOpsRemoveProjectService($project: UUID!, $id: UUID!) {
+  workOps { projects { removeAnalyticsService(projectId: $project, id: $id) } }
+}

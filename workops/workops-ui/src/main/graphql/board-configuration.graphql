@@ -1,0 +1,20 @@
+query WorkOpsBoardConfiguration($id: UUID!) {
+  workOps {
+    boards { board(id: $id) {
+      id name type swimlaneStrategy version projectId programId portfolioId projects { id }
+      columns { id name displayOrder statusIds wipLimit }
+    } }
+    projects { all { id key name archivedAt } }
+  }
+}
+query WorkOpsBoardColumnStatuses { workOps { statuses { all { id name category } } } }
+mutation WorkOpsUpdateBoard($id: UUID!, $input: UpdateWorkOpsBoardInput!) {
+  workOps { boards { update(id: $id, input: $input) { id } } }
+}
+mutation WorkOpsCreateBoardColumn($input: CreateWorkOpsBoardColumnInput!) {
+  workOps { boards { addColumn(input: $input) { id } } }
+}
+mutation WorkOpsUpdateBoardColumn($input: UpdateWorkOpsBoardColumnInput!) {
+  workOps { boards { updateColumn(input: $input) { id } } }
+}
+mutation WorkOpsDeleteBoardColumn($id: UUID!) { workOps { boards { deleteColumn(columnId: $id) } } }

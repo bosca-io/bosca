@@ -1,0 +1,65 @@
+query WorkOpsPlanningPortfolios($offset: Long!) {
+  workOps {
+    portfolios { all(offset: $offset, limit: 26) { id key name description ownerProfileId owner { name } archivedAt modifiedAt version } }
+    programs { all { id portfolio { id } } }
+  }
+}
+query WorkOpsPlanningPrograms {
+  workOps { programs { all {
+    id key name description ownerProfileId owner { name } portfolio { id } startDate targetDate archivedAt modifiedAt version
+  } } }
+}
+query WorkOpsPlanningProjects {
+  workOps { projects { all {
+    id key name description ownerProfileId owner { name } program { id } archivedAt modifiedAt version
+    taskCreationFormSchemaKey defaultTaskTypeSchemeId
+  } } }
+}
+query WorkOpsPlanningPortfolioChoices {
+  workOps { portfolios { all(offset: 0, limit: 100) { id key name archivedAt } } }
+}
+query WorkOpsPlanningPortfolioName($id: UUID!) {
+  workOps { portfolios { portfolio(id: $id) { id key name archivedAt } } }
+}
+query WorkOpsPlanningProgramChoices {
+  workOps { programs { all { id key name archivedAt } } }
+}
+mutation WorkOpsCreatePortfolio($input: WorkOpsPortfolioInput!) {
+  workOps { portfolios { create(input: $input) { id } } }
+}
+mutation WorkOpsUpdatePortfolio($id: UUID!, $input: WorkOpsPortfolioInput!, $version: Long!) {
+  workOps { portfolios { update(id: $id, input: $input, expectedVersion: $version) { id } } }
+}
+mutation WorkOpsArchivePortfolio($id: UUID!, $version: Long!) {
+  workOps { portfolios { archive(id: $id, expectedVersion: $version) { id } } }
+}
+mutation WorkOpsUnarchivePortfolio($id: UUID!, $version: Long!) {
+  workOps { portfolios { unarchive(id: $id, expectedVersion: $version) { id } } }
+}
+mutation WorkOpsCreateProgram($input: WorkOpsProgramInput!) {
+  workOps { programs { create(input: $input) { id } } }
+}
+mutation WorkOpsUpdateProgram($id: UUID!, $input: WorkOpsProgramInput!, $version: Long!) {
+  workOps { programs { update(id: $id, input: $input, expectedVersion: $version) { id } } }
+}
+mutation WorkOpsArchiveProgram($id: UUID!, $version: Long!) {
+  workOps { programs { archive(id: $id, expectedVersion: $version) { id } } }
+}
+mutation WorkOpsUnarchiveProgram($id: UUID!, $version: Long!) {
+  workOps { programs { unarchive(id: $id, expectedVersion: $version) { id } } }
+}
+mutation WorkOpsCreateProject($input: WorkOpsProjectInput!) {
+  workOps { projects { create(input: $input) { id } } }
+}
+mutation WorkOpsUpdateProject($id: UUID!, $input: WorkOpsProjectInput!, $version: Long!) {
+  workOps { projects { update(id: $id, input: $input, expectedVersion: $version) { id } } }
+}
+mutation WorkOpsArchiveProject($id: UUID!, $version: Long!) {
+  workOps { projects { archive(id: $id, expectedVersion: $version) { id } } }
+}
+mutation WorkOpsUnarchiveProject($id: UUID!, $version: Long!) {
+  workOps { projects { unarchive(id: $id, expectedVersion: $version) { id } } }
+}
+mutation WorkOpsMoveProject($id: UUID!, $program: UUID!, $version: Long!) {
+  workOps { projects { move(id: $id, programId: $program, expectedVersion: $version) { id } } }
+}

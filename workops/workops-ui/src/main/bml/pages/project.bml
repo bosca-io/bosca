@@ -1,0 +1,21 @@
+<page route="/workops/projects/{id}" requireAuth>
+  <script server provides="project">bosca.workops.ui.workOpsProjectDetail()</script>
+  <script server provides="board">if (project.project != null && project.tab == "board") bosca.workops.ui.workOpsSelectedBoard(project.selectedBoard?.id.orEmpty()) else null</script>
+  <script server provides="catalog">if (project.project != null && project.tab in setOf("versions", "components", "labels")) bosca.workops.ui.workOpsProjectCatalog(project.id, project.tab) else null</script>
+  <script server provides="dependencies">if (project.project != null && project.tab == "dependencies") bosca.workops.ui.workOpsProjectDependencies(project.id) else null</script>
+  <script server provides="repositories">if (project.project != null && project.tab == "repositories") bosca.workops.ui.workOpsProjectRepositories(project.id) else null</script>
+  <script server provides="applications">if (project.project != null && project.tab == "analytics") bosca.workops.ui.workOpsProjectTelemetry(project.id, "applications") else null</script>
+  <script server provides="services">if (project.project != null && project.tab == "analytics") bosca.workops.ui.workOpsProjectTelemetry(project.id, "services") else null</script>
+  <workops-layout :title="project.title"><page-shell class="workops-page" fill>
+    <workops-project-header :initial="project" />
+    <if project.project != null>
+      <if project.tab == "board"><div class="workops-project-board-choice"><form method="get" :action="project.href"><html:input type="hidden" name="tab" value="board" /><field label="Board"><select submitOnChange name="boardId" label="Board"><option value="">Choose a board</option><for choice in project.boards><option :value="choice.id" :selected="choice.id == project.selectedBoardId">{ choice.name }</option></for></select></field><noscript><button type="submit">Choose board</button></noscript></form></div><if board != null><workops-board-view :initial="requireNotNull(board)" :instance='"project-" + project.id' /><else><div class="workops-content"><empty-state :title='if (project.boards.isEmpty()) "No boards for this project." else "Choose an available board."' /><button-link :href='"/workops/boards?projectId=" + bosca.workops.ui.workOpsEncode(project.id)'>Manage boards</button-link></div></if>
+      <else-if catalog != null><workops-project-catalog :initial="requireNotNull(catalog)" />
+      <else-if dependencies != null><workops-project-dependencies :initial="requireNotNull(dependencies)" />
+      <else-if repositories != null><workops-project-repositories :initial="requireNotNull(repositories)" />
+      <else-if applications != null && services != null><div class="workops-content"><workops-project-telemetry :initial="requireNotNull(applications)" /><workops-project-telemetry :initial="requireNotNull(services)" /></div>
+      </if>
+    </if>
+  </page-shell></workops-layout>
+  <style scoped>.workops-project-board-choice { flex: 0 0 auto; padding: 0 20px 16px; }.workops-project-board-choice form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }</style>
+</page>

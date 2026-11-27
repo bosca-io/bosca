@@ -1,0 +1,108 @@
+<component tag="workops-sprint-workspace">
+  <prop name="initial" type="bosca.workops.ui.WorkOpsSprintsModel" required />
+  <script server provides="model">bosca.workops.ui.WorkOpsSprintsModel(
+    initial.mode, initial.boardId, initial.sprintId, initial.tab, initial.state, initial.offset,
+    initial.memberOffset, initial.projectId, initial.boardName, initial.boardType, initial.rows,
+    initial.current, initial.members, initial.membersLoaded, initial.creating, initial.nameDraft,
+    initial.goalDraft, initial.startDraft, initial.closeDraft, initial.queryDraft, initial.searchOffset,
+    initial.searchRows, initial.searchHasNext, initial.terminalStatusIds, initial.resultId,
+    initial.resultLabel, initial.feedback
+  )</script>
+  <island name="sprints" :key='initial.mode + "-" + initial.sprintId.ifBlank { initial.boardId }'>
+    <div class="workops-sprint-workspace" data-workops-sprints :data-sprint-mode="model.mode" :data-sprint-state="model.current?.state">
+      <if model.mode == "detail"><page-heading :title="model.title" :subtitle="model.boardName" :trail='listOf(bosca.design.model.NavigationItem("Work Ops", "/workops/tasks", false), bosca.design.model.NavigationItem("Sprints", "/workops/sprints", false))'><icon-button icon="refresh" label="Refresh sprints" id="workops-sprint-refresh" @click="model.retry(ctx)" />
+          <if model.mode != "detail" && model.canCreate><button id="workops-sprint-new" primary icon="plus" @click="model.beginCreate()">New sprint</button></if>
+          <if model.mode == "detail" && model.current != null><badge :tone="model.current?.tone.orEmpty()">{ model.current?.state }</badge><if model.current?.remaining().orEmpty().isNotBlank()><span>{ model.current?.remaining() }</span></if><button-link :href="model.current?.boardHref.orEmpty()">View board</button-link>
+            <if model.current?.state == "FUTURE"><button primary :disabled="model.active != null" @click="model.beginStart(model.current?.id.orEmpty(), ctx)">Start sprint</button></if>
+            <if model.current?.state == "ACTIVE"><button primary @click="model.beginClose(model.current?.id.orEmpty(), ctx)">Complete sprint</button></if>
+          </if><if model.resultHref.isNotBlank()><button-link :href="model.resultHref" size="xs" icon="arrow-right">{ model.resultLabel }</button-link></if></page-heading>
+      <else><section-heading :title='if (model.mode == "board") "Sprints" else model.boardName' :subtitle="model.boardType.lowercase()"><icon-button icon="refresh" label="Refresh sprints" id="workops-sprint-refresh" @click="model.retry(ctx)" />
+          <if model.mode != "detail" && model.canCreate><button id="workops-sprint-new" primary icon="plus" @click="model.beginCreate()">New sprint</button></if>
+          <if model.mode == "detail" && model.current != null><badge :tone="model.current?.tone.orEmpty()">{ model.current?.state }</badge><if model.current?.remaining().orEmpty().isNotBlank()><span>{ model.current?.remaining() }</span></if><button-link :href="model.current?.boardHref.orEmpty()">View board</button-link>
+            <if model.current?.state == "FUTURE"><button primary :disabled="model.active != null" @click="model.beginStart(model.current?.id.orEmpty(), ctx)">Start sprint</button></if>
+            <if model.current?.state == "ACTIVE"><button primary @click="model.beginClose(model.current?.id.orEmpty(), ctx)">Complete sprint</button></if>
+          </if><if model.resultHref.isNotBlank()><button-link :href="model.resultHref" size="xs" icon="arrow-right">{ model.resultLabel }</button-link></if></section-heading></if>
+      <div class="workops-content">
+
+        <workops-feedback id="sprint-workspace-0" :feedback="model.feedback" />
+
+        <if model.mode != "detail">
+          <tabs :items="model.stateTabs" label="Sprint states" />
+          <if model.pageRows.isNotEmpty()><card :padded="false"><table-scroll label="Sprints"><table class="sprint-list-table"><caption class="sr-only">Sprints</caption><thead><tr><th scope="col">Sprint</th><th scope="col">State</th><th scope="col">Dates</th><th scope="col">Commitment</th><th scope="col">Velocity</th><th scope="col">Actions</th></tr></thead><tbody>
+            <for sprint in model.pageRows><tr :data-workops-sprint="sprint.id"><td><a :href="sprint.href">{ sprint.name }</a><if !sprint.goal.isNullOrBlank()><p>{ sprint.goal }</p></if></td><td><badge :tone="sprint.tone">{ sprint.state }</badge><if sprint.remaining().isNotBlank()><p>{ sprint.remaining() }</p></if></td>
+              <td><if sprint.startDate != null><time :value="sprint.startDate.orEmpty()" format="MMM d, yyyy" /><else>Not started</if><if sprint.endDate != null> → <time :value="sprint.endDate.orEmpty()" format="MMM d, yyyy" /></if></td><td>{ sprint.committedIds.distinct().size } committed<if sprint.addedIds.isNotEmpty()><p>+{ sprint.addedIds.distinct().size } added after start</p></if></td><td>{ sprint.velocity?.toString() ?: "—" }</td>
+              <td><if sprint.state == "FUTURE"><icon-button icon="play" :disabled="model.active != null" :label='"Start " + sprint.name' @click="model.beginStart(sprint.id, ctx)" /><else-if sprint.state == "ACTIVE"><icon-button icon="check" :label='"Complete " + sprint.name' @click="model.beginClose(sprint.id, ctx)" /></if></td>
+            </tr></for>
+          </tbody></table></table-scroll></card><else><if !model.feedback.failed><empty-state title="No sprints in this view." /></if></if>
+          <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Sprint pages" />
+        <else-if model.current == null><empty-state title="Sprint unavailable" message="This sprint is not available to you." />
+        <else>
+          <tabs :items="model.detailTabs" label="Sprint views" />
+          <if model.tab == "overview"><card><section-heading title="Sprint details" /><dl class="workops-sprint-facts">
+            <div><dt>Goal</dt><dd>{ model.current?.goal?.takeIf(String::isNotBlank) ?: "No goal set" }</dd></div><div><dt>Board</dt><dd><a :href="model.current?.boardHref.orEmpty()">{ model.boardName }</a></dd></div><div><dt>Type</dt><dd>{ model.boardType }</dd></div>
+            <div><dt>Start date</dt><dd><if model.current?.startDate != null><time :value="model.current?.startDate.orEmpty()" format="MMM d, yyyy" /><else>Not started</if></dd></div>
+            <div><dt>End date</dt><dd><if model.current?.endDate != null><time :value="model.current?.endDate.orEmpty()" format="MMM d, yyyy" /><else>No end date</if></dd></div>
+            <if model.current?.completeDate != null><div><dt>Completed</dt><dd><time :value="model.current?.completeDate.orEmpty()" /></dd></div></if>
+            <if model.current?.velocity != null><div><dt>Velocity</dt><dd>{ model.current?.velocity } points</dd></div></if><div><dt>Created</dt><dd><time :value="model.current?.created.orEmpty()" /></dd></div><div><dt>Modified</dt><dd><time :value="model.current?.modified.orEmpty()" /></dd></div>
+          </dl></card>
+          <else-if model.tab == "tasks">
+            <if model.canAddTasks><card><form @submit="model.search(form.query, 0, ctx)"><form-body><field label="Search tasks by key or summary"><input name="query" :value="model.queryDraft" required /></field><button type="submit" icon="search">Search tasks</button>
+              <if model.searchRows.isNotEmpty()><table-scroll label="Tasks to add"><table class="sprint-list-table"><caption>Tasks to add</caption><thead><tr><th scope="col">Task</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead><tbody><for task in model.searchRows><tr :data-workops-sprint-candidate="task.id"><td><a :href="task.href">{ task.key } · { task.label }</a></td><td><badge :tone="task.tone">{ task.status }</badge></td><td><button :aria-label='"Add " + task.key + " to sprint"' @click="model.addTask(task.id, form.query, ctx)">Add</button></td></tr></for></tbody></table></table-scroll><else><if model.queryDraft.isNotBlank() && !model.feedback.failed><empty-state title="No new tasks on this result page." compact /></if></if>
+              <form-actions align="start"><button :disabled="model.searchOffset == 0L" @click="model.search(form.query, (model.searchOffset - 25).coerceAtLeast(0), ctx)">Previous search results</button><span>Page { model.searchOffset / 25 + 1 }</span><button :disabled="!model.searchHasNext" @click="model.search(form.query, model.searchOffset + 25, ctx)">Next search results</button></form-actions>
+            </form-body></form></card></if>
+            <if !model.membersLoaded><p role="status">Sprint tasks have not been loaded. Refresh to try again.</p>
+            <else>
+              <p>{ model.current?.committedIds?.distinct()?.size } committed · { model.members.count { it.added } } added after start</p>
+              <if model.current?.state == "CLOSED"><p>This is the retained sprint snapshot. Task details reflect current access and status.</p></if>
+              <if model.unavailableCount != 0><alert>{ model.unavailableCount } task details are unavailable. Their snapshot membership is retained.</alert></if>
+              <if model.visibleMembers.isNotEmpty()><workops-sprint-task-table :rows="model.visibleMembers" :instance="model.sprintId" /><else><empty-state title="No tasks in this sprint." compact /></if>
+              <pagination :page="model.memberOffset / 25 + 1" :previousHref="model.previousMembersHref" :nextHref="model.nextMembersHref" label="Sprint task pages" />
+            </if>
+          <else>
+            <if !model.membersLoaded><p role="status">Sprint task progress has not been loaded. Refresh to try again.</p><else>
+              <card><section-heading title="Sprint progress" /><div class="workops-sprint-stats"><div><strong>{ model.current?.memberIds?.size }</strong><p>Snapshot tasks</p></div><div><strong>{ model.availableMembers.size }</strong><p>Visible tasks</p></div><div><strong>{ model.doneCount }</strong><p>Done</p></div><div><strong>{ model.availableMembers.size - model.doneCount }</strong><p>Remaining visible tasks</p></div><div><strong>{ model.members.count { it.added } }</strong><p>Added after start</p></div></div>
+                <progress-bar :value="model.completion" label="Visible task completion" /><p>{ model.completionPercent }% of visible tasks complete</p><if model.unavailableCount != 0><p>Unavailable task details are excluded from progress.</p></if><if model.current?.velocity != null><p>Velocity: { model.current?.velocity } points</p></if>
+              </card>
+            </if>
+          </if>
+        </if>
+      </div>
+      <dialog title="New sprint" triggerLabel="New sprint" :showTrigger="false" :forceOpen="model.creating" :completed="!model.creating" returnFocus="#workops-sprint-refresh" @dialogdismiss="model.cancelCreate()">
+        <form @submit="model.create(form.name, form.goal, ctx)"><form-body padded><if model.feedback.failed><alert>{ model.feedback.message }</alert></if><field label="Name"><input name="name" :value="model.nameDraft" required /></field><field label="Goal"><textarea name="goal">{ model.goalDraft }</textarea></field></form-body><form-actions bordered><button data-dialog-close @click="model.cancelCreate()">Cancel</button><button type="submit" primary>Create sprint</button></form-actions></form>
+      </dialog>
+      <dialog title="Start sprint" triggerLabel="Start sprint" :showTrigger="false" :forceOpen="model.startDraft != null" :completed="model.startDraft == null" returnFocus="#workops-sprint-refresh" @dialogdismiss="model.cancelStart()">
+        <form @submit="model.start(form.startDate, form.endDate, form.query, form.taskIds, ctx)"><form-body padded>
+          <p>Start { model.startDraft?.sprint?.name } with { model.startDraft?.selectedIds?.size } selected tasks.</p><if model.feedback.failed><alert>{ model.feedback.message }</alert><help-text>Your choices are retained. If the sprint changed, cancel and refresh sprints before reopening.</help-text></if>
+          <field label="Start date"><input type="date" name="startDate" :value="model.startDraft?.startDate.orEmpty()" /></field><field label="End date"><input type="date" name="endDate" :value="model.startDraft?.endDate.orEmpty()" /></field>
+          <field label="Find available tasks"><input name="query" :value="model.startDraft?.query.orEmpty()" placeholder="Task key or summary" /></field>
+          <button type="submit" icon="search" @click="model.searchStart(form.startDate, form.endDate, form.query, form.taskIds, 0, ctx)">Search available tasks</button>
+          <field label="Tasks to commit" hint="Selected tasks stay selected when you search or change result pages."><select name="taskIds" label="Tasks to commit" multiple searchable><for option in model.startDraft?.options.orEmpty()><option :value="option.value" :selected="option.value in model.startDraft?.selectedIds.orEmpty()">{ option.label }</option></for></select></field>
+          <if (model.startDraft?.unavailableCount ?: 0) != 0><p>Unavailable selected tasks remain in the commitment unless you remove their selection.</p></if>
+          <if model.startDraft?.ready != true><p role="status">Available tasks have not been loaded. Search again to retry.</p></if>
+          <form-actions align="start"><button :disabled="model.startDraft?.offset == 0L" @click="model.searchStart(form.startDate, form.endDate, form.query, form.taskIds, ((model.startDraft?.offset ?: 0) - 25).coerceAtLeast(0), ctx)">Previous available tasks</button><span>Page { (model.startDraft?.offset ?: 0) / 25 + 1 }</span><button :disabled="model.startDraft?.hasNext != true" @click="model.searchStart(form.startDate, form.endDate, form.query, form.taskIds, (model.startDraft?.offset ?: 0) + 25, ctx)">Next available tasks</button></form-actions>
+        </form-body><form-actions bordered><button data-dialog-close @click="model.cancelStart()">Cancel</button><button type="submit" primary :disabled="model.startDraft?.ready != true">Start sprint</button></form-actions></form>
+      </dialog>
+      <dialog title="Complete sprint" triggerLabel="Complete sprint" :showTrigger="false" :forceOpen="model.closeDraft != null" :completed="model.closeDraft == null" returnFocus="#workops-sprint-refresh" @dialogdismiss="model.cancelClose()">
+        <form @submit="model.close(form.velocity, form.destinations, ctx)"><form-body padded>
+          <p>Complete { model.closeDraft?.sprint?.name }.</p><if model.feedback.failed><alert>{ model.feedback.message }</alert><help-text>Your choices are retained. If the sprint changed, cancel and refresh sprints before reopening.</help-text></if>
+          <if model.feedback.failed || model.closeDraft?.ready != true><form-actions align="start"><button @click="model.retryClose(form.velocity, form.destinations, ctx)" icon="refresh">Retry loading sprint tasks</button></form-actions></if>
+          <if model.closeDraft?.ready == true><p>{ model.closeDraft?.completed?.size } completed or cancelled tasks keep their sprint snapshot. Choose a destination for each unfinished task.</p>
+            <if model.closeDraft?.completed.orEmpty().isNotEmpty()><details><disclosure-heading>Completed or cancelled tasks</disclosure-heading><workops-sprint-task-table :rows="model.closeDraft?.completed.orEmpty()" :instance='model.closeDraft?.sprint?.id.orEmpty() + "-completed"' /></details></if>
+            <if (model.closeDraft?.unavailableCount ?: 0) != 0><p>Details are hidden for { model.closeDraft?.unavailableCount } tasks. Their destinations apply if they are unfinished.</p></if>
+            <schema-form :id='"workops-sprint-destinations-" + model.closeDraft?.sprint?.id.orEmpty()' name="destinations" :schema="requireNotNull(model.closeDraft).schema" :uiSchema="requireNotNull(model.closeDraft).uiSchema" :value="requireNotNull(model.closeDraft).value" :options="requireNotNull(model.closeDraft).options" />
+          <else><p role="status">Sprint task details have not been loaded.</p><html:input type="hidden" name="destinations" :value='"{}"' /></if>
+          <field label="Velocity points"><input type="number" name="velocity" :value="model.closeDraft?.velocity.orEmpty()" step="any" /></field>
+        </form-body><form-actions bordered><button data-dialog-close @click="model.cancelClose()">Cancel</button><button type="submit" primary :disabled="model.closeDraft?.ready != true">Complete sprint</button></form-actions></form>
+      </dialog>
+    </div>
+  </island>
+  <style scoped>
+    .workops-sprint-workspace { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+    .sprint-list-table { width: 100%; min-width: 680px; }
+    .workops-sprint-facts, .workops-sprint-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 20px; padding: 16px; }
+    .workops-sprint-facts dt { color: var(--fg-2); font-size: 12px; }
+    .workops-sprint-facts dd { margin: 6px 0 0; }
+    .workops-sprint-stats strong { font-size: 24px; }
+    .workops-sprint-stats p { color: var(--fg-2); font-size: 12px; }
+  </style>
+</component>

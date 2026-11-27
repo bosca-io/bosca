@@ -1,0 +1,8 @@
+<page route="/workops/sprints" requireAuth>
+  <script server provides="directory">bosca.workops.ui.workOpsBoardDirectory()</script>
+  <script server provides="workspace">bosca.workops.ui.workOpsSprints("list", directory.selectedBoard?.id.orEmpty())</script>
+  <workops-layout title="Sprints"><page-shell class="workops-page" fill>
+    <workops-sprint-directory :directory="directory" />
+    <if directory.selectedBoard != null><workops-sprint-workspace :initial="workspace" /></if>
+  </page-shell></workops-layout>
+</page>

@@ -1,0 +1,22 @@
+fragment WorkOpsSprintFields on WorkOpsSprint {
+  id name state goal startDate endDate completeDate committedTaskIds addedDuringSprintTaskIds
+  velocityPoints boardId version createdAt modifiedAt board { id name type }
+}
+fragment WorkOpsSprintTaskFields on WorkOpsTask {
+  id key summary version sprintId assigneeProfileId assignee { name }
+  status { id name category } priority { name colorHex }
+}
+query WorkOpsSprintInfo($id: UUID!) { workOps { sprints { sprint(id: $id) { ...WorkOpsSprintFields } } } }
+query WorkOpsSprintsForBoard($id: UUID!, $offset: Long!) {
+  workOps { sprints { byBoard(boardId: $id, offset: $offset, limit: 100) { ...WorkOpsSprintFields } } }
+}
+query WorkOpsSprintBoard($id: UUID!) { workOps { boards { board(id: $id) { id name type } } } }
+query WorkOpsSprintTaskInfo($id: UUID!) { workOps { tasks { task(id: $id) { ...WorkOpsSprintTaskFields } } } }
+query WorkOpsSprintTaskByKey($key: String!) { workOps { tasks { taskByKey(key: $key) { ...WorkOpsSprintTaskFields } } } }
+query WorkOpsSprintSearchTasks($source: String!, $offset: Long!) {
+  workOps { savedFilters { searchTasks(source: $source, offset: $offset, limit: 26) { rows { ...WorkOpsSprintTaskFields } } } }
+}
+mutation WorkOpsCreateSprint($input: CreateWorkOpsSprintInput!) { workOps { sprints { create(input: $input) { ...WorkOpsSprintFields } } } }
+mutation WorkOpsStartSprint($input: StartWorkOpsSprintInput!) { workOps { sprints { start(input: $input) { ...WorkOpsSprintFields } } } }
+mutation WorkOpsCloseSprint($input: CloseWorkOpsSprintInput!) { workOps { sprints { close(input: $input) { ...WorkOpsSprintFields } } } }
+mutation WorkOpsAddSprintTask($id: UUID!, $input: UpdateWorkOpsTaskInput!) { workOps { tasks { update(id: $id, input: $input) { ...WorkOpsSprintTaskFields } } } }

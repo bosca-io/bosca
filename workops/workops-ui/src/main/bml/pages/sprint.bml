@@ -1,0 +1,4 @@
+<page route="/workops/sprints/{id}" requireAuth>
+  <script server provides="workspace">bosca.workops.ui.workOpsSprintDetail()</script>
+  <workops-layout :title="workspace.title"><page-shell class="workops-page" fill><workops-sprint-workspace :initial="workspace" /></page-shell></workops-layout>
+</page>
