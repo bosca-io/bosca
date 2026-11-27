@@ -14,10 +14,32 @@
   <prop name="hint" type="String" default="" />
   <prop name="placeholder" type="String" default="Start writing…" />
   <prop name="preserveKey" type="String" default="" />
+  <prop name="contentExpression" type="String" default="block+" />
+  <prop name="singleTitle" type="Boolean" default="false" />
+  <prop name="mentions" type="Boolean" default="false" />
+  <prop name="containers" type="List<bosca.design.model.DocumentContainerOption>" :default="emptyList()" />
+  <prop name="showSaveStatus" type="Boolean" default="false" />
+  <prop name="referenceControls" type="Boolean" default="false" />
+  <prop name="media" type="Boolean" default="false" />
+  <script server provides="encodedContainers">bosca.design.model.documentContainerChoices(containers)</script>
+  <prop name="collaborationRoom" type="String" default="" />
+  <prop name="collaborationUrl" type="String" default="/collaboration" />
+  <prop name="collaboratorName" type="String" default="Editor" />
+  <prop name="collaboratorColor" type="String" default="#6366f1" />
+  <prop name="savedRevision" type="String" default="" />
   <div class="document-editor" data-bml-document-editor role="group" :aria-label="label"
        :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" :data-value="encodedValue" :data-name="name"
        :data-label="label" :data-readonly="readOnly" :data-disabled="disabled" :data-required="required"
-       :data-error="error" :data-placeholder="placeholder" :data-editor-id="id" {...attrs}>
+       :data-error="error" :data-placeholder="placeholder" :data-editor-id="id"
+       :data-content-expression="contentExpression" :data-single-title="singleTitle" :data-mentions="mentions"
+       :data-containers="encodedContainers" :data-show-save-status="showSaveStatus" :data-reference-controls="referenceControls" :data-media="media"
+       :data-collaboration-room="collaborationRoom" :data-collaboration-url="collaborationUrl"
+       :data-collaborator-name="collaboratorName" :data-collaborator-color="collaboratorColor"
+       :data-saved-revision="savedRevision" {...attrs}>
+    <p ref="connection" class="document-connection" role="status" aria-live="polite" hidden />
+    <p ref="saveStatus" class="document-save-status" role="status" aria-live="polite" hidden />
+    <button ref="dragHandle" class="document-drag-handle" aria-label="Drag block" tabindex="-1" hidden><icon name="grip-vertical" :size="14" /></button>
+    <input ref="revision" type="hidden" :name='name + "Revision"' :disabled="collaborationRoom.isBlank()" />
     <div ref="toolbar" class="document-toolbar" role="toolbar" :aria-label='label + " formatting"' hidden>
       <span class="document-select">
         <html:select ref="block" aria-label="Text style">
@@ -60,6 +82,15 @@
         <icon-button size="xs" icon="undo" label="Undo" data-document-command="undo" />
         <icon-button size="xs" icon="redo" label="Redo" data-document-command="redo" />
       </div>
+      <div class="document-command-group" role="group" aria-label="Block editing">
+        <span class="document-select" ref="containerChoices" hidden>
+          <html:select ref="container" aria-label="Wrap in container"><option value="">Wrap in container…</option></html:select>
+          <span class="document-select-chevron" aria-hidden="true"><icon name="chevron" :size="13" /></span>
+        </span>
+        <icon-button size="xs" icon="workflow" label="Unwrap container" data-document-command="unwrapContainer" />
+        <icon-button size="xs" icon="arrow-up" label="Move block up" data-document-command="moveBlockUp" />
+        <icon-button size="xs" icon="arrow-down" label="Move block down" data-document-command="moveBlockDown" />
+      </div>
       <div ref="tableActions" class="document-command-group" role="group" aria-label="Table editing" hidden>
         <icon-button size="xs" icon="row-add" label="Add row" data-document-command="addRowAfter" />
         <icon-button size="xs" icon="column-add" label="Add column" data-document-command="addColumnAfter" />
@@ -82,11 +113,12 @@
     <textarea ref="value" :id="id" :name="name" :aria-label="label" :readonly="readOnly" :disabled="disabled"
               :aria-describedby='id + "-hint " + id + "-error"' spellcheck="false">{ encodedValue }</textarea>
     <div ref="editor" class="document-surface" />
+    <if media><image-picker :id='id + "-images"' label="Choose image" :showTrigger="false" :disabled="readOnly || disabled" data-document-image-picker /></if>
     <small :id='id + "-hint"' :hidden="hint.isBlank()">{ hint }</small>
     <p ref="feedback" :id='id + "-error"' role="status" aria-live="polite" :hidden="error.isBlank()">{ error }</p>
   </div>
   <style scoped>
-    .document-editor { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    .document-editor { position: relative; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
     .document-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
     .document-command-group { display: flex; flex-wrap: nowrap; align-items: center; gap: 3px; }
     .document-toolbar[hidden], .document-command-group[hidden], .document-insert[hidden], [hidden] { display: none; }

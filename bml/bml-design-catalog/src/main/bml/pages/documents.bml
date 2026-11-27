@@ -5,6 +5,21 @@
       <div class="catalog-palette-dark" data-document-palette="dark"><document-example id="dark" title="Dark palette" /></div>
       <div class="catalog-palette-light" data-document-palette="light"><document-example id="light" title="Light palette" /></div>
     </div>
+    <card title="Stored content and template schema"><div class="catalog-stack">
+      <p class="catalog-description">Containers, mentions, scripture references and code languages retain their stored attributes. This template requires a heading first. Later level-one headings become section headings before editing starts. The application owns reference lookup, collaboration and saving.</p>
+      <div class="catalog-palette-dark" data-stored-document-palette="dark"><document-example id="stored-dark" title="Stored content, dark" studio /></div>
+      <div class="catalog-palette-light" data-stored-document-palette="light"><document-example id="stored-light" title="Stored content, light" studio /></div>
+    </div></card>
+    <card title="Metadata and scripture references"><div class="catalog-stack">
+      <p class="catalog-description">These illustrative references use application-supplied choices, passage trees, styles and attribution. Search “error” or “empty” to try failed and empty lookups.</p>
+      <div class="catalog-palette-dark" data-reference-document-palette="dark"><document-example id="references-dark" title="References, dark" references /></div>
+      <div class="catalog-palette-light" data-reference-document-palette="light"><document-example id="references-light" title="References, light" references /></div>
+    </div></card>
+    <card title="Images from a library or upload"><div class="catalog-stack">
+      <p class="catalog-description">Choose an illustrative library image or try a local image upload, then supply its description and title. This example reads files in the browser. Applications own authorized lookup and storage.</p>
+      <div class="catalog-palette-dark" data-image-document-palette="dark"><document-example id="images-dark" title="Images, dark" media /></div>
+      <div class="catalog-palette-light" data-image-document-palette="light"><document-example id="images-light" title="Images, light" media /></div>
+    </div></card>
     <card title="Content document"><div class="catalog-stack">
       <p class="catalog-description">Pass a content document directly. The editor uses its body; the application keeps its metadata and saves the edited form value.</p>
       <form data-metadata-document-form>
@@ -13,11 +28,11 @@
       </form>
     </div></card>
     <card title="Use in your application"><div class="catalog-stack">
-      <p class="catalog-description">The editor submits a ProseMirror JSON document. Your application supplies its form, validation and save action. Image controls accept a URL and description; file storage stays with the application.</p>
+      <p class="catalog-description">The editor submits a ProseMirror JSON document. Your application supplies its form, validation and save action. Enable media with an image adapter for library search and upload, or use the URL controls.</p>
       <a class="catalog-link" href="/components/content#ref-document-editor">Document editor API and authoring</a>
     </div></card>
     <card title="Unsupported document content"><div class="catalog-stack">
-      <p class="catalog-description">Documents containing application-specific nodes retain their original JSON and report the unsupported type. Studio collaboration, mentions and template blocks need a consuming application's integration.</p>
+      <p class="catalog-description">Unrecognized nodes retain their original JSON and report the unsupported type. Reference lookup, collaboration and domain save actions remain application-owned.</p>
       <document-editor id="unsupported-document" label="Unsupported document example" name="unsupported"
                        :value="bosca.design.catalog.CatalogSamples.unsupportedDocument" data-document-unsupported />
     </div></card>

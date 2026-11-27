@@ -103,7 +103,7 @@ class DesignLibraryTest {
             assertEquals(setOf("alert", "app-header", "app-shell", "badge", "board", "board-card", "board-column", "bosca-mark", "button", "button-link",
                 "calendar-day-view", "calendar-event-fields", "calendar-month-view", "calendar-sidebar", "calendar-view", "calendar-week-view",
                 "card", "chart", "checkbox", "code-editor", "color-input", "comment-editor", "confirm-dialog", "copy", "copy-field", "dashboard-grid", "dashboard-item", "dialog", "disclosure-heading",
-                "document-editor", "empty-state", "field", "file-drop", "file-field", "flow-editor", "form-actions", "form-body", "fullscreen-button", "help-text", "html-content", "icon", "icon-button", "icon-link", "input", "json-editor", "loading-state", "page-heading", "page-shell", "pagination", "panel", "popover", "profile", "profile-menu", "progress-bar",
+                "document-editor", "empty-state", "field", "file-drop", "file-field", "flow-editor", "form-actions", "form-body", "fullscreen-button", "help-text", "html-content", "icon", "icon-button", "icon-link", "image-picker", "input", "json-editor", "loading-state", "page-heading", "page-shell", "pagination", "panel", "popover", "profile", "profile-menu", "progress-bar",
                 "schema-form", "search-input", "select", "section", "section-heading", "segmented-control", "slug-input", "source-view", "spinner", "subsystem-links", "subsystem-switcher", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs", "workspace"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
             assertTrue(manifest.requirements.isEmpty())
@@ -127,6 +127,7 @@ class DesignLibraryTest {
                 "document-editor" to ("value" to "kotlinx.serialization.json.JsonObject"),
                 "json-editor" to ("value" to "kotlinx.serialization.json.JsonElement"),
                 "file-field" to ("value" to "kotlinx.serialization.json.JsonElement"),
+                "image-picker" to ("id" to "String"),
                 "schema-form" to ("schema" to "kotlinx.serialization.json.JsonObject"),
                 "code-editor" to ("value" to "String"),
             )) {
@@ -293,9 +294,11 @@ class DesignLibraryTest {
             val widgets = request(client, base, "/widgets").body()
             assertTrue(listOf("data-bml-document-editor", "data-bml-flow-editor", "data-bml-dashboard-grid", "data-bml-chart").all { it in widgets }, widgets)
             assertTrue("Visits" in widgets && "Monday" in widgets && "name=\"document\"" in widgets && "name=\"graph\"" in widgets && "name=\"layout\"" in widgets, widgets)
-            assertTrue(styles(widgets).any { ".tiptap" in it })
-            assertTrue(styles(widgets).any { ".vue-flow__node" in it })
-            assertFalse(styles(widgets).any { "--jse-background-color" in it || ".source-keyword" in it })
+            val widgetStyles = styles(widgets)
+            assertTrue(widgetStyles.any { ".tiptap" in it })
+            assertTrue(widgetStyles.any { ".vue-flow__node" in it })
+            assertTrue(widgetStyles.any { ".source-keyword" in it && ".cm-editor" in it }, "Document code blocks include their editor and highlighting styles")
+            assertFalse(widgetStyles.any { "--jse-background-color" in it })
         }
     }
 
