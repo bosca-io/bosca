@@ -69,6 +69,13 @@ class SwarmBackendTest {
                     assertEquals("6379", result.getValue("redis.port").jsonPrimitive.content, service)
                     assertEquals(site.redisDatabase.toString(), result.getValue("redis.database").jsonPrimitive.content, service)
                     assertEquals("${site.id}_", result.getValue("redis.namespace").jsonPrimitive.content, service)
+                    if (service == "atlas") {
+                        assertEquals(site.mailerType, result.getValue("mailer.type").jsonPrimitive.content)
+                        assertEquals(site.mailFromName, result.getValue("mailer.from.name").jsonPrimitive.content)
+                        assertEquals(site.mailFromEmail, result.getValue("mailer.from.email").jsonPrimitive.content)
+                        assertEquals("https://${site.hosts.notifications}/unsubscribe", result.getValue("mailer.unsubscribeUrl").jsonPrimitive.content)
+                        assertEquals("https://${site.hosts.notifications}/preferences", result.getValue("mailer.preferencesUrl").jsonPrimitive.content)
+                    }
                     if (service in setOf("server", "runner", "git", "atlas")) {
                         assertEquals(site.secrets.securityEncryption,
                             result.getValue("security.encryption.key").jsonPrimitive.content, service)
@@ -137,12 +144,13 @@ class SwarmBackendTest {
 object SwarmBackendProbe {
     @JvmStatic
     fun main(args: Array<String>) {
-        val config = ApplicationConfig.loadFromFile(args.single())
-        val keys = listOf("cache.type", "jobQueue.factory", "pubsub.type", "distributedLock.type", "counter.type",
-            "redis.host", "redis.port", "redis.database", "redis.namespace")
+        val config = ApplicationConfig.loadFromFile(args.first())
+        val keys = args.drop(1).ifEmpty { listOf("cache.type", "jobQueue.factory", "pubsub.type", "distributedLock.type", "counter.type",
+            "redis.host", "redis.port", "redis.database", "redis.namespace") }
         println("BACKEND=" + JsonObject(keys.associateWith { JsonPrimitive(config.property(it).getString()) } +
-            listOfNotNull(config.propertyOrNull("security.encryption.key")?.let {
-                "security.encryption.key" to JsonPrimitive(it.getString())
-            })))
+            listOf("security.encryption.key", "mailer.type", "mailer.from.name", "mailer.from.email",
+                "mailer.unsubscribeUrl", "mailer.preferencesUrl").mapNotNull { key ->
+                config.propertyOrNull(key)?.let { key to JsonPrimitive(it.getString()) }
+            }))
     }
 }

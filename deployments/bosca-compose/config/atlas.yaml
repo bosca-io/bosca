@@ -25,6 +25,13 @@ redis:
   port: 6379
 counter:
   type: nats
+
+mailer:
+  type: sendgrid
+  from:
+    name: Bosca
+    email: noreply@localhost
+
 nats:
   url: nats://nats:4222
   token: $NATS_TOKEN

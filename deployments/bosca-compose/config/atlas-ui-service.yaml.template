@@ -7,6 +7,9 @@
       BML_GRAPHQL_ENDPOINT: http://atlas:8094/graphql
       BML_ARTIFACTS_ENDPOINT: "@@BML_ARTIFACTS_ENDPOINT@@"
       ATLAS_ARTIFACTS_URL: ${ARTIFACTS_URL:?Run install.sh first}
+      PUBSUB_TYPE: nats
+      NATS_URL: nats://nats:4222
+      NATS_TOKEN: ${NATS_TOKEN:?Run install.sh first}
     ports:
       - "127.0.0.1:${ATLAS_UI_PORT:-8095}:8095"
     depends_on:

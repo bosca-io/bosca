@@ -116,7 +116,7 @@ private fun service(image: String, deploy: Map<String, Any>, options: Map<String
 /** Validate generated endpoint URLs before they can be deployed to a Swarm service. */
 internal fun validateServiceUrls(services: Map<String, Any>, internalAliases: Set<String>) {
     val internalUrlKeys = setOf(
-        "DATABASE_URL", "TRINO_DATABASE_URL", "NATS_HOST", "NATS_MONITORING_URL", "MEILISEARCH_URL",
+        "DATABASE_URL", "TRINO_DATABASE_URL", "NATS_HOST", "NATS_URL", "NATS_MONITORING_URL", "MEILISEARCH_URL",
         "STORAGE_ENDPOINT", "IMAGE_RESIZER_URL", "ICEBERG_DATABASE_URI", "ICEBERG_S3_ENDPOINT",
         "BML_MESSAGE_SERVER_URL", "ANALYTICS_SERVER_URL", "BOSCA_EMBEDDINGS_URL", "ML_TRAINER_URL",
         "RECOMMENDATIONS_TF_SERVING_URL", "API_URL", "COLLABORATION_URL", "GRAPHQL_URL", "NUXT_API_URL",
@@ -530,6 +530,11 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
             "ATLAS_UI_HTTP_PORT" to "8095", "BML_GRAPHQL_ENDPOINT" to "http://${name}-atlas:8094/graphql",
             "ATLAS_ARTIFACTS_URL" to "https://${hosts.artifacts}",
             "BML_ARTIFACTS_ENDPOINT" to if (site.artifactsServer.enabled) "http://${name}-artifacts:8084" else "",
+            "PUBSUB_TYPE" to env.getValue("PUBSUB_TYPE"),
+            "NATS_URL" to env.getValue("NATS_HOST"),
+            "NATS_USERNAME" to env.getValue("NATS_USERNAME"), "NATS_PASSWORD" to env.getValue("NATS_PASSWORD"),
+            "REDIS_HOST" to env.getValue("REDIS_HOST"), "REDIS_PORT" to env.getValue("REDIS_PORT"),
+            "REDIS_DATABASE" to env.getValue("REDIS_DATABASE"), "REDIS_NAMESPACE" to env.getValue("REDIS_NAMESPACE"),
         ), 8095, "60s", Limits("512M")).plus(mapOf(
             "healthcheck" to healthcheck(bashHttpCheck(8095, "/api/v1/ready"), "60s"),
         )))
