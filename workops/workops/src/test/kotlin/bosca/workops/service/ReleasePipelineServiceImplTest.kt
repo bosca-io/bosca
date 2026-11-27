@@ -203,7 +203,8 @@ class ReleasePipelineServiceImplTest {
         coEvery { releaseService.getById(releaseId) } returns release()
         coEvery { releaseService.listVersions(releaseId) } returns listOf(releaseVersion(projectId, versionId))
         coEvery { versionService.getById(versionId) } returns version("6.0.0")
-        coEvery { repositoryBrowse.resolveRef(repositoryId, "refs/tags/6.0.0") } returns "abc123"
+        coEvery { repositoryBrowse.resolveRef(repositoryId, "refs/tags/6.0.0") } returns "annotated-tag-object"
+        coEvery { repositoryBrowse.resolveRef(repositoryId, "refs/tags/6.0.0^{commit}") } returns "abc123"
 
         assertTrue(service.promote(releaseId, "production", false, mapOf("phasedRelease" to "true"), authenticated()))
 
@@ -1015,7 +1016,7 @@ class ReleasePipelineServiceImplTest {
     }
 
     @Test
-    fun `release repository resolution validates empty stale and conflicting bundles while deduplicating shared repositories`() = runTest {
+    fun `release plans validate empty stale and conflicting bundles while repository access remains independently discoverable`() = runTest {
         val firstProject = UUID.random()
         val secondProject = UUID.random()
         val firstVersionId = UUID.random()
@@ -1026,15 +1027,18 @@ class ReleasePipelineServiceImplTest {
 
         coEvery { releaseService.getById(releaseId) } returns release()
         coEvery { releaseService.listVersions(releaseId) } returns emptyList()
-        assertFailsWith<IllegalStateException> { service.repositoryIdsForRelease(releaseId) }
+        assertTrue(service.repositoryIdsForRelease(releaseId).isEmpty())
+        assertFailsWith<IllegalStateException> { service.plansForRelease(releaseId) }
 
         coEvery { releaseService.listVersions(releaseId) } returns listOf(releaseVersion(firstProject, firstVersionId))
         coEvery { versionService.getById(firstVersionId) } returns null
-        assertFailsWith<IllegalStateException> { service.repositoryIdsForRelease(releaseId) }
+        assertEquals(listOf(repositoryId), service.repositoryIdsForRelease(releaseId))
+        assertFailsWith<IllegalStateException> { service.plansForRelease(releaseId) }
 
         coEvery { versionService.getById(firstVersionId) } returns version("6.0.0")
         coEvery { repositoryService.findById(repositoryId) } returns null
-        assertFailsWith<IllegalStateException> { service.repositoryIdsForRelease(releaseId) }
+        assertEquals(listOf(repositoryId), service.repositoryIdsForRelease(releaseId))
+        assertFailsWith<IllegalStateException> { service.plansForRelease(releaseId) }
 
         coEvery { repositoryService.findById(repositoryId) } returns Repository(
             id = repositoryId,
@@ -1047,11 +1051,31 @@ class ReleasePipelineServiceImplTest {
             releaseVersion(secondProject, secondVersionId),
         )
         coEvery { versionService.getById(secondVersionId) } returns version("7.0.0")
-        val conflict = assertFailsWith<IllegalStateException> { service.repositoryIdsForRelease(releaseId) }
+        assertEquals(listOf(repositoryId), service.repositoryIdsForRelease(releaseId))
+        val conflict = assertFailsWith<IllegalStateException> { service.plansForRelease(releaseId) }
         assertTrue("6.0.0" in conflict.message.orEmpty() && "7.0.0" in conflict.message.orEmpty())
 
         coEvery { versionService.getById(secondVersionId) } returns version("6.0.0")
         assertEquals(listOf(repositoryId), service.repositoryIdsForRelease(releaseId))
+    }
+
+    @Test
+    fun `capability repository discovery preserves every linked identity without parsing versions refs or YAML`() = runTest {
+        val projectId = UUID.random()
+        val staleVersion = UUID.random()
+        val missingRepository = UUID.random()
+        coEvery { releaseService.getById(releaseId) } returns release()
+        coEvery { releaseService.listVersions(releaseId) } returns listOf(releaseVersion(projectId, staleVersion), releaseVersion(projectId, UUID.random()))
+        coEvery { projectRepositories.list(projectId) } returns listOf(
+            mockk { every { repositoryId } returns this@ReleasePipelineServiceImplTest.repositoryId },
+            mockk { every { repositoryId } returns missingRepository },
+            mockk { every { repositoryId } returns this@ReleasePipelineServiceImplTest.repositoryId },
+        )
+        assertEquals(listOf(repositoryId, missingRepository), service.repositoryIdsForRelease(releaseId))
+        coVerify(exactly = 1) { projectRepositories.list(projectId) }
+        coVerify(exactly = 0) { versionService.getById(any()) }
+        coVerify(exactly = 0) { repositoryService.findById(any()) }
+        coVerify(exactly = 0) { gitPipelines.findByRepository(any()) }
     }
 
     @Test
@@ -1100,7 +1124,7 @@ class ReleasePipelineServiceImplTest {
                 ),
             ),
         )
-        coEvery { repositoryBrowse.resolveRef(repositoryId, "refs/tags/6.0.0") } returns "tagged"
+        coEvery { repositoryBrowse.resolveRef(repositoryId, "refs/tags/6.0.0^{commit}") } returns "tagged"
         coEvery { gitPipelines.parseDefinition(repositoryId, "tagged", any()) } returns promotion
         every { runService.plan(promotion, any(), PipelineTriggerType.PROMOTION, any()) } returns
             PipelineExecutionPlan(emptyMap(), mapOf("promote" to JobDefinition()))

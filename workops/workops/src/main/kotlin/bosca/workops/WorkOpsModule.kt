@@ -16,12 +16,13 @@ class WorkOpsModule : BoscaApplicationModule {
 
     override suspend fun install(application: BoscaApplication) {
         provide<NotificationDeliveryService>()
-        SpecDocumentSyncListener(
+        val documents = SpecDocumentSyncListener(
             pubSubService = provide(),
             specRepository = provide(),
             connectionPool = provide(),
         )
-        PipelineEnvironmentSyncListener(
+        application.onShutdown { documents.close() }
+        val environments = PipelineEnvironmentSyncListener(
             pubSubService = provide(),
             sync = PipelineEnvironmentSync(
                 environmentService = provide(),
@@ -31,7 +32,8 @@ class WorkOpsModule : BoscaApplicationModule {
             ),
             connectionPool = provide(),
         )
-        PipelineArtifactPublicationListener(
+        application.onShutdown { environments.close() }
+        val publications = PipelineArtifactPublicationListener(
             pubSubService = provide(),
             sync = PipelineArtifactPublicationSync(
                 runService = provide(),
@@ -41,7 +43,8 @@ class WorkOpsModule : BoscaApplicationModule {
                 publicationService = provide(),
             ),
         )
-        DeployConfigPushListener(
+        application.onShutdown { publications.close() }
+        val deployConfigs = DeployConfigPushListener(
             pubSubService = provide(),
             validator = DeployConfigPushValidator(
                 deployConfigService = provide(),
@@ -49,5 +52,6 @@ class WorkOpsModule : BoscaApplicationModule {
                 commitStatusService = provide(),
             ),
         )
+        application.onShutdown { deployConfigs.close() }
     }
 }

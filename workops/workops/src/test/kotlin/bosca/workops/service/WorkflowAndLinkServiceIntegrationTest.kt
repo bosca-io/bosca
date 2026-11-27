@@ -33,6 +33,10 @@ import bosca.workops.model.workflow.Condition
 import bosca.workops.model.workflow.PostFunction
 import bosca.workops.model.workflow.Validator
 import bosca.workops.model.workflow.WorkflowTransition
+import bosca.workops.model.workflow.CreateWorkflowInput
+import bosca.workops.model.workflow.UpdateWorkflowInput
+import bosca.workops.model.workflow.CreateWorkflowSchemeInput
+import bosca.workops.model.workflow.UpdateWorkflowSchemeInput
 import io.mockk.mockk
 import bosca.di.asProvider
 import bosca.workops.repository.PortfolioRepositoryImpl
@@ -59,6 +63,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.AfterClass
 import bosca.test.resources.SharedPostgreSQLContainer
 import kotlin.test.BeforeTest
@@ -221,6 +227,95 @@ class WorkflowAndLinkServiceIntegrationTest {
     }
 
     // ----- fixtures -----
+
+    @Test
+    fun `workflow configuration CRUD round trips and scheme edits preserve stored overrides`() = withDb {
+        val suffix = UUID.random().toString()
+        val first = workflowService.createWorkflow(CreateWorkflowInput("Workflow $suffix", "Initial notes"))
+        val second = workflowService.createWorkflow(CreateWorkflowInput("Alternate $suffix"))
+        assertEquals(null, first.initialStateId)
+        assertTrue(workflowService.listStates(first.id).isEmpty())
+        assertTrue(workflowService.listTransitions(first.id).isEmpty())
+        val updated = workflowService.updateWorkflow(first.id, UpdateWorkflowInput("Renamed $suffix", null, first.version))
+        assertEquals(first.version + 1, updated.version)
+        assertEquals(null, updated.description)
+        assertEquals(updated, workflowService.getWorkflow(first.id))
+        assertFailsWith<OptimisticLockFailedException> {
+            workflowService.updateWorkflow(first.id, UpdateWorkflowInput("Stale $suffix", expectedVersion = first.version))
+        }
+
+        val created = workflowService.createScheme(CreateWorkflowSchemeInput("Scheme $suffix", "Initial", first.id))
+        assertEquals(buildJsonObject {}, created.perTaskTypeWorkflowIds)
+        val overrides = buildJsonObject { put(UUID.random().toString(), first.id.toString()) }
+        val stored = assertNotNull(schemeRepo.update(created.id, created.name, created.description, first.id, overrides, created.version))
+        val changed = workflowService.updateScheme(stored.id, UpdateWorkflowSchemeInput("Changed scheme $suffix", null, second.id, stored.version))
+        assertEquals(stored.version + 1, changed.version)
+        assertEquals(overrides, changed.perTaskTypeWorkflowIds)
+        assertEquals(second.id, changed.defaultWorkflowId)
+        assertEquals(null, changed.description)
+        assertEquals(changed, workflowService.getScheme(changed.id))
+        assertFailsWith<OptimisticLockFailedException> {
+            workflowService.updateScheme(stored.id, UpdateWorkflowSchemeInput("Stale scheme $suffix", defaultWorkflowId = first.id, expectedVersion = stored.version))
+        }
+        // The first is referenced by the override; the second is referenced by the default.
+        assertFailsWith<WorkOpsValidationException> { workflowService.deleteWorkflow(first.id) }
+        assertFailsWith<WorkOpsValidationException> { workflowService.deleteWorkflow(second.id) }
+        workflowService.deleteScheme(changed.id)
+        assertEquals(null, workflowService.getScheme(changed.id))
+        workflowService.deleteWorkflow(first.id)
+        workflowService.deleteWorkflow(second.id)
+        assertEquals(null, workflowService.getWorkflow(first.id))
+        assertEquals(null, workflowService.getWorkflow(second.id))
+    }
+
+    @Test
+    fun `deleting an unreferenced workflow removes its initial state and transition graph`() = withDb {
+        val workflow = workflowService.createWorkflow(CreateWorkflowInput("Graph deletion ${UUID.random()}"))
+        val stateId = UUID.random()
+        transaction {
+            // Graph authoring has no API; seed only this test's disposable definition.
+            connection().useStatement("insert into workops.workflow_state(id, workflow_id, status_id, display_order) values (?::uuid, ?::uuid, ?::uuid, 0)") {
+                it.setString(1, stateId.toString())
+                it.setString(2, workflow.id.toString())
+                it.setString(3, "20000000-0000-0000-0000-000000000001")
+                assertEquals(1, it.executeUpdate())
+            }
+            connection().useStatement("insert into workops.workflow_transition(workflow_id, name, from_state_ids, to_state_id) values (?::uuid, 'Reopen', array['*'], ?::uuid)") {
+                it.setString(1, workflow.id.toString())
+                it.setString(2, stateId.toString())
+                assertEquals(1, it.executeUpdate())
+            }
+            connection().useStatement("update workops.workflow set initial_state_id = ?::uuid where id = ?::uuid") {
+                it.setString(1, stateId.toString())
+                it.setString(2, workflow.id.toString())
+                assertEquals(1, it.executeUpdate())
+            }
+        }
+        assertEquals(stateId, workflowService.getWorkflow(workflow.id)?.initialStateId)
+        assertEquals(1, workflowService.listTransitions(workflow.id).size)
+        workflowService.deleteWorkflow(workflow.id)
+        assertEquals(null, workflowService.getWorkflow(workflow.id))
+        assertTrue(workflowService.listStates(workflow.id).isEmpty())
+        assertTrue(workflowService.listTransitions(workflow.id).isEmpty())
+    }
+
+    @Test
+    fun `versioned workflow header edits retain the seeded initial state states and transition graph`() = withDb {
+        val id = UUID.parse("50000000-0000-0000-0000-000000000001")
+        val original = assertNotNull(workflowService.getWorkflow(id))
+        val states = workflowService.listStates(id)
+        val transitions = workflowService.listTransitions(id).sortedBy { it.id.toString() }
+        assertTrue(states.isNotEmpty())
+        assertTrue(transitions.isNotEmpty())
+        val changed = workflowService.updateWorkflow(id, UpdateWorkflowInput("Header ${UUID.random()}", "Changed notes", original.version))
+        try {
+            assertEquals(original.initialStateId, changed.initialStateId)
+            assertEquals(states, workflowService.listStates(id))
+            assertEquals(transitions, workflowService.listTransitions(id).sortedBy { it.id.toString() })
+        } finally {
+            workflowService.updateWorkflow(id, UpdateWorkflowInput(original.name, original.description, changed.version))
+        }
+    }
 
     private val ownerProfileId: UUID = UUID.parse("11111111-1111-1111-1111-111111111111")
     private val callerPrincipalId: UUID = UUID.parse("22222222-2222-2222-2222-222222222222")

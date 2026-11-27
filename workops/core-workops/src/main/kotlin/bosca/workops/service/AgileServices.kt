@@ -15,29 +15,8 @@ import bosca.workops.model.label.CreateLabelInput
 import bosca.workops.model.label.Label
 import bosca.workops.model.milestone.CreateMilestoneInput
 import bosca.workops.model.milestone.Milestone
-import bosca.workops.model.sprint.CloseSprintInput
-import bosca.workops.model.sprint.CreateSprintInput
-import bosca.workops.model.sprint.Sprint
-import bosca.workops.model.sprint.StartSprintInput
 import bosca.workops.model.version.CreateVersionInput
 import bosca.workops.model.version.Version
-
-// ----- Sprint -----
-
-interface SprintService : Service {
-    suspend fun listByBoard(boardId: UUID, offset: Long, limit: Int): List<Sprint>
-    suspend fun getById(id: UUID): Sprint?
-    suspend fun getByIds(ids: List<UUID>): List<Sprint>
-    suspend fun create(input: CreateSprintInput): Sprint
-    suspend fun start(input: StartSprintInput): Sprint
-    suspend fun close(input: CloseSprintInput): Sprint
-
-    /** Adds [taskId] to the appropriate committed or in-progress collection for [sprintId]. */
-    suspend fun addTask(sprintId: UUID, taskId: UUID): Sprint?
-
-    /** Removes [taskId] from every task collection owned by [sprintId]. */
-    suspend fun removeTask(sprintId: UUID, taskId: UUID): Sprint?
-}
 
 // ----- Board -----
 

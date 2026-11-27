@@ -118,6 +118,11 @@ class SavedFilterQueryController(
     }
 
     @Field
+    suspend fun validateSpecBql(authentication: AuthenticationContext, source: String): BqlValidationResult {
+        return BqlValidationResult(specQueryService.validate(source))
+    }
+
+    @Field
     suspend fun searchTasks(
         authentication: AuthenticationContext,
         source: String,

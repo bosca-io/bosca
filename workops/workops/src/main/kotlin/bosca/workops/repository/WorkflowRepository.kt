@@ -64,13 +64,15 @@ interface WorkflowRepository {
         initialStateId: UUID?,
     ): Workflow
 
-    /*
-     * Phase 3 seeds workflow_state and workflow_transition rows from
-     * the V3 SQL migration; admin CRUD over those tables (R4 author-
-     * mode) lands in Phase 7 with the `MANAGE_WORKFLOWS` permission.
-     * The repository deliberately does NOT expose a Phase-3 write
-     * path for either table — Phase 7 will add the model-flatten
-     * shape that handles the sealed `Condition` / `Validator` /
-     * `PostFunction` JSONB binding cleanly.
-     */
+    /** Header edits retain the initial state and the separately stored graph. */
+    @Query("""
+        update workops.workflow
+        set name = :name, description = :description, version = version + 1
+        where id = :id and version = :expectedVersion
+        returning *
+    """)
+    suspend fun updateWorkflow(id: UUID, name: String, description: String?, expectedVersion: Long): Workflow?
+
+    @Query("delete from workops.workflow where id = :id")
+    suspend fun deleteWorkflow(id: UUID)
 }

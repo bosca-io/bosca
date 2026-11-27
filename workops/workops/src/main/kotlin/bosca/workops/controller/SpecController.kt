@@ -222,6 +222,12 @@ class SpecQueryController(
     }
 
     @Field
+    suspend fun specByMetadataId(authentication: AuthenticationContext, metadataId: UUID): Spec? {
+        val spec = specService.getByMetadataId(metadataId) ?: return null
+        return if (permissionEvaluator.isAllowed(authentication, spec, PermissionAction.VIEW)) spec else null
+    }
+
+    @Field
     suspend fun byProject(authentication: AuthenticationContext, projectId: UUID, offset: Long, limit: Int): List<Spec> {
         val project = projectService.getById(projectId) ?: return emptyList()
         projectPermissionEvaluator.verifyAllowed(authentication, project, PermissionAction.VIEW)
@@ -397,6 +403,19 @@ class SpecMutationController(
         val authenticated = authentication.principal()
             ?: error("pushToGit requires an authenticated principal")
         return gitSyncService.pushToGit(spec, content, authenticated.id, authorName, authorEmail)
+    }
+
+    @Field
+    suspend fun pushSavedToGit(
+        authentication: AuthenticationContext,
+        specId: UUID,
+        authorName: String,
+        authorEmail: String,
+    ): String? {
+        val spec = specService.getById(specId) ?: error("pushSavedToGit: spec $specId not found")
+        permissionEvaluator.verifyAllowed(authentication, spec, PermissionAction.EDIT)
+        val authenticated = authentication.principal() ?: error("pushSavedToGit requires an authenticated principal")
+        return gitSyncService.pushSavedToGit(spec, authenticated.id, authorName, authorEmail)
     }
 
     @Field

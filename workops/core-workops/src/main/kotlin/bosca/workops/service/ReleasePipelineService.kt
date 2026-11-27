@@ -106,6 +106,8 @@ interface ReleasePipelineService : Service {
      * Every Git repository attached to a project version bundled in [releaseId], independent of
      * whether its current pipeline YAML exposes a release trigger. Mutation authorization uses
      * this complete set before reading or executing repository-owned pipeline definitions.
+     * Empty bundles return an empty set; version/ref/launch validation belongs to [launch] and
+     * [plansForRelease], so incomplete releases can still expose their editing capabilities.
      */
     suspend fun repositoryIdsForRelease(releaseId: UUID): List<UUID>
 

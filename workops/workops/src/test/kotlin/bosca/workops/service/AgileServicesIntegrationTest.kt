@@ -11,6 +11,8 @@ import bosca.db.migrations.FlywayMigration
 import bosca.db.transaction
 import bosca.di.ProviderRegistry
 import bosca.di.provides
+import bosca.di.ObjectProvider
+import bosca.di.asProvider
 import bosca.security.service.SecurityService
 import bosca.serialization.UUID
 import bosca.db.migrations.CoreMigration
@@ -36,6 +38,9 @@ import bosca.workops.model.sprint.CloseSprintDestination
 import bosca.workops.model.sprint.CloseSprintInput
 import bosca.workops.model.sprint.CreateSprintInput
 import bosca.workops.model.sprint.StartSprintInput
+import bosca.workops.model.task.Task
+import bosca.workops.model.task.UpdateTaskInput
+import bosca.workops.model.workflow.StatusCategory
 import bosca.workops.model.version.CreateVersionInput
 import io.mockk.mockk
 import bosca.workops.repository.BoardRepositoryImpl
@@ -51,6 +56,16 @@ import bosca.workops.repository.ProjectPermissionRepositoryImpl
 import bosca.workops.repository.ProjectRepositoryImpl
 import bosca.workops.repository.SprintRepositoryImpl
 import bosca.workops.repository.StatusRepositoryImpl
+import bosca.workops.repository.TaskRepositoryImpl
+import bosca.workops.repository.TaskHistoryRepositoryImpl
+import bosca.workops.repository.TaskPermissionRepositoryImpl
+import bosca.workops.repository.TaskTypeRepositoryImpl
+import bosca.workops.repository.TaskTypeSchemeRepositoryImpl
+import bosca.workops.repository.PriorityRepositoryImpl
+import bosca.workops.repository.TaskFieldConfigurationRepositoryImpl
+import bosca.workops.repository.WorkflowRepositoryImpl
+import bosca.workops.repository.WorkflowSchemeRepositoryImpl
+import bosca.workops.repository.TaskAffectedProjectRepositoryImpl
 import bosca.workops.repository.VersionRepositoryImpl
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
@@ -118,6 +133,7 @@ class AgileServicesIntegrationTest {
     private val projectPermissionRepo = ProjectPermissionRepositoryImpl()
     private val keyCounterRepo = ProjectKeyCounterRepositoryImpl()
     private val statusRepo = StatusRepositoryImpl()
+    private val taskRepo = TaskRepositoryImpl()
     private val sprintRepo = SprintRepositoryImpl()
     private val boardRepo = BoardRepositoryImpl()
     private val versionRepo = VersionRepositoryImpl()
@@ -134,7 +150,22 @@ class AgileServicesIntegrationTest {
     private val projectService = ProjectServiceImpl(projectRepo, programRepo, keyCounterRepo, projectPermissionRepo, programPermissionRepo, programPermissionEvaluator)
     private val projectPermissionEvaluator = ProjectPermissionEvaluator(projectService, securityService, groupEvaluator)
     private val boardService = BoardServiceImpl(boardRepo, statusRepo)
-    private val sprintService = SprintServiceImpl(sprintRepo, boardService, projectService, programService)
+    private val sprintService = SprintServiceImpl(sprintRepo, boardService, projectService, programService,
+        object : ObjectProvider<TaskService> {
+            override val type = TaskService::class
+            override suspend fun get() = taskService
+        }, StatusServiceImpl(statusRepo))
+    private val taskService: TaskService by lazy { TaskServiceImpl(
+        taskRepository = taskRepo, taskHistoryRepository = TaskHistoryRepositoryImpl(), projectService = projectService,
+        programService = programService, taskTypeService = TaskTypeServiceImpl(TaskTypeRepositoryImpl()),
+        taskTypeSchemeService = TaskTypeSchemeServiceImpl(TaskTypeSchemeRepositoryImpl()), statusService = StatusServiceImpl(statusRepo),
+        priorityService = PriorityServiceImpl(PriorityRepositoryImpl()),
+        workflowService = WorkflowServiceImpl(WorkflowRepositoryImpl(), WorkflowSchemeRepositoryImpl(), projectService, WorkflowQueryRepositoryImpl()),
+        workflowEvaluator = WorkflowEvaluator(), customFieldService = TaskCustomFieldServiceImpl(TaskFieldConfigurationRepositoryImpl()),
+        taskPermissionRepository = TaskPermissionRepositoryImpl(), affectedProjectService = TaskAffectedProjectServiceImpl(TaskAffectedProjectRepositoryImpl()),
+        requirementServiceProvider = mockk<RequirementService>(relaxed = true).asProvider(), metadataService = mockk(relaxed = true),
+        sprintService = sprintService, projectPermissionEvaluator = projectPermissionEvaluator, json = json,
+    ) }
     private val versionService = VersionServiceImpl(versionRepo)
     private val componentService = ComponentServiceImpl(componentRepo)
     private val labelService = LabelServiceImpl(labelRepo)
@@ -147,6 +178,7 @@ class AgileServicesIntegrationTest {
         provides<Json>(singleton = true) { json }
         provides<bosca.pubsub.PubSubService>(singleton = true) { mockk(relaxed = true) }
         provides<bosca.sharedqueue.jobs.JobQueue>(name = "workops", singleton = true) { mockk(relaxed = true) }
+        provides<AutomationDispatcher>(singleton = true) { mockk(relaxed = true) }
 
         if (!schemaInitialized) {
             runBlocking {
@@ -185,6 +217,7 @@ class AgileServicesIntegrationTest {
     }
 
     private val ownerId: UUID = UUID.parse("11111111-1111-1111-1111-111111111111")
+    private val callerPrincipalId: UUID = UUID.parse("22222222-2222-2222-2222-222222222222")
 
     private suspend fun seed(): Triple<UUID, UUID, UUID> {
         val portfolio = portfolioService.create(
@@ -295,12 +328,12 @@ class AgileServicesIntegrationTest {
         )
 
         val sprint1 = sprintService.create(CreateSprintInput(boardId = board.id, name = "Sprint 1"))
-        val started = sprintService.start(StartSprintInput(sprintId = sprint1.id, expectedVersion = sprint1.version))
+        val started = sprintService.start(StartSprintInput(sprintId = sprint1.id, expectedVersion = sprint1.version), callerPrincipalId, ownerId)
         assertEquals("active", started.state.name.lowercase())
 
         val sprint2 = sprintService.create(CreateSprintInput(boardId = board.id, name = "Sprint 2"))
         assertFailsWith<SprintAlreadyActiveException> {
-            sprintService.start(StartSprintInput(sprintId = sprint2.id, expectedVersion = sprint2.version))
+            sprintService.start(StartSprintInput(sprintId = sprint2.id, expectedVersion = sprint2.version), callerPrincipalId, ownerId)
         }
     }
 
@@ -311,19 +344,20 @@ class AgileServicesIntegrationTest {
             CreateBoardInput(projectId = projectId, name = "Scrum", type = BoardType.SCRUM)
         )
         val sprint = sprintService.create(CreateSprintInput(boardId = board.id, name = "Sprint A"))
-        val taskAId = UUID.parse("aaaaaaaa-0000-0000-0000-000000000001")
-        val taskBId = UUID.parse("aaaaaaaa-0000-0000-0000-000000000002")
+        val taskAId = task(projectId, "AGP-1").id
+        val taskBId = task(projectId, "AGP-2").id
         val started = sprintService.start(
             StartSprintInput(
                 sprintId = sprint.id,
                 expectedVersion = sprint.version,
                 committedTaskIds = listOf(taskAId, taskBId),
-            )
+            ),
+            callerPrincipalId, ownerId,
         )
 
         // Closing without destinations fails.
         assertFailsWith<SprintCloseUnfinishedException> {
-            sprintService.close(CloseSprintInput(sprintId = started.id, expectedVersion = started.version))
+            sprintService.close(CloseSprintInput(sprintId = started.id, expectedVersion = started.version), callerPrincipalId, ownerId)
         }
         // Closing with destinations for both succeeds.
         val closed = sprintService.close(
@@ -334,9 +368,124 @@ class AgileServicesIntegrationTest {
                     CloseSprintDestination(taskId = taskAId),
                     CloseSprintDestination(taskId = taskBId),
                 ),
-            )
+            ),
+            callerPrincipalId, ownerId,
         )
         assertEquals("closed", closed.state.name.lowercase())
+    }
+
+    private suspend fun task(projectId: UUID, key: String, sprintId: UUID? = null,
+        statusId: UUID = UUID.parse("20000000-0000-0000-0000-000000000001")) = taskRepo.add(Task(
+        key = key, projectId = projectId, summary = "Sprint work $key", reporterProfileId = ownerId,
+        taskTypeId = UUID.parse("00000000-0000-0000-0000-000000000003"),
+        statusId = statusId,
+        priorityId = UUID.parse("30000000-0000-0000-0000-000000000003"),
+        sprintId = sprintId, createdByPrincipalId = ownerId, modifiedByPrincipalId = ownerId,
+    ))
+
+    @Test
+    fun `starting a sprint assigns committed tasks in PostgreSQL`() = withDb {
+        val (_, _, projectId) = seed()
+        val board = boardService.create(CreateBoardInput(projectId = projectId, name = "Delivery", type = BoardType.SCRUM))
+        val sprint = sprintService.create(CreateSprintInput(board.id, "Iteration"))
+        val task = task(projectId, "AGP-1")
+        val started = sprintService.start(StartSprintInput(sprint.id, sprint.version, committedTaskIds = listOf(task.id)), callerPrincipalId, ownerId)
+        assertEquals(listOf(task.id), started.committedTaskIds)
+        assertEquals(sprint.id, taskRepo.getActiveById(task.id)?.sprintId)
+    }
+
+    @Test
+    fun `closing a sprint moves unfinished tasks to future sprint or backlog and retains its snapshot`() = withDb {
+        val (_, _, projectId) = seed()
+        val board = boardService.create(CreateBoardInput(projectId = projectId, name = "Delivery", type = BoardType.SCRUM))
+        val sprint = sprintService.create(CreateSprintInput(board.id, "Iteration"))
+        val future = sprintService.create(CreateSprintInput(board.id, "Next iteration"))
+        val first = task(projectId, "AGP-1", sprint.id)
+        val second = task(projectId, "AGP-2", sprint.id)
+        val started = sprintService.start(StartSprintInput(sprint.id, sprint.version, committedTaskIds = listOf(first.id, second.id)), callerPrincipalId, ownerId)
+        sprintService.close(CloseSprintInput(started.id, started.version,
+            destinations = listOf(CloseSprintDestination(first.id, future.id), CloseSprintDestination(second.id))), callerPrincipalId, ownerId)
+        assertEquals(future.id, taskRepo.getActiveById(first.id)?.sprintId)
+        assertEquals(null, taskRepo.getActiveById(second.id)?.sprintId)
+        assertEquals(listOf(first.id), sprintRepo.getById(future.id)?.committedTaskIds)
+        assertEquals(setOf(first.id, second.id), sprintRepo.getById(sprint.id)?.committedTaskIds?.toSet())
+        val history = TaskHistoryRepositoryImpl().listByTask(first.id, 0, 10).single()
+        assertEquals(callerPrincipalId, history.changedByPrincipalId)
+        assertEquals(ownerId, history.changedByProfileId)
+    }
+
+    @Test
+    fun `start returns unselected planned tasks to backlog and commits each selected task once`() = withDb {
+        val (_, _, projectId) = seed()
+        val board = boardService.create(CreateBoardInput(projectId = projectId, name = "Delivery", type = BoardType.SCRUM))
+        val sprint = sprintService.create(CreateSprintInput(board.id, "Iteration"))
+        val previous = task(projectId, "AGP-1", sprint.id)
+        val selected = task(projectId, "AGP-2")
+        val planned = requireNotNull(sprintRepo.addCommittedTask(sprint.id, previous.id))
+        val started = sprintService.start(StartSprintInput(sprint.id, planned.version, committedTaskIds = listOf(selected.id, selected.id)), callerPrincipalId, ownerId)
+        assertEquals(listOf(selected.id), started.committedTaskIds)
+        assertEquals(null, taskRepo.getActiveById(previous.id)?.sprintId)
+        assertEquals(sprint.id, taskRepo.getActiveById(selected.id)?.sprintId)
+        assertEquals(started.version, sprintRepo.getById(sprint.id)?.version)
+    }
+
+    @Test
+    fun `finished and cancelled tasks need no destination and stay in the closed snapshot`() = withDb {
+        val (_, _, projectId) = seed()
+        val board = boardService.create(CreateBoardInput(projectId = projectId, name = "Delivery", type = BoardType.SCRUM))
+        val sprint = sprintService.create(CreateSprintInput(board.id, "Iteration"))
+        val statuses = statusRepo.getAll()
+        val done = task(projectId, "AGP-1", sprint.id, statuses.first { it.category == StatusCategory.DONE }.id)
+        val cancelled = task(projectId, "AGP-2", sprint.id, statuses.first { it.category == StatusCategory.CANCELLED }.id)
+        val open = task(projectId, "AGP-3", sprint.id)
+        val started = sprintService.start(StartSprintInput(sprint.id, sprint.version, committedTaskIds = listOf(done.id, cancelled.id, open.id)), callerPrincipalId, ownerId)
+        sprintService.close(CloseSprintInput(started.id, started.version, destinations = listOf(CloseSprintDestination(open.id))), callerPrincipalId, ownerId)
+        assertEquals(sprint.id, taskRepo.getActiveById(done.id)?.sprintId)
+        assertEquals(sprint.id, taskRepo.getActiveById(cancelled.id)?.sprintId)
+        assertEquals(null, taskRepo.getActiveById(open.id)?.sprintId)
+        assertEquals(setOf(done.id, cancelled.id, open.id), sprintRepo.getById(sprint.id)?.committedTaskIds?.toSet())
+        assertTrue(TaskHistoryRepositoryImpl().listByTask(done.id, 0, 10).isEmpty())
+    }
+
+    @Test
+    fun `a task version conflict rolls back sprint closure task writes history and destination membership`() = withDb {
+        val (_, _, projectId) = seed()
+        val board = boardService.create(CreateBoardInput(projectId = projectId, name = "Delivery", type = BoardType.SCRUM))
+        val sprint = sprintService.create(CreateSprintInput(board.id, "Iteration"))
+        val future = sprintService.create(CreateSprintInput(board.id, "Next iteration"))
+        val first = task(projectId, "AGP-1", sprint.id)
+        val second = task(projectId, "AGP-2", sprint.id)
+        val started = sprintService.start(StartSprintInput(sprint.id, sprint.version, committedTaskIds = listOf(first.id, second.id)), callerPrincipalId, ownerId)
+        val staleTasks = object : TaskService by taskService {
+            override suspend fun getByIds(ids: List<UUID>) = taskService.getByIds(ids).sortedBy { if (it.id == second.id) 1 else 0 }
+                .map { if (it.id == second.id) it.copy(version = it.version + 1) else it }
+        }
+        val lifecycle = SprintServiceImpl(sprintRepo, boardService, projectService, programService, staleTasks.asProvider(), StatusServiceImpl(statusRepo))
+        assertFailsWith<OptimisticLockFailedException> {
+            lifecycle.close(CloseSprintInput(started.id, started.version, destinations = listOf(
+                CloseSprintDestination(first.id, future.id), CloseSprintDestination(second.id),
+            )), callerPrincipalId, ownerId)
+        }
+        assertEquals(started, sprintRepo.getById(sprint.id))
+        assertEquals(sprint.id, taskRepo.getActiveById(first.id)?.sprintId)
+        assertEquals(sprint.id, taskRepo.getActiveById(second.id)?.sprintId)
+        assertTrue(sprintRepo.getById(future.id)?.committedTaskIds.orEmpty().isEmpty())
+        assertTrue(TaskHistoryRepositoryImpl().listByTask(first.id, 0, 10).isEmpty())
+    }
+
+    @Test
+    fun `assigning another task to a closed sprint fails and rolls back the task change`() = withDb {
+        val (_, _, projectId) = seed()
+        val board = boardService.create(CreateBoardInput(projectId = projectId, name = "Delivery", type = BoardType.SCRUM))
+        val sprint = sprintService.create(CreateSprintInput(board.id, "Iteration"))
+        val started = sprintService.start(StartSprintInput(sprint.id, sprint.version), callerPrincipalId, ownerId)
+        sprintService.close(CloseSprintInput(started.id, started.version), callerPrincipalId, ownerId)
+        val task = task(projectId, "AGP-1")
+        assertFailsWith<WorkOpsValidationException> {
+            taskService.update(task.id, UpdateTaskInput(sprintId = sprint.id, expectedVersion = task.version), callerPrincipalId, ownerId)
+        }
+        assertEquals(task, taskRepo.getActiveById(task.id))
+        assertTrue(TaskHistoryRepositoryImpl().listByTask(task.id, 0, 10).isEmpty())
     }
 
     @Test

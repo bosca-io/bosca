@@ -36,6 +36,9 @@ interface SpecService : PermissionService<Spec, UUID> {
 
     suspend fun getByKey(key: String): Spec?
 
+    /** Returns the active specification backed by the given Content document, if one exists. */
+    suspend fun getByMetadataId(metadataId: UUID): Spec?
+
     suspend fun getByIds(ids: List<UUID>): List<Spec>
 
     suspend fun listByProject(projectId: UUID, offset: Long, limit: Int): List<Spec>

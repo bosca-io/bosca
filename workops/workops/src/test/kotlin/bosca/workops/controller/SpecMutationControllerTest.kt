@@ -64,6 +64,18 @@ class SpecMutationControllerTest {
     )
 
     @Test
+    fun `saved Git pushes preserve the caller identity and require specification edit before dispatch`() = runTest {
+        val spec = sampleSpec()
+        coEvery { specService.getById(spec.id) } returns spec
+        coEvery { gitSyncService.pushSavedToGit(spec, principalId, "Human Author", "human@example.test") } returns "saved-sha"
+        assertEquals("saved-sha", controller().pushSavedToGit(authenticated(), spec.id, "Human Author", "human@example.test"))
+        coVerify(exactly = 1) { permissionEvaluator.verifyAllowed(any(), spec, PermissionAction.EDIT) }
+        coEvery { permissionEvaluator.verifyAllowed(any(), spec, PermissionAction.EDIT) } throws IllegalStateException("Edit denied")
+        assertFailsWith<IllegalStateException> { controller().pushSavedToGit(authenticated(), spec.id, "Human Author", "human@example.test") }
+        coVerify(exactly = 1) { gitSyncService.pushSavedToGit(spec, principalId, "Human Author", "human@example.test") }
+    }
+
+    @Test
     fun `create verifies its optional project and attributes owner to the primary profile`() = runTest {
         val project = sampleProject()
         val input = CreateSpecInput(

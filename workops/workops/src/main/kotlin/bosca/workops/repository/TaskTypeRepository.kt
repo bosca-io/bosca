@@ -22,7 +22,7 @@ interface TaskTypeRepository {
     @Query(
         """
         insert into workops.task_type (name, description, icon_key, color_hex, hierarchy_level)
-        values (:name, :description, :iconKey, :colorHex, (:hierarchyLevel)::workops.task_hierarchy_level)
+        values (:name, :description, :iconKey, :colorHex, upper(:hierarchyLevel)::workops.task_hierarchy_level)
         returning *
         """
     )
@@ -35,7 +35,7 @@ interface TaskTypeRepository {
             description = :description,
             icon_key = :iconKey,
             color_hex = :colorHex,
-            hierarchy_level = (:hierarchyLevel)::workops.task_hierarchy_level,
+            hierarchy_level = upper(:hierarchyLevel)::workops.task_hierarchy_level,
             version = version + 1
         where id = :id and version = :expectedVersion
         returning *

@@ -3,6 +3,7 @@ package bosca.workops.controller
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
+import bosca.graphql.server.GraphQLException
 import bosca.security.model.PermissionAction
 import bosca.security.service.AuthenticationContext
 import bosca.serialization.UUID
@@ -16,6 +17,8 @@ import bosca.workops.model.project.Program
 import bosca.workops.model.project.Project
 import bosca.workops.model.version.CreateVersionInput
 import bosca.workops.model.version.Version
+import bosca.workops.model.VersionInUseException
+import kotlinx.serialization.json.JsonPrimitive
 import bosca.workops.service.ComponentService
 import bosca.workops.service.LabelService
 import bosca.workops.service.MilestoneService
@@ -103,7 +106,12 @@ class VersionMutationController(
         val version = service.getById(id) ?: error("Version $id not found")
         val project = projectService.getById(version.projectId) ?: error("Project not found")
         projectPermissions.verifyAllowed(authentication, project, PermissionAction.MANAGE)
-        service.delete(id)
+        try {
+            service.delete(id)
+        } catch (error: VersionInUseException) {
+            throw GraphQLException("This version is still referenced by tasks and cannot be deleted.",
+                mapOf("code" to JsonPrimitive("VERSION_IN_USE"))).apply { initCause(error) }
+        }
         return true
     }
 }

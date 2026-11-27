@@ -3,6 +3,8 @@ package bosca.workops.service
 import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
 import bosca.workops.model.WorkOpsNotFoundException
+import bosca.workops.model.WorkOpsValidationException
+import bosca.workops.model.OptimisticLockFailedException
 import bosca.workops.model.spec.Spec
 import bosca.workops.model.task.Task
 import bosca.workops.model.workflow.WILDCARD_FROM_STATE
@@ -10,8 +12,15 @@ import bosca.workops.model.workflow.Workflow
 import bosca.workops.model.workflow.WorkflowScheme
 import bosca.workops.model.workflow.WorkflowState
 import bosca.workops.model.workflow.WorkflowTransition
+import bosca.workops.model.workflow.CreateWorkflowInput
+import bosca.workops.model.workflow.UpdateWorkflowInput
+import bosca.workops.model.workflow.CreateWorkflowSchemeInput
+import bosca.workops.model.workflow.UpdateWorkflowSchemeInput
 import bosca.workops.repository.WorkflowRepository
 import bosca.workops.repository.WorkflowSchemeRepository
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 @ServiceImplementation
 class WorkflowServiceImpl(
@@ -28,6 +37,54 @@ class WorkflowServiceImpl(
     override suspend fun listSchemes(): List<WorkflowScheme> = schemeRepository.listAll()
 
     override suspend fun getScheme(id: UUID): WorkflowScheme? = schemeRepository.getById(id)
+
+    override suspend fun createWorkflow(input: CreateWorkflowInput): Workflow {
+        validateName(input.name)
+        return workflowRepository.addWorkflow(input.name, input.description, null)
+    }
+
+    override suspend fun updateWorkflow(id: UUID, input: UpdateWorkflowInput): Workflow {
+        validateName(input.name)
+        return workflowRepository.updateWorkflow(id, input.name, input.description, input.expectedVersion)
+            ?: throw OptimisticLockFailedException("Workflow", id)
+    }
+
+    override suspend fun deleteWorkflow(id: UUID) {
+        requireWorkflow(id)
+        val referenced = schemeRepository.listAll().any { scheme ->
+            scheme.defaultWorkflowId == id || (scheme.perTaskTypeWorkflowIds as? JsonObject)?.values.orEmpty().any {
+                (it as? JsonPrimitive)?.contentOrNull?.equals(id.toString(), ignoreCase = true) == true
+            }
+        }
+        if (referenced) throw WorkOpsValidationException("workflowId", "is used by a workflow scheme")
+        workflowRepository.deleteWorkflow(id)
+    }
+
+    override suspend fun createScheme(input: CreateWorkflowSchemeInput): WorkflowScheme {
+        validateName(input.name)
+        requireWorkflow(input.defaultWorkflowId)
+        return schemeRepository.add(input.name, input.description, input.defaultWorkflowId, JsonObject(emptyMap()))
+    }
+
+    override suspend fun updateScheme(id: UUID, input: UpdateWorkflowSchemeInput): WorkflowScheme {
+        validateName(input.name)
+        val existing = schemeRepository.getById(id) ?: throw WorkOpsNotFoundException("WorkflowScheme", id.toString())
+        requireWorkflow(input.defaultWorkflowId)
+        return schemeRepository.update(id, input.name, input.description, input.defaultWorkflowId, existing.perTaskTypeWorkflowIds, input.expectedVersion)
+            ?: throw OptimisticLockFailedException("WorkflowScheme", id)
+    }
+
+    override suspend fun deleteScheme(id: UUID) {
+        schemeRepository.getById(id) ?: throw WorkOpsNotFoundException("WorkflowScheme", id.toString())
+        schemeRepository.deleteById(id)
+    }
+
+    private fun validateName(name: String) {
+        if (name.isBlank()) throw WorkOpsValidationException("name", "required")
+    }
+
+    private suspend fun requireWorkflow(id: UUID) =
+        workflowRepository.getWorkflowById(id) ?: throw WorkOpsNotFoundException("Workflow", id.toString())
 
     override suspend fun listStates(workflowId: UUID): List<WorkflowState> =
         workflowRepository.listStates(workflowId)

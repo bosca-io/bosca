@@ -6,6 +6,7 @@ import bosca.content.metadata.service.MetadataService
 import bosca.db.transaction
 import bosca.di.ObjectProvider
 import bosca.di.provide
+import bosca.documents.Content
 import bosca.graphql.Batch
 import bosca.security.model.EntityPermission
 import bosca.security.model.PermissionAction
@@ -767,7 +768,7 @@ class TaskServiceImpl(
                 name = existing.summary,
                 contentType = "bosca/v-document",
                 languageTag = "en",
-                document = DocumentInput(title = existing.summary, content = null),
+                document = DocumentInput(title = existing.summary, content = Content()),
             ),
         )
         val updated = taskRepository.setMetadataId(

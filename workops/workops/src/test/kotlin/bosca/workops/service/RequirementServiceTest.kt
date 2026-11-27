@@ -349,6 +349,12 @@ class RequirementServiceTest {
                 every { version } returns 1
             }
         }
+        coEvery { documentService.getDocument(any(), 1) } answers {
+            val stored = requireNotNull(reqMetadataInputSlot.captured.document)
+            bosca.content.metadata.model.Document(firstArg(), 1, title = stored.title, content = stored.content)
+        }
+        val taskInput = slot<CreateTaskInput>()
+        coEvery { taskService.create(capture(taskInput), principalId, profileId, profileId) } returns sampleTask
 
         service.create(
             input = CreateRequirementInput(
@@ -366,8 +372,13 @@ class RequirementServiceTest {
         val doc = input.document
         assertNotNull(doc, "requirement metadata must include a DocumentInput")
         // Bug 1: documents.content has NOT NULL constraint — never pass null content.
-        assertNotNull(doc.content,
+        val body = assertNotNull(doc.content,
             "DocumentInput.content must not be null (documents.content has a NOT NULL constraint)")
+        assertEquals("# My New Requirement", bosca.documents.MarkdownConverter.toMarkdown(body).trim())
+        assertEquals(listOf(bosca.documents.HeadingNode::class, bosca.documents.ParagraphNode::class),
+            body.document.content.map { it::class })
+        assertEquals("My New Requirement", taskInput.captured.summary)
+        assertEquals("# My New Requirement", taskInput.captured.descriptionMarkdown?.trim())
         // Bug 2: must bind to the seeded Requirement Document Template UUID, not a freshly-created
         // template. The seed lives in V26__spec_document_templates.sql with this exact UUID.
         // documents has a FK to document_templates(metadata_id, version); using any other id
@@ -670,11 +681,19 @@ class RequirementServiceTest {
             every { title } returns "  "
             every { content } returns null
         }
+        val richBody = bosca.documents.Content(bosca.documents.Document(content = listOf(
+            bosca.documents.HeadingNode(bosca.documents.HeadingAttributes(level = 1), content = listOf(bosca.documents.TextNode(text = "Customer can export"))),
+            bosca.documents.ParagraphNode(content = listOf(bosca.documents.TextNode(text = "Preserve the supplied requirement body."))),
+        )))
         val titledDocument = mockk<bosca.content.metadata.model.Document>() {
             every { title } returns "Customer can export"
-            every { content } returns null
+            every { content } returns richBody
         }
-        coEvery { documentService.getDocument(metadataId, 1) } returnsMany listOf(blankDocument, titledDocument)
+        coEvery { metadataService.getById(metadataId) } returnsMany listOf(1, 4).map { currentVersion ->
+            mockk(relaxed = true) { every { id } returns metadataId; every { version } returns currentVersion }
+        }
+        coEvery { documentService.getDocument(metadataId, 1) } returns blankDocument
+        coEvery { documentService.getDocument(metadataId, 4) } returns titledDocument
         val taskInputs = mutableListOf<CreateTaskInput>()
         val reporterIds = mutableListOf<UUID>()
         coEvery { taskService.create(capture(taskInputs), principalId, null, capture(reporterIds)) } returns sampleTask
@@ -696,6 +715,8 @@ class RequirementServiceTest {
         assertEquals("Customer can export", taskInputs[1].summary)
         assertEquals(priorityId, taskInputs[0].priorityId)
         assertEquals(projectId, taskInputs[1].projectId)
+        assertEquals(bosca.documents.MarkdownConverter.toMarkdown(richBody), taskInputs[1].descriptionMarkdown)
+        coVerify(exactly = 0) { metadataService.add(any(), any(), any()) }
     }
 
     @Test

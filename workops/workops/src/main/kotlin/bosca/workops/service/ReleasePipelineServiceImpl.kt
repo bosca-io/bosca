@@ -184,7 +184,9 @@ class ReleasePipelineServiceImpl(
             } else {
                 "refs/heads/${repository.defaultBranch}"
             }
-            val commitSha = repositoryBrowse.resolveRef(repository.id, ref)
+            // Annotated promotion tags resolve to a tag object unless explicitly peeled to a commit.
+            val commitRef = if (triggerType == PipelineTriggerType.PROMOTION) "$ref^{commit}" else ref
+            val commitSha = repositoryBrowse.resolveRef(repository.id, commitRef)
                 ?: error("Release ref '$ref' cannot be resolved in ${repository.slug}")
             for (pipeline in gitPipelines.findByRepository(repository.id)) {
                 val definition = gitPipelines.parseDefinition(repository.id, commitSha, pipeline.filePath)
@@ -298,8 +300,12 @@ class ReleasePipelineServiceImpl(
     }
 
     override suspend fun repositoryIdsForRelease(releaseId: UUID): List<UUID> {
-        val release = releaseService.getById(releaseId) ?: return emptyList()
-        return launchContext(release).repositoryIds
+        releaseService.getById(releaseId) ?: return emptyList()
+        val repositoryIds = linkedSetOf<UUID>()
+        for (projectId in releaseService.listVersions(releaseId).map { it.projectId }.distinct()) {
+            repositoryIds += projectRepositories.list(projectId).map { it.repositoryId }
+        }
+        return repositoryIds.toList()
     }
 
     private fun releaseParameters(context: ReleaseLaunchContext, repositoryId: UUID): Map<String, String> = mapOf(

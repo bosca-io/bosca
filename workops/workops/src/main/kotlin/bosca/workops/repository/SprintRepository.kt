@@ -94,7 +94,7 @@ interface SprintRepository {
             added_during_sprint_task_ids = array_remove(added_during_sprint_task_ids, :taskId),
             modified_at = now(),
             version = version + 1
-        where id = :sprintId
+        where id = :sprintId and state != 'closed'
           and (:taskId = any(committed_task_ids) or :taskId = any(added_during_sprint_task_ids))
         returning *
         """

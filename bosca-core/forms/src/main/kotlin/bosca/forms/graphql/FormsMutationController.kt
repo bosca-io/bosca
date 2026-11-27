@@ -57,7 +57,7 @@ class FormsMutationController(
         }
         val resolvedInput = input.copy(formSchemaId = schema.id)
         val profileId = resolveProfileId(authenticationContext, resolvedInput)
-        return formSubmissionService.submit(profileId, resolvedInput)
+        return formSubmissionService.submit(profileId, authenticationContext?.principal()?.id, resolvedInput)
     }
 
     @Field
