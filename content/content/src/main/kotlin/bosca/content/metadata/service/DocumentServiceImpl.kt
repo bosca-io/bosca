@@ -27,6 +27,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import org.slf4j.LoggerFactory
+import yks.utils.Doc
+import yks.utils.applyUpdate
+import yks.utils.encodeStateAsUpdate
 
 @ServiceImplementation
 class DocumentServiceImpl(
@@ -122,6 +125,7 @@ class DocumentServiceImpl(
                 // Yjs maps the loser had updated. The lock is held until the surrounding
                 // transaction (entered in `MetadataServiceImpl.setDocument`) commits.
                 val newContent = document.content ?: Content()
+                documentCollaborationRepository.addIfMissing(DocumentCollaboration(metadata.id, metadata.version))
                 val existing = documentCollaborationRepository.getByMetadataIdAndVersionForUpdate(metadata.id, metadata.version)
                 val updated = if (existing == null || existing.content.isEmpty()) {
                     ProseMirrorYjsBridge.toYDocUpdate(newContent)
@@ -145,6 +149,30 @@ class DocumentServiceImpl(
 
     override suspend fun getCollaboration(metadataId: UUID, version: Int): DocumentCollaboration? {
         return documentCollaborationRepository.getByMetadataIdAndVersion(metadataId, version)
+    }
+
+    override suspend fun initializeCollaboration(metadataId: UUID, version: Int): ByteArray? =
+        updateCollaboration(DocumentCollaborationInput(metadataId, version), initialize = true)
+
+    override suspend fun mergeCollaboration(collaboration: DocumentCollaborationInput): ByteArray? =
+        updateCollaboration(collaboration, initialize = false)
+
+    private suspend fun updateCollaboration(input: DocumentCollaborationInput, initialize: Boolean): ByteArray? = transaction {
+        val canonical = getDocument(input.metadataId, input.version) ?: return@transaction null
+        documentCollaborationRepository.addIfMissing(DocumentCollaboration(input.metadataId, input.version))
+        val existing = requireNotNull(documentCollaborationRepository.getByMetadataIdAndVersionForUpdate(input.metadataId, input.version))
+        val merged = if (initialize) {
+            ProseMirrorYjsBridge.initializeDocument(existing.content, canonical.content ?: Content(), canonical.title)
+        } else {
+            val doc = Doc()
+            try {
+                if (existing.content.isNotEmpty()) applyUpdate(doc, existing.content)
+                input.content?.takeIf(ByteArray::isNotEmpty)?.let { applyUpdate(doc, it) }
+                encodeStateAsUpdate(doc)
+            } finally { doc.destroy() }
+        }
+        documentCollaborationRepository.setCollaboration(DocumentCollaboration(input.metadataId, input.version, merged))
+        merged
     }
 
     suspend fun getCollaborationForUpdate(metadataId: UUID, version: Int): DocumentCollaboration? {
