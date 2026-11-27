@@ -1,0 +1,24 @@
+<component tag="workops-spec-generations">
+  <prop name="specId" type="String" required />
+  <prop name="returnTo" type="String" required />
+  <script server provides="initial">bosca.workops.ui.workOpsSpecGenerations(specId, returnTo)</script>
+  <script server provides="model">bosca.workops.ui.WorkOpsSpecGenerationsModel(initial.specId, initial.returnTo, initial.offset, initial.data, initial.taskNames, initial.versionDraft, initial.feedback)</script>
+  <island name="specGenerations" :key="specId">
+    <card title="Task generations" data-workops-spec-generations>
+      <workops-feedback id="spec-generations-0" :feedback="model.feedback" />
+      <if model.feedback.failed><button icon="refresh" @click="model.retry(ctx)">Reload generations</button></if>
+      <help-text>Create tasks from this specification's requirements.</help-text>
+      <form @submit="model.generate(form.version, ctx)">
+        <if model.documentVersion != null><input type="hidden" name="version" :value="model.documentVersion.toString()" /><p>Document version { model.documentVersion }</p>
+        <else><field label="Document version" hint="Enter the Content version to record with these tasks."><input type="number" name="version" min="1" :value="model.versionDraft" required /></field></if>
+        <form-actions><button type="submit" primary>Generate tasks</button></form-actions>
+      </form>
+      <for generation in model.rows><article class="workops-task-entry"><div class="workops-task-entry-header"><badge>{ model.sourceLabel(generation.source) }</badge><time :value="generation.createdAt" /></div>
+        <p>{ model.taskCountLabel(generation.generatedTaskIds.size) } · Document version { generation.metadataVersion }</p>
+        <ul><for id in generation.generatedTaskIds><li><a :href='"/workops/tasks/" + bosca.workops.ui.workOpsEncode(id)'>{ model.taskName(id) }</a></li></for></ul>
+      </article></for>
+      <if model.rows.isEmpty()><empty-state title="No tasks generated yet." compact /></if>
+      <pagination :page="model.offset / 25 + 1" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Task generation pages" />
+    </card>
+  </island>
+</component>

@@ -1,0 +1,12 @@
+query WorkOpsSpecGenerations($id: UUID!, $offset: Long!) {
+  workOps { specs { spec(id: $id) {
+    metadata { version }
+    taskGenerations(offset: $offset, limit: 26) { id metadataVersion source generatedTaskIds createdAt }
+  } } }
+}
+query WorkOpsSpecGenerationVersion($id: UUID!) {
+  workOps { specs { spec(id: $id) { metadata { version } } } }
+}
+mutation WorkOpsGenerateSpecTasks($id: UUID!, $version: Int!) {
+  workOps { specs { generateTasks(specId: $id, metadataVersion: $version, source: MANUAL) { id generatedTaskIds } } }
+}
