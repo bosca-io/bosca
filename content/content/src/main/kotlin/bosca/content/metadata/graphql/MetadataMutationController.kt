@@ -60,7 +60,7 @@ import bosca.jobs.enqueue
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
-import bosca.security.model.EntityPermission
+import bosca.security.model.Permission
 import bosca.security.model.PermissionAction
 import bosca.security.model.PermissionInput
 import bosca.security.service.AuthenticationContext
@@ -183,22 +183,24 @@ class MetadataMutationController(
     suspend fun addPermission(
         authentication: AuthenticationContext,
         permission: PermissionInput,
-    ): EntityPermission = transaction {
+    ): Permission = transaction {
         val metadata = service.getById(permission.entityId)
             ?: throw NoSuchElementException("Metadata not found: ${permission.entityId}")
         permissionEvaluator.verifyAllowed(authentication, metadata, PermissionAction.MANAGE)
         service.addPermission(permission)
+        Permission(groupId = permission.groupId, action = permission.action)
     }
 
     @Field
     suspend fun deletePermission(
         authentication: AuthenticationContext,
         permission: PermissionInput,
-    ): EntityPermission = transaction {
+    ): Permission = transaction {
         val metadata = service.getById(permission.entityId)
             ?: throw NoSuchElementException("Metadata not found: ${permission.entityId}")
         permissionEvaluator.verifyAllowed(authentication, metadata, PermissionAction.MANAGE)
         service.deletePermission(permission)
+        Permission(groupId = permission.groupId, action = permission.action)
     }
 
     @Field

@@ -119,6 +119,20 @@ interface DocumentService : Service {
     suspend fun getCollaboration(metadataId: UUID, version: Int): DocumentCollaboration?
 
     /**
+     * Atomically initializes a collaboration document from its canonical Content body.
+     * Existing CRDT history, including deletions and non-document maps, is retained.
+     * Returns the current binary state, or null when the canonical document is absent.
+     */
+    suspend fun initializeCollaboration(metadataId: UUID, version: Int): ByteArray?
+
+    /**
+     * Atomically merges a binary CRDT update into the stored collaboration document.
+     * Concurrent writers serialize on the collaboration row, including its first creation.
+     * Returns the merged state, or null when the canonical document is absent.
+     */
+    suspend fun mergeCollaboration(collaboration: DocumentCollaborationInput): ByteArray?
+
+    /**
      * Marks the collaboration collections data as dirty for a metadata entry, triggering
      * re-synchronization of collaborative collection data.
      *

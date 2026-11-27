@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 @SerialName("hardBreak")
 data class HardBreakNode(
     @SerialName("attrs")
+    @Serializable(with = DocumentAttributesSerializer::class)
     override val attributes: DocumentAttributes = EmptyDocumentAttributes(),
     override var content: List<DocumentNode> = emptyList(),
     override val marks: List<Mark> = emptyList(),

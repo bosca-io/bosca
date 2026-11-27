@@ -17,7 +17,7 @@ fun interface MessageSender {
  * Usage:
  * ```
  * val handler = SyncHandler(doc, awareness) { bytes -> ws.send(bytes) }
- * handler.onConnect()                    // sends SyncStep1 + local awareness
+ * handler.onConnect()                    // sends SyncStep1 + known awareness
  * ws.onMessage { handler.onMessage(it) } // handles incoming, sends replies
  * ws.onClose { handler.onDisconnect() }  // cleans up awareness
  * ```
@@ -33,7 +33,7 @@ class SyncHandler(
 
     private val unsubscribers = mutableListOf<() -> Unit>()
 
-    /** Track which remote client IDs we've seen through this connection. */
+    /** Track remote clients whose awareness clocks were accepted through this connection. */
     private val remoteClients = mutableSetOf<Int>()
 
     /**
@@ -51,7 +51,13 @@ class SyncHandler(
 
         // Subscribe to awareness updates — forward awareness changes to remote peer
         val unsubAwareness = awareness.on2<AwarenessChange, Any?>("update") { change, origin ->
-            if (origin !== this) {
+            if (origin === this) {
+                // Providers echo states learned from other peers. Only clocks accepted
+                // through this connection establish ownership for disconnect cleanup.
+                remoteClients.addAll(change.added)
+                remoteClients.addAll(change.updated)
+                remoteClients.removeAll(change.removed.toSet())
+            } else {
                 val changedClients = change.added + change.updated + change.removed
                 if (changedClients.isNotEmpty()) {
                     sender.send(MessageProtocol.encodeAwareness(awareness, changedClients))
@@ -63,10 +69,10 @@ class SyncHandler(
         // Send SyncStep1 (our state vector)
         sender.send(MessageProtocol.encodeSyncStep1(doc))
 
-        // Send local awareness state
-        val localState = awareness.getLocalState()
-        if (localState != null) {
-            sender.send(MessageProtocol.encodeAwareness(awareness, listOf(doc.clientID)))
+        // A late joiner also needs the peers already known by this handler's document.
+        val clients = awareness.getStates().keys.toList()
+        if (clients.isNotEmpty()) {
+            sender.send(MessageProtocol.encodeAwareness(awareness, clients))
         }
     }
 
@@ -75,9 +81,6 @@ class SyncHandler(
      * Dispatches to sync/awareness handlers and sends replies if needed.
      */
     fun onMessage(data: ByteArray) {
-        // Track remote awareness clients for cleanup on disconnect
-        trackRemoteClients(data)
-
         val reply = MessageProtocol.readMessage(data, doc, awareness, origin = this)
         if (reply.isNotEmpty()) {
             sender.send(reply)
@@ -115,31 +118,5 @@ class SyncHandler(
             unsub()
         }
         unsubscribers.clear()
-    }
-
-    /**
-     * Extract remote client IDs from awareness messages for disconnect cleanup.
-     */
-    private fun trackRemoteClients(data: ByteArray) {
-        if (data.isEmpty()) return
-        val msgType = data[0].toInt() and 0x7F
-        if (msgType == MessageProtocol.MESSAGE_AWARENESS && data.size > 1) {
-            // Parse the awareness update to extract client IDs
-            try {
-                val decoder = yks.lib0.Decoder(data)
-                decoder.readVarUint() // skip message type
-                val awarenessData = decoder.readVarUint8Array()
-                val awarenessDecoder = yks.lib0.Decoder(awarenessData)
-                val numClients = awarenessDecoder.readVarUint()
-                repeat(numClients) {
-                    val clientID = awarenessDecoder.readVarUint()
-                    remoteClients.add(clientID)
-                    awarenessDecoder.readVarUint() // clock
-                    awarenessDecoder.readVarString() // state JSON
-                }
-            } catch (_: Exception) {
-                // Ignore parse errors in tracking
-            }
-        }
     }
 }
