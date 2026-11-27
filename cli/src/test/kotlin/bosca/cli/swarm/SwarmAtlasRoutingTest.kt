@@ -3,12 +3,24 @@ package bosca.cli.swarm
 import bosca.cli.compose.installedComposeNginx
 import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
+import java.net.InetAddress
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.Executors
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
+import mockwebserver3.Dispatcher
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import mockwebserver3.RecordedRequest
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okio.ByteString
+import okio.ByteString.Companion.toByteString
 import org.junit.Assume.assumeTrue
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.Testcontainers
@@ -39,15 +51,38 @@ class SwarmAtlasRoutingTest {
             start()
         }
         val api = backend("api")
-        val ui = backend("ui")
+        val ui = MockWebServer().apply {
+            dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val response = MockResponse.Builder()
+                        .addHeader("X-Listener", "ui")
+                        .addHeader("X-Uri", request.target)
+                        .addHeader("X-Auth", request.headers["Authorization"].orEmpty())
+                        .addHeader("X-Host", request.headers["Host"].orEmpty())
+                        .addHeader("X-Cookie", request.headers["Cookie"].orEmpty())
+                        .addHeader("Set-Cookie", "fixture=ui; Path=/")
+                    if (request.url.encodedPath.trimEnd('/') == "/collaboration") {
+                        return response.webSocketUpgrade(object : WebSocketListener() {
+                            override fun onMessage(webSocket: WebSocket, text: String) { webSocket.send(text) }
+                            override fun onMessage(webSocket: WebSocket, bytes: ByteString) { webSocket.send(bytes) }
+                            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                                webSocket.close(code, reason)
+                            }
+                        }).build()
+                    }
+                    return response.body(request.body?.takeIf { it.size > 0 }?.utf8() ?: request.target).build()
+                }
+            }
+            start(InetAddress.getByName("0.0.0.0"), 0)
+        }
         val git = backend("git")
         val registry = backend("registry")
         val directory = Files.createTempDirectory("atlas-ingress-")
         val workspace = Path.of("..").toAbsolutePath()
         try {
-            Testcontainers.exposeHostPorts(api.address.port, ui.address.port, git.address.port, registry.address.port)
+            Testcontainers.exposeHostPorts(api.address.port, ui.port, git.address.port, registry.address.port)
             val apiHost = "host.testcontainers.internal:${api.address.port}"
-            val uiHost = "host.testcontainers.internal:${ui.address.port}"
+            val uiHost = "host.testcontainers.internal:${ui.port}"
             val gitHost = "host.testcontainers.internal:${git.address.port}"
             val registryHost = "host.testcontainers.internal:${registry.address.port}"
             val config = SwarmConfig(sites = listOf(SwarmSite("site1", "example.test", "Test", "test@example.test", 1)))
@@ -97,6 +132,7 @@ class SwarmAtlasRoutingTest {
                         for ((host, path, status) in listOf(
                             Triple("atlas", "/login", 404), Triple("atlas", "/owner/project.git/info/refs", 404),
                             Triple("atlas", "/system/security/passkeys", 404),
+                            Triple("atlas", "/workops/tasks", 404), Triple("atlas", "/collaboration", 404),
                             Triple("atlas", "/v2/ns/pkg/manifests/latest", 404),
                             Triple("git", "/owner/project.git/info/refs", 404),
                             Triple("artifacts", "/v2/ns/pkg/manifests/latest", 404), Triple("atlas", "/graphql", 200),
@@ -122,11 +158,12 @@ class SwarmAtlasRoutingTest {
                         }
                     }
                     val id = "382b5ae6-f5f4-47b7-8216-fa76e707e588"
-                    val pageRoutes = listOf("server/atlas-ui", "git/git-ui", "artifacts/artifacts-ui", "admin-support/system-ui").flatMap { component ->
+                    val pageRoutes = listOf("server/atlas-ui", "git/git-ui", "artifacts/artifacts-ui", "admin-support/system-ui", "workops/workops-ui").flatMap { component ->
                         Files.walk(workspace.resolve("$component/src/main/bml/pages")).use { pages ->
                             pages.filter { it.toString().endsWith(".bml") }.map { file ->
                                 requireNotNull(Regex("route=\"([^\"]+)\"").find(Files.readString(file))).groupValues[1]
                                     .replace("{id}", id)
+                                    .replace("{type}", "content")
                             }.toList()
                         }
                     }
@@ -146,12 +183,48 @@ class SwarmAtlasRoutingTest {
                         "/_bml/libraries/${"a".repeat(64)}/fonts/geist-latin.woff2")).distinct().forEach { request("atlas", it, "ui") }
                     val payload = "atlas-file-payload".repeat(4096)
                     request("atlas", "/_bml/action?target=save", "ui", payload = payload)
+                    request("atlas", "/workops/tasks/UI-42?tab=activity&bql=summary%20%3D%20%22a%2Fb%22", "ui")
+                    request("atlas", "/workops/specs/UI-SPEC-7", "ui")
+                    request("atlas", "/workops/requirements/UI-REQ-9", "ui")
+                    val opened = CompletableFuture<Response>()
+                    val text = CompletableFuture<String>()
+                    val binary = CompletableFuture<ByteString>()
+                    val closed = CompletableFuture<Unit>()
+                    val socket = client.newWebSocket(Request.Builder()
+                        .url("http://${proxy.host}:${proxy.getMappedPort(80)}/collaboration?document=fixture%2Fone")
+                        .header("Host", "atlas.example.test").header("Authorization", "Bearer fixture")
+                        .header("Cookie", "session=fixture").build(), object : WebSocketListener() {
+                        override fun onOpen(webSocket: WebSocket, response: Response) { opened.complete(response) }
+                        override fun onMessage(webSocket: WebSocket, value: String) { text.complete(value) }
+                        override fun onMessage(webSocket: WebSocket, bytes: ByteString) { binary.complete(bytes) }
+                        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { closed.complete(Unit) }
+                        override fun onFailure(webSocket: WebSocket, failure: Throwable, response: Response?) {
+                            opened.completeExceptionally(failure); text.completeExceptionally(failure)
+                            binary.completeExceptionally(failure); closed.completeExceptionally(failure)
+                        }
+                    })
+                    try {
+                        val handshake = opened.get(10, TimeUnit.SECONDS)
+                        assertEquals("ui", handshake.header("X-Listener"), source)
+                        assertEquals("Bearer fixture", handshake.header("X-Auth"), source)
+                        assertEquals("session=fixture", handshake.header("X-Cookie"), source)
+                        assertEquals("/collaboration?document=fixture%2Fone", handshake.header("X-Uri"), source)
+                        socket.send("collaboration text")
+                        val bytes = byteArrayOf(0, 127, -128, -1).toByteString()
+                        socket.send(bytes)
+                        assertEquals("collaboration text", text.get(10, TimeUnit.SECONDS), source)
+                        assertEquals(bytes, binary.get(10, TimeUnit.SECONDS), source)
+                        socket.close(1000, "finished")
+                        closed.get(10, TimeUnit.SECONDS)
+                    } finally { socket.cancel() }
                     request("atlas", "/_artifacts/raw/ns/pkg/build/file%20name.zip?checksum=true", "ui", payload = payload)
                     for (host in listOf("atlas", "git")) {
                         listOf("/graphql", "/graphqlws", "/oauth2/google/callback?code=fixture", "/api/webhooks/github/$id",
                             "/owner/project.git/info/refs?service=git-upload-pack", "/artifacts/project.git/info/refs",
                             "/owner/project.git/info/lfs/objects/batch", "/owner/project/raw/main/logo.png",
                             "/system/project.git/info/refs", "/system/project/raw/main/readme.md")
+                            .plus(listOf("/workops/project.git/info/refs", "/workops/project.git/info/lfs/objects/batch",
+                                "/workops/tasks/raw/main/readme.md", "/workops/specs/raw/main/readme.md"))
                             .forEach { path ->
                                 val gitRequest = host == "git" || Regex(gitBackendPathPattern()).matches(java.net.URI(path).path)
                                 request(host, path, if (split && gitRequest) "git" else "api")
@@ -177,7 +250,7 @@ class SwarmAtlasRoutingTest {
         } finally {
             git.stop(0)
             registry.stop(0)
-            ui.stop(0)
+            ui.close()
             api.stop(0)
             executor.close()
             directory.toFile().deleteRecursively()

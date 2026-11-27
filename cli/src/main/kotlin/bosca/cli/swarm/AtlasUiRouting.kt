@@ -17,6 +17,11 @@ internal fun atlasUiPathPattern(): String {
         "/artifacts/settings/repositories/$id/?",
         "/artifacts/runs/$id/?",
         "/_artifacts(/.*)?",
+        "/workops(/(inbox|tasks|specs|filters|portfolios|programs|projects|milestones|boards|sprints|releases))?/?",
+        "/workops/(tasks|specs|requirements|projects|boards|sprints|releases|approvals)/[^/]+/?",
+        "/workops/settings/(task-types|environment-types|statuses|priorities|labels|workflows|automation|link-types|resolutions|sla|components|permissions|notifications|milestones)/?",
+        "/workops/references/[^/]+/[^/]+/?",
+        "/collaboration/?",
     ).joinToString("|", prefix = "^(", postfix = ")$")
 }
 

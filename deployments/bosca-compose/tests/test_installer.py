@@ -95,6 +95,12 @@ class InstallerTest(unittest.TestCase):
         self.assertNotIn("fumsEnabled", (directory / "config/server.yaml").read_text())
         self.assertNotIn("FUMS_TRANSFORM_ENABLED", (directory / "compose.yaml").read_text())
 
+    def test_atlas_workers_keep_the_existing_platform_mailer_defaults(self):
+        directory = self.install()
+        server = (directory / "config/server.yaml").read_text().split("mailer:\n", 1)[1].split("\n\n", 1)[0]
+        atlas = (directory / "config/atlas.yaml").read_text().split("mailer:\n", 1)[1].split("\n\n", 1)[0]
+        self.assertEqual(server, atlas)
+
     def test_rerun_preserves_user_configuration_credentials_and_data(self):
         directory = self.install()
         (directory / "config/server.yaml").write_text("user configuration\n")
@@ -281,6 +287,12 @@ class InstallerTest(unittest.TestCase):
                 if ui:
                     self.assertEqual(expected_registry, services["atlas-ui"]["environment"]["BML_ARTIFACTS_ENDPOINT"])
                     self.assertEqual("http://atlas:8094/graphql", services["atlas-ui"]["environment"]["BML_GRAPHQL_ENDPOINT"])
+                    ui_environment = services["atlas-ui"]["environment"]
+                    self.assertEqual("nats", ui_environment["PUBSUB_TYPE"])
+                    self.assertEqual("nats://nats:4222", ui_environment["NATS_URL"])
+                    self.assertEqual(services["atlas"]["environment"]["NATS_TOKEN"], ui_environment["NATS_TOKEN"])
+                    self.assertFalse(any(key.startswith(("DATABASE_", "JWT_")) or key == "SECURITY_ENCRYPTION_KEY"
+                                         for key in ui_environment))
                 if git:
                     self.assertEqual([8091], [p["target"] for p in services["git"]["ports"]])
                 nginx = (directory / "config/nginx.conf").read_text()

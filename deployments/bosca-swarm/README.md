@@ -131,7 +131,7 @@ Each site's hostnames and routes mirror the Kubernetes Gateway HTTPRoutes, with 
 | `studio.<domain>` | Studio; `/api/v1/events` and `/api/v1/installation` go to the analytics collector, and `/graphql`, `/graphqlws`, `/oauth2`, `/api/v1`, `/files`, and `/content` go to the Bosca server |
 | `profiles.<domain>` | Profiles self-service account site |
 | `a.<domain>` | Analytics collector |
-| `atlas.<domain>` | Atlas Git/artifact UI on 8095, API/transports on 8094, selected by path |
+| `atlas.<domain>` | Imported Atlas UIs and WorkOps collaboration on 8095, API/transports on 8094, selected by path |
 | `git.<domain>` | Git transport/API alias; Git UI pages redirect to Atlas by default |
 | `artifacts.<domain>` | Native registry URLs; file protocols use Atlas’s private route prefix |
 | `notifications.<domain>` | Notifications preferences and unsubscribe pages |
@@ -226,6 +226,12 @@ without changing Atlas's own capabilities. For a fully split deployment, enable
 the standalone services and explicitly disable the matching Atlas capabilities.
 If neither Atlas nor a standalone service enables a surface, its ingress routes
 return 404 and deployment omits its public readiness probe.
+
+The standalone Atlas UI receives the site's `pubsubBackend` selection and existing
+NATS account or Redis endpoint/database/namespace for WorkOps document updates and
+presence. These match embedded Atlas. Caddy forwards WorkOps pages and the
+`/collaboration` WebSocket to the selected UI listener. Git clone, LFS and raw-file
+paths for an owner named `workops` keep their protocol backend.
 
 `swarm update-images` queries only images used by the configured deployment by
 default. An unused standalone image cannot block updates with a registry error.
