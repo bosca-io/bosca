@@ -1,0 +1,25 @@
+<component tag="workops-spec-list">
+  <prop name="model" type="bosca.workops.ui.WorkOpsSpecSearchModel" required />
+  <card :padded="false">
+    <if model.rows.isEmpty()><empty-state title="No specifications found" message="Try changing the query or choosing another saved filter." icon="search" />
+    <else>
+      <table-scroll label="WorkOps specifications" class="workops-spec-table"><table>
+        <thead><tr><th scope="col">Specification</th><th scope="col">Status</th><th scope="col">Children</th><th scope="col">Requirements</th><th scope="col">Owner</th><th scope="col">Project</th><th scope="col">Modified</th></tr></thead>
+        <tbody><for spec in model.rows><tr data-workops-spec-row>
+          <td><a :href="spec.href" data-workops-spec-link>{ spec.title }</a><if spec.gitLinked> <badge>Git linked</badge></if></td>
+          <td><badge :tone="spec.statusTone">{ spec.status }</badge></td>
+          <td><if (spec.childCount > 0)><span>{ spec.childDoneCount } of { spec.childCount } done</span><progress-bar :value="spec.childDoneCount.toDouble()" :max="spec.childCount.toDouble()" label="Completed child specifications" /><else>None</if></td>
+          <td>{ spec.requirementCount }</td>
+          <td><profile :name="spec.owner" /></td>
+          <td>{ spec.project.ifBlank { "None" } }</td>
+          <td><time :value="spec.modified" /></td>
+        </tr></for></tbody>
+      </table></table-scroll>
+    </if>
+    <pagination :page="model.page" :previousHref="model.previousHref" :nextHref="model.nextHref" label="Specification pages" alwaysVisible />
+  </card>
+  <script client scoped>
+    import { workOpsSearchRows } from "@client/helpers/search-rows";
+    workOpsSearchRows(ctx, "spec");
+  </script>
+</component>

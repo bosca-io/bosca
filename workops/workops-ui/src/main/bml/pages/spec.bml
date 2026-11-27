@@ -1,0 +1,10 @@
+<page route="/workops/specs/{id}" requireAuth>
+  <contract>
+    interface WorkOpsContextChoices {
+      /** Search authorized context references by their product names with existing offset pages. */
+      suspend fun search(kind: String, query: String, offset: Int): Map<String, String>
+    }
+  </contract>
+  <script server provides="page">bosca.workops.ui.workOpsSpecDetail()</script>
+  <workops-layout :title="page.title"><workops-spec-detail :initial="page" /></workops-layout>
+</page>
