@@ -14,6 +14,31 @@ import kotlin.test.assertTrue
 
 class SwarmImagesTest {
     @Test
+    fun `default Kit image lookups follow enabled harnesses across sites`() = runBlocking {
+        for (families in listOf(emptyList(), listOf("codex"), listOf("claude"), listOf("codex", "claude"))) {
+            val base = SwarmConfig()
+            val sites = if (families.isEmpty()) base.sites else families.mapIndexed { index, family ->
+                base.sites[index].copy(kit = SwarmKit(enabled = true, harness = family))
+            }
+            val config = base.copy(sites = sites)
+            val updated = updateSwarmImages(config, null, emptySet()) { "9.0.0" }
+            for ((key, enabled) in mapOf(
+                "kit-controller" to families.isNotEmpty(),
+                "kit-codex-runtime" to ("codex" in families),
+                "kit-claude-runtime" to ("claude" in families),
+            )) {
+                val original = config.images.getValue(key)
+                assertEquals(if (enabled) original.substringBeforeLast(':') + ":9.0.0" else original,
+                    updated.images[key], "$key in $families")
+            }
+        }
+        val config = SwarmConfig()
+        val updated = updateSwarmImages(config, null, setOf("kit-claude-runtime")) { "9.0.0" }
+        assertTrue(updated.images.getValue("kit-claude-runtime").endsWith(":9.0.0"))
+        assertEquals(config.images["kit-codex-runtime"], updated.images["kit-codex-runtime"])
+    }
+
+    @Test
     fun `default image lookups follow optional services enabled by any site`() = runBlocking {
         for (ui in listOf(false, true)) for (git in listOf(false, true)) for (artifacts in listOf(false, true)) {
             val original = SwarmConfig().withSecrets().let { config ->

@@ -124,9 +124,16 @@ class SwarmInitCommand : SwarmAction(name = "init") {
 class SwarmRenderCommand : SwarmAction(name = "render") {
     override fun help(context: Context) = "Generate stack and service configuration files locally"
     private val output by option("--output", help = "Generated bundle directory")
-    override fun run() {
+    override fun run() = runBlocking {
         val (path, config) = configuration()
-        bundle(config, path, output)
+        try {
+            bundle(resolveSwarmKit(config), path, output)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw CliktError(e.message ?: "Could not prepare Kit runtime images")
+        }
+        Unit
     }
 }
 
@@ -148,12 +155,15 @@ class SwarmDeployCommand : SwarmAction(name = "deploy") {
     private val output by option("--output", help = "Generated bundle directory")
     private val skipPublicCheck by option("--skip-public-check", help = "Skip public HTTPS readiness checks").flag()
     private val registryLogin by option("--registry-login", help = "Log in to active image registries using configured credentials before deployment").flag()
-    override fun run() {
+    override fun run() = runBlocking {
         val (path, config) = configuration(deploy = true)
         try {
-            withDeploymentBundle(config, path, output) { rendered ->
-                deploySwarm(config, rendered, skipPublicCheck, registryLogin)
+            val resolved = resolveSwarmKit(config)
+            withDeploymentBundle(resolved, path, output) { rendered ->
+                deploySwarm(resolved, rendered, skipPublicCheck, registryLogin)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             throw CliktError(e.message ?: "Swarm deployment failed")
         }
@@ -181,8 +191,9 @@ class SwarmSetupTokensCommand : SwarmAction(name = "setup-tokens") {
                 echo("Service tokens are already configured; applying the site stacks")
             }
             try {
-                withDeploymentBundle(updated, path, null) { rendered ->
-                    deploySwarm(updated, rendered, skipPublicCheck, registryLogin)
+                val resolved = resolveSwarmKit(updated)
+                withDeploymentBundle(resolved, path, null) { rendered ->
+                    deploySwarm(resolved, rendered, skipPublicCheck, registryLogin)
                 }
             } catch (e: CancellationException) {
                 throw e

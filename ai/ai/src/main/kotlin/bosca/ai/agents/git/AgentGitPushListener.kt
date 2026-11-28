@@ -24,8 +24,9 @@ import kotlin.time.Duration.Companion.milliseconds
 class AgentGitPushListener(
     private val pubSubService: PubSubService,
     private val agentGitSyncService: AgentGitSyncService,
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
+
     init {
         scope.launch {
             while (true) {

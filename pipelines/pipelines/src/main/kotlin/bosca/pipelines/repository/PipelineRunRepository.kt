@@ -58,10 +58,10 @@ interface PipelineRunRepository {
         """
         insert into pipelines.pipeline_run
             (pipeline_id, status, event_name, graph_snapshot, input, input_type, parent_run_id, parent_node_id,
-             item_index, run_job_id, principal_id)
+             item_index, run_job_id, principal_id, authority)
         values
             (:pipelineId, :status::pipelines.pipeline_run_status, :eventName, :graphSnapshot, :input, :inputType,
-             :parentRunId, :parentNodeId, :itemIndex, :runJobId, :principalId)
+             :parentRunId, :parentNodeId, :itemIndex, :runJobId, :principalId, :authority)
         returning *
         """
     )

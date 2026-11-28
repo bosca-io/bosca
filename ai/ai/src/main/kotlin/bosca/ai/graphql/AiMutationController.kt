@@ -21,6 +21,10 @@ object AiMutation
 
 @TypeController
 class AiMutationController : GraphQLController<AiMutation> {
+    @Field fun delegations() = bosca.ai.chat.graphql.KitDelegationsMutation
+
+    @Field
+    fun memories() = bosca.ai.memory.graphql.MemoriesMutation
 
     @Field
     fun agents() = AgentsMutation

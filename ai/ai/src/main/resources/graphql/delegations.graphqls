@@ -1,0 +1,58 @@
+"Runtime-bound reads for managed child tasks."
+type KitDelegations {
+    settings(sessionId: UUID!): KitDelegationPolicy!
+    get(sessionId: UUID!, id: UUID!): KitDelegation
+    list(sessionId: UUID!, offset: Long! = 0, limit: Int! = 20): [KitDelegation!]!
+}
+
+"The narrow ai:delegate surface; these operations do not grant general AI conversation execution."
+type KitDelegationsMutation {
+    start(sessionId: UUID!, input: KitDelegationInput!): KitDelegation!
+    wait(sessionId: UUID!, id: UUID!): KitDelegation!
+    cancel(sessionId: UUID!, id: UUID!): KitDelegation!
+    submit(sessionId: UUID!, output: KitDelegationResultInput!): KitDelegation!
+}
+
+enum KitDelegationStatus { QUEUED RUNNING COMPLETED FAILED CANCELLED TIMED_OUT INTERRUPTED }
+
+type KitDelegation {
+    id: UUID!
+    parentSessionId: UUID!
+    parentTurnId: UUID!
+    childSessionId: UUID!
+    profile: String!
+    depth: Int!
+    runtimeSeconds: Long!
+    deadline: DateTime!
+    status: KitDelegationStatus!
+    partial: Boolean!
+    result: KitDelegationResult
+    failure: String
+}
+
+type KitDelegationPolicy {
+    profiles: [String!]!
+    maxDepth: Int!
+    maxActive: Int!
+    maxChildren: Int!
+    maxRuntimeSeconds: Long!
+    totalRuntimeSeconds: Long!
+}
+
+type KitDelegationResult { summary: String!, artifacts: [KitDelegationArtifact!]! }
+type KitDelegationArtifact { metadataId: UUID!, label: String! }
+
+input KitDelegationInput {
+    requestId: UUID!
+    brief: String!
+    expectedResult: String!
+    profile: String!
+    context: [KitDelegationContextInput!]! = []
+    artifacts: [UUID!]! = []
+    scopes: [String!]
+    runtimeSeconds: Long! = 300
+    deadline: DateTime
+}
+input KitDelegationContextInput { kind: KitContextSourceKind!, id: UUID!, ref: String, path: String }
+input KitDelegationResultInput { summary: String!, artifacts: [KitDelegationArtifactInput!]! = [] }
+input KitDelegationArtifactInput { metadataId: UUID!, label: String! = "" }

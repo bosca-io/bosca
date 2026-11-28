@@ -9,6 +9,9 @@ import bosca.graphql.annotations.TypeController
 class AnalyticsQueryResponseController : GraphQLController<AnalyticsQueryResponse> {
 
     @Field
+    fun evidence(response: AnalyticsQueryResponse) = response.evidence
+
+    @Field
     fun records(response: AnalyticsQueryResponse) = response.records
 
     @Field
